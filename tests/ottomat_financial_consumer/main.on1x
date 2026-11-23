@@ -1,0 +1,63 @@
+import ottomat.financial as Ott;
+import automat.financial_graph as G;
+import automat.financial_run as Run;
+import automat.hospitality_host as Host;
+import sdk.callable as SDK;
+import std.io.TextIO as IO;
+import std.os.CommandLine as Env;
+import core.format as F;
+
+fn print(text:string) { IO.basis_text_io_print(text); }
+fn env(key:string) -> string { return Env.basis_command_line_get_env(key); }
+fn file(key:string) -> string { return IO.basis_text_io_input_all(env(key)); }
+fn report(result:Run.Result)
+{
+  print(text_concat(sx_text(result["status"]),"\n"));
+  if !SDK.same(result["status"],sx_string("ok")) { return; }
+  print(text_concat(sx_text(result["graph_digest"]),"\n"));
+  print(text_concat(F.num(result["invocations"]),"\n"));
+  print(sx_text(SDK.value_bytes(G.at(G.lookup(result["outputs"],"recommendation"),2))));
+  let out = buffer_new();
+  G.frame(out,sx_text(result["trace"]));
+  var entries = result["artifacts"];
+  while sx_kind(entries) == 3
+  {
+    let a = sx_head(entries);
+    G.frame(out,G.field(a,0)); G.frame(out,G.field(a,1)); G.frame(out,G.field(a,2));
+    entries = sx_tail(entries);
+  }
+  print(buffer_text(out));
+}
+fn main() -> i64
+{
+  let source = file("STRATEGY");
+  let compiler = env("COMPILER_ID");
+  let lowered = Ott.lower(source,"recommendation",Host.budget(),compiler,Host.lookup);
+  let status = sx_text(lowered["status"]);
+  let line = lowered["line"];
+  let col = lowered["column"];
+  print("$status $line $col\n");
+  if status != "ok" { return 0; }
+  if sx_text(lowered["source"]) != source || sx_text(lowered["compiler_identity"]) != compiler
+    || G.length(lowered["resolved"],32) != 5 { tool_fail("lowering provenance mismatch"); }
+  let spans = lowered["spans"];
+  let decision = G.lookup(spans,"decision");
+  let first = SDK.nat(G.at(decision,2));
+  let last = SDK.nat(G.at(decision,3));
+  if first >= last || text_slice(source,first,first+12) != "let decision"
+    || text_byte(source,last) != 10 { tool_fail("wrong declaration span"); }
+  let diagnostic = G.lookup(lowered["resolved"],"diagnostic");
+  if !SDK.same_pin(G.decode_pin(G.at(diagnostic,1)),Host.lookup(Host.sample_key())["pin"])
+  { tool_fail("wrong diagnostic package pin"); }
+  let source_digest = sx_text(lowered["source_digest"]);
+  let lowering = sx_text(lowered["lowering"]);
+  print("$source_digest\n$compiler\n$lowering\n");
+  let roots = sx_cons(Run.input("scenario",1,file("SCENARIO")),
+    sx_cons(Run.input("offers",1,file("OFFERS")),sx_cons(Run.input("valuation",1,file("VALUATION")),sx_nil())));
+  let ctx = record<Run.Context>{cutoff:sx_string("2026-11-20T10:00:00Z"),
+    strategy_digest:Host.lookup(Host.decide_key())["pin"]["policy_digest"]};
+  let result = Run.execute(lowered["graph"],roots,ctx,"recommendation",Host.budget(),Host.lookup,Host.call);
+  if !SDK.same(lowered["graph_digest"],result["graph_digest"]) { tool_fail("lowered graph changed"); }
+  report(result);
+  return 0;
+}

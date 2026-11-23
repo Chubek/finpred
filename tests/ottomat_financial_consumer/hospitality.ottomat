@@ -1,0 +1,17 @@
+ottomat 6
+effect pure
+input scenario hospitality.scenario@1 none EUR required 2048
+input offers finpred.offers.csv@1 none none required 2000000
+input valuation pricing.valuation@1 minor_per_night EUR required 2048
+import yieldcraft.normalize@1
+import yieldcraft.comparables@1
+import hospitality-diagnostics.sample@1
+import yieldcraft.decide@1
+import yieldcraft.guardrails@1
+let normalizer = yieldcraft.normalize@1 scenario=scenario offers=offers
+let comparables = yieldcraft.comparables@1 scenario=scenario normalized=normalizer.normalized
+let diagnostic = hospitality-diagnostics.sample@1 scenario=scenario distribution=comparables.distribution
+let decision = yieldcraft.decide@1 scenario=scenario valuation=valuation distribution=comparables.distribution sample=diagnostic.sample
+let guardrails = yieldcraft.guardrails@1 scenario=scenario valuation=valuation candidate=decision.candidate
+output recommendation pricing.recommendation@1 minor_per_night EUR required 512
+emit recommendation guardrails.recommendation

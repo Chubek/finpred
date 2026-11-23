@@ -5,6 +5,37 @@ The [CLI](../../GUIDE.md#choose-an-engine) selects `legacy` (default) or
 path. These engines have different input and output contracts; scalar
 analysis does not produce a price or write to the pricing store.
 
+## Typed financial graph
+
+The additive `automat.financial-graph@1` library validates named ports and
+references before execution and orders ready nodes by ID. It uses the
+host-supplied [`sdk.callable`](../sdk/README.md#internal-typed-calls) resolver and
+invoker; the graph and Ottomat source cannot register handlers or grant
+effects. This slice accepts only pure work and has no CLI route.
+
+The static hospitality host binds normalization, whole-stay comparables,
+an independent sample diagnostic, the Yieldcraft decision, and guardrail
+validation. The normalizer retains the rejected-row count and records
+the frozen offers artifact as a parent. Only immutable values cross the
+graph boundary; matcher handles stay inside each adapter.
+
+`financial_run.execute` returns in-memory artifacts and a trace only on
+success. Each artifact contains its value, cutoff, strategy digest, and
+ordered named parents; node artifacts also pin the graph and exact SDK
+identity. Run-local memoization preserves these artifacts and their ordering.
+`financial_run.replay` recomputes from frozen bytes and compares exact
+evidence without writing a store. These are not `finpred-run` archives.
+The hospitality adapters reuse legacy validators; some invalid legacy
+inputs still terminate the host rather than return a structured error.
+The work ceiling is a bound on admitted work, not hard CPU metering.
+
+With a matched On1x compiler and GrammarEmbed installed, run
+`python3 tests/check_hospitality_adapters.py`,
+`python3 tests/check_financial_graph.py`, and
+`python3 tests/check_ottomat_financial.py`. The last test compares the
+[Ottomat 6](../ottomat/README.md#v6-financial-graphs) evidence with that of
+the native builder byte for byte.
+
 ## Legacy recommendation runner
 
 `automat.runner.run(plan, mode, scenario_raw, offers_raw, valuation_raw,

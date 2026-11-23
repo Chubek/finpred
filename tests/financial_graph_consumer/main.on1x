@@ -1,0 +1,173 @@
+import automat.financial_graph as G;
+import automat.financial_run as Run;
+import automat.hospitality_host as Host;
+import sdk.callable as SDK;
+import std.io.TextIO as IO;
+import std.os.CommandLine as Env;
+import std.collections.List as L;
+import core.format as F;
+
+fn print(text:string) { IO.basis_text_io_print(text); }
+fn env(key:string) -> string { return Env.basis_command_line_get_env(key); }
+fn file(key:string) -> string { return IO.basis_text_io_input_all(env(key)); }
+fn bind(key:string) -> SDK.Descriptor
+{
+  if env("CASE") == "disabled" && key == Host.sample_key() { return SDK.unavailable(); }
+  return Host.lookup(key);
+}
+fn forbid_call(pin:SDK.Pin, req:SDK.Request) -> SDK.Outcome
+{
+  tool_fail("invalid graph reached a handler");
+  return SDK.failure(1);
+}
+fn bundle_file(b:buffer, path:string)
+{
+  G.frame(b,path);
+  G.frame(b,IO.basis_text_io_input_all(text_concat(env("ROOT"),path)));
+}
+fn bundle_digest() -> string
+{
+  let b = buffer_new();
+  G.frame(b,"finpred.hospitality-on1x-bundle@1");
+  bundle_file(b,"/plugins/yieldcraft/matcher.on1x");
+  bundle_file(b,"/plugins/yieldcraft/strategy.on1x");
+  bundle_file(b,"/source/algorithms/quantile.on1x");
+  bundle_file(b,"/source/automat/hospitality.on1x");
+  bundle_file(b,"/source/automat/hospitality_sample.on1x");
+  bundle_file(b,"/source/automat/runner.on1x");
+  bundle_file(b,"/source/core/contracts.on1x");
+  bundle_file(b,"/source/core/csv.on1x");
+  bundle_file(b,"/source/core/date.on1x");
+  bundle_file(b,"/source/core/money.on1x");
+  return G.digest(buffer_text(b));
+}
+fn changed_plan(g:G.Graph, task:string) -> G.Graph
+{
+  let nodes = g["nodes"];
+  let inputs = g["inputs"];
+  let outputs = g["outputs"];
+  if task == "shape" { return G.graph(sx_nil(),nodes,outputs); }
+  if task == "duplicate" { return G.graph(inputs,sx_cons(sx_head(nodes),nodes),outputs); }
+  if task == "reordered" { return G.graph(L.basis_list_rev(inputs),L.basis_list_rev(nodes),outputs); }
+  if task == "memo"
+  {
+    let n = G.lookup(nodes,"diagnostic");
+    return G.graph(inputs,sx_cons(G.node("extra",G.field(n,1),"pure",G.at(n,3)),nodes),outputs);
+  }
+  if task == "kind" || task == "major" || task == "unit"
+  {
+    let p = Host.offers();
+    var kind = p["kind"];
+    var major = p["major"];
+    var unit = p["unit"];
+    if task == "kind" { kind = sx_string("pricing.valuation"); }
+    if task == "major" { major = 2; }
+    if task == "unit" { unit = sx_string("minor_per_night"); }
+    let changed = record<SDK.Port>{name:p["name"],kind:kind,major:major,unit:unit,
+      currency:p["currency"],states:p["states"],max_bytes:p["max_bytes"]};
+    return G.graph(Host.prepend(changed,G.remove(inputs,"offers")),nodes,outputs);
+  }
+  if task == "denied" || task == "unknown"
+  {
+    let item = sx_head(nodes);
+    let id = G.field(item,0);
+    var key = G.field(item,1);
+    var effect = G.field(item,2);
+    if task == "denied" { effect = "action"; }
+    if task == "unknown" { key = "hospitality.missing@1"; }
+    return G.graph(inputs,sx_cons(G.node(id,key,effect,G.at(item,3)),sx_tail(nodes)),outputs);
+  }
+  if task == "cycle" || task == "ref"
+  {
+    let id = "comparables";
+    var producer = id;
+    if task == "ref" { producer = "absent"; }
+    let edges = sx_cons(G.edge("scenario","","scenario"),
+      sx_cons(G.edge("normalized",producer,"distribution"),sx_nil()));
+    return G.graph(inputs,sx_cons(G.node(id,Host.comparables_key(),"pure",edges),G.remove(nodes,id)),outputs);
+  }
+  return g;
+}
+fn tamper_parents(expected:sexpr, parent_digest:string) -> sexpr
+{
+  let entry = sx_head(expected);
+  if G.field(entry,0) == "guardrails"
+  {
+    let bytes = G.field(entry,2);
+    var altered = bytes;
+    let width = text_len(parent_digest);
+    for i in 0 .. text_len(bytes) - width + 1
+    {
+      if text_slice(bytes,i,i+width) == parent_digest
+      {
+        altered = text_concat(text_slice(bytes,0,i),
+          text_concat("blake3:0000000000000000000000000000000000000000000000000000000000000000",
+          text_slice(bytes,i+width,text_len(bytes))));
+        break;
+      }
+    }
+    if bytes == altered { tool_fail("wrong-parent fixture did not change"); }
+    let changed = sx_cons(G.at(entry,0),sx_cons(sx_string(G.digest(altered)),sx_cons(sx_string(altered),sx_nil())));
+    return sx_cons(changed,sx_tail(expected));
+  }
+  return sx_cons(entry,tamper_parents(sx_tail(expected),parent_digest));
+}
+fn report(result:Run.Result)
+{
+  print(text_concat(sx_text(result["status"]),"\n"));
+  if !SDK.same(result["status"],sx_string("ok")) { return; }
+  print(text_concat(sx_text(result["graph_digest"]),"\n"));
+  print(text_concat(F.num(result["invocations"]),"\n"));
+  print(sx_text(SDK.value_bytes(G.at(G.lookup(result["outputs"],"recommendation"),2))));
+  let out = buffer_new();
+  G.frame(out,sx_text(result["trace"]));
+  var entries = result["artifacts"];
+  while sx_kind(entries) == 3
+  {
+    let a = sx_head(entries);
+    G.frame(out,G.field(a,0)); G.frame(out,G.field(a,1)); G.frame(out,G.field(a,2));
+    entries = sx_tail(entries);
+  }
+  print(buffer_text(out));
+}
+fn main() -> i64
+{
+  let task = env("CASE");
+  if task == "bundle"
+  {
+    print(text_concat(bundle_digest(),"\n"));
+    return 0;
+  }
+  if bundle_digest() != Host.code_digest() { tool_fail("hospitality source identity drift"); }
+  if task == "shape" || task == "duplicate" || task == "kind" || task == "unit" || task == "major"
+    || task == "denied" || task == "unknown" || task == "cycle" || task == "ref" || task == "disabled"
+    || task == "budget"
+  {
+    let graph = changed_plan(Host.native_graph(),task);
+    var budget = Host.budget();
+    if task == "budget" { budget = budget - 1; }
+    let ctx = record<Run.Context>{cutoff:sx_nil(),strategy_digest:sx_nil()};
+    let result = Run.execute(graph,sx_nil(),ctx,"recommendation",budget,bind,forbid_call);
+    report(result);
+    return 0;
+  }
+  let graph = changed_plan(Host.native_graph(),task);
+  let roots = sx_cons(Run.input("scenario",1,file("SCENARIO")),
+    sx_cons(Run.input("offers",1,file("OFFERS")),sx_cons(Run.input("valuation",1,file("VALUATION")),sx_nil())));
+  var cutoff = "2026-11-20T10:00:00Z";
+  if task == "cutoff" { cutoff = "2026-11-20T09:59:59Z"; }
+  let strategy = Host.lookup(Host.decide_key())["pin"]["policy_digest"];
+  let ctx = record<Run.Context>{cutoff:sx_string(cutoff),strategy_digest:strategy};
+  let result = Run.execute(graph,roots,ctx,"recommendation",Host.budget()+1,bind,Host.call);
+  if task == "replay" || task == "wrong-parent"
+  {
+    if !SDK.same(result["status"],sx_string("ok")) { tool_fail("expected a successful graph"); }
+    var expected = Run.expectation(result);
+    if task == "wrong-parent" { expected = tamper_parents(expected,G.field(G.lookup(expected,"decision"),1)); }
+    report(Run.replay(graph,roots,ctx,"recommendation",Host.budget()+1,bind,Host.call,
+      result["graph_digest"],expected));
+    return 0;
+  }
+  report(result);
+  return 0;
+}

@@ -1,0 +1,217 @@
+# Ottomat syntax version 6. This frontend creates only native IR; it does
+# not acquire evidence, resolve its own packages, or invoke a runtime.
+import ottomat.financial_grammar as Syntax;
+import automat.financial_graph as G;
+import sdk.callable as SDK;
+import core.format as F;
+import std.collections.List as L;
+
+record Lowered {
+  status:sexpr, line:i64, column:i64, graph:G.Graph, graph_digest:sexpr, source:sexpr,
+  source_digest:sexpr, compiler_identity:sexpr, lowering:sexpr, spans:sexpr, resolved:sexpr
+}
+record Ref { valid:bool, producer:sexpr, port:sexpr }
+
+fn identity() -> string { return "finpred.ottomat-financial-lowering@1"; }
+fn error(status:string, line:i64, column:i64) -> Lowered
+{
+  return record<Lowered>{status:sx_string(status),line:line,column:column,
+    graph:G.graph(sx_nil(),sx_nil(),sx_nil()),graph_digest:sx_nil(),source:sx_nil(),
+    source_digest:sx_nil(),compiler_identity:sx_nil(),lowering:sx_nil(),spans:sx_nil(),resolved:sx_nil()};
+}
+fn line_at(source:string, offset:i64) -> (i64,i64)
+{
+  var line = 1;
+  var column = 1;
+  for i in 0 .. offset
+  {
+    if i >= text_len(source) { break; }
+    if text_byte(source,i) == 10 { line = line + 1; column = 1; }
+    else { column = column + 1; }
+  }
+  return (line,column);
+}
+fn mark(source:string, label:string, line:i64) -> sexpr
+{
+  var current = 1;
+  var start = 0;
+  var end = text_len(source);
+  for i in 0 .. end
+  {
+    if text_byte(source,i) == 10
+    {
+      if current == line { end = i; break; }
+      current = current + 1;
+      start = i + 1;
+    }
+  }
+  return sx_cons(sx_string(label),sx_cons(sx_string(F.num(line)),
+    sx_cons(sx_string(F.num(start)),sx_cons(sx_string(F.num(end)),sx_nil()))));
+}
+fn split_at(text:string, sep:i64) -> i64
+{
+  for i in 0 .. text_len(text) { if text_byte(text,i) == sep { return i; } }
+  return -1;
+}
+fn port(words:sexpr) -> SDK.Port
+{
+  let kind = G.field(words,2);
+  let at = split_at(kind,64);
+  var name = "";
+  var major = 0;
+  var state = 0;
+  if at > 0 && at < text_len(kind)-1
+  {
+    name = text_slice(kind,0,at);
+    major = SDK.nat(sx_string(text_slice(kind,at+1,text_len(kind))));
+  }
+  if G.field(words,5) == "required" { state = 1; }
+  return record<SDK.Port>{name:G.at(words,1),kind:sx_string(name),major:major,unit:G.at(words,3),
+    currency:G.at(words,4),states:state,max_bytes:SDK.nat(G.at(words,6))};
+}
+fn reference(raw:string) -> Ref
+{
+  let dot = split_at(raw,46);
+  var producer = "";
+  var port = raw;
+  if dot >= 0
+  {
+    producer = text_slice(raw,0,dot);
+    port = text_slice(raw,dot+1,text_len(raw));
+  }
+  return record<Ref>{valid:G.identifier(port) && (dot < 0 || G.identifier(producer)),
+    producer:sx_string(producer),port:sx_string(port)};
+}
+fn bindings(words:sexpr) -> (bool,sexpr)
+{
+  let n = G.length(words,20);
+  if n < 4 { return (false,sx_nil()); }
+  var edges = sx_nil();
+  for i in 4 .. n
+  {
+    let arg = G.field(words,i);
+    let equal = split_at(arg,61);
+    if equal < 1 || equal >= text_len(arg)-1 { return (false,sx_nil()); }
+    let input = text_slice(arg,0,equal);
+    let origin = reference(text_slice(arg,equal+1,text_len(arg)));
+    if !G.identifier(input) || !origin["valid"] { return (false,sx_nil()); }
+    edges = sx_cons(G.edge(input,sx_text(origin["producer"]),sx_text(origin["port"])),edges);
+  }
+  return (true,L.basis_list_rev(edges));
+}
+fn compiler_id(identity:string) -> bool
+{
+  if text_len(identity) != 71 || text_slice(identity,0,7) != "sha256:" { return false; }
+  for i in 7 .. 71
+  {
+    let c = text_byte(identity,i);
+    if !G.decimal(c) && (c < 97 || c > 102) { return false; }
+  }
+  return true;
+}
+
+fn lower(source:string, mode:string, budget:i64, compiler:string,
+  resolve:fn(string) -> SDK.Descriptor) -> Lowered
+{
+  if text_len(source) < 1 || text_len(source) > 4096 { return error("size",1,1); }
+  if !compiler_id(compiler) { return error("compiler_identity",1,1); }
+  var lines = 0;
+  for i in 0 .. text_len(source)
+  {
+    let c = text_byte(source,i);
+    if c == 10 { lines = lines+1; }
+    else
+    {
+      if c < 32 || c > 126
+      {
+        let (row,col) = line_at(source,i);
+        return error("syntax",row,col);
+      }
+    }
+    if lines > 96 { return error("size",97,1); }
+  }
+  let (status, parsed, offset) = Syntax.parse(source);
+  if status != 0
+  {
+    let (row,col) = line_at(source,offset);
+    return error("syntax",row,col);
+  }
+  let effect = G.field(G.at(parsed,1),1);
+  if effect != "pure" || (mode != "analysis" && mode != "recommendation")
+  { return error("denied",2,1); }
+  var rest = sx_tail(sx_tail(parsed));
+  var line = 3;
+  var inputs = sx_nil();
+  var declared_outputs = sx_nil();
+  var imported = sx_nil();
+  var nodes = sx_nil();
+  var outputs = sx_nil();
+  var spans = sx_cons(mark(source,"effect",2),sx_cons(mark(source,"header",1),sx_nil()));
+  while sx_kind(rest) == 3
+  {
+    let words = sx_head(rest);
+    let verb = G.field(words,0);
+    let name = G.field(words,1);
+    if verb == "input" || verb == "output"
+    {
+      let p = port(words);
+      if !G.identifier(name) || !SDK.valid_port(p) { return error("port",line,1); }
+      if verb == "input" { inputs = sx_cons(SDK.port_entry(p),inputs); }
+      else
+      {
+        if sx_kind(G.lookup(declared_outputs,name)) != 0 { return error("duplicate_id",line,1); }
+        declared_outputs = sx_cons(SDK.port_entry(p),declared_outputs);
+      }
+    }
+    if verb == "import"
+    {
+      if !G.handler_key(name) || !SDK.resolve(name,mode,resolve)["enabled"]
+      { return error("unknown_handler",line,1); }
+      if sx_kind(G.lookup(imported,name)) != 0 { return error("duplicate_import",line,1); }
+      imported = sx_cons(sx_cons(sx_string(name),sx_nil()),imported);
+    }
+    if verb == "let"
+    {
+      let handler = G.field(words,3);
+      if !G.identifier(name) { return error("node",line,1); }
+      if sx_kind(G.lookup(imported,handler)) == 0 { return error("undeclared_import",line,1); }
+      let (ok,edges) = bindings(words);
+      if !ok { return error("binding",line,1); }
+      nodes = sx_cons(G.node(name,handler,effect,edges),nodes);
+    }
+    if verb == "emit"
+    {
+      let p = SDK.decode_port(G.lookup(declared_outputs,name));
+      let origin = reference(G.field(words,2));
+      if !SDK.valid_port(p) || !origin["valid"] || sx_text(origin["producer"]) == ""
+      { return error("emit",line,1); }
+      outputs = sx_cons(G.output(p,sx_text(origin["producer"]),sx_text(origin["port"])),outputs);
+    }
+    spans = sx_cons(mark(source,name,line),spans);
+    rest = sx_tail(rest);
+    line = line + 1;
+  }
+  if G.length(outputs,16) < 0 || G.length(outputs,16) != G.length(declared_outputs,16)
+  { return error("output",line-1,1); }
+  let graph = G.graph(L.basis_list_rev(inputs),L.basis_list_rev(nodes),L.basis_list_rev(outputs));
+  let prepared = G.prepare(graph,mode,budget,resolve);
+  let reason = sx_text(prepared["status"]);
+  if reason != "ok"
+  {
+    var at = SDK.nat(G.at(G.lookup(spans,sx_text(prepared["subject"])),1));
+    if at == 0 { at = line-1; }
+    return error(reason,at,1);
+  }
+  var order = prepared["order"];
+  var resolved = sx_nil();
+  while sx_kind(order) == 3
+  {
+    let item = sx_head(order);
+    resolved = sx_cons(sx_cons(G.at(item,0),sx_cons(G.at(item,1),sx_nil())),resolved);
+    order = sx_tail(order);
+  }
+  return record<Lowered>{status:sx_string("ok"),line:0,column:0,graph:graph,
+    graph_digest:sx_string(G.digest(sx_text(prepared["canonical"]))),source:sx_string(source),
+    source_digest:sx_string(G.digest(source)),compiler_identity:sx_string(compiler),
+    lowering:sx_string(identity()),spans:L.basis_list_rev(spans),resolved:L.basis_list_rev(resolved)};
+}

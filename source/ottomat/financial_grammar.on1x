@@ -1,0 +1,23 @@
+import ottomat.grammar as Common;
+
+@GrammarEmbed("grammar",r!"""grammar FinancialOttomat :lexer<dfa> :parser<lalr1> {
+  token ATOM { [!-~]+ }
+  token EOL { \n }
+  rule TOP { 'ottomat' ' ' '6' <EOL> <effect> <input>+ <import>+ <binding>+ <output>+ <emit>+ }
+  rule effect { 'effect' ' ' <word> <EOL> }
+  rule input { 'input' ' ' <port> <EOL> }
+  rule output { 'output' ' ' <port> <EOL> }
+  rule port { <word> ' ' <word> ' ' <word> ' ' <word> ' ' <word> ' ' <word> }
+  rule import { 'import' ' ' <word> <EOL> }
+  rule binding { 'let' ' ' <word> ' ' '=' ' ' <word> (' ' <word>)* <EOL> }
+  rule emit { 'emit' ' ' <word> ' ' <word> <EOL> }
+  rule word { <ATOM> | 'ottomat' | '6' | 'effect' | 'input' | 'import' | 'let' | '=' | 'output' | 'emit' }
+}""")
+fn financial_grammar() {}
+
+fn parse(source:string) -> (i64,sexpr,i64)
+{
+  let (status,tree,offset) = FinancialOttomat_parse(source);
+  if status != 0 { return (status,sx_nil(),offset); }
+  return (0,Common.project(tree),offset);
+}

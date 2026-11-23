@@ -14,8 +14,12 @@ python3 tests/check_fixtures.py
 python3 tests/check_sdk.py
 python3 tests/check_sdk_packages.py
 python3 tests/check_sdk_data1.py
+python3 tests/check_forecast_baselines.py
 python3 tests/check_plugin_registry.py
 python3 tests/check_fixed_runner.py
+python3 tests/check_hospitality_adapters.py
+python3 tests/check_financial_graph.py
+python3 tests/check_ottomat_financial.py
 python3 tests/check_dag.py
 python3 tests/check_dag_replay.py
 python3 tests/check_scalar_manifest.py

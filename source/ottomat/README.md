@@ -14,6 +14,31 @@ Lowering separately checks the fixed graph, registered handler signatures,
 effects, and resource bounds. The scalar preflight preserves the existing
 source limits and exact whitespace diagnostics.
 
+## V6 financial graphs
+
+`ottomat 6` is a separate, additive [GrammarEmbed frontend](financial_grammar.on1x)
+for the [native financial graph](../automat/README.md#typed-financial-graph).
+It accepts ASCII with exactly one space between tokens and LF-terminated
+lines; no comments, blank lines, or dynamic expressions. A source must
+declare `effect pure`, named inputs, exact registered imports, named-port
+`let` bindings, typed outputs, and corresponding `emit` lines, in that order.
+Input and output declarations use `name kind@major unit currency required
+max_bytes`. A reference names an external input or `node.output_port`; a
+binding names `input_port=reference`. See the
+[hospitality fixture](../../tests/ottomat_financial_consumer/hospitality.ottomat).
+
+Lowering returns the native graph with its canonical digest, declaration
+byte spans, resolved pins, exact original source and its digest, compiler
+identity supplied by the trusted host, and lowering version. Source and
+graph identities are separate: for example, argument reordering can preserve
+the graph digest while changing the source digest. Any non-pure declaration
+is denied.
+The frontend does not execute the graph and does not alter dialects 1–5.
+Run `python3 tests/check_ottomat_financial.py` for compiled native parity and
+negative syntax, type, import, and effect cases.
+
+## Legacy recommendation declarations
+
 `Ottomat.lower(source)` parses a v1 or v2 declaration and resolves it to
 Automat's fixed seven-node recommendation plan. A valid `Plan` carries
 `syntax_version`, `graph` (the identity from `Graph.version()`), and

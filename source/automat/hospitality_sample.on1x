@@ -1,0 +1,41 @@
+# Standalone pure sample diagnostic for the graph. It implements no
+# Yieldcraft pricing or guardrail policy.
+import core.contracts as C;
+import core.format as F;
+import automat.hospitality as H;
+import plugins.yieldcraft.matcher as Match;
+import sdk.callable as SDK;
+import std.collections.Array as A;
+
+fn diagnose(s:C.Scenario, bytes:string) -> string
+{
+  let dist = H.distribution(bytes);
+  let count = dist["count"];
+  let minimum = s["min_properties"];
+  var low = 0;
+  var high = 0;
+  for i in 0 .. count
+  {
+    let price = A.basis_array_sub(dist["prices"],i);
+    if i == 0 || price < low { low = price; }
+    if price > high { high = price; }
+  }
+  Match.destroy_distribution(dist);
+  var adequate = 0;
+  if count >= minimum { adequate = 1; }
+  let out = buffer_new();
+  buffer_append(out,"sample@1,");
+  buffer_append(out,F.num(count));
+  H.number(out,minimum);
+  H.number(out,adequate);
+  H.number(out,high-low);
+  buffer_append(out,"\n");
+  return buffer_text(out);
+}
+
+fn diagnose_call(req:SDK.Request) -> SDK.Outcome
+{
+  let scenario = C.scenario_csv(H.request_bytes(req,0));
+  if !H.at_cutoff(req,scenario) { return SDK.failure(5); }
+  return SDK.success(1,diagnose(scenario,H.request_bytes(req,1)));
+}

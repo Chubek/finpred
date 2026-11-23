@@ -1,0 +1,47 @@
+{
+  "description": "Synthetic Eurostat-shaped guest-night snapshots with a late January revision; no real provider evidence.",
+  "snapshots": {
+    "season": {
+      "updated": "2023-05-04T12:00:00+0000",
+      "received": "2023-05-04T12:00:01Z",
+      "ingested": "2023-05-04T12:00:02Z",
+      "values": {"2023-02": 100, "2023-03": 110, "2023-04": 120}
+    },
+    "january": {
+      "updated": "2024-01-10T12:00:00+0000",
+      "received": "2024-01-10T12:00:01Z",
+      "ingested": "2024-01-10T12:00:02Z",
+      "values": {"2023-10": 160, "2023-11": 170, "2023-12": 180}
+    },
+    "february": {
+      "updated": "2024-02-10T12:00:00+0000",
+      "received": "2024-02-10T12:00:01Z",
+      "ingested": "2024-02-10T12:00:02Z",
+      "values": {"2023-11": 170, "2023-12": 180, "2024-01": 190}
+    },
+    "january_revision": {
+      "updated": "2024-02-20T12:00:00+0000",
+      "received": "2024-02-20T12:00:01Z",
+      "ingested": "2024-02-20T12:00:02Z",
+      "values": {"2024-01": 220}
+    },
+    "march": {
+      "updated": "2024-03-10T12:00:00+0000",
+      "received": "2024-03-10T12:00:01Z",
+      "ingested": "2024-03-10T12:00:02Z",
+      "values": {"2023-12": 180, "2024-01": 220, "2024-02": 200}
+    },
+    "actuals": {
+      "updated": "2024-05-21T12:00:00+0000",
+      "received": "2024-05-21T12:00:01Z",
+      "ingested": "2024-05-21T12:00:02Z",
+      "values": {"2024-02": 200, "2024-03": 210, "2024-04": 230}
+    }
+  },
+  "origins": [
+    {"issued": "2024-01-15T00:00:00Z", "cutoff": "2024-01-15T00:00:00Z", "target": "2024-02", "split": "validation", "training": "january"},
+    {"issued": "2024-02-15T00:00:00Z", "cutoff": "2024-02-15T00:00:00Z", "target": "2024-03", "split": "holdout", "training": "february"},
+    {"issued": "2024-03-15T00:00:00Z", "cutoff": "2024-03-15T00:00:00Z", "target": "2024-04", "split": "holdout", "training": "march"}
+  ],
+  "scoring_cutoff": "2024-06-01T00:00:00Z"
+}
