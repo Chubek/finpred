@@ -1,4 +1,8 @@
-# Dragnet: offline sources
+# Dragnet: acquisition and offline sources
+
+The [public feeds](PUBLIC_FEEDS.md) tool separately supports ECB reference
+rates and Eurostat accommodation aggregates. It is not a pricing engine
+input or an extension of Dragnet's frozen CSV SDK descriptor.
 
 ## Frozen CSV source
 

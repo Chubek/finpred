@@ -216,6 +216,19 @@ IDs and output digests, five named strategies, and the 17100/16000 pricing
 fixtures remained unchanged. Standalone strict-C11 native-store CTest
 passed 2/2; there is no new KernelBind admission.
 
+### Dragnet public snapshots
+
+Dragnet's separate [public feeds](../plugins/dragnet/PUBLIC_FEEDS.md) host
+normalizes indicative ECB reference rates and aggregated Eurostat guest
+nights to two plugin-local `@1` contracts. Exact bodies, capture metadata,
+receipt and ingestion timestamps, and deterministic offline verification
+are independent of the pricing store. The operator starts the bounded
+foreground poller explicitly. It is verified on loopback, not against live
+providers; neither feed is a pricing input or an SDK capability grant.
+The release pin lacks `std.daemon`, and the newer in-process byte dispatcher
+does not launch or reap processes. No new KernelBind admission or background
+service is enabled.
+
 ### Optional Poindexter GUI
 
 The [ImmGTK frontend](../plugins/poindexter/gui/README.md) presents a

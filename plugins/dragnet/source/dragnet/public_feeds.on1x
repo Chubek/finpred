@@ -2,7 +2,6 @@
 import core.csv as CSV;
 import core.date as Date;
 import core.format as F;
-import std.String as Str;
 import std.crypto.crypto as Crypto;
 
 fn append(out: buffer, field: string, value: string)
@@ -130,6 +129,22 @@ fn month_start(period: string) -> i64
   return start;
 }
 
+fn month_end(period: string) -> i64
+{
+  var year = text_slice(period,0,4);
+  var month = Date.digit(period,5) * 10 + Date.digit(period,6) + 1;
+  if month == 13
+  {
+    let next_year = Date.digit(year,0) * 1000 + Date.digit(year,1) * 100 +
+      Date.digit(year,2) * 10 + Date.digit(year,3) + 1;
+    year = F.num(next_year);
+    month = 1;
+  }
+  var number = F.num(month);
+  if month < 10 { number = text_concat("0",number); }
+  return Date.date_days(text_concat(year,text_concat("-",text_concat(number,"-01"))));
+}
+
 fn tourism_rows(out: buffer, decode: string, rows: i64, updated: i64) -> i64
 {
   if rows > 7 { tool_fail("feed: accommodation row bound"); }
@@ -145,17 +160,7 @@ fn tourism_rows(out: buffer, decode: string, rows: i64, updated: i64) -> i64
     let start = month_start(period);
     if start <= last { tool_fail("feed: unordered or duplicate accommodation period"); }
     last = start;
-    let year = text_slice(period,0,4);
-    let month = Date.digit(period,5) * 10 + Date.digit(period,6);
-    var next = Date.date_days(text_concat(year,text_concat("-",text_concat(F.num(month + 1),"-01"))));
-    if month < 9
-    { next = Date.date_days(text_concat(year,text_concat("-0",text_concat(F.num(month + 1),"-01")))); }
-    if month == 12
-    {
-      let next_year = Date.digit(year,0) * 1000 + Date.digit(year,1) * 100 +
-        Date.digit(year,2) * 10 + Date.digit(year,3) + 1;
-      next = Date.date_days(text_concat(F.num(next_year),"-01-01"));
-    }
+    let next = month_end(period);
     if next < 0 || next * 86400 > updated { tool_fail("feed: unfinished period at provider update"); }
     if i > 4 { buffer_append(out,","); }
     buffer_append(out,"{\"period\":"); buffer_append(out,F.q(period));

@@ -70,9 +70,11 @@ the fixed plan and output, while the CLI owns its Yieldcraft policy
 binding; pricing replay ignores the `run` selector.
 The [engine registry](source/sdk/README.md#engine-registry) controls linked
 plugin dispatch. Dragnet's [Crossref adapter](plugins/dragnet/README.md) is
-offline evidence, not an admitted live feed or pricing input. Poindexter's
-[ImmGTK host](plugins/poindexter/gui/README.md) edits local workbook copies
-without changing the verified-run store.
+offline evidence. Its separate [public feeds](plugins/dragnet/PUBLIC_FEEDS.md)
+host is tested on loopback; neither adapter is a pricing input. The On1x
+`std.daemon` launcher is blocked pending an admitted process API.
+Poindexter's [ImmGTK host](plugins/poindexter/gui/README.md) edits local
+workbook copies without changing the verified-run store.
 Yieldcraft's active writer is `finpred-run@2` only. Keep `finpred-run@1`
 archive verification read-only; do not confuse the persisted run version
 with an Ottomat syntax version, plugin version, or contract version.
@@ -88,7 +90,7 @@ with an Ottomat syntax version, plugin version, or contract version.
 | `source/automat/dag.on1x` | Bounded typed scalar DAG, selectable for read-only CLI analysis | General financial contracts and recommendation execution |
 | `source/ottomat/{grammar,ottomat,scalar}.on1x`; `strategies/*.ottomat` | GrammarEmbed parsers for the original fixed plan and bounded native scalar strategies; separate graph/effect validation | General-purpose strategy grammar and hospitality DAG lowering |
 | `source/sdk/{packages,static_host}.on1x`, `source/sdk/sdk_v2.{c,h}` | Static metadata/compatibility checks across Dragnet, Yieldcraft, Poindexter; versioned C ABI | Dynamic discovery/loading, invocation, process isolation, enforcement of real usage budgets |
-| `plugins/dragnet/` | Host-selected **offline frozen CSV** import and eligible offer JSONL output | Authorized network/remote adapters and streaming checkpoints |
+| `plugins/dragnet/` | Frozen CSV import and eligible offer JSONL, offline Crossref, standalone versioned ECB FX and Eurostat accommodation observations with loopback-tested polling and offline replay | End-to-end live validation, an admitted On1x daemon and streaming checkpoints |
 | `plugins/yieldcraft/` | Standalone callable On1x strategy package; no store or publication authority | Fully dynamic plugin registration |
 | `plugins/poindexter/` | Verified pricing-sheet CSV projection | General accounting contract types/valuation models |
 | `plugins/poindexter/workbench/` | Separate On1x terminal spreadsheet with formulas, edits, scripting, persistence, import | General spreadsheet/accounting workbench; large/unbounded spreadsheets |

@@ -110,6 +110,19 @@ safe_ref "$4" && safe_ref "$5" || die "invalid terms or retention policy referen
 spool=$(realpath -e -- "$3") || die "spool must already exist"
 [ -d "$spool" ] && [ "$(stat -c '%u:%a' -- "$spool")" = "$(id -u):700" ] ||
   die "use a trusted, separate 0700 spool owned by the operator"
+separate_from() {
+  store=$(realpath -m -- "$1") || return 1
+  case "${spool%/}/" in "${store%/}/"*) return 1;; esac
+  case "${store%/}/" in "${spool%/}/"*) return 1;; esac
+}
+# Compare paths only; do not open either the configured or default store.
+separate_from "$pkg/../../.finpred" &&
+  separate_from "${FINPRED_HOME:-"$pkg/../../.finpred"}" ||
+  die "spool must not overlap the FinPRED store"
+case ${FINPRED_HOME:-} in
+  ""|/*) ;;
+  *) separate_from "$pkg/../../$FINPRED_HOME" || die "spool must not overlap the FinPRED store";;
+esac
 # The spool is a trusted, cooperating-operator archive, not a sandbox or the
 # FinPRED store. The lock and rate checkpoints are not immutable evidence.
 exec 9>>"$spool/.dragnet-feed-lock"
@@ -124,17 +137,18 @@ acquire() {
   provider=$1
   shift
   rate="$spool/.dragnet-$mode-$provider-next"
-  now=$(date -u +%s) || return 2
+  now=$(date -u +%s) || { event failed local_clock; return 2; }
   next=0
   if [ -e "$rate" ]; then
-    next=$(head -c 13 -- "$rate") || return 2
+    next=$(head -c 13 -- "$rate") || { event failed invalid_checkpoint; return 2; }
+    if [ "$next" = provider_hold ]; then event deferred provider_backoff; return 2; fi
     case $next in ''|*[!0-9]*) event failed invalid_checkpoint; return 2;; esac
     # Canonical positive Unix timestamp, no shell octal or unbounded integer.
     case $next in 0*) event failed invalid_checkpoint; return 2;; esac
     [ "${#next}" -le 12 ] || { event failed invalid_checkpoint; return 2; }
   fi
   if [ "$now" -lt "$next" ]; then event deferred rate_limited; return 2; fi
-  stage=$(mktemp -d "$spool/.incoming.XXXXXXXX") || return 2
+  stage=$(mktemp -d "$spool/.incoming.XXXXXXXX") || { event failed archive_stage; return 2; }
   # Record the attempt *before* contacting the provider; an interrupted
   # acquisition does not authorize an immediate retry. No retry within round.
   if ! printf '%s\n' "$((now + 3601))" > "$stage/checkpoint" ||
@@ -156,6 +170,13 @@ acquire() {
                     transfer_limit|incomplete_transfer|content_type|local_clock|output_error) ;;
       *) detail=worker_failed;;
     esac
+    # The provider can request a longer delay than our default. Skip this
+    # provider until the operator reviews the response policy and clears hold.
+    if [ "$detail" = provider_backoff ] &&
+       ! (printf '%s\n' provider_hold > "$stage/checkpoint" &&
+          mv -T -- "$stage/checkpoint" "$rate"); then
+      detail=checkpoint_write
+    fi
     event failed "$detail"; cleanup; return 2
   fi
   receipt=$(head -c 22 -- "$stage/fetch-status")
