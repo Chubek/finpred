@@ -51,7 +51,7 @@ jobs:
           ./bin/poindexter --build
           python3 tests/check_poindexter_workbench.py
           python3 tests/check_poindexter_tty.py
-          python3 tests/check_tui_kernel_admission.py
+          python3 tests/check_tui_kernel_admission.py --expect-dynlib-syntax
           make poindexter-tui-review
       - name: Public feed transport and replay conformance
         id: dragnet_feeds

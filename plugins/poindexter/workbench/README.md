@@ -27,14 +27,13 @@ must also provide a reviewed callable TUI profile.
 To check the boundary and terminal behavior on a local build:
 
 ```sh
-python3 tests/check_tui_kernel_admission.py
+python3 tests/check_tui_kernel_admission.py --expect-dynlib-syntax
 python3 tests/check_poindexter_tty.py
 ```
 
-With a matched newer compiler that supports `kernel[dynlib]` syntax,
-run the admission probe with `--expect-dynlib-syntax`. The release pin
-rejects that spelling at parse time; the newer compiler recognizes the
-request but still refuses TUI admission.
+The checked-in compiler pin recognizes `kernel[dynlib]` syntax but still
+refuses TUI admission. Omit `--expect-dynlib-syntax` only when reproducing
+the historical pin that rejected that spelling at parse time.
 
 `make poindexter-tui-review` exercises the separate
 [native viewport candidate](native/README.md) using `mulib-tui.h`.
