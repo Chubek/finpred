@@ -1,5 +1,9 @@
 # FinPRED Dragnet patch bundle
 
+> **Archived patch-bundle notes.** For current installation and test commands
+> see [INSTALL.md](INSTALL.md) and [the verification workflow](.github/workflows/verify.yml).
+> Do not apply this overlay to a current checkout.
+
 Baseline: `Chubek/finpred` `master` at
 `6d3994a2c9caeda157592b5a556b002113ff5edf` (2026-11-23).
 

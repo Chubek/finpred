@@ -31,34 +31,34 @@ fn source_name() -> string
   return text_slice(raw,0,n-1);
 }
 
-fn main() -> i64
+fn dispatch(source:string) -> Sources.SourceOutcome
 {
-  let source = source_name();
   if !Sources.admitted(source,"analysis")
   { tool_fail("dragnet dispatch: unknown or denied source"); }
-  var result = record<Sources.SourceOutcome>{source:sx_nil(),contract:sx_nil(),
-    format:sx_nil(),bytes:sx_nil()};
   if source == "dragnet.frozen_csv@1"
   {
-    result = Sources.invoke(source,"analysis",snapshot("/proc/self/fd/4",2000000),
+    return Sources.invoke(source,"analysis",snapshot("/proc/self/fd/4",2000000),
       snapshot("/proc/self/fd/5",2000000),"","","");
   }
-  else if source == "dragnet.crossref@1"
+  if source == "dragnet.crossref@1"
   {
-    result = Sources.invoke(source,"analysis",snapshot("/proc/self/fd/4",1024),
+    return Sources.invoke(source,"analysis",snapshot("/proc/self/fd/4",1024),
       snapshot("/proc/self/fd/5",262144),snapshot("/proc/self/fd/6",262144),
       snapshot("/proc/self/fd/7",16384),snapshot("/proc/self/fd/8",16384));
   }
-  else if source == "dragnet.public-feed@1"
-  {
-    let as_of = snapshot("/proc/self/fd/7",21);
-    if text_len(as_of) != 21 || text_byte(as_of,20) != 10
-    { tool_fail("dragnet dispatch: malformed as-of timestamp"); }
-    result = Sources.invoke(source,"analysis",snapshot("/proc/self/fd/4",512),
-      snapshot("/proc/self/fd/5",65536),snapshot("/proc/self/fd/6",4096),
-      text_slice(as_of,0,20),"");
-  }
-  else { tool_fail("dragnet dispatch: source unavailable"); }
+  if source != "dragnet.public-feed@1"
+  { tool_fail("dragnet dispatch: source unavailable"); }
+  let as_of = snapshot("/proc/self/fd/7",21);
+  if text_len(as_of) != 21 || text_byte(as_of,20) != 10
+  { tool_fail("dragnet dispatch: malformed as-of timestamp"); }
+  return Sources.invoke(source,"analysis",snapshot("/proc/self/fd/4",512),
+    snapshot("/proc/self/fd/5",65536),snapshot("/proc/self/fd/6",4096),
+    text_slice(as_of,0,20),"");
+}
+
+fn main() -> i64
+{
+  let result = dispatch(source_name());
   IO.basis_text_io_print(sx_text(result["bytes"]));
   return 0;
 }

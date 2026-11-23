@@ -1,11 +1,12 @@
 #!/bin/sh
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-EXE=${FINPRED_EXE:-"$ROOT/build/dev/finpred"}
 if [ "${FINPRED_MODE:-}" = execution ]; then
   echo "capability denied: execution is forbidden" >&2
   exit 2
 fi
+. "$ROOT/bin/paths.sh"
+EXE=$(finpred_cli_executable "$ROOT")
 if [ ! -x "$EXE" ]; then
   echo "FinPRED On1x executable absent: build with bin/build.sh first" >&2
   exit 2

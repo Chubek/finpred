@@ -8,30 +8,20 @@ jobs:
   application:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
-    env:
-      MULIB_ROOT: ${{ github.workspace }}/third_party/mulib
-      MULIB_SHA: 49de89acbc97efbee493d6b28d02c8f64ed4f725
-      LIBSTONE_SHA: b5c962721a32df18b2fb22de136c1f2ef8b6390d
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-      - name: Fetch public compiler sources
+      - name: Fetch pinned compiler submodules
         run: |
-          git init "$MULIB_ROOT"
-          git -C "$MULIB_ROOT" fetch --depth=1 https://github.com/Chubek/mulib.git "$MULIB_SHA"
-          git -C "$MULIB_ROOT" checkout --detach FETCH_HEAD
-          git -C "$MULIB_ROOT" submodule update --init --depth=1 on1x/third_party/libstone
-          test "$(git -C "$MULIB_ROOT" rev-parse HEAD)" = "$MULIB_SHA"
-          test "$(git -C "$MULIB_ROOT/on1x/third_party/libstone" rev-parse HEAD)" = "$LIBSTONE_SHA"
+          git submodule update --init third_party/mulib
+          git -C third_party/mulib submodule update --init on1x/third_party/libstone
+          git submodule status third_party/mulib
+          git -C third_party/mulib submodule status on1x/third_party/libstone
       - name: Build pinned compiler
         run: |
-          cmake -S "$MULIB_ROOT/on1x" -B "$MULIB_ROOT/build/on1x" \
-            -DBUILD_TESTING=ON -DON1X_REQUIRE_LIBSTONE=ON \
-            -DON1X_BUILD_NATIVE_PPX=ON -DON1X_BUILD_GRAMMAREMBED=ON \
-            -DON1X_LIBSTONE_ROOT="$MULIB_ROOT/on1x/third_party/libstone"
-          cmake --build "$MULIB_ROOT/build/on1x" --parallel 4 --target on1xc on1x_ppx_GrammarEmbed
-          sha256sum "$MULIB_ROOT/build/on1x/on1xc"
+          make mulib
+          sha256sum build/mulib/on1x/on1xc build/mulib/on1x/stdppx/on1x-ppx-GrammarEmbed
       - name: Install schema validator
         run: |
           python3 -m venv "$RUNNER_TEMP/validation"
@@ -44,7 +34,9 @@ jobs:
             pkg-config libcurl4-openssl-dev libxml2-dev libjansson-dev
           pkg-config --modversion libcurl libxml-2.0 jansson
       - name: Build C11 CLI
-        run: ./bin/build.sh
+        run: make
+      - name: Build, launcher, and suite path regression
+        run: python3 tests/check_build_paths.py
       - name: Fixture oracles, static checks and full integration
         id: integration
         run: ./tests/run.sh

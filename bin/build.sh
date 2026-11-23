@@ -1,8 +1,10 @@
 #!/bin/sh
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$ROOT/bin/build-env.sh"
+. "$ROOT/bin/paths.sh"
 MULIB_ROOT=${MULIB_ROOT:-"$ROOT/third_party/mulib"}
-ON1XC=${ON1XC:-"$ROOT/build/mulib/on1x/on1xc"}
+ON1XC=${ON1XC:-"$(finpred_mulib_build_dir "$ROOT")/on1xc"}
 if [ ! -f "$MULIB_ROOT/on1x/tools/on1x-project.py" ]; then
   echo "Missing MuLIB at $MULIB_ROOT (set MULIB_ROOT or populate third_party/mulib)" >&2
   exit 2
@@ -11,12 +13,11 @@ if [ ! -x "$ON1XC" ]; then
   echo "Missing compiled On1x compiler at $ON1XC (run 'make mulib' or set ON1XC)" >&2
   exit 2
 fi
-. "$ROOT/bin/build-env.sh"
 finpred_build_env "$ROOT"
 cd "$ROOT"
 # Compose the host and selected built-in packages in a disposable project;
 # canonical plugin sources stay under plugins/.
-out=$(realpath -m -- "${FINPRED_BUILD_DIR:-$ROOT/build/dev}")
+out=$(finpred_cli_output_dir "$ROOT")
 mkdir -p "$(dirname -- "$out")"
 work=$(mktemp -d "$TMPDIR/finpred-project.XXXXXXXX")
 trap 'rm -rf -- "$work"' EXIT

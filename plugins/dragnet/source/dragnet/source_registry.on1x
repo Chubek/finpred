@@ -57,12 +57,17 @@ fn admitted(name:string, mode:string) -> bool
 # The five inputs are immutable host-provided snapshots, never filenames.
 # Each adapter validates its full input and as-of semantics before returning.
 # The result preserves the adapter's pre-existing canonical output bytes.
+fn normalized(d:SourceDescriptor, bytes:string) -> SourceOutcome
+{
+  return record<SourceOutcome>{source:d["name"],contract:d["output_kind"],
+    format:d["output_format"],bytes:sx_string(bytes)};
+}
+
 fn invoke(name:string, mode:string, first:string, second:string,
   third:string, fourth:string, fifth:string) -> SourceOutcome
 {
   if !admitted(name,mode) { tool_fail("dragnet source: denied or unknown source"); }
   let d = descriptor(name);
-  var result = "";
   if name == "dragnet.frozen_csv@1"
   {
     if text_len(first) < 1 || text_len(first) > 2000000 ||
@@ -70,9 +75,9 @@ fn invoke(name:string, mode:string, first:string, second:string,
        third != "" || fourth != "" || fifth != ""
     { tool_fail("dragnet source: invalid frozen CSV inputs"); }
     let scenario = Contracts.scenario_csv(first);
-    result = FrozenCSV.offers_as_of(second,scenario);
+    return normalized(d,FrozenCSV.offers_as_of(second,scenario));
   }
-  else if name == "dragnet.crossref@1"
+  if name == "dragnet.crossref@1"
   {
     if text_len(first) < 1 || text_len(first) > 1024 ||
        text_len(second) < 1 || text_len(second) > 262144 ||
@@ -80,18 +85,14 @@ fn invoke(name:string, mode:string, first:string, second:string,
        text_len(fourth) < 1 || text_len(fourth) > 16384 ||
        text_len(fifth) < 1 || text_len(fifth) > 16384
     { tool_fail("dragnet source: invalid Crossref inputs"); }
-    result = Crossref.evidence_as_of(first,second,third,fourth,fifth);
+    return normalized(d,Crossref.evidence_as_of(first,second,third,fourth,fifth));
   }
-  else if name == "dragnet.public-feed@1"
-  {
-    if text_len(first) < 1 || text_len(first) > 512 ||
-       text_len(second) < 1 || text_len(second) > 65536 ||
-       text_len(third) < 1 || text_len(third) > 4096 ||
-       text_len(fourth) != 20 || fifth != ""
-    { tool_fail("dragnet source: invalid public feed inputs"); }
-    result = Feeds.normalize(first,second,third,fourth);
-  }
-  else { tool_fail("dragnet source: missing implementation"); }
-  return record<SourceOutcome>{source:sx_string(name),contract:d["output_kind"],
-    format:d["output_format"],bytes:sx_string(result)};
+  if name != "dragnet.public-feed@1"
+  { tool_fail("dragnet source: missing implementation"); }
+  if text_len(first) < 1 || text_len(first) > 512 ||
+     text_len(second) < 1 || text_len(second) > 65536 ||
+     text_len(third) < 1 || text_len(third) > 4096 ||
+     text_len(fourth) != 20 || fifth != ""
+  { tool_fail("dragnet source: invalid public feed inputs"); }
+  return normalized(d,Feeds.normalize(first,second,third,fourth));
 }

@@ -17,7 +17,11 @@ ordinary CLI and terminal workbench do not require X11.
 
 Use Git, CMake (On1x requires 3.20 or newer), a CMake build tool such as Make, C11 and C++20 toolchains, Perl for LibStone’s generators, and Python 3 for the build driver and tests. The C11 driver expects `cc` on `PATH`. The recorded build used GCC 16.2.1, CMake 4.4.3 and Python 3.14.7. The compiled pricing CLI itself does not use Python.
 
-The integration suite uses `jsonschema` 4 with Draft 2020-12 support. If it is not already installed, create a test environment (the pin below matches the acceptance record):
+The integration suite uses `jsonschema` 4 with Draft 2020-12 support. `make test`
+also runs the offline Dragnet suite, which needs `pkg-config`, libcurl ≥ 7.85,
+libxml2, and Jansson development headers. On Ubuntu 24.04 those headers are
+provided by `libcurl4-openssl-dev`, `libxml2-dev`, and `libjansson-dev`.
+If `jsonschema` is not already installed, create a test environment:
 
 ```sh
 python3 -m venv build/test-venv
@@ -27,7 +31,10 @@ python3 -m pip install 'jsonschema==4.26.0'
 
 ## 2. Pin MuLIB and LibStone
 
-On a fresh Git checkout, use the submodule revisions recorded by the checkout:
+The MuLIB gitlink recorded by each FinPRED commit and the LibStone gitlink
+recorded by that MuLIB commit are authoritative for CI and the default local
+build. Older independent CI pins in the implementation notes are historical
+records, not a second default toolchain. On a fresh Git checkout:
 
 ```sh
 git submodule update --init third_party/mulib
@@ -37,9 +44,10 @@ git -C third_party/mulib submodule status on1x/third_party/libstone
 ```
 
 A leading `+` in either status line means the checkout differs from the pinned
-revision. For an existing compiler source checkout, export its **absolute path**
-as `MULIB_ROOT` instead. Verify the revisions against the checkout or the
-historical acceptance record you intend to reproduce.
+revision. `make mulib` refuses a mismatched default MuLIB checkout or a
+LibStone checkout that does not match the selected MuLIB gitlink. To build with
+an explicitly selected external Git checkout, export its **absolute path** as
+`MULIB_ROOT`; the nested LibStone pin still applies.
 
 ## 3. Build the compiler, then the application
 
@@ -59,23 +67,25 @@ points elsewhere:
 | On1x compiler, GrammarEmbed, and MuLIB/LibStone intermediates | `build/mulib/on1x/` |
 | FinPRED CLI | `build/dev/finpred` |
 | Poindexter grid and optional GUI | `build/poindexter/` |
-| Dragnet CSV, Crossref and public-feed tools | `build/dragnet/`, `build/dragnet-crossref/`, `build/dragnet-feeds/` |
+| Dragnet CSV, Crossref, public-feed and dispatcher tools | `build/dragnet/`, `build/dragnet-crossref/`, `build/dragnet-feeds/`, `build/dragnet-dispatch/` (explicit dispatcher output) |
 | Standalone C review builds | `build/native/`, `build/poindexter-tui-review/` |
 | Build and integration-suite scratch space | `build/tmp/` unless `TMPDIR` is set |
 
 Rebuild with `make mulib` rather than moving an old CMake cache out of the MuLIB
 checkout; the cache contains absolute paths. `make` does not build or fetch
 the compiler implicitly. To reuse a compatible external compiler, set `ON1XC`
-to its absolute executable path. To select another built FinPRED executable
-for the launcher and suite, set `FINPRED_EXE`.
+to its absolute executable path. The CLI build, launcher and suite share
+`FINPRED_BUILD_DIR`; relative values resolve from the FinPRED root. `FINPRED_EXE`
+overrides the launcher and a direct `./tests/run.sh` invocation only.
+`make test` ignores that override so it verifies the executable it just built.
 
 Ottomat uses the native GrammarEmbed PPX at build time. The wrapper selects
 it explicitly for C emission; it does not enable PPX directives from strategy
 files. By default the processor is located in `stdppx/` next to `on1xc`. If
 using a separate installation, set `FINPRED_STDPPX_DIR` to the directory
 containing the matching `on1x-ppx-GrammarEmbed` executable and
-`category.schema.json`. MuLIB's source checkout is still required for
-the build tools.
+`category.schema.json`. Use the compiler, PPX and MuLIB source tools from the
+same revision; override paths opt out of the default paired build.
 
 ## 4. Check the build
 

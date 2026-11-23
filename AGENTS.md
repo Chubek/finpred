@@ -4,7 +4,8 @@
 > Inspected branch/commit: `master` at `ec958f21864f42a6a1141aa61a96b5bb7bfee689` (2026-11-23 14:04:02 UTC).  
 > Comparison checkpoint: `6d3994a2c9caeda157592b5a556b002113ff5edf`.  
 > Historical release-toolchain pins used by GitHub Actions: MuLIB `49de89acbc97efbee493d6b28d02c8f64ed4f725`; LibStone `b5c962721a32df18b2fb22de136c1f2ef8b6390d`.  
-> **Current-head CI (confirmed after initial inspection): failed** — workflow `45190236799`: application job failed at `Build C11 CLI` with exit code 2 because `bin/build.sh` looked for `build/mulib/on1x/on1xc`, while CI built `third_party/mulib/build/on1x/on1xc`. Both new Dragnet tests were therefore **skipped**. Native-store job passed. Prior commit `6d3994a` passed both jobs, **without** the new Dragnet dispatcher/feed CI gates.  
+> **CI at the inspected commit: failed** — workflow `45190236799`: application job failed at `Build C11 CLI` with exit code 2 because `bin/build.sh` looked for `build/mulib/on1x/on1xc`, while CI built `third_party/mulib/build/on1x/on1xc`. Both new Dragnet tests were therefore **skipped**. Native-store job passed. Prior commit `6d3994a` passed both jobs, **without** the new Dragnet dispatcher/feed CI gates.
+>
 > Purpose: instructions to **implement and verify code**, not to write aspirational documentation.
 
 **IMPORTANT:** This file is tied to a specific inspection. At the start of every agent session, re-read the actual files and current commit. Never represent this snapshot, GitHub workflow configuration, a test file, or an earlier report as evidence that the *current* checkout passed.
@@ -96,23 +97,20 @@ sed -n '1,130p' Makefile
 sed -n '1,130p' INSTALL.md
 ```
 
-If MuLIB/LibStone are not provisioned, follow their checked-in submodule records and the documented historical pins. Do **not** silently mix `third_party/mulib`'s recorded commit with the older toolchain fetched by CI; record each combination explicitly. Neither On1x's compiler nor a reviewed kernel profile should be guessed into existence.
+If MuLIB/LibStone are not provisioned, follow their checked-in submodule records as described in `INSTALL.md`. The historical independent CI pins are only for reproducing historical evidence. Neither On1x's compiler nor a reviewed kernel profile should be guessed into existence.
 
-For the historical CI pin, an explicit baseline configuration is:
+For a current checkout, use the shared local and CI layout:
 
 ```sh
-export MULIB_ROOT="$PWD/third_party/mulib"
-# Provision a matching on1xc and GrammarEmbed with the selected MuLIB/LibStone revision.
-export ON1XC="$MULIB_ROOT/build/on1x/on1xc"   # if built in the MuLIB checkout
-export FINPRED_EXE="$PWD/build/dev/finpred"     # current project output convention
-./bin/build.sh
+git submodule update --init third_party/mulib
+git -C third_party/mulib submodule update --init on1x/third_party/libstone
+make mulib
+make
 ./bin/finpred selftest
-./tests/run.sh
-python3 tests/check_dragnet_public_feeds.py
-python3 tests/check_dragnet_dispatch.py
+make test
 ```
 
-If the source checkout/compiler are instead built at `build/mulib/on1x`, set `ON1XC` accordingly. **These commands are a test recipe, not proof of execution on this assessment's container.** Record toolchain SHAs, compiler binary SHA-256, host architecture and exact result.
+Explicit toolchain overrides must use a matching source checkout, compiler and PPX installation. **These commands are a test recipe, not proof of execution on the current checkout.** Record toolchain SHAs, compiler binary SHA-256, host architecture and exact result.
 
 Use a private, executable temporary filesystem with adequate disk space, plus `jsonschema` Draft 2020-12, `pkg-config`, libcurl >= 7.85, libxml2 and Jansson headers for Dragnet native conformance. Test CI offline with loopback transport only.
 
@@ -120,7 +118,7 @@ Use a private, executable temporary filesystem with adequate disk space, plus `j
 
 **Owner:** release/CI integration agent. **Paths:** `Makefile`, `bin/build*.sh`, `bin/finpred`, `bin/poindexter`, `INSTALL.md`, `.github/workflows/verify.yml`, affected `tests/` paths.
 
-The current head **actually failed CI** due to the first mismatch below (`Build C11 CLI`, exit 2, workflow `45190236799`). The other two are separate source-verified contradictions. Do not add platform features before resolving them:
+The inspected commit **failed CI** due to the first mismatch below (`Build C11 CLI`, exit 2, workflow `45190236799`). The other two were separate source-verified contradictions. Recheck the current checkout before taking on platform features:
 
 1. **Compiler path conflict.** CI configures the compiler inside `$MULIB_ROOT/build/on1x`; `bin/build.sh` now defaults to `$ROOT/build/mulib/on1x/on1xc`. No CI export of `ON1XC` is present. **GitHub Actions log confirms the exact missing-compiler error.** Choose ONE canonical build directory, or explicitly export `ON1XC` and `FINPRED_STDPPX_DIR` consistent with the chosen build in every test path. Ensure GrammarEmbed and compiler binary come from the same source revision.
 2. **Missing `make mulib`.** `INSTALL.md`, `AGENTS.md` and `bin/build.sh` instruct users to run `make mulib`, but the current `Makefile` contains no `mulib:` rule. Either implement the real CMake target with explicit out-of-tree build/pins or update all documentation and error messages to the actual command. No false build target in release instructions.

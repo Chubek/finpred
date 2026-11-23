@@ -2,26 +2,32 @@
 
 CMAKE ?= cmake
 CTEST ?= ctest
+MULIB_JOBS ?= 4
 NATIVE_BUILD_DIR ?= build/native
 TUI_REVIEW_BUILD_DIR ?= build/poindexter-tui-review
 
-.PHONY: all build test dragnet-test native-test poindexter poindexter-gui poindexter-gui-test poindexter-tui-review
+.PHONY: all build mulib test dragnet-test native-test poindexter poindexter-gui poindexter-gui-test poindexter-tui-review
 
 all: build
 
 build:
 	./bin/build.sh
 
+mulib:
+	CMAKE="$(CMAKE)" MULIB_JOBS="$(MULIB_JOBS)" sh ./bin/build-mulib.sh
+
 test: build
-	out=$$(realpath -m -- "$${FINPRED_BUILD_DIR:-target/dev}") && FINPRED_EXE="$$out/finpred" ./tests/run.sh
+	python3 tests/check_build_paths.py
+	env -u FINPRED_EXE ./tests/run.sh
 	$(MAKE) dragnet-test
 
 dragnet-test:
-	python3 tests/check_dragnet_frozen_csv.py
-	python3 tests/check_dragnet_elvi.py
-	python3 tests/check_crossref_replay.py
-	python3 tests/check_dragnet_public_feeds.py
-	python3 tests/check_dragnet_dispatch.py
+	set -eu; . ./bin/build-env.sh; finpred_build_env "$(CURDIR)"; \
+		python3 tests/check_dragnet_frozen_csv.py; \
+		python3 tests/check_dragnet_elvi.py; \
+		python3 tests/check_crossref_replay.py; \
+		python3 tests/check_dragnet_public_feeds.py; \
+		python3 tests/check_dragnet_dispatch.py
 
 native-test:
 	$(CMAKE) -S native -B "$(NATIVE_BUILD_DIR)" -DBUILD_TESTING=ON -DCMAKE_C_FLAGS='-Wall -Wextra -Werror -pedantic'

@@ -13,7 +13,7 @@ The implementation lives at:
 ## Build
 
 ```sh
-plugins/dragnet/build-dispatch.sh "$PWD/target/dragnet-dispatch"
+plugins/dragnet/build-dispatch.sh "$PWD/build/dragnet-dispatch"
 python3 tests/check_dragnet_dispatch.py
 ```
 
@@ -61,11 +61,14 @@ confer network permissions from strategy text alone.
 
 ## Tests and remaining gates
 
-`check_dragnet_dispatch.py` builds the compiled host and exercises all three
-existing source providers against fixture inputs, compares bytes against the
-older direct host, rejects unknown versions/altered handoffs, and checks that
-no pricing-store sentinel is touched. CI installs native decoder dependencies
-and runs this test after the separate public-feed conformance test.
+`check_dragnet_dispatch.py` compares exact output bytes with the existing
+hosts for frozen CSV, Crossref, ECB and Eurostat, and independently validates
+their schemas. It checks selector syntax, missing/empty/oversized descriptors,
+duplicate CSV observations, mismatched handoffs and late captures. It also
+checks that direct registry invocation denies non-analysis modes, and checks
+for pricing-store changes and, when `strace` is available, network syscalls.
+CI installs native decoder dependencies and runs this test after the
+separate public-feed conformance test.
 
 The complete FinPRED plugin-runtime milestone remains open. Before allowing
 new Source packages without rebuilding this host, implement and review a

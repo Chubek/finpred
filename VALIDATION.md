@@ -1,5 +1,8 @@
 # Validation record
 
+> **Archived patch-bundle validation.** This records only what the original
+> bundle author ran. For current build guidance see [INSTALL.md](INSTALL.md).
+
 ## Baseline
 
 Read-only inspection through the GitHub connector established `master` at

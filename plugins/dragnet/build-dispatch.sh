@@ -5,10 +5,12 @@ set -eu
 if [ "$#" -ne 1 ]; then echo "usage: $0 OUTPUT_DIRECTORY" >&2; exit 2; fi
 pkg=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 root=$(CDPATH= cd -- "$pkg/../.." && pwd)
+. "$root/bin/build-env.sh"
 mulib=$(realpath "${MULIB_ROOT:-$root/third_party/mulib}")
-compiler=$(realpath "${ON1XC:-$mulib/build/on1x/on1xc}")
+compiler=$(realpath "${ON1XC:-$(finpred_mulib_build_dir "$root")/on1xc}")
 out=$(realpath -m -- "$1")
-work=$(mktemp -d "${TMPDIR:-/tmp}/dragnet-dispatch.XXXXXXXX")
+finpred_build_env "$root"
+work=$(mktemp -d "$TMPDIR/dragnet-dispatch.XXXXXXXX")
 trap 'rm -rf -- "$work"' EXIT
 trap 'exit 1' HUP INT TERM
 mkdir -p "$work/source/plugins"

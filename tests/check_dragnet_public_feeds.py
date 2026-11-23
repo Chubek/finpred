@@ -146,7 +146,7 @@ def main():
             ("ecb", ECB.replace(b"2026-11-16", b"2026-11-17"), b"future or stale FX"),
             ("ecb", ECB.replace(b"2026-11-16", b"2026-11-08"), b"future or stale FX"),
             ("ecb", ECB.replace(b"2026-11-16", b"2026-02-29"), b"future or stale FX"),
-            ("ecb", ECB.replace(b"<gesmes:Envelope", b"<!DOCTYPE e SYSTEM 'file:///etc/passwd'>\n<gesmes:Envelope"),
+            ("ecb", ECB.replace(b"<gesmes:Envelope", b"<!DOCTYPE gesmes:Envelope []>\n<gesmes:Envelope"),
              b"invalid provider snapshot"),
             ("ecb", ECB[:-30], b"invalid provider snapshot"),
             ("eurostat", ESTAT.replace(b'"unit":{"category":{"index":{"NR"', b'"unit":{"category":{"index":{"EUR"'),

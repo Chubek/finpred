@@ -22,7 +22,13 @@ names the compiled positive and negative cases for each release feature.
 The application job emits fixture identities and output digests via `tests/run.sh`;
 both jobs log JSON test outcomes, including skipped steps.
 
-Local rehearsal used a fresh copy of the working sources based on `24c6f3d`
+The application workflow now uses the checked-in MuLIB gitlink and its nested
+LibStone gitlink, not the independently hard-coded pair used by earlier runs.
+Both CI and local `make mulib` build `on1xc` and GrammarEmbed together in
+`build/mulib/on1x/`. The [installation guide](../INSTALL.md) describes the
+current layout and overrides.
+
+Historical local rehearsal used a fresh copy of the working sources based on `24c6f3d`
 and clean dependency checkouts from local Git objects: MuLIB
 `49de89acbc97efbee493d6b28d02c8f64ed4f725`, LibStone
 `b5c962721a32df18b2fb22de136c1f2ef8b6390d`. On x86-64 Linux
@@ -86,8 +92,8 @@ snapshots, including a memoized one in a fresh process.
 The scalar analysis modules use On1x interpolation for canonical text and a
 typed `Option<i64>` with an exhaustive enum match for memo lookup. The
 manifest decoder uses character literals for byte-level ASCII comparisons. These
-changes require no new compiler flags or KernelBind capabilities. The
-release pins remain unchanged. The newer compatibility toolchain uses MuLIB
+changes required no new compiler flags or KernelBind capabilities. At that
+checkpoint, the release pins stayed unchanged. Its compatibility toolchain used MuLIB
 `87cbf7c361667c62f82759bd0c02834b2b07315c` with its matching LibStone
 `4c35077601899944594737559534aafd9014f330`, not a mix of the two toolchain
 revisions.
@@ -117,6 +123,22 @@ loopback/offline test passed. The Poindexter package, workbench and GUI
 checks passed, with the live X11 check skipped because the private Xvfb
 tools were unavailable. Hosted CI was not run for this check. No contract,
 run format, ABI, or native admission changed.
+
+The P0 build-path repair was rehearsed in an isolated checkout of
+`91acddda363193bccc570c6cea0098a42c61103a` with the build repair applied.
+On Linux x86-64 with GCC 16.2.1, the checked-in MuLIB
+`211af594f1bafe34ae23f78b4e0412a6fac042d9` and LibStone
+`4c35077601899944594737559534aafd9014f330` built with `make mulib`; the
+fresh `on1xc` SHA-256 was
+`9764328f2c71bbca45ce77b424acd3b4b6b9ec443b3e81c62b0495cd096fdec0`.
+With `TMPDIR` unset, `make` and `make native-test` (2/2) passed. With an
+explicit `TMPDIR`, the CLI integration suite passed both archived v1
+replays and the unchanged v2 EUR 171/160 results and artifact digests. The
+original dispatcher in that checkout still looked for the old compiler path.
+With the accompanying P0b repair, `make test` also passed all five Dragnet
+checks, including two loopback feed providers and four dispatcher parity
+fixtures across three sources. The CLI used a fresh `FINPRED_BUILD_DIR` and
+ignored a stale inherited `FINPRED_EXE`. This is not a hosted CI result.
 
 ### Ottomat v3 scalar lowering
 
@@ -482,7 +504,8 @@ runtime are separate checks:
 - `python3 tests/validate_static.py` (exit 0): 15 On1x modules,
   four schemas. This checks packaging and source structure only.
 
-MuLIB was checked out at `49de89acbc97efbee493d6b28d02c8f64ed4f725`,
+The commands and paths below are historical evidence for the v1 writer, not
+instructions for a current checkout. MuLIB was checked out at `49de89acbc97efbee493d6b28d02c8f64ed4f725`,
 LibStone at `b5c962721a32df18b2fb22de136c1f2ef8b6390d`. Compiler:
 `third_party/mulib/build/on1x/on1xc`, SHA-256
 `0d63fc81d978f1588df8700cf4222ceb0b4425af26a97a591395b751d331a9af`.
@@ -526,7 +549,7 @@ exited 0: **2 scenarios, 12 offers, 1 shared valuation, 2 recommendations**.
 This validates the actual persisted JSON against all four Draft 2020-12
 schemas, in addition to the application's own CSV semantic checks.
 
-Final canonical `./bin/build.sh` exited 0 and produced `target/dev/finpred`
+At this historical revision, `./bin/build.sh` exited 0 and produced `target/dev/finpred`
 (SHA-256 `2d7d669aeb16b7444ea774b67583c7911576eda4cc08e14f37fe20bbd28fb073`).
 `./tests/run.sh` exited 0 (`on1x_integration_ok=true`). It checks native
 selftest, both fixtures and their trace counters, replay with source paths

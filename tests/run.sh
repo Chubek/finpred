@@ -2,9 +2,12 @@
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 . "$ROOT/bin/build-env.sh"
+. "$ROOT/bin/paths.sh"
 finpred_build_env "$ROOT"
 cd "$ROOT"
 unset FINPRED_ENGINE
+FINPRED_EXE=$(finpred_cli_executable "$ROOT")
+export FINPRED_EXE
 python3 tests/validate_static.py
 python3 tests/check_on1x_features.py
 python3 tests/check_fixtures.py
@@ -24,7 +27,7 @@ python3 tests/check_scalar_diagnostics_package.py
 work=$(mktemp -d "$TMPDIR/finpred-test.XXXXXXXX")
 trap 'rm -rf -- "$work"' EXIT
 trap 'exit 1' HUP INT TERM
-exe=${FINPRED_EXE:-"$ROOT/build/dev/finpred"}
+exe=$FINPRED_EXE
 python3 tests/check_engines_cli.py
 unset FINPRED_MODE FINPRED_RUN_ID
 FINPRED_HOME="$work/main"

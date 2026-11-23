@@ -20,7 +20,7 @@ if [[ ${1:-} == --build && $# == 1 ]]; then
   . "$root/bin/build-env.sh"
   finpred_build_env "$root"
   exec python3 "$mulib/on1x/tools/on1x-project.py" build "$root/plugins/poindexter/workbench" \
-    --on1xc "${ON1XC:-$root/build/mulib/on1x/on1xc}" --mulib-root "$mulib" --offline --output-dir "$root/build/poindexter"
+    --on1xc "${ON1XC:-$(finpred_mulib_build_dir "$root")/on1xc}" --mulib-root "$mulib" --offline --output-dir "$root/build/poindexter"
 fi
 book= run= import_csv= script= output= cell=A1
 while (($#)); do
