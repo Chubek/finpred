@@ -13,11 +13,15 @@ import cli.lineage as Lineage;
 import cli.run_formats as Formats;
 import automat.graph as Graph;
 import automat.runner as Runner;
+import automat.dag as Dag;
+import automat.scalar_decode as ScalarDecode;
 import ottomat.ottomat as Ottomat;
+import ottomat.scalar as Scalar;
 import sdk.sdk as SDK;
 import sdk.registry as Registry;
 import algorithms.quantile as Quantile;
 import poindexter.sheet as Sheet;
+import plugins.yieldcraft.entry as Yieldcraft;
 
 fn env_default(key: string, fallback: string) -> string
 {
@@ -77,6 +81,54 @@ fn strategy_profile(strategy_raw: string) -> string
   return profile;
 }
 
+# Both the writer and the historical verifier bind the same trusted policy.
+fn fixed_recommendation(profile: string, scenario_raw: string, offers_raw: string,
+  valuation_raw: string, collect: bool, evidence: buffer) -> Runner.Output
+{
+  if !Registry.admits(Registry.yieldcraft_entry(),"recommendation") { tool_fail("sdk: capability denied"); }
+  return Runner.run(Graph.fixed_plan(profile),"recommendation",scenario_raw,offers_raw,valuation_raw,
+    collect,evidence,Yieldcraft.recommend_profile);
+}
+
+fn scalar_number(key: string, fallback: string, minimum: i64, maximum: i64) -> i64
+{
+  let value = ScalarDecode.decimal(env_default(key,fallback),maximum);
+  if value < minimum { tool_fail("scalar: $key must be a canonical decimal in $minimum..$maximum"); }
+  return value;
+}
+
+fn scalar_analysis() -> i64
+{
+  let first = scalar_number("FINPRED_SCALAR_FIRST","17",0,1000000000000);
+  let second = scalar_number("FINPRED_SCALAR_SECOND","42",0,1000000000000);
+  let budget = scalar_number("FINPRED_SCALAR_BUDGET","16",1,16);
+  let raw = source(env_default("FINPRED_STRATEGY","strategies/scalar-spread.ottomat"));
+  let lowered = Scalar.lower(raw,"analysis",budget);
+  let status = sx_text(lowered["status"]);
+  if status != "ok"
+  {
+    let line = lowered["line"];
+    let column = lowered["column"];
+    tool_fail("scalar: $status at $line:$column");
+  }
+  let plan = lowered["plan"];
+  let result = Dag.run(plan,"analysis",budget,first,second);
+  let outcome = sx_text(result["status"]);
+  if outcome != "ok" { tool_fail("scalar: $outcome"); }
+
+  println("engine=scalar");
+  println("mode=analysis");
+  println(text_concat("graph=",sx_text(plan["version"])));
+  println(text_concat("output_kind=",sx_text(result["output_kind"])));
+  println(text_concat("value=",sx_text(result["value"])));
+  println(text_concat("output_digest=",sx_text(result["output_digest"])));
+  println("published=false");
+  println("trace_begin");
+  IO.basis_text_io_print(sx_text(result["trace"]));
+  println("trace_end");
+  return 0;
+}
+
 fn start_lineage(lineage: buffer, sd: string, od: string, vd: string, td: string,
   profile: string, ns: string, nv: string, rows: i64)
 {
@@ -109,8 +161,7 @@ fn publish(scenario_raw: string, offers_raw: string, valuation_raw: string,
   strategy_raw: string, home: string) -> i64
 {
   let profile = strategy_profile(strategy_raw);
-  let result = Runner.run(Graph.fixed_plan(profile),"recommendation",
-    scenario_raw,offers_raw,valuation_raw,false,buffer_new());
+  let result = fixed_recommendation(profile,scenario_raw,offers_raw,valuation_raw,false,buffer_new());
   let s = result["scenario"];
   let v = result["valuation"];
   let r = result["recommendation"];
@@ -179,8 +230,7 @@ fn replay(home: string, expected_run_id: string, mode: string) -> i64
   if !v2 && profile != "scenario"
   { tool_fail("replay: v1 requires the legacy scenario strategy"); }
   let evidence = buffer_new();
-  let result = Runner.run(Graph.fixed_plan(profile),"recommendation",
-    scenario_raw,offers_raw,valuation_raw,mode == "evidence",evidence);
+  let result = fixed_recommendation(profile,scenario_raw,offers_raw,valuation_raw,mode == "evidence",evidence);
   let s = result["scenario"];
   let v = result["valuation"];
   let r = result["recommendation"];
@@ -288,6 +338,9 @@ fn entry() -> i64
     return replay(home,id,mode);
   }
   if mode != "run" { tool_fail("capability denied: execution mode and unknown modes unavailable"); }
+  let engine = env_default("FINPRED_ENGINE","legacy");
+  if engine == "scalar" { return scalar_analysis(); }
+  if engine != "legacy" { tool_fail("unknown engine: expected legacy or scalar"); }
   return publish(source(env_default("FINPRED_SCENARIO","fixtures/scenario.csv")),
     source(env_default("FINPRED_OFFERS","fixtures/offers.csv")),
     source(env_default("FINPRED_VALUATION","fixtures/valuation.csv")),

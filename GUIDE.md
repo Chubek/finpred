@@ -1,6 +1,35 @@
-# Operate the local Yieldcraft CLI
+# Operate the local FinPRED CLI
 
 Start with a tested executable from [INSTALL.md](INSTALL.md). The [overview](README.md) describes the scope. Run the examples below from the FinPRED root, in the same shell, so all commands share one store.
+
+## Choose an engine
+
+| Command | Inputs | Result |
+| --- | --- | --- |
+| `./bin/finpred run --engine legacy` (default) | Frozen hospitality CSVs and Ottomat v1/v2 | EUR recommendation recorded as `finpred-run@2` |
+| `./bin/finpred run --engine scalar` | Two unitless integers and Ottomat v3/v4/v5 | Typed value, output digest, and node trace on stdout; no store access |
+
+Set `FINPRED_ENGINE=legacy` or `FINPRED_ENGINE=scalar` to choose a default
+for `run` (also supported by the direct executable). An explicit `--engine`
+overrides it. `replay`, `explain`, `evidence`, and `poindexter` always use
+the legacy engine for archived pricing runs; they ignore `FINPRED_ENGINE`.
+An incompatible strategy is an error. The CLI never switches engines on
+your behalf.
+
+The scalar engine defaults to [`scalar-spread.ottomat`](strategies/scalar-spread.ottomat),
+input values `17` and `42`, and a budget of `16` nodes. This example prints
+`value=29` and `output_kind=scalar.level@1`:
+
+```sh
+FINPRED_SCALAR_FIRST=17 FINPRED_SCALAR_SECOND=42 \
+  FINPRED_STRATEGY=strategies/scalar-midpoint.ottomat ./bin/finpred run --engine scalar
+```
+
+`FINPRED_SCALAR_FIRST` and `FINPRED_SCALAR_SECOND` accept decimal integers
+from `0` through `1000000000000`. `FINPRED_SCALAR_BUDGET` accepts `1` through
+`16`. No signs, spaces, or leading zeros are allowed. The scalar engine
+does not read the pricing CSVs or create a saved run. Its output digest
+identifies the selected node and its inputs, not a run ID or recommendation.
 
 ## Run the default fixture
 
@@ -11,7 +40,7 @@ umask 077
 FINPRED_HOME=$(mktemp -d "${TMPDIR:-/tmp}/finpred-guide.XXXXXXXX")
 export FINPRED_HOME
 printf 'Store: %s\n' "$FINPRED_HOME"
-unset FINPRED_MODE FINPRED_RUN_ID FINPRED_SCENARIO FINPRED_OFFERS FINPRED_VALUATION FINPRED_STRATEGY
+unset FINPRED_MODE FINPRED_RUN_ID FINPRED_ENGINE FINPRED_SCENARIO FINPRED_OFFERS FINPRED_VALUATION FINPRED_STRATEGY
 ./bin/finpred selftest
 summary=$(./bin/finpred run)
 printf '%s\n' "$summary"

@@ -16,11 +16,12 @@ fn binding(enabled:bool, package:string, mode:string, kind:string, inputs:sexpr,
     kind:sx_string(kind),inputs:inputs,output:sx_string(output),dependencies:dependencies};
 }
 
+fn yieldcraft_entry() -> string { return "plugins.yieldcraft.entry.recommend_profile"; }
+
 fn resolve(entry:string) -> Binding
 {
-  # automat.runner.run: matcher.ingest_mode/distribution_mode and
-  # strategy.recommend_profile, under the original fixed plan.
-  if entry == "yieldcraft.fixed-graph@1" { return binding(true,"yieldcraft.percentile","recommendation",
+  # cli.app.fixed_recommendation supplies this policy to the legacy engine.
+  if entry == yieldcraft_entry() { return binding(true,"yieldcraft.percentile","recommendation",
     "Strategy",P.prepend("hospitality.scenario@1",P.prepend("hospitality.offer@1",
       P.prepend("pricing.valuation@1",sx_nil()))),"pricing.recommendation@1",sx_nil()); }
   # cli.app.replay: verified values only, then the typed render call.
@@ -76,8 +77,8 @@ fn admits(entry:string, mode:string) -> bool
   # Dragnet calls its inventory matcher inside the frozen CSV entrypoint.
   if entry == "poindexter.sheet.render" || entry == "dragnet.frozen_csv.offers_as_of"
   {
-    let upstream = resolve("yieldcraft.fixed-graph@1");
-    if !upstream["enabled"] || !package_compatible("yieldcraft.fixed-graph@1","recommendation")
+    let upstream = resolve(yieldcraft_entry());
+    if !upstream["enabled"] || !package_compatible(yieldcraft_entry(),"recommendation")
     { return false; }
   }
   # The scalar profile is not an SDK v1 descriptor. The DAG uses this

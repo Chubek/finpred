@@ -2,6 +2,7 @@
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
+unset FINPRED_ENGINE
 python3 tests/validate_static.py
 python3 tests/check_on1x_features.py
 python3 tests/check_fixtures.py
@@ -22,6 +23,7 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/finpred-test.XXXXXXXX")
 trap 'rm -rf -- "$work"' EXIT
 trap 'exit 1' HUP INT TERM
 exe=${FINPRED_EXE:-"$ROOT/target/dev/finpred"}
+python3 tests/check_engines_cli.py
 unset FINPRED_MODE FINPRED_RUN_ID
 FINPRED_HOME="$work/main"
 FINPRED_VALUATION="$ROOT/fixtures/valuation.csv"

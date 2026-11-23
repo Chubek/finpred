@@ -69,7 +69,7 @@ def main():
                            work, failure=failure)
 
         store = work / "store"
-        cli_env = {"FINPRED_HOME": str(store), "FINPRED_RUN_ID": MAIN_ID,
+        cli_env = {"FINPRED_HOME": str(store), "FINPRED_RUN_ID": MAIN_ID, "FINPRED_ENGINE": "legacy",
                    "FINPRED_STRATEGY": str(ROOT / "strategies/yieldcraft.ottomat"),
                    **{f"FINPRED_{key.upper()}": str(ROOT / f"fixtures/{key}.csv")
                       for key in ("scenario", "offers", "valuation")}}
@@ -94,13 +94,13 @@ def main():
         def disable(*entries):
             text = original
             for entry in entries:
-                old = f'== "{entry}" {{ return binding(true,'
+                old = f'== {entry} {{ return binding(true,'
                 assert text.count(old) == 1, entry
                 text = text.replace(old, old.replace("true,", "false,"))
             registry.write_text(text)
 
-        disable("poindexter.sheet.render", "dragnet.frozen_csv.offers_as_of",
-                "plugins.scalar_diagnostics.midpoint.midpoint")
+        disable('"poindexter.sheet.render"', '"dragnet.frozen_csv.offers_as_of"',
+                '"plugins.scalar_diagnostics.midpoint.midpoint"')
         compile_consumer()
         assert run_consumer("plan") == b"unknown_handler\n0\nunknown_handler\n"
         run_consumer("invoke", failure=b"dag: invocation denied")
@@ -116,7 +116,7 @@ def main():
                        env=os.environ | env, check=True)
         run_dragnet(b"sdk: incompatible frozen CSV source")
 
-        disable("yieldcraft.fixed-graph@1")
+        disable("yieldcraft_entry()")
         compile_consumer()
         assert run_consumer("direct_yieldcraft") == b"17100\n"
         build_app()
@@ -124,6 +124,11 @@ def main():
         blocked_store = work / "denied-store"
         cli_env["FINPRED_HOME"] = str(blocked_store)
         run_cli("run", failure=b"sdk: capability denied")
+        # Removing the pricing package's binding must not disable scalar analysis.
+        assert b"value=29\n" in execute([app / "finpred"], project, env=cli_env | {
+            "FINPRED_MODE": "run", "FINPRED_ENGINE": "scalar",
+            "FINPRED_STRATEGY": str(project / "midpoint.ottomat"),
+        })
         assert not blocked_store.exists()
         subprocess.run([project / "plugins/dragnet/build.sh", dragnet], cwd=project,
                        env=os.environ | env, check=True)

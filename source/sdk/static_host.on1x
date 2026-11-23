@@ -8,7 +8,7 @@ fn compatible(name:string, kind:string, inputs:sexpr, output:string, mode:string
 
 fn yieldcraft(mode:string) -> bool
 {
-  return Registry.package_compatible("yieldcraft.fixed-graph@1",mode);
+  return Registry.package_compatible(Registry.yieldcraft_entry(),mode);
 }
 
 fn poindexter() -> bool

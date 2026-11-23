@@ -24,9 +24,12 @@ For package entry points, permissions and test commands, see [the plugin develop
 
 ## What runs today
 
-The CLI passes frozen inputs to the [typed plan runner](source/automat/runner.on1x).
-It checks the plan before parsing inputs and checks the recommendation against
-the valuation limits before the CLI records or displays it.
+The CLI defaults to the [legacy recommendation engine](source/automat/runner.on1x).
+It checks the plan and recommendation limits; the CLI supplies the statically
+linked Yieldcraft policy, which the runner does not import. Alternatively,
+`./bin/finpred run --engine scalar` runs an [Ottomat scalar DAG](source/automat/README.md)
+and prints a unitless analysis result without touching the pricing store.
+See the [engine options](GUIDE.md#choose-an-engine).
 
 Choose a [Yieldcraft strategy profile](strategies/README.md) with
 `FINPRED_STRATEGY`, for example `FINPRED_STRATEGY=strategies/premium-p75.ottomat ./bin/finpred run`.

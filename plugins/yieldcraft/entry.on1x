@@ -4,6 +4,19 @@ import sdk.static_host as Host;
 import plugins.yieldcraft.matcher as Match;
 import plugins.yieldcraft.strategy as Strategy;
 
+# Policy handler for trusted hosts that already validated the inputs and
+# authorized the linked package. No matcher-owned handles escape this call.
+fn recommend_profile(scenario: C.Scenario, valuation: C.Valuation, offers_csv: string,
+  profile: string, collect: bool, evidence: buffer) -> C.Recommendation
+{
+  let pool = Match.ingest_mode(offers_csv,scenario,collect,evidence);
+  let dist = Match.distribution_mode(pool,scenario,collect,evidence);
+  Match.destroy(pool);
+  let result = Strategy.recommend_profile(scenario,valuation,dist,profile);
+  Match.destroy_distribution(dist);
+  return result;
+}
+
 fn recommend(mode: string, scenario_csv: string, offers_csv: string, valuation_csv: string)
   -> C.Recommendation
 {
@@ -13,10 +26,5 @@ fn recommend(mode: string, scenario_csv: string, offers_csv: string, valuation_c
   { tool_fail("yieldcraft: source exceeds byte limit"); }
   let scenario = C.scenario_csv(scenario_csv);
   let valuation = C.valuation_csv(valuation_csv,scenario);
-  let pool = Match.ingest(offers_csv,scenario);
-  let dist = Match.distribution(pool,scenario);
-  Match.destroy(pool);
-  let result = Strategy.recommend(scenario,valuation,dist);
-  Match.destroy_distribution(dist);
-  return result;
+  return recommend_profile(scenario,valuation,offers_csv,"scenario",false,buffer_new());
 }

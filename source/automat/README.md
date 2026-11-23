@@ -1,4 +1,31 @@
-# Native scalar analysis graphs
+# Automat engines
+
+The [CLI](../../GUIDE.md#choose-an-engine) selects `legacy` (default) or
+`scalar` for new runs. Pricing replay always uses the legacy compatibility
+path. These engines have different input and output contracts; scalar
+analysis does not produce a price or write to the pricing store.
+
+## Legacy recommendation runner
+
+`automat.runner.run(plan, mode, scenario_raw, offers_raw, valuation_raw,
+collect, evidence, evaluate)` checks the seven-slot `automat.graph.Plan`
+and accepts only `recommendation`. It decodes the scenario and valuation
+before it invokes the host-supplied function:
+
+```text
+fn(Scenario, Valuation, string, string, bool, buffer) -> Recommendation
+```
+
+The additional arguments are the frozen offers CSV, the checked profile
+name, the evidence flag, and the caller-owned evidence buffer. The runner
+checks the returned recommendation against the valuation and scenario
+limits. It does not import Yieldcraft or authorize, discover, or isolate
+callbacks. The CLI checks its registry binding and supplies
+`plugins.yieldcraft.entry.recommend_profile` for both new runs and replay.
+The [independent consumer](../../tests/fixed_runner_consumer/main.on1x)
+builds the runner with a local test policy and no plugin search path.
+
+## Native scalar analysis graphs
 
 `automat.dag` is a native On1x entry point alongside the fixed Yieldcraft
 runner. See the [compiled consumer](../../tests/dag_consumer/main.on1x).
@@ -6,7 +33,8 @@ To compile a host directly, add both `source/` and the repository root to
 its module search paths so the statically registered packages are available.
 Hosts can freeze and verify this IR through the module APIs below, or lower
 an [Ottomat scalar program](../ottomat/README.md#v3-scalar-analysis) to the same
-plan. The CLI still uses the legacy Yieldcraft graph.
+plan. `run --engine scalar` displays results from this plan; the CLI does not
+write scalar manifests or evidence bundles.
 
 `Plan` identifies a version (`automat.scalar-dag@1`, `@2`, or `@3`), a declaration
 list, and an output node by name. `node(id, handler, left, right)` binds both required ports to

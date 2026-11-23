@@ -1,7 +1,8 @@
 # Ottomat recommendation declarations
 
-The CLI uses the legacy recommendation grammar below. Native hosts can
-use [v3 scalar analysis](#v3-scalar-analysis) or
+The CLI's default legacy engine uses the recommendation grammar below.
+Native hosts and `run --engine scalar` can use
+[v3 scalar analysis](#v3-scalar-analysis),
 [v4 scalar selection](#v4-scalar-selection), or
 [v5 registered scalar algorithms](#v5-registered-scalar-algorithms).
 
@@ -137,7 +138,8 @@ the exact source's BLAKE3 digest and the lowering identity
 ID: reordering imports alone leaves the native plan and snapshot identical.
 The manifest pins operations through their versioned handler identities.
 Neither entry point modifies the CLI recommendation path or provides a
-filesystem API.
+filesystem API. The scalar CLI lowers and executes the plan for display;
+it does not call the manifest writer.
 
 ## V4 scalar selection
 

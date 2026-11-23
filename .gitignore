@@ -23,10 +23,6 @@
 *.profraw
 *.profdata
 
-# MuLIB is a separately obtained dependency at third_party/mulib.
-# Keep third_party/README.md and any future checked-in integration files.
-/third_party/mulib/
-
 # Python test/tool caches and coverage artifacts.
 __pycache__/
 *.py[cod]

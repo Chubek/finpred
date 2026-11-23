@@ -1,0 +1,16 @@
+{
+  "version":"2.0","class":"dataset","source":"ESTAT",
+  "label":"Nights spent at tourist accommodation establishments - monthly data",
+  "updated":"2026-11-16T11:00:00+0100",
+  "id":["freq","c_resid","unit","nace_r2","geo","time"],"size":[1,1,1,1,1,3],
+  "dimension":{
+    "freq":{"category":{"index":{"M":0}}},
+    "c_resid":{"category":{"index":{"TOTAL":0}}},
+    "unit":{"category":{"index":{"NR":0}}},
+    "nace_r2":{"category":{"index":{"I551-I553":0}}},
+    "geo":{"category":{"index":{"EU27_2020":0}}},
+    "time":{"category":{"index":{"2026-09":2,"2026-07":0,"2026-08":1}}}
+  },
+  "value":{"1":515000001,"0":480000000},"status":{"1":"p"},
+  "extension":{"id":"TOUR_OCC_NIM","agencyId":"ESTAT"}
+}

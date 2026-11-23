@@ -11,12 +11,23 @@ if [ ! -x "$EXE" ]; then
   exit 2
 fi
 MODE=${1:-run}
+usage() {
+  echo "usage: bin/finpred [run [--engine legacy|scalar]|selftest|replay RUN_ID|explain RUN_ID|evidence RUN_ID|poindexter RUN_ID]" >&2
+  exit 2
+}
 case "$MODE" in
-  run|selftest)
-    [ "$#" -le 1 ] || { echo "usage: bin/finpred [run|selftest|replay RUN_ID|explain RUN_ID|evidence RUN_ID|poindexter RUN_ID]" >&2; exit 2; }
+  run)
+    if [ "$#" -gt 1 ]; then
+      [ "$#" -eq 3 ] && [ "$2" = --engine ] && [ -n "$3" ] || usage
+      FINPRED_ENGINE=$3
+      export FINPRED_ENGINE
+    fi
+    ;;
+  selftest)
+    [ "$#" -eq 1 ] || usage
     ;;
   replay|explain|evidence|poindexter)
-    [ "$#" -eq 2 ] || { echo "usage: bin/finpred $MODE RUN_ID" >&2; exit 2; }
+    [ "$#" -eq 2 ] || usage
     FINPRED_RUN_ID=$2
     export FINPRED_RUN_ID
     ;;

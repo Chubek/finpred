@@ -133,9 +133,9 @@ for archived v1 runs. Both formats can coexist in one store.
 Migration means creating a **new `finpred-run@2` identity**, not upgrading
 the archive in place. Verify the v1 run first, then pass its four frozen raw
 artifacts as `FINPRED_SCENARIO`, `FINPRED_OFFERS`, `FINPRED_VALUATION`, and
-`FINPRED_STRATEGY` to `run`. Keep the original v1 manifest and artifacts
-under their existing identities. Use current files instead of the frozen
-snapshots only if their **bytes** match. The run ID and output references
+`FINPRED_STRATEGY` to `run --engine legacy`. Keep the original v1 manifest
+and artifacts under their existing identities. Use current files instead of
+the frozen snapshots only if their **bytes** match. The run ID and output references
 change even when the economic result does not. Do not rewrite old runs,
 silently reinterpret policy versions, or infer v2 metadata for v1. Reject
 unknown formats. A future semantic change must get a distinct identity and
@@ -149,7 +149,9 @@ The [native scalar graph API](../source/automat/README.md#frozen-runs)
 uses a separate byte format. Its run ID is the lowercase BLAKE3-256 digest
 of the **manifest itself**, including the final LF. The selected node's digest
 is a different identity. This manifest is not a `runs/<run_id>.txt` CLI
-recommendation record.
+recommendation record. `run --engine scalar` prints the selected node's
+digest and trace, but does not persist a scalar manifest or accept it for
+pricing replay.
 
 ```text
 scalar-run@1

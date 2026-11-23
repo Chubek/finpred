@@ -53,9 +53,9 @@ The CLI writes only [`finpred-run@2`](docs/RUN_FORMAT.md#v2-writer-and-verifier)
 That store format does not version the plugin or the `pricing.recommendation@1`
 contract. The pure package neither selects a run format nor accesses archives.
 
-For a pure algorithm registered with the native scalar graph rather than
-the pricing CLI, see the [scalar diagnostics package](plugins/scalar_diagnostics/README.md).
-It is linked by the native host, not discovered through an SDK descriptor.
+For a pure algorithm registered with the scalar graph (also available via
+`run --engine scalar`), see the [scalar diagnostics package](plugins/scalar_diagnostics/README.md).
+It is linked by the host, not discovered through an SDK descriptor.
 
 ## Poindexter: render a verified pricing sheet
 

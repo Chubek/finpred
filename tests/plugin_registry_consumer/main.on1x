@@ -12,11 +12,11 @@ fn main() -> i64
   let task = Env.basis_command_line_get_env("REGISTRY_CASE");
   if task == "lookup"
   {
-    assert(Registry.admits("yieldcraft.fixed-graph@1","recommendation"));
+    assert(Registry.admits(Registry.yieldcraft_entry(),"recommendation"));
     assert(Registry.admits("poindexter.sheet.render","analysis"));
     assert(Registry.admits("dragnet.frozen_csv.offers_as_of","analysis"));
     assert(Registry.admits("plugins.scalar_diagnostics.midpoint.midpoint","analysis"));
-    assert(!Registry.admits("yieldcraft.fixed-graph@1","analysis"));
+    assert(!Registry.admits(Registry.yieldcraft_entry(),"analysis"));
     assert(!Registry.admits("poindexter.sheet.render","execution"));
     assert(!Registry.admits("dragnet.frozen_csv.offers_as_of","recommendation"));
     assert(!Registry.admits("plugins.scalar_diagnostics.midpoint.midpoint","execution"));

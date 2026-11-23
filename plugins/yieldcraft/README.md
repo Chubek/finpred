@@ -25,8 +25,12 @@ distribution on successful evaluation. No array handles escape to the caller.
 The host owns file access, snapshot identity, serialization and replay.
 The package reads no files, writes no store and provides no publishing
 operation. The [manifest](plugin.json) names a **compile-time** entry point;
-FinPRED does not interpret it to load code. The standard CLI continues to
-own its evidence and lineage paths. For the persisted `pricing.recommendation@1`
+FinPRED does not interpret it to load code. For the legacy engine the CLI
+checks its registry binding and supplies `entry.recommend_profile` to the
+plugin-independent runner. This typed handler takes validated scenario and
+valuation records, offers CSV bytes, a profile name, an evidence collection
+flag, and a buffer; the trusted host owns authorization and any persisted
+lineage. For the persisted `pricing.recommendation@1`
 envelope use `core.serialize.recommendation` with the host's verified IDs,
 as illustrated by the [test consumer](../../tests/yieldcraft_package_consumer/main.on1x).
 

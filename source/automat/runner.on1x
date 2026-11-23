@@ -1,11 +1,7 @@
-# Static lowering of the seven Yieldcraft slots. The plan is checked at the
-# call boundary, including for hosts other than Ottomat. There is no dynamic
-# dispatch, retry, artifact access or external-action handler.
+# Legacy seven-slot recommendation engine. A trusted host wires the policy
+# implementation; neither the plan nor the runner resolves a plugin.
 import automat.graph as Graph;
 import core.contracts as C;
-import sdk.registry as Registry;
-import plugins.yieldcraft.matcher as Match;
-import plugins.yieldcraft.strategy as Strategy;
 
 record Output
 {
@@ -21,15 +17,16 @@ fn within_limits(r: C.Recommendation, s: C.Scenario, v: C.Valuation) -> bool
   if price < v["floor_cents"] || price > v["cap_cents"] { return false; }
   let delta = price - v["current_cents"];
   return delta <= v["max_move_cents"] && 0 - delta <= v["max_move_cents"]
-    && r["property_count"] >= s["min_properties"] && r["search_nodes"] <= s["search_budget"];
+    && r["property_count"] >= s["min_properties"] && r["search_nodes"] >= 0
+    && r["search_nodes"] <= s["search_budget"];
 }
 
 fn run(plan: Graph.Plan, mode: string, scenario_raw: string, offers_raw: string,
-  valuation_raw: string, collect: bool, evidence: buffer) -> Output
+  valuation_raw: string, collect: bool, evidence: buffer,
+  evaluate: fn(C.Scenario, C.Valuation, string, string, bool, buffer) -> C.Recommendation) -> Output
 {
   if mode != "recommendation" || !Graph.validate_plan(plan,mode)
   { tool_fail("automat: invalid fixed plan or capability denied"); }
-  if !Registry.admits(Graph.version(),mode) { tool_fail("sdk: capability denied"); }
 
   # Input: the host supplies frozen bytes, never paths. Valuation is the
   # strategy's side input, checked against the same decision time.
@@ -37,14 +34,8 @@ fn run(plan: Graph.Plan, mode: string, scenario_raw: string, offers_raw: string,
   { tool_fail("input: file size outside bounded CSV/text profile"); }
   let s = C.scenario_csv(scenario_raw);
   let v = C.valuation_csv(valuation_raw,s);
-  # Source + Transform are fused: decode each offer, then filter into Pool.
-  # Algorithm consumes that pool once, including when collecting witnesses.
-  let pool = Match.ingest_mode(offers_raw,s,collect,evidence);
-  let dist = Match.distribution_mode(pool,s,collect,evidence);
-  Match.destroy(pool);
-
-  let r = Strategy.recommend_profile(s,v,dist,sx_text(plan["profile"]));
-  Match.destroy_distribution(dist);
+  if text_len(offers_raw) > 2000000 { tool_fail("offers: source exceeds byte limit"); }
+  let r = evaluate(s,v,offers_raw,sx_text(plan["profile"]),collect,evidence);
   if !within_limits(r,s,v) { tool_fail("automat: recommendation outside validated limits"); }
   # Output's record effect hands typed data to the host. Only the host knows
   # whether this is a new run or a read-only replay.

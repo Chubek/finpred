@@ -60,8 +60,8 @@ For a fresh process, `automat.scalar_manifest.freeze` emits the versioned
 [`scalar-run@1` manifest](RUN_FORMAT.md#scalar-run1-native-analysis).
 `automat.scalar_verify.verify` needs only its expected run ID, manifest and
 ordered artifacts. There is no host filesystem access in these modules;
-storing the bundle is a caller decision. The CLI continues to use only the
-existing recommendation formats.
+storing the bundle is a caller decision. Only the existing recommendation
+formats are persisted by the CLI.
 
 With the pinned compiler above, `./bin/build.sh` and `./tests/run.sh`
 exited 0. The frozen-run consumer verified 18 snapshots in fresh processes,
@@ -185,6 +185,36 @@ cannot make an engine call available. The C SDK remains a metadata API.
 The registry grants no filesystem, network or action capabilities.
 `make test` with the pinned toolchain passed all four disabled-binding
 checks, the dependency-denial check, and both direct-library controls.
+
+### CLI engine selection and legacy policy binding
+
+`run --engine legacy|scalar` selects the engine. The default is legacy;
+this preserves the historical pricing writer and verifier. The scalar
+path runs Ottomat v3–v5, prints the unitless value, kind, output digest
+and trace, and does not touch `FINPRED_HOME`. Pricing replay, explain,
+evidence and Poindexter always recompute with the frozen legacy policy,
+regardless of engine selection for new runs. No schema, run format or C
+SDK ABI changes.
+
+`automat.runner.run` accepts a typed policy function supplied by its
+trusted host. The CLI authorizes its statically linked Yieldcraft
+binding before invocation. The runner has no Yieldcraft or SDK import,
+and checks the fixed plan before calling the policy and the resulting
+recommendation before returning it. This is not an isolation boundary
+for untrusted code or an action grant.
+
+On base `7f03c58ba167de2257d3c4ee90ab429f7d333753`, verified before and
+after changes on Linux `6.18.52-1-lts` x86-64, GCC `16.2.1` (C11), the
+release MuLIB/LibStone pins, and the S0 compiler recorded above.
+`./bin/build.sh`, `./bin/finpred selftest`, `./tests/run.sh`,
+`python3 tests/check_yieldcraft_package.py`, and
+`python3 tests/check_dragnet_frozen_csv.py` exited 0. The routing test
+covered all three scalar dialects and 16 rejected invocations; the
+plugin-free runner test rejected six invalid plans/modes, oversized
+offers, and three out-of-bounds policy results. Both v1 archives, v2 run
+IDs and output digests, five named strategies, and the 17100/16000 pricing
+fixtures remained unchanged. Standalone strict-C11 native-store CTest
+passed 2/2; there is no new KernelBind admission.
 
 ### Optional Poindexter GUI
 

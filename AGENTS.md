@@ -53,8 +53,7 @@ If `docs/USER_SPECIFICATION.md` contains examples marked proposed, do not assume
 
 The inspected repository has much more than its earliest scaffold. **The historical introductory inventory in the original `AGENTS.md` is stale**; use the following as the updated starting point and confirm it against `git status`/`git log`.
 
-Later checkpoint (`271eb49` plus the registry working changes): Gate S0
-has a [verification workflow](.github/workflows/verify.yml) and a
+Gate S0 has a [verification workflow](.github/workflows/verify.yml) and a
 [coverage index](tests/COVERAGE.md). For P1, keep the persisted fixed runner
 and the in-memory [native scalar graph](source/automat/README.md) distinct.
 The latter is an independently callable analysis profile: `scalar-run@1`
@@ -65,6 +64,10 @@ lowers into that same graph. Its v4 selector uses `automat.scalar-dag@2`
 and `scalar-run@2`, without replacing the v1/v2 price decoders.
 The v5 profile uses `automat.scalar-dag@3` and `scalar-run@3` to admit
 the statically linked `scalar-diagnostics@1` package.
+The [CLI engine selector](GUIDE.md#choose-an-engine) exposes `legacy`
+recommendation and read-only `scalar` analysis. `automat.runner` checks
+the fixed plan and output, while the CLI owns its Yieldcraft policy
+binding; pricing replay ignores the `run` selector.
 The [engine registry](source/sdk/README.md#engine-registry) controls linked
 plugin dispatch. Dragnet's [Crossref adapter](plugins/dragnet/README.md) is
 offline evidence, not an admitted live feed or pricing input. Poindexter's
@@ -81,7 +84,8 @@ with an Ottomat syntax version, plugin version, or contract version.
 | `contracts/{hospitality.scenario,hospitality.offer,pricing.valuation,pricing.recommendation}@1.schema.json` | Four versioned JSON Schema 2020-12 envelopes checked against fixture outputs | Complete runtime general-purpose schema validation/migration |
 | `plugins/yieldcraft/{matcher,strategy}.on1x` | Exact bounded room-subset/occupancy matching, one cheapest eligible bundle/property, curve, shortcut, guardrails and evidence | Full hospitality policy semantics; probabilistic demand forecasting |
 | `source/algorithms/quantile.on1x` | Integer-cent Type-7 quantile, linear/quadratic lead-time policy | General weighted distributions/statistical algorithm registry |
-| `source/automat/{graph,runner}.on1x` | Validates/executes **one fixed seven-node** plan with effect and output checks | Arbitrary typed DAGs, node plugins, job scheduler, retry state |
+| `source/automat/{graph,runner}.on1x` | Validates/executes **one fixed seven-node** plan with effect and output checks; host supplies its policy | Extensible hospitality DAG, job scheduler, retry state |
+| `source/automat/dag.on1x` | Bounded typed scalar DAG, selectable for read-only CLI analysis | General financial contracts and recommendation execution |
 | `source/ottomat/{grammar,ottomat,scalar}.on1x`; `strategies/*.ottomat` | GrammarEmbed parsers for the original fixed plan and bounded native scalar strategies; separate graph/effect validation | General-purpose strategy grammar and hospitality DAG lowering |
 | `source/sdk/{packages,static_host}.on1x`, `source/sdk/sdk_v2.{c,h}` | Static metadata/compatibility checks across Dragnet, Yieldcraft, Poindexter; versioned C ABI | Dynamic discovery/loading, invocation, process isolation, enforcement of real usage budgets |
 | `plugins/dragnet/` | Host-selected **offline frozen CSV** import and eligible offer JSONL output | Authorized network/remote adapters and streaming checkpoints |
@@ -197,7 +201,10 @@ The standalone candidate uses Linux directory-relative filesystem operations, no
 
 **Owner paths:** `source/automat/`, new `source/automat/*` modules and `On1xfile.m`, `tests/check_fixed_runner.py`, new graph tests.
 
-**Current:** `graph.node(0..6)` and `runner.run(...)` execute one fixed chain. Preserve this **legacy plan** and its serialized version, and introduce a new graph-plan version alongside it.
+**Current:** `graph.node(0..6)` and `runner.run(...)` execute one fixed
+chain using a host-supplied policy. `dag.run(...)` separately executes
+versioned scalar analysis graphs. Preserve the **legacy plan** and its
+serialized version as the typed graph support expands.
 
 Implement:
 

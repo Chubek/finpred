@@ -8,8 +8,10 @@ The legacy Yieldcraft-only descriptor API is described below.
 ### Engine registry
 
 [`sdk.registry`](registry.on1x) holds the default-deny policy for the
-statically linked call sites. The built-in Yieldcraft runner, Poindexter
-view host, frozen CSV source host, and scalar midpoint dispatch consult it.
+statically linked call sites. The CLI's Yieldcraft policy binding,
+Poindexter view host, frozen CSV source host, and scalar midpoint dispatch
+consult it. The legacy runner itself checks its plan but has no plugin
+registry dependency.
 An entry still has to pass its mode and dependency checks; the midpoint also
 has to be available in the graph version. A `plugin.json` describes a package
 but cannot register it, and an SDK compatibility result alone cannot invoke it.
