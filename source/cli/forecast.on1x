@@ -25,8 +25,15 @@ fn calculate_issue(home:string, catalog:string, model:string, cutoff:string, req
   let settings = Model.spec(request,cutoff);
   let target = settings["month"];
   if target < 0 || !Model.known(model) { tool_fail("forecast: invalid model, request or training cutoff"); }
-  let training = Catalog.select(home,catalog,cutoff,Model.first_training_month(model,target),
-    Model.last_training_month(model,target));
+  # Windows of the two immutable model versions. Keep the historical model
+  # source subject unchanged when adding the operator's selection policy.
+  var first = target - 12;
+  var last = first;
+  if model == Model.moving_average() {
+    first = target - 4;
+    last = target - 2;
+  }
+  let training = Catalog.select(home,catalog,cutoff,first,last);
   let projection = training["projection"];
   let descriptor = Model.descriptor(model,sx_text(linked()["model_code"]));
   let inputs = sx_cons(SDK.value_entry(projection["state"],sx_text(projection["bytes"])),

@@ -60,13 +60,30 @@ fn save(home:string, path:string) -> string {
   return Store.put(home,text_concat(heading(),list));
 }
 
-fn covers(periods:sexpr, first:i64, last:i64) -> bool {
+# Guest.project already validated the canonical projection. These markers
+# identify its unique metadata fields and each validated monthly row.
+fn marker(bytes:string, start:i64, prefix:string) -> i64 {
+  for i in start .. text_len(bytes) {
+    if text_byte(bytes,i) == text_byte(prefix,0) && Guest.after(bytes,i,prefix) >= 0 { return i; }
+  }
+  return -1;
+}
+
+fn metadata(bytes:string, prefix:string, limit:i64) -> string {
+  let (_,value) = Guest.quoted(bytes,marker(bytes,0,prefix),prefix,limit);
+  return value;
+}
+
+fn covers(bytes:string, first:i64, last:i64) -> bool {
+  let prefix = "{\"period\":\"";
+  var at = marker(bytes,0,prefix);
   var found = 0;
-  var rest = periods;
-  while sx_kind(rest) == 3 {
-    let month = Guest.nat(sx_text(sx_head(rest)),6);
+  while at >= 0 {
+    let (end,period) = Guest.quoted(bytes,at,prefix,7);
+    let month = Model.month(period);
+    if end < 0 || month < 0 { tool_fail("forecast: invalid projection period"); }
     if first <= month && month <= last { found = found + 1; }
-    rest = sx_tail(rest);
+    at = marker(bytes,end,prefix);
   }
   return found == last - first + 1;
 }
@@ -93,12 +110,12 @@ fn select(home:string, catalog:string, cutoff:string, first:i64, last:i64) -> Re
     let projection = Guest.project(raw,"blake3:$id",cutoff);
     if projection["status"] == 3 { continue; }
     if projection["status"] != 0 { tool_fail("forecast: invalid catalog member"); }
-    let parsed = Model.training(sx_text(projection["bytes"]),cutoff);
-    if parsed["state"] != projection["state"] { tool_fail("forecast: invalid projection"); }
+    let bytes = sx_text(projection["bytes"]);
     var coverage = 0;
-    if covers(parsed["periods"],first,last) { coverage = 1; }
-    let updated = parsed["updated"];
-    let ingested = parsed["ingested"];
+    if covers(bytes,first,last) { coverage = 1; }
+    let updated = Guest.provider_clock(metadata(bytes,",\"provider_updated_at\":\"",24));
+    let ingested = Guest.clock(metadata(bytes,",\"ingested_at\":\"",20));
+    if updated < 0 || ingested < 0 { tool_fail("forecast: invalid projection chronology"); }
     if coverage == best_coverage && updated == best_update && ingested == best_ingestion {
       ambiguous = true;
     }
