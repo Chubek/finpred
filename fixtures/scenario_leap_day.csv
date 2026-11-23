@@ -1,0 +1,2 @@
+scenario_id,observed_at,ingested_at,decision_at,arrival,departure,adults,children,max_rooms,min_properties,target_bps,curve,currency,max_age_days,search_budget
+4,2028-02-20T08:00:00Z,2028-02-20T09:00:00Z,2028-02-20T10:00:00Z,2028-02-28,2028-03-01,2,1,2,3,7500,linear,EUR,7,20000

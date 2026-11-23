@@ -119,6 +119,7 @@ Room 1 houses one adult for 11,000 cents; room 2 houses the other adult and the 
 ## Supply your own local inputs
 
 Set paths on the `run` command as above. The [launcher](bin/finpred) changes to the repository root; use absolute paths for files elsewhere.
+The [fixture catalog](fixtures/README.md) includes runnable examples for decision-time cutoffs and leap-day pricing, plus their expected results.
 
 | Environment variable | Default | Meaning |
 | --- | --- | --- |

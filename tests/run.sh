@@ -124,10 +124,29 @@ check_fixture '_multiroom' 16000 guardrail_adjustment 3 0 1
 multi_id=$id
 [ "$id:$rd:$tr" = '7b1f694eab8645b0a09ed431a1268619328da4833a417a22cacf66c68df4612b:1f10e792e433fc59fc6ec49cf100922b7ce543c0c440b01551b4e2e32806f2ea:67f5051fb3613d4011c431a5ab343022ada824a428ad8ca3f1cc8358035dba86' ]
 [ "$multi_id" != "$main_id" ]
-python3 "$ROOT/tests/validate_runtime_json.py" "$FINPRED_HOME"
 python3 "$ROOT/tests/check_explain_cli.py" "$FINPRED_HOME" "$main_id"
 python3 "$ROOT/tests/check_evidence_cli.py" "$FINPRED_HOME" "$main_id" "$multi_id"
 python3 "$ROOT/tests/check_store.py" "$FINPRED_HOME" "$work/main-summary" "$work/run"
+
+check_fixture '_asof' 18000 target_percentile 3 4 0
+[ "$id:$rd:$tr" = '353d3ec6bd8750df4e4ed70535ef476373d5e20cab386a3d86c33b6a69203a22:bbd2adcba1d540104ff11028f853f558d8831507fe722afac23615225dbd7d63:a47608ae867ebad0b8e7cdb7c13862fb42e17e2de75be7c746c7c6cf2e6ada2a' ]
+bin/finpred evidence "$id" >"$work/evidence"
+for row in 1,301,1,eligible 2,302,1,eligible 3,303,1,eligible \
+    4,304,1,future_observed 5,305,1,future_ingested 6,306,1,stale 7,307,1,validity_mismatch; do
+  grep -Fxq "row=$row" "$work/evidence"
+done
+grep -Fxq 'sample=3,3,adequate' "$work/evidence"
+
+FINPRED_VALUATION="$ROOT/fixtures/valuation_leap_day.csv"
+check_fixture '_leap_day' 17001 target_percentile 3 0 1
+[ "$id:$rd:$tr" = '3755e6e9e88a56b510eeb68eb0cfd2ef165ec0b0aecc53018f67921a53e3aa98:931178dfaabfb4be329e1f07f14cdc8535fc28793a0ccfb2648e5c093e2efcb2:5511938de9f790c1a05d66a07280fe9cd9ae089290635af5b0ef166912eb598c' ]
+grep -Fxq 'nights=2' "$trace_file"
+bin/finpred evidence "$id" >"$work/evidence"
+grep -Fxq 'bundle=403,34001,2' "$work/evidence"
+grep -Fxq 'property=404,no_feasible_bundle,1,1' "$work/evidence"
+FINPRED_VALUATION="$ROOT/fixtures/valuation.csv"
+python3 "$ROOT/tests/validate_runtime_json.py" "$FINPRED_HOME"
+
 id=$main_id
 FINPRED_SCENARIO="$ROOT/fixtures/scenario.csv"
 FINPRED_OFFERS="$ROOT/fixtures/offers.csv"
@@ -190,6 +209,12 @@ mv "$work/edited" "$FINPRED_HOME/runs/$id.txt"
 expect_failure 'malformed run manifest' bin/finpred replay "$id"
 
 FINPRED_HOME="$work/denied"
+expect_failure 'insufficient_evidence' env FINPRED_SCENARIO="$ROOT/fixtures/scenario_asof_early.csv" \
+    FINPRED_OFFERS="$ROOT/fixtures/offers_asof.csv" bin/finpred run
+if grep -Eq '^(run_id|recommendation_minor|published)=' "$work/failure" || [ -e "$FINPRED_HOME" ]; then
+  echo 'early as-of fixture emitted or wrote a result' >&2
+  exit 1
+fi
 expect_failure 'malformed identity' bin/finpred replay "$(printf '%064d' 0 | tr 0 /)"
 expect_failure 'scenario: invalid' env FINPRED_SCENARIO="$ROOT/fixtures/invalid_scenario.csv" bin/finpred run
 expect_failure 'capability denied' env FINPRED_MODE=execution bin/finpred run

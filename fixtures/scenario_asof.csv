@@ -1,0 +1,2 @@
+scenario_id,observed_at,ingested_at,decision_at,arrival,departure,adults,children,max_rooms,min_properties,target_bps,curve,currency,max_age_days,search_budget
+3,2026-11-20T08:00:00Z,2026-11-20T09:00:00Z,2026-11-20T10:00:00Z,2026-12-16,2026-12-18,2,0,1,3,5000,linear,EUR,7,20000
