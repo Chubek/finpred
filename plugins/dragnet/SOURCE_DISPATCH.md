@@ -32,7 +32,11 @@ Crossref/public feeds. This process never fetches URLs or runs the decoder.
 The existing `SourceDescriptor`, `SourceOutcome`, and fd selectors are
 compatibility wrappers. The process prints only the existing adapter's bytes;
 it creates no new serialized contract or run ID. It checks the registration
-and mode before opening source content and uses the same SDK input ceilings.
+and mode before opening source content and reads the ordered input ports
+and byte ceilings from the resolved SDK descriptor rather than re-declaring
+them in the fd host. The public-feed mux reads the shared bounded capture
+header first, then resolves the concrete provider before reading its body
+or decoder slots.
 
 The SDK resolves the following exact, ordered source profiles, then checks
 the same pin again at invocation. It exposes only `pure`/`analysis`:
@@ -47,6 +51,7 @@ the same pin again at invocation. It exposes only `pure`/`analysis`:
 The frozen CSV binding retains the original `sdk.registry` dependency gate.
 The legacy public-feed selector maps the capture's provider to one of the
 two concrete SDK handlers. It is not itself a callable SDK handler or a grant.
+The concrete provider keys are not accepted as fd selectors.
 The application source-closure pin is checked by an independent consumer;
 it is not binary attestation or external provider authentication. Existing
 parsers still fail closed with their terminal diagnostics on malformed data.
@@ -71,12 +76,13 @@ parsers still fail closed with their terminal diagnostics on malformed data.
 ## Tests and remaining gates
 
 `check_dragnet_dispatch.py` compares exact output bytes across the existing
-hosts, the fd dispatcher, and a separate compiled SDK caller for frozen CSV,
-Crossref, ECB and Eurostat, and independently validates
+hosts, the fd dispatcher, the five-argument wrapper and a separate compiled
+SDK caller for frozen CSV, Crossref, ECB and Eurostat, and independently validates
 their schemas. It checks selector syntax, missing/empty/oversized descriptors,
 duplicate CSV observations, mismatched handoffs and late captures. It also
-checks forged pins, wrong provider, wrong arity/state/budget, a valid empty
-CSV result, and that direct registry invocation denies non-analysis modes. It checks
+checks forged pins, wrong provider, provider rejection before opening payload
+slots, per-slot feed caps, wrong arity/state/budget, a valid empty CSV result,
+and that direct registry invocation denies non-analysis modes. It checks
 for pricing-store changes and, when `strace` is available, network syscalls.
 CI installs native decoder dependencies and runs this test after the
 separate public-feed conformance test.

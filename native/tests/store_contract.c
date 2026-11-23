@@ -13,10 +13,19 @@
 
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d: %s\n", __LINE__, #x); exit(1); } } while (0)
 
-/* Test binary only: fail the next selected barrier, or a write after 2 bytes. */
+/* Test binary only: inject barrier, progress, and interrupted-transfer cases. */
 static int fail_sync_dir = -1, write_fault, sync_count;
+static int read_interrupts, read_calls_before_interrupt, write_interrupts;
+static int fail_chmod;
 int __real_fsync(int fd);
+int __real_fchmod(int fd, mode_t mode);
+ssize_t __real_read(int fd, void *buf, size_t n);
 ssize_t __real_write(int fd, const void *buf, size_t n);
+int __wrap_fchmod(int fd, mode_t mode)
+{
+    if (fail_chmod) { fail_chmod = 0; errno = EIO; return -1; }
+    return __real_fchmod(fd, mode);
+}
 int __wrap_fsync(int fd)
 {
     struct stat st;
@@ -27,10 +36,20 @@ int __wrap_fsync(int fd)
     }
     return __real_fsync(fd);
 }
+ssize_t __wrap_read(int fd, void *buf, size_t n)
+{
+    if (read_interrupts && !read_calls_before_interrupt) {
+        --read_interrupts; errno = EINTR; return -1;
+    }
+    if (read_calls_before_interrupt) --read_calls_before_interrupt;
+    return __real_read(fd, buf, n);
+}
 ssize_t __wrap_write(int fd, const void *buf, size_t n)
 {
     if (write_fault == 1) { write_fault = 2; return __real_write(fd, buf, n > 2 ? 2 : n); }
     if (write_fault == 2) { write_fault = 0; errno = ENOSPC; return -1; }
+    if (write_fault == 3) { write_fault = 0; return __real_write(fd, buf, n > 2 ? 2 : n); }
+    if (write_interrupts) { --write_interrupts; errno = EINTR; return -1; }
     return __real_write(fd, buf, n);
 }
 
@@ -147,8 +166,14 @@ int main(int argc, char **argv)
     CHECK(fp_store_install(s, FP_RUN, id, "a", 1).status == FP_INVALID);
     CHECK(fp_store_install(s, FP_ARTIFACT, id, "a\0b", 3).status == FP_INVALID);
     CHECK(fp_store_install(s, FP_ARTIFACT, id, "a", FP_ARTIFACT_MAX+1).status == FP_LIMIT);
-    write_fault = 1;
+    fail_chmod = 1;
+    sync_count = 0;
     fp_result r = fp_store_install(s, FP_ARTIFACT, id, "abc", 3);
+    CHECK(!fail_chmod && !sync_count &&
+          r.status == FP_IO && r.phase == FP_WRITE && r.name == FP_UNCHANGED);
+    no_entries(dir);
+    write_fault = 1;
+    r = fp_store_install(s, FP_ARTIFACT, id, "abc", 3);
     CHECK(r.status == FP_IO && r.phase == FP_WRITE && r.name == FP_UNCHANGED);
     no_entries(dir);
     fail_sync_dir = 0;
@@ -156,8 +181,11 @@ int main(int argc, char **argv)
     CHECK(r.status == FP_IO && r.phase == FP_FILE_SYNC && r.name == FP_UNCHANGED);
     no_entries(dir);
     fail_sync_dir = 1;
+    write_fault = 3;
+    write_interrupts = 1;
     r = fp_store_install(s, FP_ARTIFACT, id, "abc", 3);
-    CHECK(r.status == FP_IO && r.phase == FP_DIR_SYNC && r.name == FP_CREATED);
+    CHECK(!write_fault && !write_interrupts &&
+          r.status == FP_IO && r.phase == FP_DIR_SYNC && r.name == FP_CREATED);
     expect_read(s, FP_ARTIFACT, id, "abc", 3);
     fail_sync_dir = 0;
     r = fp_store_install(s, FP_ARTIFACT, id, "abc", 3);
@@ -169,9 +197,29 @@ int main(int argc, char **argv)
     sync_count = 0;
     CHECK(fp_store_open(root, FP_READER, &reader).status == FP_OK);
     CHECK(fp_store_install(reader, FP_ARTIFACT, id, "abc", 3).status == FP_DENIED);
+    read_interrupts = 1;
     expect_read(reader, FP_ARTIFACT, id, "abc", 3);
+    CHECK(!read_interrupts);
+    read_calls_before_interrupt = 1; /* Interrupt the EOF probe, not the payload. */
+    read_interrupts = 1;
+    expect_read(reader, FP_ARTIFACT, id, "abc", 3);
+    CHECK(!read_interrupts && !read_calls_before_interrupt);
+    read_interrupts = 5;
+    char *interrupted; size_t interrupted_size = 55;
+    r = fp_store_read(reader, FP_ARTIFACT, id, &interrupted, &interrupted_size);
+    CHECK(r.status == FP_IO && r.phase == FP_READ && r.name == FP_EXISTING);
+    CHECK(!interrupted && !interrupted_size && read_interrupts == 1);
+    read_interrupts = 0;
     CHECK(sync_count == 0);
     fp_store_close(reader);
+    write_interrupts = 5;
+    sync_count = 0;
+    r = fp_store_install(s, FP_ARTIFACT, second, "abc", 3);
+    CHECK(r.status == FP_IO && r.phase == FP_WRITE && r.name == FP_UNCHANGED);
+    CHECK(sync_count == 0 && write_interrupts == 1);
+    write_interrupts = 0;
+    r = fp_store_read(s, FP_ARTIFACT, second, &interrupted, &interrupted_size);
+    CHECK(r.status == FP_MISSING && !interrupted && !interrupted_size);
     contention(s);
 
     CHECK(unlinkat(dir, leaf, 0) == 0);
@@ -197,6 +245,23 @@ int main(int argc, char **argv)
     CHECK(fp_store_install(s, FP_RUN, id, manifest, sizeof manifest).status == FP_OK);
     expect_read(s, FP_RUN, id, manifest, sizeof manifest);
     close(dir);
+    /* A successful install must remain readable even when the host's umask
+     * suppresses owner permissions. Check mode too, for privileged test runs. */
+    mode_t previous_mask = umask(0777);
+    r = fp_store_install(s, FP_RUN, second, manifest, sizeof manifest);
+    umask(previous_mask);
+    CHECK(r.status == FP_OK && r.name == FP_CREATED);
+    int runs = openat(root, "runs", O_RDONLY | O_DIRECTORY);
+    CHECK(runs >= 0);
+    char run_leaf[69];
+    CHECK(snprintf(run_leaf, sizeof run_leaf, "%s.txt", second) == 68);
+    struct stat installed;
+    CHECK(fstatat(runs, run_leaf, &installed, AT_SYMLINK_NOFOLLOW) == 0);
+    CHECK((installed.st_mode & 0777) == 0600);
+    CHECK(close(runs) == 0);
+    expect_read(s, FP_RUN, second, manifest, sizeof manifest);
+    r = fp_store_install(s, FP_RUN, second, manifest, sizeof manifest);
+    CHECK(r.status == FP_OK && r.name == FP_EXISTING);
     fp_store_close(s);
     puts("native_store_contract_ok=true");
     return 0;

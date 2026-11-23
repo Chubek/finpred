@@ -27,6 +27,12 @@ fn input(name:string, kind:string, currency:string, limit:i64, rest:sexpr) -> se
 {
   return sx_cons(SDK.port_entry(port(name,kind,"none",currency,1,limit)),rest);
 }
+fn capture_port() -> SDK.Port { return port("capture","dragnet.feed-capture","none","none",1,512); }
+fn feed_inputs(raw_kind:string, decode_kind:string) -> sexpr
+{
+  return sx_cons(SDK.port_entry(capture_port()),
+    input("raw",raw_kind,"none",65536,input("decode",decode_kind,"none",4096,sx_nil())));
+}
 fn frame(out:buffer, value:string)
 {
   buffer_append(out,F.num(text_len(value))); buffer_append(out,":"); buffer_append(out,value);
@@ -77,14 +83,12 @@ fn lookup(key:string) -> SDK.Descriptor
       ports,port("evidence","dragnet.crossref-evidence","none","none",1,65536));
   }
   if key == ecb_key() {
-    let ports = input("capture","dragnet.feed-capture","none",512,
-      input("raw","dragnet.ecb-xml","none",65536,input("decode","dragnet.ecb-decode","none",4096,nil)));
+    let ports = feed_inputs("dragnet.ecb-xml","dragnet.ecb-decode");
     return binding("dragnet.public-feed",key,"SDK.cutoff;capture.provider=ecb",
       ports,port("snapshot","dragnet.ecb-fx-reference","quote_currency_per_EUR","EUR",1,8192));
   }
   if key == eurostat_key() {
-    let ports = input("capture","dragnet.feed-capture","none",512,
-      input("raw","dragnet.eurostat-jsonstat","none",65536,input("decode","dragnet.eurostat-decode","none",4096,nil)));
+    let ports = feed_inputs("dragnet.eurostat-jsonstat","dragnet.eurostat-decode");
     return binding("dragnet.public-feed",key,"SDK.cutoff;capture.provider=eurostat",
       ports,port("snapshot","dragnet.eurostat-accommodation-nights","guest_nights","none",3,4096));
   }
@@ -131,15 +135,41 @@ record SourceDescriptor {
 }
 record SourceOutcome { source:sexpr, contract:sexpr, format:sexpr, bytes:sexpr }
 
-fn legacy_key(name:string) -> string
+fn legacy_binding(name:string, mode:string) -> SDK.Descriptor
 {
-  if name == frozen_key() || name == crossref_key() { return name; }
-  if name == public_key() { return ecb_key(); }
-  return "";
+  if name == frozen_key() || name == crossref_key() { return SDK.resolve(name,mode,lookup); }
+  return SDK.unavailable();
 }
-fn descriptor(name:string) -> SourceDescriptor
+fn feed_binding(capture:string, mode:string) -> SDK.Descriptor
 {
-  let d = SDK.resolve(legacy_key(name),"analysis",lookup);
+  if !admitted(public_key(),mode) { return SDK.unavailable(); }
+  if !SDK.valid_value(capture_port(),1,sx_string(capture))
+  { tool_fail("dragnet source: invalid public feed inputs"); }
+  let provider = Feeds.capture_provider(capture);
+  if provider == "ecb" { return SDK.resolve(ecb_key(),mode,lookup); }
+  if provider == "eurostat" { return SDK.resolve(eurostat_key(),mode,lookup); }
+  tool_fail("feed: unknown source");
+  return SDK.unavailable();
+}
+fn feed_admission(mode:string) -> SDK.Descriptor
+{
+  # Metadata/admission only; this is never the mux's invocation profile.
+  let ecb = SDK.resolve(ecb_key(),mode,lookup);
+  if ecb["enabled"] { return ecb; }
+  return SDK.resolve(eurostat_key(),mode,lookup);
+}
+fn compatibility_binding(name:string, mode:string) -> SDK.Descriptor
+{
+  if name == public_key() { return feed_admission(mode); }
+  return legacy_binding(name,mode);
+}
+fn admitted(name:string, mode:string) -> bool
+{
+  let d = compatibility_binding(name,mode);
+  return d["enabled"];
+}
+fn describe(name:string, d:SDK.Descriptor) -> SourceDescriptor
+{
   if !d["enabled"] {
     let empty = sx_string("");
     return record<SourceDescriptor>{name:empty,version:empty,mode:empty,effect:empty,
@@ -163,57 +193,62 @@ fn descriptor(name:string) -> SourceDescriptor
     mode:d["mode"],effect:d["effect"],output_kind:sx_string(output_kind),output_format:sx_string(format),
     max_input_bytes:limit,enabled:true};
 }
-fn admitted(name:string, mode:string) -> bool
+fn descriptor(name:string) -> SourceDescriptor
 {
-  let d = SDK.resolve(legacy_key(name),mode,lookup);
-  return d["enabled"];
+  return describe(name,compatibility_binding(name,"analysis"));
 }
 fn input_limit(name:string, index:i64) -> i64
 {
-  let d = SDK.resolve(legacy_key(name),"analysis",lookup);
+  let d = compatibility_binding(name,"analysis");
   let p = SDK.decode_port(SDK.port_at(d["inputs"],index));
   return p["max_bytes"];
 }
 fn value(bytes:string, rest:sexpr) -> sexpr { return sx_cons(SDK.value_entry(1,bytes),rest); }
-fn invoke(name:string, mode:string, first:string, second:string,
-  third:string, fourth:string, fifth:string) -> SourceOutcome
+fn invoke_values(name:string, mode:string, values:sexpr, as_of:string) -> SourceOutcome
 {
-  let compat = descriptor(name);
-  var key = legacy_key(name);
-  let planned = SDK.resolve(key,mode,lookup);
-  if !planned["enabled"] { tool_fail("dragnet source: denied or unknown source"); }
-  let nil = sx_nil();
-  var values = nil;
-  var cutoff = "";
+  if !admitted(name,mode) { tool_fail("dragnet source: denied or unknown source"); }
+  var d = legacy_binding(name,mode);
+  var cutoff = as_of;
+  if name == public_key() {
+    let capture = SDK.port_at(values,0);
+    if text_len(as_of) != 20 || !SDK.valid_inputs(
+      sx_cons(SDK.port_entry(capture_port()),sx_nil()),sx_cons(capture,sx_nil()))
+    { tool_fail("dragnet source: invalid public feed inputs"); }
+    if !Date.utc_timestamp(as_of) { tool_fail("feed: expected second-precision UTC clock"); }
+    d = feed_binding(sx_text(SDK.value_bytes(capture)),mode);
+  }
+  if !d["enabled"] { tool_fail("dragnet source: denied or unknown source"); }
+  if !SDK.valid_inputs(d["inputs"],values) {
+    if name == frozen_key() { tool_fail("dragnet source: invalid frozen CSV inputs"); }
+    if name == crossref_key() { tool_fail("dragnet source: invalid Crossref inputs"); }
+    tool_fail("dragnet source: invalid public feed inputs");
+  }
+  let first = sx_text(SDK.value_bytes(SDK.port_at(values,0)));
   if name == frozen_key() {
-    values = value(first,value(second,nil));
-    if !SDK.valid_inputs(planned["inputs"],values) || third != "" || fourth != "" || fifth != ""
-    { tool_fail("dragnet source: invalid frozen CSV inputs"); }
     let scenario = Contracts.scenario_csv(first);
     cutoff = sx_text(scenario["decision_at"]);
   }
-  else {
-    if name == crossref_key() {
-      values = value(first,value(second,value(third,value(fourth,value(fifth,nil)))));
-      if !SDK.valid_inputs(planned["inputs"],values)
-      { tool_fail("dragnet source: invalid Crossref inputs"); }
-      cutoff = Crossref.request_as_of(first);
-    }
-    else {
-      values = value(first,value(second,value(third,nil)));
-      if !SDK.valid_inputs(planned["inputs"],values) || text_len(fourth) != 20 || fifth != ""
-      { tool_fail("dragnet source: invalid public feed inputs"); }
-      cutoff = fourth;
-      if !Date.utc_timestamp(cutoff) { tool_fail("feed: expected second-precision UTC clock"); }
-      let provider = Feeds.capture_provider(first);
-      if provider == "eurostat" { key = eurostat_key(); }
-      if provider != "ecb" && provider != "eurostat" { tool_fail("feed: unknown source"); }
-    }
-  }
-  let d = SDK.resolve(key,mode,lookup);
+  if name == crossref_key() { cutoff = Crossref.request_as_of(first); }
   let request = record<SDK.Request>{inputs:values,cutoff:sx_string(cutoff),work:1};
   let outcome = SDK.invoke(d["pin"],mode,request,lookup,call);
   if outcome["status"] != 0 { tool_fail("dragnet source: SDK invocation failed"); }
+  let compat = describe(name,d);
   return record<SourceOutcome>{source:compat["name"],contract:compat["output_kind"],
     format:compat["output_format"],bytes:outcome["bytes"]};
+}
+fn invoke(name:string, mode:string, first:string, second:string,
+  third:string, fourth:string, fifth:string) -> SourceOutcome
+{
+  if !admitted(name,mode) { tool_fail("dragnet source: denied or unknown source"); }
+  let nil = sx_nil();
+  if name == frozen_key() {
+    if third != "" || fourth != "" || fifth != ""
+    { tool_fail("dragnet source: invalid frozen CSV inputs"); }
+    return invoke_values(name,mode,value(first,value(second,nil)),"");
+  }
+  if name == crossref_key() {
+    return invoke_values(name,mode,value(first,value(second,value(third,value(fourth,value(fifth,nil))))),"");
+  }
+  if fifth != "" { tool_fail("dragnet source: invalid public feed inputs"); }
+  return invoke_values(name,mode,value(first,value(second,value(third,nil))),fourth);
 }

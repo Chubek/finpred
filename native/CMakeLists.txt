@@ -11,8 +11,10 @@ include(CTest)
 if(BUILD_TESTING)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
   add_executable(store_contract_test tests/store_contract.c)
+  set_target_properties(store_contract_test PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
   target_link_libraries(store_contract_test PRIVATE finpred_native_store)
-  target_link_options(store_contract_test PRIVATE -Wl,--wrap=fsync -Wl,--wrap=write)
+  target_link_options(store_contract_test PRIVATE
+    -Wl,--wrap=fsync -Wl,--wrap=read -Wl,--wrap=write -Wl,--wrap=fchmod)
   add_test(NAME native_store_contract COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/run.py $<TARGET_FILE:store_contract_test>)
   add_test(NAME native_store_v1_bytes COMMAND ${Python3_EXECUTABLE}

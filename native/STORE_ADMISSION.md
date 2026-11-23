@@ -7,7 +7,7 @@ the host-side operations below; its C tests do not confer KernelBind admission.
 The existing [private-store protocol](../source/store/README.md)
 provides atomic visibility among cooperating publishers, not durable commits.
 
-## Evidence at the pin
+## KernelBind evidence
 
 MuLIB `49de89acbc97efbee493d6b28d02c8f64ed4f725`, Linux x86-64 C11:
 
@@ -26,8 +26,13 @@ printf 'import kernel mulib.fs as Candidate;\nfn main() {}\n' >candidate.on1x
 "${ON1XC:-$PWD/build/mulib/on1x/on1xc}" --emit-c --kernel-c11 --kernel-stage candidate.on1x
 ```
 
-Each exited **1**, `ON1X-KERNEL-NOT-ADMITTED`. Staging itself isn't approval.
-Supplying a review key to this compiler cannot add an absent lowering.
+Each exited **1**, `ON1X-KERNEL-NOT-ADMITTED`. The same four probes were
+repeated against FinPRED `1a2519e43c34ddbc7742e34ec6cf5731862c226d`'s exact
+pins: MuLIB `50c94aaf35339dff8b5fb534d322de2bdea1aa63` and LibStone
+`3be5e9d7ffde4f97f333365e7080e316396a0e55` (Linux x86-64, `on1xc`
+SHA-256 `4f5f4b7201e09434603e077d4a02ca8ac5c6ece3ef907fae4dd6303eae68c8ea`).
+Each still exited **1** with the same diagnostic. Staging itself isn't
+approval. Supplying a review key cannot add an absent lowering.
 
 ## Required operations (semantic signatures, not On1x syntax)
 

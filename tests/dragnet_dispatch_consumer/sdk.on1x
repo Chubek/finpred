@@ -1,5 +1,5 @@
-# Independent trusted caller: the executable does not use the fd dispatcher
-# or its legacy five-argument shim.
+# Independent trusted caller: the SDK path uses neither the fd dispatcher
+# nor the legacy five-argument shim, which has a separate compatibility trial.
 import dragnet.source_registry as Sources;
 import core.fx_reference as FX;
 import sdk.callable as SDK;
@@ -14,6 +14,36 @@ fn port_matches(entry:sexpr, name:string, kind:string, limit:i64) -> bool
   let p = SDK.decode_port(entry);
   return sx_text(p["name"]) == name && sx_text(p["kind"]) == kind &&
     p["major"] == 1 && p["max_bytes"] == limit && p["states"] == 1;
+}
+
+fn legacy(key:string, mode:string, inputs:sexpr) -> i64
+{
+  let a = sx_text(SDK.value_bytes(SDK.port_at(inputs,0)));
+  let b = sx_text(SDK.value_bytes(SDK.port_at(inputs,1)));
+  var source = key;
+  var contract = "hospitality.offer@1";
+  var format = "ndjson";
+  var c = "";
+  var d = "";
+  var e = "";
+  if key != Sources.frozen_key() {
+    format = "json";
+    c = sx_text(SDK.value_bytes(SDK.port_at(inputs,2)));
+    if key == Sources.crossref_key() {
+      contract = "dragnet.crossref-evidence@1";
+      d = sx_text(SDK.value_bytes(SDK.port_at(inputs,3)));
+      e = sx_text(SDK.value_bytes(SDK.port_at(inputs,4)));
+    } else {
+      source = Sources.public_key();
+      contract = source;
+      d = env("DRAGNET_SDK_CUTOFF");
+    }
+  }
+  let result = Sources.invoke(source,mode,a,b,c,d,e);
+  if sx_text(result["source"]) != source || sx_text(result["contract"]) != contract ||
+    sx_text(result["format"]) != format { return 89; }
+  IO.basis_text_io_print(sx_text(result["bytes"]));
+  return 0;
 }
 
 fn fx(trial:string) -> i64
@@ -99,6 +129,7 @@ fn main() -> i64
       sx_cons(SDK.value_entry(1,payload("DRAGNET_SDK_2")),
       sx_cons(SDK.value_entry(1,payload("DRAGNET_SDK_3")),sx_nil())));
   } }
+  if trial == "legacy" { return legacy(key,mode,inputs); }
   var work = 1;
   if trial == "budget" { work = 2; }
   var policy = p["policy_digest"];

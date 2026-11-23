@@ -40,6 +40,12 @@ P0B_SHA256 = {
     "eurostat": "7e47fff84e82befe9c7261adf441ad5c6471ba2330ca3eb1439072018e6b7e3e",
     "frozen_csv": "79f38dcdad31dd5f07de9ae50c584edbc83d658721c3bf02ff73e2f413d3ebbd",
 }
+POLICY_DIGESTS = (
+    b"blake3:3345b769d3b862d23cb42ad56fdb3bc24244409fba34d96ee8c0b098c2a3646b",
+    b"blake3:ee4c224d4765436994e433741d323588ffcc8940d8bff5b9f0ac417d81975d1a",
+    b"blake3:6adf072d96ce1553818f937ae3c2847dacf8669f080fbe914d3b8a888d283bc3",
+    b"blake3:5479b1909e3b56823e1d8054e8dd84429d8ba38c213f86073fdbf27fbcd4579d",
+)
 FX_PARENT = "blake3:df0a0fa5f8d8a133aef861cdc3e8e2495110a53315ac5de3885e0df39a51aae5"
 FX_PROJECTIONS = {
     "JPY": "blake3:4956ffbbecb91f0363a4a4662537e260a7e9c8ac4018cbbb7c7b64e0b0ff7a30",
@@ -208,7 +214,7 @@ def main():
         keys = ("dragnet.frozen_csv@1", "dragnet.crossref@1", "dragnet.public-feed.ecb@1",
                 "dragnet.public-feed.eurostat@1")
         policies = [sdk(key, case="identity").strip() for key in keys]
-        assert len(set(policies)) == 4 and all(p.startswith(b"blake3:") and len(p) == 71 for p in policies)
+        assert tuple(policies) == POLICY_DIGESTS
 
         scenario = ROOT / "fixtures/scenario.csv"
         offers = ROOT / "fixtures/offers.csv"
@@ -225,6 +231,7 @@ def main():
             assert rec["metadata"]["provenance"]["source_artifacts"] == [FIXTURE_DIGEST]
         cutoff = "2026-11-20T10:00:00Z"
         assert sdk(csv_source, [scenario, offers], cutoff=cutoff) == frozen
+        assert sdk(csv_source, [scenario, offers], case="legacy", cutoff=cutoff) == frozen
         for case, rc in (("forged-pin", 2), ("arity", 3), ("presence", 3), ("budget", 4)):
             sdk(csv_source, [scenario, offers], case=case, cutoff=cutoff, rc=rc)
         sdk(csv_source, [scenario, offers], cutoff="2026-11-20T10:00:01Z", rc=5)
@@ -246,7 +253,8 @@ def main():
 
         # Reject incompatible versions and unknown algorithms *before* any
         # unselected data descriptor can be read.
-        for source in ("dragnet.frozen_csv@2", "dragnet.unknown@1", "dragnet.public-feed@2"):
+        for source in ("dragnet.frozen_csv@2", "dragnet.unknown@1", "dragnet.public-feed@2",
+                       "dragnet.public-feed.ecb@1", "dragnet.public-feed.eurostat@1"):
             rejected(routed(exe, source, [], work, env, good=False), b"denied")
         for source in (b"Dragnet.frozen_csv@1\n", b"dragnet.frozen_csv@1",
                        b"dragnet.frozen_csv@1\r\n", b"dragnet.frozen_csv@1\n\n"):
@@ -285,6 +293,7 @@ def main():
         assert dispatched == original == GOLDEN_BYTES
         crossref_cutoff = req.read_text().splitlines()[2].split(",")[4]
         assert sdk("dragnet.crossref@1", inputs, cutoff=crossref_cutoff) == dispatched
+        assert sdk("dragnet.crossref@1", inputs, case="legacy", cutoff=crossref_cutoff) == dispatched
         validator(PKG / "contracts/dragnet.crossref-evidence@1.schema.json").validate(json.loads(dispatched))
         output_hashes = {"frozen_csv": sha256(frozen).hexdigest(), "crossref": sha256(dispatched).hexdigest()}
         p = routed(exe, "dragnet.crossref@1", [req, search, detail, work_decode, search_decode],
@@ -297,6 +306,14 @@ def main():
         asof = raw("as-of.txt", b"2026-11-16T10:10:01Z\n", work)
         early = raw("early-as-of.txt", b"2026-11-16T10:10:00Z\n", work)
         bad_time = raw("malformed-as-of.txt", b"2026-11-16T10:10:01ZX", work)
+        unknown_capture = raw("unknown.capture.csv", (
+            b"dragnet.feed-capture@1\n"
+            b"unknown,offline_snapshot,2026-11-16T10:10:00Z,"
+            b"2026-11-16T10:10:01Z,terms-r1,retention-r2\n"), work)
+        # Select and admit the capture's concrete provider before touching
+        # any body or decode slots, even if those descriptors are closed.
+        rejected(routed(exe, "dragnet.public-feed@1", [unknown_capture, None, None, asof],
+                        work, env, good=False), b"feed: unknown source")
         feed_schema = validator(PKG / "contracts/dragnet.public-feed@1.schema.json")
         for source, fixture in (("ecb", "ecb.xml"), ("eurostat", "eurostat.json")):
             capture = raw(source + ".capture.csv", (
@@ -314,6 +331,12 @@ def main():
             key = f"dragnet.public-feed.{source}@1"
             trial = "partial" if source == "eurostat" else "success"
             assert sdk(key, [capture, body, handoff], case=trial) == dispatched
+            assert sdk(key, [capture, body, handoff], case="legacy") == dispatched
+            for i, limit in enumerate((512, 65536, 4096)):
+                files = [capture, body, handoff, asof]
+                files[i] = raw("oversized-feed-slot", b"x" * (limit + 1), work)
+                rejected(routed(exe, "dragnet.public-feed@1", files, work, env, good=False),
+                         b"bounded descriptor snapshot")
             wrong_key = "dragnet.public-feed.eurostat@1" if source == "ecb" else "dragnet.public-feed.ecb@1"
             sdk(wrong_key, [capture, body, handoff], error=b"capture provider mismatch")
             if source == "ecb":
@@ -336,7 +359,8 @@ def main():
         assert marker.read_bytes() == b"no plugin writes\n"
         assert [p.name for p in protected.iterdir()] == ["sentinel"]
         assert output_hashes == P0B_SHA256
-    print("dragnet_dispatch_ok=true sources=3 parity_fixtures=4 denied_modes=6 pricing_store_unchanged=true"
+    print("dragnet_dispatch_ok=true sources=3 parity_fixtures=4 legacy_wrapper_parity=4"
+          " denied_modes=6 feed_slot_caps=6 provider_before_payload=true pricing_store_unchanged=true"
           f" network_traced={'4' if trace else '0'}")
     print("dragnet_dispatch_output_sha256=" + json.dumps(output_hashes, sort_keys=True))
     print("dragnet_sdk_ok=true bindings=4 typed_parity=4 empty_ndjson=true policy_digests="

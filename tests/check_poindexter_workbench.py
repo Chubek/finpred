@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Exercise the compiled worksheet, verified import and actual terminal controls."""
+from contextlib import contextmanager
 import csv
 import io
 import os
@@ -14,33 +15,77 @@ ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "bin/poindexter"
 
 
-def interactive(env, book):
+@contextmanager
+def terminal(env, book):
     master, slave = pty.openpty()
     proc = subprocess.Popen([CLI, "--book", book], env=env, stdin=slave, stdout=slave, stderr=slave)
     os.close(slave)
+    data = b""
     def expect(needle):
-        data = b""
+        nonlocal data
         deadline = time.monotonic() + 10
         while needle not in data:
             remain = deadline - time.monotonic()
             if remain < 0 or not select.select([master], [], [], remain)[0]:
                 raise AssertionError((needle, data[-1000:]))
             data += os.read(master, 65536)
+        _, _, data = data.partition(needle)
     def key(s):
         os.write(master, s.encode())
     try:
-        expect(b"Press ?")
-        key("\x1b[C"); expect(b"B1  fx:")
-        key("e"); expect(b"Edit B1:"); key("=4*7\n"); expect(b"Value: 28")
-        key("u"); expect(b"Undone."); key("r"); expect(b"Redone.")
-        key("x"); expect(b"Worksheet statement:"); key("SET B1 = B1+2\n"); expect(b"Value: 30")
-        key("s"); expect(b"Workbook saved."); key("q")
+        yield expect, key
         assert proc.wait(timeout=5) == 0
     finally:
         if proc.poll() is None:
             proc.kill()
             proc.wait()
         os.close(master)
+
+
+def interactive(env, book):
+    with terminal(env, book) as (expect, key):
+        expect(b"Press ?")
+        key("\x1b[C"); expect(b"B1  fx:")
+        key("e"); expect(b"Edit B1:"); key("=4*7\n"); expect(b"Value: 28")
+        key("u"); expect(b"Undone."); key("r"); expect(b"Redone.")
+        key("x"); expect(b"Worksheet statement:"); key("SET B1 = B1+2\n"); expect(b"Value: 30")
+        key("s"); expect(b"Workbook saved."); key("q")
+
+
+def save_conflicts(env, book, new_book):
+    # Valid, noncanonical row order: stale detection must compare the raw
+    # snapshot, not the worker's normalized encoding.
+    original = b"poindexter-workbook@1\nB1\t2\nA1\t1\n"
+    external = original.replace(b"A1\t1\n", b"A1\t90\n")
+    book.write_bytes(original)
+    with terminal(env, book) as (expect, key):
+        expect(b"Press ?")
+        key("x"); expect(b"Worksheet statement:"); key("SET A1 = 7\n")
+        expect(b"Value: 7")
+        book.write_bytes(external)
+        key("s"); expect(b"Value: 7"); expect(b"Save conflict: workbook changed on disk.")
+        assert book.read_bytes() == external
+        assert not list(book.parent.glob(f"{book.name}.tmp.*"))
+        key("q"); expect(b"Discard unsaved changes?"); key("n\n")
+        book.write_bytes(original)
+        key("s"); expect(b"Workbook saved.")
+        assert book.read_bytes() == b"poindexter-workbook@1\nA1\t7\nB1\t2\n"
+        key("x"); expect(b"Worksheet statement:"); key("SET A1 = 8\n")
+        expect(b"Value: 8")
+        key("s"); expect(b"Workbook saved."); key("q")
+    assert book.read_bytes() == b"poindexter-workbook@1\nA1\t8\nB1\t2\n"
+
+    with terminal(env, new_book) as (expect, key):
+        expect(b"Press ?")
+        key("x"); expect(b"Worksheet statement:"); key("SET A1 = 9\n")
+        expect(b"Value: 9")
+        new_book.write_bytes(b"not a workbook\n")
+        key("s"); expect(b"Value: 9"); expect(b"Save conflict: workbook path is no longer free.")
+        assert new_book.read_bytes() == b"not a workbook\n"
+        assert not list(new_book.parent.glob(f"{new_book.name}.tmp.*"))
+        new_book.unlink()
+        key("s"); expect(b"Workbook saved."); key("q")
+    assert new_book.read_bytes() == b"poindexter-workbook@1\nA1\t9\n"
 
 
 def main():
@@ -135,7 +180,9 @@ FORMULA D5 = D5+1
         assert cli("--run", "0"*64, "--csv", ok=False)
         interactive(env, d / "interactive")
         assert cli("--book", d / "interactive", "--get", "B1") == "30\n"
-    print("poindexter_workbench_ok=true formulae scripts rollback replay_import terminal_edit_save")
+        save_conflicts(env, d / "existing-save", d / "new-save")
+        assert frozen == snapshot()
+    print("poindexter_workbench_ok=true formulae scripts rollback replay_import terminal_edit_save save_conflicts=2")
 
 
 if __name__ == "__main__":

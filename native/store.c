@@ -15,6 +15,24 @@
 
 struct fp_store { int dirs[2]; fp_access access; };
 
+enum { FP_TRANSFER_RETRIES = 3 };
+
+/* Linux read/write return EINTR only when no bytes were transferred. Bound
+ * retries across the entire transfer, including the read's EOF probe. */
+static int retry_transfer(ssize_t count, unsigned *retries)
+{
+    if (count >= 0 || errno != EINTR || *retries == 0) return 0;
+    --*retries;
+    return 1;
+}
+
+static ssize_t read_transfer(int fd, void *buf, size_t size, unsigned *retries)
+{
+    ssize_t count;
+    do { count = read(fd, buf, size); } while (retry_transfer(count, retries));
+    return count;
+}
+
 static fp_result result(fp_status status, fp_phase phase, fp_name_state name)
 {
     return (fp_result){status, phase, name};
@@ -150,16 +168,17 @@ static fp_result existing(int dir, const char *name, fp_kind kind, char **out,
     if (!compare && !(value = malloc(n + 1))) { r.status = FP_IO; goto done; }
     char scratch[8192];
     size_t pos = 0;
+    unsigned retries = FP_TRANSFER_RETRIES;
     while (pos < n) {
         size_t count = n-pos < sizeof scratch ? n-pos : sizeof scratch;
         char *dest = compare ? scratch : value + pos;
-        ssize_t got = read(fd, dest, count);
+        ssize_t got = read_transfer(fd, dest, count, &retries);
         if (got <= 0) { r.status = FP_IO; goto done; }
         if (compare && memcmp(dest, compare + pos, (size_t)got)) { r.status = FP_CONFLICT; goto done; }
         if (!compare && memchr(dest, 0, (size_t)got)) { r.status = FP_INVALID; goto done; }
         pos += (size_t)got;
     }
-    if (read(fd, scratch, 1) != 0) { r.status = FP_IO; goto done; }
+    if (read_transfer(fd, scratch, 1, &retries) != 0) { r.status = FP_IO; goto done; }
     if (compare) {
         r.phase = FP_FILE_SYNC;
         if (fsync(fd) < 0) { r.status = FP_IO; goto done; }
@@ -204,8 +223,13 @@ fp_result fp_store_install(const fp_store *s, fp_kind kind, const char *id,
     int fd = beneath(dir, ".", O_TMPFILE | O_RDWR, 0600);
     if (fd < 0) return result(sys_status(errno), FP_OPEN, FP_UNCHANGED);
     r = result(FP_OK, FP_WRITE, FP_UNCHANGED);
+    /* O_TMPFILE applies the process umask. Set the owner-only mode on our
+     * unnamed inode before syncing it, so success never publishes mode 0000. */
+    if (fchmod(fd, 0600) < 0) { r.status = FP_IO; goto done; }
+    unsigned retries = FP_TRANSFER_RETRIES;
     for (size_t pos = 0; pos < size;) {
         ssize_t count = write(fd, data + pos, size - pos);
+        if (retry_transfer(count, &retries)) continue;
         if (count <= 0) { r.status = FP_IO; goto done; }
         pos += (size_t)count;
     }

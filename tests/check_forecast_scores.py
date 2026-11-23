@@ -24,9 +24,13 @@ EVALUATION_SOURCE = PACKAGE / "source/forecast_baselines/evaluation.on1x"
 CONSUMER = ROOT / "tests/forecast_score_consumer/main.on1x"
 SCHEMA = PACKAGE / "contracts/analysis.guest-nights-score@1.schema.json"
 EVALUATION_SCHEMA = PACKAGE / "contracts/analysis.guest-nights-evaluation@1.schema.json"
+HOLDOUT_SCHEMA = PACKAGE / "contracts/analysis.guest-nights-holdout@1.schema.json"
 SCORING_POLICY = ("guest-nights-score@1;replay-issued-forecast;actual-visible-at-scoring-cutoff;"
                   "score-after-issuance-and-at-or-after-target-month-end;"
                   "signed-estimate-minus-actual;missing-actual-before-insufficient-evidence")
+HOLDOUT_POLICY = ("guest-nights-holdout@1;one-model-frozen-between-validation-end-and-holdout-start;"
+                  "complete-contiguous-window-max-24;"
+                  "replay-expected-evaluation;one-scoring-cutoff;known-only-exact-mae-and-signed-bias")
 sys.dont_write_bytecode = True
 MOVING = "forecast.moving-average-3@1"
 SEASONAL = "forecast.seasonal-naive-12@1"
@@ -205,7 +209,150 @@ def check_evaluation(exe, env, directory, digest, validator, inputs, forecast, s
         reject(5, SCORE=score + "\n")
         forged_score = serialized(data | {"actual": data["actual"] + 1})
         reject(5, SCORE=forged_score, **rehashed(score=digest(forged_score)))
-    return run_id.strip()
+    return replay
+
+
+def check_holdout(exe, env, directory, digest, chronology, entries, fractional, missing):
+    validator = Draft202012Validator(json.loads(HOLDOUT_SCHEMA.read_bytes()),
+                                    format_checker=FormatChecker())
+    Draft202012Validator.check_schema(validator.schema)
+    plan = {"MODEL": MOVING, "MODEL_CODE": digest(env["CODE_BYTES"]),
+            "SCORING_CODE": digest(env["SCORING_CODE_BYTES"]),
+            "VALIDATION_THROUGH": "2024-02", "SELECTION_FROZEN_AT": "2024-03-01T00:00:00Z",
+            "FIRST_TARGET": "2024-03", "LAST_TARGET": "2024-04",
+            "SCORE_CUTOFF": chronology["scoring_cutoff"]}
+    holdout_cases = rejections = 0
+
+    def invoke_report(rows, plan, *, failure=None, **changes):
+        per_month = {f"ENTRY_{i}_{key}": value for i, row in enumerate(rows)
+                     for key, value in row.items()}
+        return invoke(exe, env, directory, "holdout", failure=failure,
+                      **(plan | per_month | changes))
+
+    def report(rows, errors, plan=plan):
+        nonlocal holdout_cases
+        result = invoke_report(rows, plan)
+        assert invoke_report(rows, plan) == result
+        identifier, artifact = result.splitlines(keepends=True)
+        document = json.loads(artifact)
+        validator.validate(document)
+        assert identifier.strip() == digest(artifact)
+        known = [Fraction(x) for x in errors if x is not None]
+
+        def mean(values):
+            if not values:
+                return None
+            value = sum(values) / len(values)
+            return {"numerator": value.numerator, "denominator": value.denominator}
+
+        expected_rows = [{"target_month": shift_month(plan["FIRST_TARGET"], i),
+                          "evaluation": row["EVALUATION_ID"],
+                          "state": "unknown" if error is None else "scored"}
+                         for i, (row, error) in enumerate(zip(rows, errors, strict=True))]
+        expected = {
+            "kind": "analysis.guest-nights-holdout", "version": 1, "unit": "guest_nights",
+            "currency": None, "pricing_input": False, "split": "holdout", "model": plan["MODEL"],
+            "model_code_digest": plan["MODEL_CODE"],
+            "model_policy_digest": json.loads(rows[0]["MANIFEST"])["model_policy_digest"],
+            "scoring_code_digest": plan["SCORING_CODE"],
+            "scoring_policy_digest": digest(SCORING_POLICY),
+            "aggregation_policy_digest": digest(HOLDOUT_POLICY),
+            "validation_through": plan["VALIDATION_THROUGH"],
+            "selection_frozen_at": plan["SELECTION_FROZEN_AT"], "first_target": plan["FIRST_TARGET"],
+            "last_target": plan["LAST_TARGET"], "scoring_cutoff": plan["SCORE_CUTOFF"],
+            "evaluations": expected_rows, "expected": len(rows), "scored": len(known),
+            "unknown": len(rows) - len(known), "mae": mean([abs(x) for x in known]), "bias": mean(known),
+        }
+        assert document == expected and artifact == serialized(expected)
+        holdout_cases += 1
+        return identifier.strip()
+
+    def bind(inputs, forecast, score):
+        return check_evaluation(exe, env, directory, digest, evaluation_validator,
+                                inputs, forecast, score)
+
+    def reobserve(entry, actual_release):
+        raw = snapshot(actual_release)
+        inputs = entry | {"ACTUAL_RAW": raw, "ACTUAL_PARENT": digest(raw)}
+        forecast = entry["FROZEN_FORECAST"]
+        score = invoke(exe, env, directory, "score", **inputs)
+        return bind(inputs, forecast, score)
+
+    evaluation_validator = Draft202012Validator(json.loads(EVALUATION_SCHEMA.read_bytes()),
+                                                format_checker=FormatChecker())
+    march, april = (entries[(MOVING, month)] for month in ("2024-03", "2024-04"))
+    actuals = chronology["snapshots"]["actuals"]
+    report_id = report([march, april], [-30, -30])
+    report([entries[(SEASONAL, month)] for month in ("2024-03", "2024-04")],
+           [-100, -110], plan | {"MODEL": SEASONAL})
+    zero = reobserve(april, actuals | {"values": actuals["values"] | {"2024-04": 0}})
+    report([fractional, zero], [Fraction(-89, 3), 200])
+    report([missing, april], [None, -30])
+    unknown_april = reobserve(april, actuals | {"values": actuals["values"] | {"2024-04": None}})
+    report([missing, unknown_april], [None, None])
+    exact_april = reobserve(april, actuals | {"values": actuals["values"] | {"2024-04": 200}})
+    report([exact_april], [0], plan | {"FIRST_TARGET": "2024-04"})
+    offset_april = reobserve(april, actuals | {"values": actuals["values"] | {"2024-04": 170}})
+    report([march, offset_april], [-30, 30])
+
+    # Full supported window at the maximum absolute source value. Its sum
+    # and mean are representable, but squaring even one term exceeds i64.
+    high = 999999999999
+    max_plan = plan | {"LAST_TARGET": "2026-02", "SCORE_CUTOFF": "2026-04-01T00:00:00Z"}
+    max_rows = []
+    for i in range(24):
+        target = shift_month("2024-03", i)
+        issue = shift_month(target, -1)
+        cutoff = f"{issue}-15T00:00:00Z"
+        raw = snapshot({"updated": f"{issue}-10T12:00:00+0000",
+                        "received": f"{issue}-10T12:00:01Z", "ingested": f"{issue}-10T12:00:02Z",
+                        "values": {shift_month(issue, j): (1 if j == -1 else 0)
+                                   for j in (-3, -2, -1)}})
+        truth = snapshot({"updated": "2026-03-10T12:00:00+0000", "received": "2026-03-10T12:00:01Z",
+                          "ingested": "2026-03-10T12:00:02Z", "values": {target: high}})
+        inputs = {"MODEL": MOVING, "TRAIN_CUTOFF": cutoff, "TRAIN_RAW": raw,
+                  "TRAIN_PARENT": digest(raw), "REQUEST": request({"issued": cutoff, "target": target}),
+                  "ACTUAL_RAW": truth, "ACTUAL_PARENT": digest(truth),
+                  "SCORE_CUTOFF": max_plan["SCORE_CUTOFF"]}
+        forecast = invoke(exe, env, directory, "forecast", **inputs)
+        score = invoke(exe, env, directory, "score", FROZEN_FORECAST=forecast, **inputs)
+        max_rows.append(bind(inputs, forecast, score))
+    report(max_rows, [Fraction(1, 3) - high] * 24, max_plan)
+
+    def reject(status, rows=(march, april), **changes):
+        nonlocal rejections
+        invoke_report(rows, plan, failure=70 + status, **changes)
+        rejections += 1
+
+    reject(1, MODEL="forecast.unregistered@1")
+    reject(1, MODEL_CODE=digest("wrong linked model digest"))
+    reject(1, SCORING_CODE=digest("wrong linked scoring digest"))
+    reject(1, FIRST_TARGET="2024-02")
+    reject(1, LAST_TARGET="2024-02")
+    reject(1, LAST_TARGET="2026-03")
+    reject(1, LAST_TARGET="2024-13")
+    reject(1, LAST_TARGET="2024-04" + " " * 4096)
+    reject(1, SELECTION_FROZEN_AT="2024-03-01T00:00:01Z")
+    reject(1, SELECTION_FROZEN_AT="2024-02-29T23:59:59Z")
+    reject(1, SCORE_CUTOFF="2024-04-30T23:59:59Z")
+    reject(2, rows=(entries[(MOVING, "2024-02")], april))
+    reject(2, rows=(march, march))
+    reject(2, rows=(april, march))
+    reject(2, rows=(march,))
+    reject(2, ENTRY_1_TRAIN_CUTOFF="2024-03-16T00:00:00Z")
+    reject(3, rows=(march, entries[(SEASONAL, "2024-04")]))
+    reject(3, ENTRY_1_SCORE=april["SCORE"] + "\n")
+    forged = serialized(json.loads(april["SCORE"]) |
+                        {"error": {"numerator": 0, "denominator": 1},
+                         "absolute_error": {"numerator": 0, "denominator": 1}})
+    rehashed = serialized(json.loads(april["MANIFEST"]) | {"score": digest(forged)})
+    reject(3, ENTRY_1_SCORE=forged, ENTRY_1_MANIFEST=rehashed,
+           ENTRY_1_EVALUATION_ID=digest(rehashed))
+    reject(3, ENTRY_1_EVALUATION_ID=march["EVALUATION_ID"])
+    reject(3, ENTRY_1_ACTUAL_RAW=april["ACTUAL_RAW"] + "\n")
+    reject(3, SCORE_CUTOFF="2024-06-02T00:00:00Z")
+    print(f"forecast_holdout_ok=true reports={holdout_cases} rejected={rejections} max_targets=24 "
+          f"replay=exact mae_bias=fractions mse_rmse=deferred fixture_report={report_id}")
 
 
 def compiled(chronology, validator, expected):
@@ -249,7 +396,7 @@ def compiled(chronology, validator, expected):
         assert parent.startswith("blake3:") and len(parent) == 71
         hits = {MOVING:[], SEASONAL:[]}
         references = {}
-        evaluation_ids = []
+        entries = {}
         count = 0
         for model in (MOVING, SEASONAL):
             for point in current:
@@ -279,9 +426,9 @@ def compiled(chronology, validator, expected):
                     hits[model].append(rational(data["absolute_error"]))
                 references[(model,point["target"])] = digest(result)
                 count += 1
-                evaluation_ids.append(check_evaluation(
+                entries[(model, point["target"])] = check_evaluation(
                     exe, env, offline, digest, evaluation_validator, inputs, forecast, result,
-                    negatives=model == MOVING and point["target"] == "2024-03"))
+                    negatives=model == MOVING and point["target"] == "2024-03")
 
                 if model == MOVING and point["target"] == "2024-03":
                     invoke(exe,env,offline,"score",failure=36,**inputs,
@@ -332,8 +479,8 @@ def compiled(chronology, validator, expected):
         unscored = json.loads(unknown_score)
         validator.validate(unscored)
         assert unscored["state"] == "unknown" and unscored["reason"] == "missing_actual"
-        evaluation_ids.append(check_evaluation(exe, env, offline, digest, evaluation_validator,
-                                               missing_actual, frozen, unknown_score))
+        missing_entry = check_evaluation(exe, env, offline, digest, evaluation_validator,
+                                         missing_actual, frozen, unknown_score)
 
         unavailable_training = training | {"values":training["values"] | {"2024-01":None}}
         raw_unknown = snapshot(unavailable_training)
@@ -349,18 +496,25 @@ def compiled(chronology, validator, expected):
         raw_fraction = snapshot(frac_training)
         fractional_inputs = normal | {"TRAIN_RAW":raw_fraction,"TRAIN_PARENT":digest(raw_fraction)}
         fractional_forecast = invoke(exe,env,offline,"forecast",**fractional_inputs)
-        fractional = json.loads(invoke(exe,env,offline,"score",**fractional_inputs,
-                                       FROZEN_FORECAST=fractional_forecast,
-                                       ACTUAL_RAW=actual_raw,ACTUAL_PARENT=parent))
+        fractional_inputs |= {"ACTUAL_RAW": actual_raw, "ACTUAL_PARENT": parent}
+        fractional_score = invoke(exe, env, offline, "score", **fractional_inputs,
+                                  FROZEN_FORECAST=fractional_forecast)
+        fractional = json.loads(fractional_score)
         validator.validate(fractional)
         assert rational(fractional["estimate"]) == Fraction(541,3)
         assert rational(fractional["error"]) == Fraction(-89,3)
         assert rational(fractional["absolute_error"]) == Fraction(89,3)
+        evaluation_ids = [row["EVALUATION_ID"] for row in (*entries.values(), missing_entry)]
         assert len(set(evaluation_ids)) == 7
         assert not list(offline.iterdir())
         print(f"forecast_scores_ok=true scored={count} unknown=2 fractional=1 replay=exact store_writes=0")
         print(f"forecast_evaluation_ok=true runs={len(evaluation_ids)} rejected=20 replay=exact "
               f"fixture_run={evaluation_ids[1]} fixture_score={references[(MOVING, '2024-03')]}")
+
+        fractional_entry = check_evaluation(exe, env, offline, digest, evaluation_validator,
+                                            fractional_inputs, fractional_forecast, fractional_score)
+        check_holdout(exe, env, offline, digest, chronology, entries, fractional_entry,
+                      missing_entry)
 
 
 def main():

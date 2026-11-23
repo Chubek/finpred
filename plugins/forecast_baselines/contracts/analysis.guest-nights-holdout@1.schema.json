@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Final guest-night forecast holdout report (analysis only)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind", "version", "unit", "currency", "pricing_input", "split", "model",
+    "model_code_digest", "model_policy_digest", "scoring_code_digest", "scoring_policy_digest",
+    "aggregation_policy_digest", "validation_through", "selection_frozen_at",
+    "first_target", "last_target", "scoring_cutoff", "evaluations", "expected",
+    "scored", "unknown", "mae", "bias"
+  ],
+  "properties": {
+    "kind": {"const": "analysis.guest-nights-holdout"},
+    "version": {"const": 1},
+    "unit": {"const": "guest_nights"},
+    "currency": {"type": "null"},
+    "pricing_input": {"const": false},
+    "split": {"const": "holdout"},
+    "model": {"enum": ["forecast.moving-average-3@1", "forecast.seasonal-naive-12@1"]},
+    "model_code_digest": {"$ref": "#/$defs/digest"},
+    "model_policy_digest": {"$ref": "#/$defs/digest"},
+    "scoring_code_digest": {"$ref": "#/$defs/digest"},
+    "scoring_policy_digest": {"$ref": "#/$defs/digest"},
+    "aggregation_policy_digest": {"$ref": "#/$defs/digest"},
+    "validation_through": {"$ref": "#/$defs/month"},
+    "selection_frozen_at": {"$ref": "#/$defs/utc"},
+    "first_target": {"$ref": "#/$defs/month"},
+    "last_target": {"$ref": "#/$defs/month"},
+    "scoring_cutoff": {"$ref": "#/$defs/utc"},
+    "evaluations": {
+      "type": "array", "minItems": 1, "maxItems": 24, "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["target_month", "evaluation", "state"],
+        "properties": {
+          "target_month": {"$ref": "#/$defs/month"},
+          "evaluation": {"$ref": "#/$defs/digest"},
+          "state": {"enum": ["scored", "unknown"]}
+        }
+      }
+    },
+    "expected": {"type": "integer", "minimum": 1, "maximum": 24},
+    "scored": {"type": "integer", "minimum": 0, "maximum": 24},
+    "unknown": {"type": "integer", "minimum": 0, "maximum": 24},
+    "mae": {
+      "anyOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/rational", "properties": {"numerator": {"minimum": 0}}}
+      ]
+    },
+    "bias": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/rational"}]}
+  },
+  "if": {"properties": {"scored": {"const": 0}}},
+  "then": {"properties": {"mae": {"type": "null"}, "bias": {"type": "null"}}},
+  "else": {"properties": {"mae": {"type": "object"}, "bias": {"type": "object"}}},
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^blake3:[0-9a-f]{64}$"},
+    "utc": {
+      "type": "string", "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "month": {"type": "string", "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"},
+    "rational": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["numerator", "denominator"],
+      "properties": {
+        "numerator": {"type": "integer", "minimum": -71999999999928, "maximum": 71999999999928},
+        "denominator": {"type": "integer", "minimum": 1, "maximum": 72}
+      }
+    }
+  }
+}

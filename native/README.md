@@ -43,6 +43,11 @@ procfs mounted at `/proc` is required.
    require a directory sync before success. Identical reuse also syncs the
    file. Short writes advance by the actual byte count. Failed staging has
    no named payload to clean up.
+   The unnamed inode is set to mode `0600` before file sync even when the
+   host's umask removes owner permissions. If setting that mode fails,
+   publication stops before the final name is installed. Existing entries'
+   modes are never changed. Hosts provisioning new directories still need a
+   umask that preserves owner access.
 4. Check `result.status` before issuing a receipt. `phase` locates a failure;
    `name` distinguishes no install by this call, an already existing name,
    a created name, and uncertain installation. For example `{FP_IO,
@@ -65,9 +70,12 @@ also used to publish a live unnamed inode without requiring a privileged
 Two directories remain pinned per handle. At most three extra fds are held in
 an install (staged inode plus pin and reader when another writer wins).
 Comparisons use an 8 KiB buffer; reads allocate at most one payload plus its
-terminator. There are no lock waits or automatic retries on syscall errors.
-Transfer loops require positive progress, so even one-byte transfers are
-bounded by the object limit plus one EOF check. These are not time limits.
+terminator. There are no lock waits. Byte transfers allow at most three
+`EINTR` retries total per read/compare (including the EOF probe) or staged
+write. An exhausted budget returns `FP_IO` at `FP_READ` or `FP_WRITE`. Other
+syscall errors, including errors at installation, sync, or close, are not
+retried. Transfer syscalls are bounded by the object limit, an EOF check on
+reads, and the retry budget. These are not time limits.
 
 **Admission remains open.** Native tests exercise actual filesystem behaviour
 and injected errors; they are not power-cut/remount tests. The pinned On1x

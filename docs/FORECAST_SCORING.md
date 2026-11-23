@@ -124,6 +124,65 @@ identity, `2` for invalid root bytes or digests, `3` for scoring failure,
 return no ID, manifest, or score. Successful `unknown` results replay just
 like scored results.
 
+## Final holdout report (`analysis.guest-nights-holdout@1`)
+
+```text
+forecast_baselines.holdout.aggregate(linked, plan, entry_at) -> Report { status, id, bytes }
+```
+
+This pure callable reports coverage and errors for **one preselected model**
+over a contiguous window of 1–24 monthly targets. The trusted host supplies
+the model and code pins, last validation target (`validation_through`),
+selection freeze time, inclusive first and last holdout targets, and one
+scoring cutoff for the whole report. The freeze time must be at or after the
+end of the last validation month and no later than the start of the first
+holdout target month. Allow a gap after validation if its observations were
+not yet available. The scoring cutoff must be at or after the end of the last
+target month.
+
+The host must freeze the model, evaluation window, and evidence-selection
+policy without using final holdout outcomes. The freeze timestamp is a
+trusted assertion, not proof of the model-selection process. This API does
+not select or rank models, perform validation, certify the host's selection
+history, or turn a re-selected model's reused holdout into an independent
+test. Each origin keeps its own original training cutoff; an earlier
+holdout observation may enter a later origin's **rolling training** only if
+visible at that origin's training cutoff. Validation target scores cannot
+enter the aggregate.
+
+For each month offset, the trusted, read-only `entry_at` lookup over frozen
+data supplies the original
+training cutoff, expected root digests and evaluation ID, frozen inputs, and
+archived evaluation manifest and score bytes. The host obtains expected
+identities from trusted state, not by rehashing submitted archive bytes. The
+aggregator requires the expected target for each offset and reruns evaluation
+replay; missing entries, duplicate or misplaced months, and tampered
+evidence fail the whole report. An explicit replayed `unknown` counts toward
+coverage; it is not the same as a missing evaluation and contributes neither
+an error nor a zero.
+
+The [report schema](../plugins/forecast_baselines/contracts/analysis.guest-nights-holdout@1.schema.json)
+records the plan and policy pins, ordered evaluation IDs and per-month
+states, `expected`, `scored`, `unknown`, and reduced exact rational `mae`
+and `bias` in guest-nights. Bias uses `estimate − actual`. Both means divide
+by `scored`, and both are null if `scored=0`. Coverage counts sum to the
+window length. The report ID is BLAKE3 over the compact JSON bytes including
+the final LF. Recomputing from the same trusted inputs gives identical
+bytes. No catalog, writer, CLI, action authorization, or historical format
+change is introduced.
+
+The baseline scores have denominators of 1 or 3 and a magnitude of at most
+999,999,999,999 guest-nights. Summing exact thirds gives absolute and signed
+sums bounded by `24 × 2,999,999,999,997 = 71,999,999,999,928`, with a mean
+denominator of at most 72 before reduction. These bounds fit signed i64.
+**MSE and RMSE are deliberately deferred**: even one allowed squared error
+can exceed i64, and an exact MSE would not generally have a rational square
+root. The report emits neither approximations nor placeholder values.
+
+Status codes: `1` invalid plan or pins, `2` missing or incorrect month/request,
+`3` failed evaluation replay, `4` unexpected replayed score encoding or
+report hash failure. A failed report has no ID or bytes.
+
 ## Verification
 
 ```sh
@@ -145,6 +204,14 @@ processes for six scored evaluations and one unknown. It rejects 20 invalid
 inputs, including rehashed manifests with wrong parents or policy and a
 forged score whose digest was substituted into a rehashed manifest.
 
+The holdout checks use a Python `Fraction` oracle for eight compiled reports:
+the two preselected baselines, fractional and mixed-sign errors, partial and
+all-unknown coverage, exact zero and signed cancellation, and a 24-month
+near-limit case. Twenty-two rejection cases cover split chronology, missing and
+duplicate targets, window limits, pin/cutoff mismatches, and tampered archives.
+Successful reports are schema-validated and compared byte-for-byte across
+independent invocations.
+
 For schema/oracle-only checks (not a compiled claim):
 
 ```sh
@@ -155,9 +222,9 @@ python3 tests/check_forecast_scores.py --oracle-only
 
 - Integrate the in-memory manifest with a trusted host catalog and a
   write-once evaluation store. No writer or CLI command exists for this format.
-- Aggregate per-origin scores into a backtest with scored/unknown counts,
-  MAE, signed bias and optionally overflow-safe RMSE/MSE. Never select models
-  on holdout accuracy and then report that same holdout as unbiased.
+- Add a trusted selection/plan catalog if the host must prove model selection
+  preceded holdout access. Design checked wider accumulation for exact MSE
+  and explicit precision/rounding rules for RMSE before adding either metric.
 - Generalize beyond Eurostat EU27 guest-night data and the current fixed
   three-row snapshot shape; support different training/economic periods.
 - Admit new provider profiles only with source authorization, schema checks,

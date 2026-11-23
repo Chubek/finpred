@@ -2,6 +2,8 @@
 # Names and snapshot descriptors are supplied by the operator, not plugins.
 # No network, provider URL, store or external action is reachable here.
 import dragnet.source_registry as Sources;
+import core.format as F;
+import sdk.callable as SDK;
 import std.os.OS_FileSys as FS;
 import std.io.TextIO as IO;
 
@@ -31,34 +33,33 @@ fn source_name() -> string
   return text_slice(raw,0,n-1);
 }
 
-fn input(source:string, index:i64, slot:string) -> string
+fn inputs(ports:sexpr, fd:i64, end:i64) -> sexpr
 {
-  return snapshot(slot,Sources.input_limit(source,index));
+  if sx_kind(ports) == 0 { return sx_nil(); }
+  if fd >= end { tool_fail("dragnet dispatch: incompatible descriptor layout"); }
+  let port = SDK.decode_port(sx_head(ports));
+  let number = F.num(fd);
+  let first = snapshot("/proc/self/fd/$number",port["max_bytes"]);
+  return Sources.value(first,inputs(sx_tail(ports),fd+1,end));
 }
 
 fn dispatch(source:string) -> Sources.SourceOutcome
 {
-  if !Sources.admitted(source,"analysis")
-  { tool_fail("dragnet dispatch: unknown or denied source"); }
-  if source == "dragnet.frozen_csv@1"
-  {
-    return Sources.invoke(source,"analysis",input(source,0,"/proc/self/fd/4"),
-      input(source,1,"/proc/self/fd/5"),"","","");
+  if source != Sources.public_key() {
+    let binding = Sources.legacy_binding(source,"analysis");
+    if !binding["enabled"] { tool_fail("dragnet dispatch: unknown or denied source"); }
+    return Sources.invoke_values(source,"analysis",inputs(binding["inputs"],4,9),"");
   }
-  if source == "dragnet.crossref@1"
-  {
-    return Sources.invoke(source,"analysis",input(source,0,"/proc/self/fd/4"),
-      input(source,1,"/proc/self/fd/5"),input(source,2,"/proc/self/fd/6"),
-      input(source,3,"/proc/self/fd/7"),input(source,4,"/proc/self/fd/8"));
-  }
-  if source != "dragnet.public-feed@1"
-  { tool_fail("dragnet dispatch: source unavailable"); }
+  if !Sources.admitted(source,"analysis") { tool_fail("dragnet dispatch: unknown or denied source"); }
   let as_of = snapshot("/proc/self/fd/7",21);
   if text_len(as_of) != 21 || text_byte(as_of,20) != 10
   { tool_fail("dragnet dispatch: malformed as-of timestamp"); }
-  return Sources.invoke(source,"analysis",input(source,0,"/proc/self/fd/4"),
-    input(source,1,"/proc/self/fd/5"),input(source,2,"/proc/self/fd/6"),
-    text_slice(as_of,0,20),"");
+  let port = Sources.capture_port();
+  let capture = snapshot("/proc/self/fd/4",port["max_bytes"]);
+  let binding = Sources.feed_binding(capture,"analysis");
+  if !binding["enabled"] { tool_fail("dragnet dispatch: unknown or denied source"); }
+  let values = Sources.value(capture,inputs(sx_tail(binding["inputs"]),5,7));
+  return Sources.invoke_values(source,"analysis",values,text_slice(as_of,0,20));
 }
 
 fn main() -> i64

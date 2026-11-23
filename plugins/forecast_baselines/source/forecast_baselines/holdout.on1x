@@ -1,0 +1,167 @@
+# Analysis-only report over a trusted, preselected final holdout. No selector,
+# acquisition, storage or path authority. Input archives are replayed.
+import core.date as Date;
+import core.format as F;
+import core.guest_nights as Guest;
+import forecast_baselines.evaluation as Eval;
+import forecast_baselines.model as Model;
+import sdk.callable as SDK;
+import std.String as Str;
+
+record Plan {
+  model:sexpr, model_code:sexpr, scoring_code:sexpr,
+  validation_through:sexpr, selection_frozen_at:sexpr,
+  first_target:sexpr, last_target:sexpr, scoring_cutoff:sexpr
+}
+record Entry {
+  training_cutoff:sexpr, roots:Eval.Roots, frozen:Eval.Frozen, archive:Eval.Archive
+}
+record Report { status:i64, id:sexpr, bytes:sexpr }
+record Error { state:i64, thirds:i64 }
+
+fn max_targets() -> i64 { return 24; }
+fn policy() -> string {
+  return "guest-nights-holdout@1;one-model-frozen-between-validation-end-and-holdout-start;complete-contiguous-window-max-24;replay-expected-evaluation;one-scoring-cutoff;known-only-exact-mae-and-signed-bias";
+}
+fn failure(status:i64) -> Report {
+  return record<Report>{status:status,id:sx_nil(),bytes:sx_nil()};
+}
+
+# Only read the error of a *successfully replayed* canonical Score@1;
+# never use this reader to accept JSON or authorize an archive.
+fn replayed_error(bytes:string) -> Error {
+  let tail = ",\"actual\":null,\"estimate\":null,\"error\":null,\"absolute_error\":null}\n";
+  if Guest.after(bytes,text_len(bytes)-text_len(tail),tail) == text_len(bytes) {
+    return record<Error>{state:4,thirds:0};
+  }
+  let prefix = ",\"error\":{\"numerator\":";
+  var at = -1;
+  for i in 0 .. text_len(bytes) {
+    let begin = Guest.after(bytes,i,prefix);
+    if begin >= 0 { at = begin; break; }
+  }
+  let (a,n) = Guest.token(bytes,at,44,14);
+  let (b,d) = Guest.token(bytes,Guest.after(bytes,a,",\"denominator\":"),125,1);
+  let bad = record<Error>{state:0,thirds:0};
+  if b < 0 || Guest.after(bytes,b,"},\"absolute_error\":{") < 0
+    || (d != "1" && d != "3") { return bad; }
+  var start = 0;
+  if text_byte(n,0) == 45 { start = 1; }
+  if text_len(n) <= start || text_len(n)-start > 13 { return bad; }
+  var magnitude = 0;
+  for i in start .. text_len(n) {
+    let digit = Date.digit(n,i);
+    if digit < 0 { return bad; }
+    magnitude = magnitude * 10 + digit;
+  }
+  # A scored estimate and actual are each between 0 and 999999999999.
+  # Convert reduced errors to a common denominator of three guest-nights.
+  if d == "1" { magnitude = magnitude * 3; }
+  if magnitude > 2999999999997 { return bad; }
+  if start == 1 { magnitude = 0 - magnitude; }
+  return record<Error>{state:1,thirds:magnitude};
+}
+
+fn magnitude(n:i64) -> i64 { if n < 0 { return 0 - n; } return n; }
+fn average(thirds:i64, scored:i64) -> string {
+  if scored == 0 { return "null"; }
+  let denominator = 3 * scored;
+  var a = magnitude(thirds);
+  var b = denominator;
+  while b != 0 {
+    let r = a % b;
+    a = b;
+    b = r;
+  }
+  let n = F.num(thirds / a);
+  let d = F.num(denominator / a);
+  return "{\"numerator\":$n,\"denominator\":$d}";
+}
+
+# entry_at is a trusted, pure lookup of frozen data by zero-based month offset. The expected
+# Archive.id comes from that lookup, never from rehashing the submitted bytes.
+# Status: 1 invalid plan/pins; 2 absent or wrong month/request; 3 replay failed;
+# 4 unexpected score encoding. No partial report survives rejection.
+fn aggregate(linked:Eval.Linked, plan:Plan, entry_at:fn(i64) -> Entry) -> Report {
+  if !SDK.atom(plan["validation_through"],7) || !SDK.atom(plan["first_target"],7)
+    || !SDK.atom(plan["last_target"],7) || !SDK.atom(plan["selection_frozen_at"],20)
+    || !SDK.atom(plan["scoring_cutoff"],20) { return failure(1); }
+  let model = sx_text(plan["model"]);
+  let model_code = sx_text(plan["model_code"]);
+  let scoring_code = sx_text(plan["scoring_code"]);
+  let desc = Model.descriptor(model,model_code);
+  if !desc["enabled"] || !SDK.valid_digest(plan["scoring_code"])
+    || !SDK.same(plan["model_code"],linked["model_code"])
+    || !SDK.same(plan["scoring_code"],linked["scoring_code"]) { return failure(1); }
+  let validation = sx_text(plan["validation_through"]);
+  let frozen_at = sx_text(plan["selection_frozen_at"]);
+  let first = sx_text(plan["first_target"]);
+  let last = sx_text(plan["last_target"]);
+  let score_at = sx_text(plan["scoring_cutoff"]);
+  let first_index = Model.month(first);
+  let last_index = Model.month(last);
+  let validation_index = Model.month(validation);
+  if first_index < 0 || last_index < first_index || validation_index < 0
+    || validation_index >= first_index { return failure(1); }
+  let count = last_index - first_index + 1;
+  if count > max_targets() || !Date.utc_timestamp(frozen_at) || !Date.utc_timestamp(score_at)
+  { return failure(1); }
+  let after_validation = Guest.next_month(validation);
+  let after_last = Guest.next_month(last);
+  let earliest = "$after_validation-01T00:00:00Z";
+  let latest = "$first-01T00:00:00Z";
+  let last_end = "$after_last-01T00:00:00Z";
+  if !Date.utc_timestamp(earliest) || !Date.utc_timestamp(last_end)
+    || Str.compare(frozen_at,earliest) < 0 || Str.compare(frozen_at,latest) > 0
+    || Str.compare(score_at,last_end) < 0 { return failure(1); }
+
+  let policy_id = Model.digest(policy());
+  let model_policy = sx_text(desc["pin"]["policy_digest"]);
+  let scoring_policy = Model.digest(Eval.scoring_policy());
+  if !Guest.digest(policy_id) || !Guest.digest(model_policy) || !Guest.digest(scoring_policy)
+  { return failure(1); }
+  let out = buffer_new();
+  buffer_append(out,"{\"kind\":\"analysis.guest-nights-holdout\",\"version\":1,\"unit\":\"guest_nights\",\"currency\":null,\"pricing_input\":false,\"split\":\"holdout\"");
+  buffer_append(out,",\"model\":\"$model\",\"model_code_digest\":\"$model_code\",\"model_policy_digest\":\"$model_policy\"");
+  buffer_append(out,",\"scoring_code_digest\":\"$scoring_code\",\"scoring_policy_digest\":\"$scoring_policy\",\"aggregation_policy_digest\":\"$policy_id\"");
+  buffer_append(out,",\"validation_through\":\"$validation\",\"selection_frozen_at\":\"$frozen_at\",\"first_target\":\"$first\",\"last_target\":\"$last\",\"scoring_cutoff\":\"$score_at\",\"evaluations\":[");
+  var scored = 0;
+  var signed = 0;
+  var absolute = 0;
+  for i in 0 .. count {
+    let item = entry_at(i);
+    let training_at = sx_text(item["training_cutoff"]);
+    let request = item["frozen"]["request"];
+    if !SDK.atom(item["training_cutoff"],20) || !Eval.bounded(request,128) { return failure(2); }
+    let spec = Model.spec(sx_text(request),training_at);
+    if spec["month"] != first_index + i { return failure(2); }
+    let selection = record<Eval.Selection>{model:plan["model"],model_code:plan["model_code"],
+      scoring_code:plan["scoring_code"],training_cutoff:item["training_cutoff"],
+      scoring_cutoff:plan["scoring_cutoff"]};
+    let run = Eval.replay(linked,selection,item["roots"],item["frozen"],item["archive"]);
+    if run["status"] != 0 { return failure(3); }
+    let error = replayed_error(sx_text(run["score"]));
+    var state = "unknown";
+    if error["state"] == 1 {
+      state = "scored";
+      scored = scored + 1;
+      # |sum| <= 24 * 2999999999997, far below signed i64 max.
+      signed = signed + error["thirds"];
+      absolute = absolute + magnitude(error["thirds"]);
+    } else { if error["state"] != 4 { return failure(4); } }
+    let target = sx_text(spec["target"]);
+    let evaluation = sx_text(run["id"]);
+    if i > 0 { buffer_append(out,","); }
+    buffer_append(out,"{\"target_month\":\"$target\",\"evaluation\":\"$evaluation\",\"state\":\"$state\"}");
+  }
+  let expected = F.num(count);
+  let known = F.num(scored);
+  let unknown = F.num(count-scored);
+  let mae = average(absolute,scored);
+  let bias = average(signed,scored);
+  buffer_append(out,"],\"expected\":$expected,\"scored\":$known,\"unknown\":$unknown,\"mae\":$mae,\"bias\":$bias}\n");
+  let bytes = buffer_text(out);
+  let id = Model.digest(bytes);
+  if !Guest.digest(id) { return failure(4); }
+  return record<Report>{status:0,id:sx_string(id),bytes:sx_string(bytes)};
+}

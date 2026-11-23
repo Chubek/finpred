@@ -40,7 +40,7 @@ done
 [[ -z $run || -z $import_csv ]] || die 'choose one import source'
 umask 077
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/poindexter-grid.XXXXXXXX")
-tui=0 stage=
+tui=0 stage= baseline=
 cleanup() {
   if ((tui)); then printf '\033[?25h\033[?1049l'; fi
   [[ -z $stage ]] || rm -f -- "$stage"
@@ -54,7 +54,11 @@ printf 'poindexter-workbook@1\n' >"$PX_BOOK"
 if [[ -n $book && ( -e $book || -L $book ) ]]; then
   [[ -f $book && ! -L $book ]] || die 'expected a regular workbook file'
   [[ -z $run && -z $import_csv ]] || die 'import seeds a new book; existing workbook not overwritten'
-  PX_BOOK="$book" worker check >"$tmp/loaded"; mv -- "$tmp/loaded" "$PX_BOOK"
+  baseline="$tmp/original"
+  # Keep the exact bytes validated by the worker, before it normalizes them.
+  # Read one byte beyond the worker's 210000-byte limit so oversize files fail.
+  head -c 210001 <"$book" >"$baseline"
+  PX_BOOK="$baseline" worker check >"$tmp/loaded"; mv -- "$tmp/loaded" "$PX_BOOK"
 fi
 dirty=0
 if [[ -n $run ]]; then
@@ -66,12 +70,32 @@ if [[ -n $import_csv ]]; then
   PX_DATA="$import_csv" worker importcsv >"$tmp/seed"; mv -- "$tmp/seed" "$PX_BOOK"; dirty=1
 fi
 save_book() {
-  [[ -n $book && ! -L $book ]] || return 1
-  stage=$(mktemp -- "$book.tmp.XXXXXXXX") || return 1
-  if ! cp -- "$PX_BOOK" "$stage" || ! mv -fT -- "$stage" "$book"; then
-    rm -f -- "$stage"; stage=; return 1
+  local target=$1 next_baseline="$tmp/saved-a"
+  [[ $target != - ]] || target=./-  # cmp treats a bare "-" as stdin.
+  [[ $baseline != "$next_baseline" ]] || next_baseline="$tmp/saved-b"
+  save_error='Save failed.'
+  stage=$(mktemp -- "$target.tmp.XXXXXXXX") || return 1
+  if cp -- "$PX_BOOK" "$stage" && cp -- "$stage" "$next_baseline"; then
+    if [[ -n $baseline ]]; then
+      # Detect ordinary edits/deletion since load/save, immediately before
+      # replacement. This is not a lock against concurrent replacements.
+      if [[ -f $target && ! -L $target ]] && cmp -s -- "$baseline" "$target"; then
+        if mv -fT -- "$stage" "$target"; then save_error=; fi
+      else
+        save_error='Save conflict: workbook changed on disk.'
+      fi
+    else
+      # Publish a new workbook without replacing anything at the target.
+      if ln -T -- "$stage" "$target" 2>/dev/null; then
+        save_error=
+      elif [[ -e $target || -L $target ]]; then
+        save_error='Save conflict: workbook path is no longer free.'
+      fi
+    fi
   fi
-  stage=; dirty=0
+  rm -f -- "$stage"; stage=
+  [[ -z $save_error ]] || return 1
+  baseline=$next_baseline; book=$target; dirty=0
 }
 if [[ -n $script || -n $output ]]; then
   if [[ -n $script ]]; then
@@ -79,7 +103,7 @@ if [[ -n $script || -n $output ]]; then
     PX_DATA="$script" worker script >"$tmp/next"; mv -- "$tmp/next" "$PX_BOOK"
   fi
   worker "${output:-csv}" >"$tmp/result"
-  if [[ -n $book && ( -n $script || $dirty == 1 ) ]]; then save_book || die 'could not save workbook'; fi
+  if [[ -n $book && ( -n $script || $dirty == 1 ) ]]; then save_book "$book" || die "$save_error"; fi
   cat -- "$tmp/result"; exit 0
 fi
 [[ -t 0 && -t 1 ]] || die 'interactive grid requires a terminal; use --get CELL or --csv for batch output'
@@ -126,12 +150,13 @@ while :; do
        if [[ -f $answer ]]; then PX_DATA="$answer" change script; else status='Script file not found.'; fi ;;
     u) if [[ -f $tmp/undo ]]; then mv -- "$PX_BOOK" "$tmp/redo"; mv -- "$tmp/undo" "$PX_BOOK"; dirty=1; status='Undone.'; fi ;;
     r) if [[ -f $tmp/redo ]]; then mv -- "$PX_BOOK" "$tmp/undo"; mv -- "$tmp/redo" "$PX_BOOK"; dirty=1; status='Redone.'; fi ;;
-    s) if [[ -z $book ]]; then
+    s) target=$book
+       if [[ -z $target ]]; then
          prompt 'New workbook path: '
          if [[ -z $answer || -e $answer || -L $answer ]]; then status='Choose a new workbook path.'; continue; fi
-         book=$answer
+         target=$answer
        fi
-       if save_book; then status='Workbook saved.'; else status='Save failed.'; fi ;;
+       if save_book "$target"; then status='Workbook saved.'; else status=$save_error; fi ;;
     '?') printf '\033[H\033[2J%s\n' \
       'POINDEXTER / Quick reference' 'Arrows or hjkl: move     g: go to A1:P64' \
       'Enter/e: edit   d: clear   y/p: copy/paste   u/r: undo/redo last change' \

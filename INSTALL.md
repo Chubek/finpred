@@ -1,6 +1,10 @@
 # Install and verify FinPRED
 
-Build from the **FinPRED repository root**. The verified platform is x86-64 GNU/Linux. MuLIB, its On1x compiler and the nested LibStone sources are separate dependencies; `bin/build.sh` does not download them. The [acceptance record](docs/IMPLEMENTATION.md#acceptance-record) gives the tested host, versions and commands. For what the program does, see the [overview](README.md).
+Build from the **FinPRED repository root**. The verification target is
+x86-64 GNU/Linux. `bin/build.sh` does not fetch MuLIB or nested LibStone or
+build the On1x compiler. The [acceptance record](docs/IMPLEMENTATION.md#acceptance-record)
+lists historical hosts, versions and commands; it does not verify your
+checkout. See the [overview](README.md) for application scope.
 
 The build wrapper assembles the host and its linked `plugins/` modules in a
 temporary project because On1xfile discovers one source tree. Use `./bin/build.sh`
@@ -8,14 +12,17 @@ for the CLI; set `FINPRED_BUILD_DIR` to choose a different output directory.
 After `make mulib` builds `on1xc` and GrammarEmbed, `make` is equivalent to
 `./bin/build.sh`.
 Use `make test` to build and verify the CLI, `make native-test` for the
-standalone C store tests, and `make poindexter` to build the workbench.
+standalone C store candidate, and `make poindexter` to build the workbench.
 `make poindexter-gui` additionally builds the optional ImmGTK frontend.
 It requires the X11 development library and `pkg-config`, not GTK. The
 ordinary CLI and terminal workbench do not require X11.
 
 ## 1. Prepare the host
 
-Use Git, CMake (On1x requires 3.20 or newer), a CMake build tool such as Make, C11 and C++20 toolchains, Perl for LibStone’s generators, and Python 3 for the build driver and tests. The C11 driver expects `cc` on `PATH`. The recorded build used GCC 16.2.1, CMake 4.4.3 and Python 3.14.7. The compiled pricing CLI itself does not use Python.
+Use Git, GNU Make, CMake (On1x requires 3.20 or newer), C11 and C++20
+toolchains, Perl for LibStone’s generators, and Python 3 for the build driver
+and tests. The C11 driver expects `cc` on `PATH`. The compiled pricing CLI
+itself does not use Python.
 
 The integration suite, including `make forecast-score-test` for scoring and
 evaluation replay, uses `jsonschema` 4 with Draft 2020-12 support. The
@@ -23,6 +30,8 @@ forecast graph test uses `pkg-config`, libxml2, and Jansson development headers
 for offline fixture decoding. `make test` also runs the offline Dragnet suite,
 which additionally needs libcurl ≥ 7.85. On Ubuntu 24.04 those headers are
 provided by `libcurl4-openssl-dev`, `libxml2-dev`, and `libjansson-dev`.
+The CI workflow also installs `strace` for network-syscall checks during
+offline Dragnet verification.
 If `jsonschema` is not already installed, create a test environment:
 
 ```sh
@@ -47,8 +56,9 @@ git -C third_party/mulib submodule status on1x/third_party/libstone
 
 A leading `+` in either status line means the checkout differs from the pinned
 revision. `make mulib` refuses a mismatched default MuLIB checkout or a
-LibStone checkout that does not match the selected MuLIB gitlink. To build with
-an explicitly selected external Git checkout, export its **absolute path** as
+LibStone checkout that does not match the selected MuLIB gitlink. If you are
+working in an existing checkout, inspect and preserve any local submodule
+work before updating it. To use an external Git checkout, export its **absolute path** as
 `MULIB_ROOT`; the nested LibStone pin still applies.
 
 ## 3. Build the compiler, then the application
@@ -67,7 +77,7 @@ points elsewhere:
 | Output | Location |
 | --- | --- |
 | On1x compiler, GrammarEmbed, and MuLIB/LibStone intermediates | `build/mulib/on1x/` |
-| FinPRED CLI | `build/dev/finpred` |
+| FinPRED CLI (normally invoked as `./bin/finpred`) | `build/dev/finpred` |
 | Poindexter grid and optional GUI | `build/poindexter/` |
 | Dragnet CSV, Crossref, public-feed and dispatcher tools | `build/dragnet/`, `build/dragnet-crossref/`, `build/dragnet-feeds/`, `build/dragnet-dispatch/` (explicit dispatcher output) |
 | Standalone C review builds | `build/native/`, `build/poindexter-tui-review/` |
@@ -91,10 +101,24 @@ same revision; override paths opt out of the default paired build.
 
 ## 4. Check the build
 
-The [CI workflow](.github/workflows/verify.yml) runs these checks on Ubuntu
-24.04 x86-64. It also builds the independent package consumers, the Poindexter
-workbench and the standalone native store tests. The [coverage index](tests/COVERAGE.md)
+Run the full application suite and the separate native store candidate tests:
+
+```sh
+make test
+make native-test
+```
+
+`make test` builds the CLI, checks build paths, runs the application
+integration suite, and invokes `make dragnet-test` and
+`make forecast-score-test`. The [CI workflow](.github/workflows/verify.yml)
+configures equivalent checks on Ubuntu 24.04 x86-64, plus independent package
+consumers and Poindexter workbench and terminal checks. The X11 GUI test is
+conditional on X11 development files. The native-store job does not test
+KernelBind admission or power-loss behavior. The [coverage index](tests/COVERAGE.md)
 links the positive and negative cases.
+
+For faster checks, use the fixture oracle and static validator; run the
+integration script directly only if you already built the intended executable:
 
 ```sh
 python3 tests/check_fixtures.py
@@ -102,13 +126,23 @@ python3 tests/validate_static.py
 ./tests/run.sh
 ```
 
-The oracle should report `price_minor=17100` and `expected_minor=16000`; the static check verifies module declarations and four schemas. Neither runs the pricing engine. The [integration suite](tests/run.sh) exercises the compiled CLI in disposable homes, including both prices and reasons, replay with live paths unavailable, derived room evidence, unchanged store contents, JSON and parent checks, corrupt artifacts, invalid inputs and execution denial. A successful suite ends with `on1x_integration_ok=true`. Continue with the **[operator guide](GUIDE.md)**.
+The oracle should report `price_minor=17100` and `expected_minor=16000`.
+The static check verifies module declarations and the schemas under
+[`contracts/`](contracts/), including the four historical pricing and
+hospitality schemas. Neither runs the pricing engine. The
+[integration suite](tests/run.sh) exercises the compiled CLI in disposable
+homes, checking both prices and reasons, read-only replay without live
+inputs, room evidence, parent and digest validation, and denial of execution
+mode. It ends with `on1x_integration_ok=true` on success; that marker does
+not cover the separate Dragnet, forecast scoring or native tests.
+Continue with the **[operator guide](GUIDE.md)**.
 
 ## Troubleshooting
 
 | Symptom | What to check |
 | --- | --- |
 | `Missing MuLIB` / `Missing compiled On1x compiler` | Initialize the source checkout, then run `make mulib` to build `on1xc` and GrammarEmbed. `ON1XC` alone does not supply the source tree. |
+| `Submodule pin mismatch` | Compare the expected and actual revisions with the commands in [step 2](#2-pin-mulib-and-libstone). An existing executable is not evidence of a successful build with the pinned compiler. |
 | `check_environ_argv.py` reports zero arguments for a nonempty vector | Rebuild `on1xc` with `make mulib` and check for a stale `ON1XC` override. The compiler must generate startup code that forwards the process argv. |
 | `Missing LibStone generators` | Check the nested submodule revision and `scripts/asdl.pl` and `scripts/aurocks.pl` under its root. Rerun step 2, then configure against that root. |
 | Temporary volume full during configure/build/test | Set `TMPDIR` to a writable executable filesystem with enough space. For an incompatible CMake cache, set the old `build/mulib/on1x` tree aside and rerun `make mulib`. |

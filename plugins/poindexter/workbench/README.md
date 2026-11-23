@@ -16,7 +16,7 @@ Press `s` to save formulas as well as values.
 The terminal title uses the On1x `std.tty` facade, backed by MuLIB terminfo
 and terminal styling. Unsupported terminal styles and `NO_COLOR` fall
 back to a plain title. The GUI still reads the original unstyled frame
-format. Keyboard handling and workbook save behavior are unchanged.
+format.
 
 Direct `import kernel` for MuLIB's TUI headers is not currently admitted
 by the pinned On1x compiler. The terminal facade is part of the pinned
@@ -146,12 +146,20 @@ are unsupported. Export writes evaluated display values over the used
 rectangle, including text and error markers, not the cell sources.
 
 The separate `poindexter-workbook@1` format preserves original formulas:
-a header plus one `address<TAB>source` line per nonempty cell. Save replaces
-the named workbook via a same-directory temporary file. Use a separate local
-file for each editor; there is no multi-writer merge. A seed import refuses
-to replace an existing book. With `--script` or a seed import plus a batch
-output option, `--book` saves the new state on success. With neither, the
-batch result is printed without modifying the input book.
+a header plus one `address<TAB>source` line per nonempty cell. The terminal
+host stages saves in the destination directory. It checks existing books
+against their exact bytes when opened or last saved, and creates new books
+without replacing files that appear at the chosen path. On a save conflict
+the terminal keeps unsaved edits and warns before discarding them. A failed
+batch save does not print a result.
+
+Use a separate local file for each editor. The existing-file check detects
+stale content but does not lock the path between comparison and replacement.
+New saves need a filesystem that supports hard links; there is no overwrite
+fallback. A seed import refuses to replace an existing book. With `--script`
+or a seed import plus a batch output option, `--book` saves the new state on
+success. With neither, the batch result is printed without modifying the
+input book.
 
 The Bash host handles terminal keys, selected files, and session state.
 Parsing, evaluation, relative copy, program execution, and table rendering

@@ -1,27 +1,30 @@
 # FinPRED — Financial prediction and decision research in On1x
 
+[![Verify FinPRED (master)](https://github.com/Chubek/finpred/actions/workflows/verify.yml/badge.svg?branch=master)](https://github.com/Chubek/finpred/actions/workflows/verify.yml?query=branch%3Amaster)
+
 FinPRED is a **local-first**, contract-driven analysis system built primarily
 in [MuLIB's On1x language](https://github.com/Chubek/mulib). Its currently
-usable application is **Yieldcraft**, which recommends nightly EUR prices for
-frozen accommodation scenarios. The codebase also has a typed financial
-Algorithm Automat, a versioned Ottomat frontend, a static callable SDK,
-reproducible Dragnet sources, analysis-only guest-night forecasting baselines,
-and Poindexter spreadsheet frontends.
+usable pricing application is **Yieldcraft**, which recommends nightly EUR
+prices for frozen accommodation scenarios. The CLI also runs read-only scalar
+analysis. The codebase provides separate compiled interfaces for typed
+financial graphs, reproducible data sources and point-in-time guest-night
+forecasting, plus Poindexter views of verified pricing runs.
 
 **A recommendation is not an authorization to trade, book, publish or modify
 a third-party price.** There is no enabled live action gateway.
 
-## Proven synthetic pricing outcomes
+## Expected synthetic pricing outcomes
 
-| Scenario | Recommendation | Reason |
+| Scenario | Recommendation | CLI reason |
 |---|---:|---|
-| Default, five feasible independent properties | **EUR 171/night** | P40 shortcut below P50 |
-| Multi-room, three feasible independent properties | **EUR 160/night** | Floor guardrail adjustment |
+| Default, five feasible independent properties | **EUR 171/night** | `lower_percentile_shortcut` |
+| Multi-room, three feasible independent properties | **EUR 160/night** | `guardrail_adjustment` |
 
 These are deterministic decisions based on frozen comparables, **not**
-trained demand forecasts or guarantees of financial performance. Historical
-`finpred-run@1` archives are replay-only; the active Yieldcraft writer uses
-`finpred-run@2`. Preserve their recorded bytes and identities.
+trained demand forecasts or guarantees of financial performance. Both report
+`published=false`. Historical `finpred-run@1` archives are read-only; new
+Yieldcraft runs use `finpred-run@2`. Preserve the recorded bytes and identities
+of both formats.
 
 ## Build and verify
 
@@ -33,19 +36,18 @@ and build instructions in [INSTALL.md](INSTALL.md):
 git submodule update --init third_party/mulib
 git -C third_party/mulib submodule update --init on1x/third_party/libstone
 make mulib           # builds the local On1x compiler + GrammarEmbed
-make                 # builds FinPRED's C11-backed On1x CLI
+make                 # builds build/dev/finpred
 ./bin/finpred selftest
 make test            # application, package, source, model conformance suites
 make native-test     # isolated C store review target
 ```
 
-`make test` also runs the compiled Dragnet tests and the
-[forecast scoring and evaluation replay](docs/FORECAST_SCORING.md) conformance
-suite. Refer to the
-[CI workflow](.github/workflows/verify.yml) and
-[test coverage index](tests/COVERAGE.md) for negative cases and actual
-verification outcomes. A successful standalone C test does **not** imply
-that its native API has been independently admitted into On1x KernelBind.
+`make test` exercises the CLI it builds, including compiled Dragnet and
+[forecast scoring and evaluation replay](docs/FORECAST_SCORING.md) checks.
+[Verify FinPRED](.github/workflows/verify.yml) is the sole Actions workflow:
+it checks the application and standalone native store on Ubuntu 24.04. It
+does not publish releases or deploy anything. The badge reflects hosted
+workflow status on `master`, not verification of a local checkout.
 
 ## Architecture and entry points
 
@@ -53,25 +55,27 @@ that its native API has been independently admitted into On1x KernelBind.
 |---|---|
 | **Yieldcraft** | [`plugins/yieldcraft/`](plugins/yieldcraft/) — exact multiroom matching, percentile decision, guardrails |
 | **Automat** | [`source/automat/`](source/automat/) — fixed legacy recommendation runner, scalar DAG, general bounded typed financial DAG and immutable in-memory artifacts |
-| **Ottomat** | [`source/ottomat/`](source/ottomat/) — versioned strategy grammar, typed financial lowering, no strategy-owned effects |
+| **Ottomat** | [`source/ottomat/`](source/ottomat/) — legacy and scalar strategy grammars; v6 lowers to the typed financial graph, with no strategy-owned authority |
 | **SDK** | [`source/sdk/`](source/sdk/) — trusted, statically linked versioned handler descriptors, callable ports and capability checks |
 | **Dragnet** | [`plugins/dragnet/`](plugins/dragnet/) — frozen CSV, Crossref evidence, ECB/Eurostat snapshot acquisition and offline Source dispatch |
-| **Forecast baselines** | [`plugins/forecast_baselines/`](plugins/forecast_baselines/) — moving-average/seasonal-naive monthly guest-night research, post-issuance scores and in-memory evaluation manifests |
+| **Forecast baselines** | [`plugins/forecast_baselines/`](plugins/forecast_baselines/) — moving-average and seasonal-naive monthly guest-night models; later actuals are used only to score issued forecasts |
 | **Poindexter** | [`plugins/poindexter/`](plugins/poindexter/) — verified-run projection, terminal spreadsheet and optional ImmGTK X11 frontend |
 | **Artifact store** | [`source/store/`](source/store/) — versioned immutable object/run evidence in a private cooperative store |
 | **Native store candidate** | [`native/`](native/) — standalone security review target; **not** the CLI's admitted durable backend |
 
-The financial graph is tested through independent compiled On1x consumers.
-The CLI still distinguishes legacy persisted pricing runs from read-only
-scalar analysis (`./bin/finpred run --engine scalar`). Do **not** assume the
-new financial graph has already replaced the legacy persisted-run protocol.
+The financial graph and forecast evaluation are exercised through independent
+compiled On1x consumers. They are not `finpred` CLI engines or new persisted
+pricing formats. The pricing CLI uses the legacy runner; scalar analysis
+(`./bin/finpred run --engine scalar`) prints a result without saving a run.
 
 ## Start here
 
 1. [Install and verify](INSTALL.md) — pin the compiler and execute the tests.
 2. [Operator guide](GUIDE.md) — run, replay, explain and inspect frozen evidence.
-3. [Implementation and acceptance record](docs/IMPLEMENTATION.md) — see
-   implemented interfaces and the limits of their recorded tests.
+3. [Implementation and acceptance record](docs/IMPLEMENTATION.md#acceptance-record)
+   and [test coverage](tests/COVERAGE.md) — historical results and the checks
+   that produced them. The [assessment](docs/CURRENT_ASSESSMENT.md) describes
+   an earlier checkpoint and its remaining gates.
 4. [Algorithm Automat](source/automat/README.md) and
    [Ottomat](source/ottomat/README.md) — typed graph semantics, frontend and replay.
 5. [Plugin developer guide](PLUGIN.md) and
@@ -87,15 +91,18 @@ new financial graph has already replaced the legacy persisted-run protocol.
 
 ## Security and reproducibility boundaries
 
-- All normal build/test acquisitions are synthetic or offline fixture based;
-  external polling is explicit opt-in and subject to provider terms.
+- Source conformance tests use frozen fixtures and loopback HTTP, not live
+  providers. Live polling is separate, explicit opt-in and subject to provider
+  terms.
 - An ECB reference rate is **not** an executable FX quote; Eurostat aggregate
   guest nights are **not** property-level inventory or pricing comparables.
 - Algorithm and plugin metadata are not authority tokens. Untrusted plugins
   require a reviewed worker isolation boundary, not merely a static descriptor.
 - Run and source BLAKE3 digests provide byte integrity, **not** provider
   authenticity or signatures.
-- The private store currently supports cooperating publishers. Power-loss
-  durability and hostile-filesystem confinement are separate release gates.
+- The CLI store assumes cooperating publishers and trusted directories. The
+  standalone native store is a review candidate, not an admitted On1x
+  backend. Neither its C tests nor the CI badge establish power-loss
+  durability or hostile-filesystem confinement for the CLI.
 - Do not rewrite stored v1/v2 run identities, mutate old fixtures, or enable
   external actions when adding a strategy, model or plugin.

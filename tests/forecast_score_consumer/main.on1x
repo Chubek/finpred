@@ -1,6 +1,8 @@
 # Independent compiled consumer: neither the CLI nor the pricing store is linked.
 import core.guest_nights as Guest;
+import core.format as F;
 import forecast_baselines.evaluation as Evaluation;
+import forecast_baselines.holdout as Holdout;
 import forecast_baselines.model as Model;
 import forecast_baselines.score as Score;
 import sdk.callable as SDK;
@@ -11,10 +13,43 @@ fn env(key:string) -> string { return Env.basis_command_line_get_env(key); }
 fn code() -> string { return Model.digest(env("CODE_BYTES")); }
 fn lookup(key:string) -> SDK.Descriptor { return Model.descriptor(key,code()); }
 
+fn field(index:i64, key:string) -> sexpr {
+  let n = F.num(index);
+  return sx_string(env("ENTRY_${n}_$key"));
+}
+fn holdout_entry(index:i64) -> Holdout.Entry {
+  let roots = record<Evaluation.Roots>{training_snapshot:field(index,"TRAIN_PARENT"),
+    actuals_snapshot:field(index,"ACTUAL_PARENT"),request:field(index,"REQUEST_PARENT"),
+    forecast:field(index,"FORECAST_PARENT")};
+  let frozen = record<Evaluation.Frozen>{training_snapshot:field(index,"TRAIN_RAW"),
+    actuals_snapshot:field(index,"ACTUAL_RAW"),request:field(index,"REQUEST"),
+    forecast:field(index,"FROZEN_FORECAST")};
+  let archive = record<Evaluation.Archive>{id:field(index,"EVALUATION_ID"),
+    manifest:field(index,"MANIFEST"),score:field(index,"SCORE")};
+  return record<Holdout.Entry>{training_cutoff:field(index,"TRAIN_CUTOFF"),
+    roots:roots,frozen:frozen,archive:archive};
+}
+
 fn main() -> i64 {
   let task = env("CASE");
   if task == "digest" {
     println(Model.digest(env("BYTES")));
+    return 0;
+  }
+  if task == "holdout" {
+    let host = record<Evaluation.Linked>{model_code:sx_string(code()),
+      scoring_code:sx_string(Model.digest(env("SCORING_CODE_BYTES")))};
+    let plan = record<Holdout.Plan>{model:sx_string(env("MODEL")),model_code:sx_string(env("MODEL_CODE")),
+      scoring_code:sx_string(env("SCORING_CODE")),validation_through:sx_string(env("VALIDATION_THROUGH")),
+      selection_frozen_at:sx_string(env("SELECTION_FROZEN_AT")),first_target:sx_string(env("FIRST_TARGET")),
+      last_target:sx_string(env("LAST_TARGET")),scoring_cutoff:sx_string(env("SCORE_CUTOFF"))};
+    let report = Holdout.aggregate(host,plan,holdout_entry);
+    if report["status"] != 0 {
+      if sx_kind(report["id"]) != 0 || sx_kind(report["bytes"]) != 0 { return 69; }
+      return 70 + report["status"];
+    }
+    println(sx_text(report["id"]));
+    IO.basis_text_io_print(sx_text(report["bytes"]));
     return 0;
   }
   let model = env("MODEL");

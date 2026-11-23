@@ -1,6 +1,8 @@
 # Operate the local FinPRED CLI
 
-Start with a tested executable from [INSTALL.md](INSTALL.md). The [overview](README.md) describes the scope. Run the examples below from the FinPRED root, in the same shell, so all commands share one store.
+Build and verify the executable with [INSTALL.md](INSTALL.md). Run the
+examples below from the FinPRED root, in the same shell. The pricing examples
+share one local `FINPRED_HOME`; scalar analysis does not use it.
 
 ## Choose an engine
 
@@ -8,6 +10,12 @@ Start with a tested executable from [INSTALL.md](INSTALL.md). The [overview](REA
 | --- | --- | --- |
 | `./bin/finpred run --engine legacy` (default) | Frozen hospitality CSVs and Ottomat v1/v2 | EUR recommendation recorded as `finpred-run@2` |
 | `./bin/finpred run --engine scalar` | Two unitless integers and Ottomat v3/v4/v5 | Typed value, output digest, and node trace on stdout; no store access |
+
+The launcher accepts `run [--engine legacy|scalar]`, `selftest`, or one of
+`replay`, `explain`, `evidence`, and `poindexter` followed by a run ID.
+Invoking `./bin/finpred` with no arguments means `run`. The direct
+`build/dev/finpred` executable reads environment variables rather than
+parsing these launcher arguments.
 
 Set `FINPRED_ENGINE=legacy` or `FINPRED_ENGINE=scalar` to choose a default
 for `run` (also supported by the direct executable). An explicit `--engine`
@@ -30,6 +38,23 @@ from `0` through `1000000000000`. `FINPRED_SCALAR_BUDGET` accepts `1` through
 `16`. No signs, spaces, or leading zeros are allowed. The scalar engine
 does not read the pricing CSVs or create a saved run. Its output digest
 identifies the selected node and its inputs, not a run ID or recommendation.
+
+## Point-in-time analysis beyond the CLI
+
+Ottomat v6 and the [typed financial graph](source/automat/README.md#typed-financial-graph)
+are library interfaces, not options for `run --engine`. The
+[guest-night baselines](plugins/forecast_baselines/README.md) use a frozen
+Eurostat-derived snapshot visible at the training cutoff. Post-issuance
+[scoring and evaluation replay](docs/FORECAST_SCORING.md) use a separately
+frozen actuals snapshot at a later scoring cutoff. Later observations never
+enter the original forecast; unavailable evidence is reported as `unknown`,
+not zero. Evaluation manifests are returned in memory, not written as
+pricing runs and not accepted by `finpred replay`.
+
+These aggregates and [ECB reference-rate observations](contracts/ANALYSIS.md)
+are analysis-only: neither supplies room-price comparables, and a reference
+rate is not an executable FX quote. FinPRED has no trading, booking or
+external price-publication command.
 
 ## Run the default fixture
 
@@ -85,7 +110,8 @@ valuation artifacts. See the [Poindexter column definitions](plugins/poindexter/
 To work with the result interactively, build the worksheet once with
 `./bin/poindexter --build`, then run `./bin/poindexter --run "$id" --book analysis.pxw`
 using a new workbook path. Press `e` to enter a formula, `@` to run a
-worksheet script, and `s` to save your working copy. The [workbench guide](plugins/poindexter/workbench/README.md)
+worksheet script, and `s` to save your working copy. The workbook is separate
+from the verified run; worksheet edits cannot change its evidence. The [workbench guide](plugins/poindexter/workbench/README.md)
 includes a runnable seven-night pricing example.
 
 ## Try the multi-room fixture
@@ -126,10 +152,10 @@ The [fixture catalog](fixtures/README.md) includes runnable examples for decisio
 | `FINPRED_SCENARIO` | [`fixtures/scenario.csv`](fixtures/scenario.csv) | One stay, decision timestamp, party, target and matching limits. |
 | `FINPRED_OFFERS` | [`fixtures/offers.csv`](fixtures/offers.csv) | One inventory unit per row, with capacities, validity, fees and taxes. |
 | `FINPRED_VALUATION` | [`fixtures/valuation.csv`](fixtures/valuation.csv) | One row: current nightly price, floor, cap, maximum movement and shortcut threshold. |
-| `FINPRED_STRATEGY` | [`strategies/yieldcraft.ottomat`](strategies/yieldcraft.ottomat) | The default uses `ottmat 1` syntax and follows the scenario target. [Named profiles](strategies/README.md) use `ottmat 2` syntax and override target selection while retaining the same evidence checks and guardrails. Both are inputs to `finpred-run@2`. |
+| `FINPRED_STRATEGY` | [`strategies/yieldcraft.ottomat`](strategies/yieldcraft.ottomat) | The default follows the scenario target. [Named profiles](strategies/README.md) override target selection while retaining the same evidence checks and guardrails. These shipped Ottomat v1/v2 files keep the legacy `ottmat` header spelling to preserve their exact digests and run IDs. New sources can use `ottomat`; do not rewrite archived bytes. |
 | `FINPRED_HOME` | `.finpred/` | Private local state; the parent directory must exist. Use the same home when replaying. |
 
-Use the launcher arguments for the command and run ID; it sets `FINPRED_MODE` and `FINPRED_RUN_ID` for the executable. `FINPRED_MODE=execution` is explicitly denied. No mode books rooms or changes a listed price.
+Use the launcher arguments for the command and run ID; it sets `FINPRED_MODE` and `FINPRED_RUN_ID` for the executable. `FINPRED_MODE=execution` is explicitly denied, even if you invoke the executable directly. Saving a local recommendation is not external publication.
 
 **Format and timing.** Copy the exact headers and column order from the fixtures. CSV is unquoted printable ASCII, with LF or CRLF rows, unsigned decimal integer fields, and `0`/`1` for `bookable`. No quoted commas, missing values, BOM, or extra columns. Civil dates use `YYYY-MM-DD` (1970–2399); UTC timestamps use `YYYY-MM-DDTHH:MM:SSZ`. Qualifying offers match both stay dates, were observed **and** ingested by `decision_at`, cover the stay with `valid_from`/`valid_to`, and meet `max_age_days` in calendar days. A well-formed but ineligible observation is excluded; malformed data or unsupported currency fails the run.
 
@@ -141,5 +167,5 @@ Use the launcher arguments for the command and run ID; it sets `FINPRED_MODE` an
 
 - `runs/<run_id>.txt` is the commit record. `artifacts/blake3-<digest>.txt` holds exact raw inputs, normalized [contract envelopes](contracts/), outputs and traces. A `finpred-run@2` ID hashes the lineage record, which binds the raw digests, ordered normalized parents (including rejected offers), graph and policy versions. To migrate an archive, run its verified snapshots to create a new v2 identity; leave the original v1 record and artifacts unchanged. See [formats and migration](docs/RUN_FORMAT.md).
 - Back up the **whole home** while writers are stopped; copying the manifest alone loses its inputs. Verify a restored copy with `replay` using a previously saved run ID. `unknown id` can mean the wrong home. For missing snapshots, digest mismatches or immutable path conflicts, stop and check the backup; replay does not repair or overwrite published files.
-- Use a private local POSIX directory with trusted ancestors. Cooperating writers reserve `<destination>.pending`, close and rename the staged payload on the same filesystem, then publish the manifest last. If a staged write or rename reports failure, the writer cleans up its own payload and reservation or reports a cleanup error. A busy reservation can fail explicitly. Rename makes a complete file visible, but does not prevent another program from replacing it. Power-loss durability and hostile-symlink confinement still require a [reviewed storage interface](native/STORE_ADMISSION.md). Content digests are not signatures.
+- Use a private local POSIX directory with trusted ancestors. Cooperating writers reserve `<destination>.pending`, close and rename the staged payload on the same filesystem, then publish the manifest last. If a staged write or rename reports failure, the writer cleans up its own payload and reservation or reports a cleanup error. A busy reservation can fail explicitly. Rename makes a complete file visible, but does not prevent another program from replacing it. The [standalone C store](native/STORE_ADMISSION.md) is a review candidate, not the CLI backend; the CLI does not promise power-loss durability or confinement on a hostile filesystem. Content digests are not signatures.
 - After an interrupted writer, **stop all writers before cleanup**. Inspect the named reservation. Remove only a confirmed abandoned `payload` and its `.pending` directory (it may already be empty). Never promote a staged file or delete a published conflict. Rerun with the same inputs and verify the resulting ID by replay. Complete artifacts left without a manifest may be reused. See the [publication and recovery protocol](source/store/README.md).
