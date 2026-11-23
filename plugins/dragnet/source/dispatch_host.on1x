@@ -1,0 +1,64 @@
+# Trusted offline process boundary for three named pure Dragnet sources.
+# Names and snapshot descriptors are supplied by the operator, not plugins.
+# No network, provider URL, store or external action is reachable here.
+import dragnet.source_registry as Sources;
+import std.os.OS_FileSys as FS;
+import std.io.TextIO as IO;
+
+fn snapshot(slot:string, limit:i64) -> string
+{
+  let n = FS.basis_fs_file_size(slot);
+  if FS.basis_fs_is_dir(slot) || n < 1 || n > limit
+  { tool_fail("dragnet dispatch: expected bounded descriptor snapshot"); }
+  let bytes = IO.basis_text_io_input_all(slot);
+  if text_len(bytes) != n { tool_fail("dragnet dispatch: changed input"); }
+  return bytes;
+}
+
+fn source_name() -> string
+{
+  let raw = snapshot("/proc/self/fd/3",128);
+  let n = text_len(raw);
+  if n < 2 || text_byte(raw,n-1) != 10
+  { tool_fail("dragnet dispatch: invalid source selector"); }
+  for i in 0 .. (n - 1)
+  {
+    let c = text_byte(raw,i);
+    if !((c >= 97 && c <= 122) || (c >= 48 && c <= 57) ||
+      c == 45 || c == 46 || c == 64 || c == 95)
+    { tool_fail("dragnet dispatch: invalid source selector"); }
+  }
+  return text_slice(raw,0,n-1);
+}
+
+fn main() -> i64
+{
+  let source = source_name();
+  if !Sources.admitted(source,"analysis")
+  { tool_fail("dragnet dispatch: unknown or denied source"); }
+  var result = record<Sources.SourceOutcome>{source:sx_nil(),contract:sx_nil(),
+    format:sx_nil(),bytes:sx_nil()};
+  if source == "dragnet.frozen_csv@1"
+  {
+    result = Sources.invoke(source,"analysis",snapshot("/proc/self/fd/4",2000000),
+      snapshot("/proc/self/fd/5",2000000),"","","");
+  }
+  else if source == "dragnet.crossref@1"
+  {
+    result = Sources.invoke(source,"analysis",snapshot("/proc/self/fd/4",1024),
+      snapshot("/proc/self/fd/5",262144),snapshot("/proc/self/fd/6",262144),
+      snapshot("/proc/self/fd/7",16384),snapshot("/proc/self/fd/8",16384));
+  }
+  else if source == "dragnet.public-feed@1"
+  {
+    let as_of = snapshot("/proc/self/fd/7",21);
+    if text_len(as_of) != 21 || text_byte(as_of,20) != 10
+    { tool_fail("dragnet dispatch: malformed as-of timestamp"); }
+    result = Sources.invoke(source,"analysis",snapshot("/proc/self/fd/4",512),
+      snapshot("/proc/self/fd/5",65536),snapshot("/proc/self/fd/6",4096),
+      text_slice(as_of,0,20),"");
+  }
+  else { tool_fail("dragnet dispatch: source unavailable"); }
+  IO.basis_text_io_print(sx_text(result["bytes"]));
+  return 0;
+}

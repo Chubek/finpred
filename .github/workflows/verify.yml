@@ -12,7 +12,6 @@ jobs:
       MULIB_ROOT: ${{ github.workspace }}/third_party/mulib
       MULIB_SHA: 49de89acbc97efbee493d6b28d02c8f64ed4f725
       LIBSTONE_SHA: b5c962721a32df18b2fb22de136c1f2ef8b6390d
-      PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -27,14 +26,23 @@ jobs:
           test "$(git -C "$MULIB_ROOT/on1x/third_party/libstone" rev-parse HEAD)" = "$LIBSTONE_SHA"
       - name: Build pinned compiler
         run: |
-          make mulib
-          sha256sum build/mulib/on1x/on1xc
-          echo "TMPDIR=$PWD/build/tmp" >> "$GITHUB_ENV"
+          cmake -S "$MULIB_ROOT/on1x" -B "$MULIB_ROOT/build/on1x" \
+            -DBUILD_TESTING=ON -DON1X_REQUIRE_LIBSTONE=ON \
+            -DON1X_BUILD_NATIVE_PPX=ON -DON1X_BUILD_GRAMMAREMBED=ON \
+            -DON1X_LIBSTONE_ROOT="$MULIB_ROOT/on1x/third_party/libstone"
+          cmake --build "$MULIB_ROOT/build/on1x" --parallel 4 --target on1xc on1x_ppx_GrammarEmbed
+          sha256sum "$MULIB_ROOT/build/on1x/on1xc"
       - name: Install schema validator
         run: |
-          python3 -m venv build/test-venv
-          build/test-venv/bin/pip install 'jsonschema==4.26.0'
-          echo "$PWD/build/test-venv/bin" >> "$GITHUB_PATH"
+          python3 -m venv "$RUNNER_TEMP/validation"
+          "$RUNNER_TEMP/validation/bin/pip" install 'jsonschema==4.26.0'
+          echo "$RUNNER_TEMP/validation/bin" >> "$GITHUB_PATH"
+      - name: Install Dragnet native test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libcurl4-openssl-dev libxml2-dev libjansson-dev
+          pkg-config --modversion libcurl libxml-2.0 jansson
       - name: Build C11 CLI
         run: ./bin/build.sh
       - name: Fixture oracles, static checks and full integration
@@ -53,6 +61,14 @@ jobs:
           python3 tests/check_poindexter_tty.py
           python3 tests/check_tui_kernel_admission.py
           make poindexter-tui-review
+      - name: Public feed transport and replay conformance
+        id: dragnet_feeds
+        run: |
+          python3 tests/check_dragnet_public_feeds.py
+      - name: Trusted source dispatch conformance
+        id: dragnet_dispatch
+        run: |
+          python3 tests/check_dragnet_dispatch.py
       - name: Optional Poindexter ImmGTK conformance
         id: gui
         run: |
@@ -64,7 +80,7 @@ jobs:
       - name: Test outcomes
         if: always()
         run: |
-          echo '{"platform":"linux-x86_64","integration":"${{ steps.integration.outcome }}","packages":"${{ steps.packages.outcome }}","gui_step":"${{ steps.gui.outcome }}","other_platforms":"untested"}'
+          echo '{"platform":"linux-x86_64","integration":"${{ steps.integration.outcome }}","packages":"${{ steps.packages.outcome }}","dragnet_feeds":"${{ steps.dragnet_feeds.outcome }}","dragnet_dispatch":"${{ steps.dragnet_dispatch.outcome }}","gui_step":"${{ steps.gui.outcome }}","other_platforms":"untested"}'
 
   native-store:
     runs-on: ubuntu-24.04

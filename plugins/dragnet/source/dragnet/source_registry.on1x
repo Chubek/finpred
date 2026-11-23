@@ -1,0 +1,97 @@
+# Trusted, statically linked Source invocation gateway. This module is pure:
+# no paths, sockets, environment, clocks, filesystem grants or store handles.
+# Transport/capture/decode is a separate host responsibility.
+import core.contracts as Contracts;
+import dragnet.frozen_csv as FrozenCSV;
+import dragnet.frozen_crossref as Crossref;
+import dragnet.public_feeds as Feeds;
+import sdk.registry as SDK;
+
+record SourceDescriptor {
+  name:sexpr, version:sexpr, mode:sexpr, effect:sexpr,
+  output_kind:sexpr, output_format:sexpr, max_input_bytes:i64, enabled:bool
+}
+record SourceOutcome { source:sexpr, contract:sexpr, format:sexpr, bytes:sexpr }
+
+fn descriptor(name:string) -> SourceDescriptor
+{
+  if name == "dragnet.frozen_csv@1"
+  {
+    return record<SourceDescriptor>{name:sx_string(name),version:sx_string("1.0.0"),
+      mode:sx_string("analysis"),effect:sx_string("pure"),
+      output_kind:sx_string("hospitality.offer@1"),output_format:sx_string("ndjson"),
+      max_input_bytes:2000000,enabled:true};
+  }
+  if name == "dragnet.crossref@1"
+  {
+    return record<SourceDescriptor>{name:sx_string(name),version:sx_string("1.0.0"),
+      mode:sx_string("analysis"),effect:sx_string("pure"),
+      output_kind:sx_string("dragnet.crossref-evidence@1"),output_format:sx_string("json"),
+      max_input_bytes:262144,enabled:true};
+  }
+  if name == "dragnet.public-feed@1"
+  {
+    return record<SourceDescriptor>{name:sx_string(name),version:sx_string("1.0.0"),
+      mode:sx_string("analysis"),effect:sx_string("pure"),
+      output_kind:sx_string("dragnet.public-feed@1"),output_format:sx_string("json"),
+      max_input_bytes:65536,enabled:true};
+  }
+  return record<SourceDescriptor>{name:sx_string(""),version:sx_string(""),
+    mode:sx_string(""),effect:sx_string(""),output_kind:sx_string(""),
+    output_format:sx_string(""),max_input_bytes:0,enabled:false};
+}
+
+# A static source descriptor is not an authority token. The established
+# frozen-CSV SDK gate remains mandatory; the two additional pure adapters
+# have explicitly enumerated in-process host policies, not network grants.
+fn admitted(name:string, mode:string) -> bool
+{
+  let d = descriptor(name);
+  if !d["enabled"] || mode != sx_text(d["mode"]) ||
+     sx_text(d["effect"]) != "pure" { return false; }
+  if name == "dragnet.frozen_csv@1"
+  { return SDK.admits("dragnet.frozen_csv.offers_as_of","analysis"); }
+  return name == "dragnet.crossref@1" || name == "dragnet.public-feed@1";
+}
+
+# The five inputs are immutable host-provided snapshots, never filenames.
+# Each adapter validates its full input and as-of semantics before returning.
+# The result preserves the adapter's pre-existing canonical output bytes.
+fn invoke(name:string, mode:string, first:string, second:string,
+  third:string, fourth:string, fifth:string) -> SourceOutcome
+{
+  if !admitted(name,mode) { tool_fail("dragnet source: denied or unknown source"); }
+  let d = descriptor(name);
+  var result = "";
+  if name == "dragnet.frozen_csv@1"
+  {
+    if text_len(first) < 1 || text_len(first) > 2000000 ||
+       text_len(second) < 1 || text_len(second) > 2000000 ||
+       third != "" || fourth != "" || fifth != ""
+    { tool_fail("dragnet source: invalid frozen CSV inputs"); }
+    let scenario = Contracts.scenario_csv(first);
+    result = FrozenCSV.offers_as_of(second,scenario);
+  }
+  else if name == "dragnet.crossref@1"
+  {
+    if text_len(first) < 1 || text_len(first) > 1024 ||
+       text_len(second) < 1 || text_len(second) > 262144 ||
+       text_len(third) < 1 || text_len(third) > 262144 ||
+       text_len(fourth) < 1 || text_len(fourth) > 16384 ||
+       text_len(fifth) < 1 || text_len(fifth) > 16384
+    { tool_fail("dragnet source: invalid Crossref inputs"); }
+    result = Crossref.evidence_as_of(first,second,third,fourth,fifth);
+  }
+  else if name == "dragnet.public-feed@1"
+  {
+    if text_len(first) < 1 || text_len(first) > 512 ||
+       text_len(second) < 1 || text_len(second) > 65536 ||
+       text_len(third) < 1 || text_len(third) > 4096 ||
+       text_len(fourth) != 20 || fifth != ""
+    { tool_fail("dragnet source: invalid public feed inputs"); }
+    result = Feeds.normalize(first,second,third,fourth);
+  }
+  else { tool_fail("dragnet source: missing implementation"); }
+  return record<SourceOutcome>{source:sx_string(name),contract:d["output_kind"],
+    format:d["output_format"],bytes:sx_string(result)};
+}
