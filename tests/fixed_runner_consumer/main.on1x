@@ -3,7 +3,7 @@ import automat.runner as Runner;
 import std.os.CommandLine as Env;
 import std.io.TextIO as IO;
 
-# A native caller need not go through Ottmat. Supply malformed plans directly
+# A native caller need not go through Ottomat. Supply malformed plans directly
 # to the execution boundary, with invalid CSV to establish rejection order.
 fn main() -> i64
 {

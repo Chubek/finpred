@@ -1,4 +1,4 @@
-import ottmat.ottmat as Ottmat;
+import ottomat.ottomat as Ottomat;
 import automat.graph as Graph;
 import std.os.CommandLine as Env;
 import std.io.TextIO as IO;
@@ -6,11 +6,11 @@ import std.io.TextIO as IO;
 # Independent consumer of the lowered plan and both compatibility APIs.
 fn main() -> i64
 {
-  let s = Env.basis_command_line_get_env("OTTMAT_DECL");
-  let plan = Ottmat.lower(s);
+  let s = Env.basis_command_line_get_env("OTTOMAT_DECL");
+  let plan = Ottomat.lower(s);
   let name = sx_text(plan["profile"]);
-  if Ottmat.profile(s) != name || Ottmat.checked_strategy(s) != (name != "")
-  { tool_fail("Ottmat API disagreement"); }
+  if Ottomat.profile(s) != name || Ottomat.checked_strategy(s) != (name != "")
+  { tool_fail("Ottomat API disagreement"); }
   if name == ""
   {
     if plan["syntax_version"] != 0 || sx_text(plan["graph"]) != ""

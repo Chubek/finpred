@@ -1,4 +1,4 @@
-ottmat 1
+ottomat 2
 input hospitality.scenario@1
 source hospitality.offer@1
 transform hospitality.offer@1
@@ -6,3 +6,4 @@ algorithm pricing.distribution@1
 strategy pricing.recommendation@1
 gate pricing.recommendation@1
 output pricing.recommendation@1
+profile lead-quadratic@1 curve quadratic

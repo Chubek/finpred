@@ -6,7 +6,7 @@
 
 ## 1. Decision in one paragraph
 
-**Implement FinPRED primarily in On1x.** Use MuLIB's header-only C11 kernels for numerical methods, storage primitives, networking, matching, parsing, and platform services. Keep **MuLIB contracts** as the data plane; implement the **Algorithm Automat** as an On1x control plane; make **Ottmat** a smaller, typed strategy DSL that lowers to the same execution graph as native On1x strategies. Expose extensions through a capability-controlled **FinPRED SDK**, with an On1x API, a versioned C ABI, and optional sandboxed Lua. Start with **Yieldcraft accommodation pricing**, not a broad suite of unvalidated financial models.
+**Implement FinPRED primarily in On1x.** Use MuLIB's header-only C11 kernels for numerical methods, storage primitives, networking, matching, parsing, and platform services. Keep **MuLIB contracts** as the data plane; implement the **Algorithm Automat** as an On1x control plane; make **Ottomat** a smaller, typed strategy DSL that lowers to the same execution graph as native On1x strategies. Expose extensions through a capability-controlled **FinPRED SDK**, with an On1x API, a versioned C ABI, and optional sandboxed Lua. Start with **Yieldcraft accommodation pricing**, not a broad suite of unvalidated financial models.
 
 The intended lifecycle is:
 
@@ -50,7 +50,7 @@ The FinPRED Workbook defines eleven primary concepts:
   DATA PLANE               CONTROL PLANE
   On1x + MuLIB             On1x Automat
   contracts / schemas      typed execution DAG
-  normalization            Ottmat graph lowering
+  normalization            Ottomat graph lowering
   units / provenance       policies / scheduling
   artifact storage         decisions / replay
        |                       |
@@ -68,7 +68,7 @@ The FinPRED Workbook defines eleven primary concepts:
 - **Core (`source/core/`):** identity, semantic money and quantities, time, diagnostics, provenance, typed results.
 - **Data plane (`source/store/`):** schema validation, ingestion, immutable artifacts, dataset references, point-in-time reads, migrations.
 - **Automat (`source/automat/`):** graph building, type checking of edges, deterministic execution, bounded retries, status transitions, trace, replay.
-- **Ottmat (`source/ottmat/`):** parser, type/effect checker, lowering to the Automat graph. It should **not** duplicate On1x's general programming features.
+- **Ottomat (`source/ottomat/`):** parser, type/effect checker, lowering to the Automat graph. It should **not** duplicate On1x's general programming features.
 - **SDK (`source/sdk/`):** extension descriptors, capability grants, C ABI adapters, isolated plugin workers, compatibility checks.
 - **Plugins (`plugins/`):** Dragnet (data acquisition), Yieldcraft (accommodation pricing), Poindexter (accounting/spreadsheets), future financial domains.
 - **Experience layer (`source/cli/`, etc.):** operator-facing tools without privileged shortcuts around the SDK or action gateway.
@@ -132,7 +132,7 @@ finpred/
     core/              # contracts, money, date/time, errors
     store/             # registry, storage, lineage, snapshots
     automat/           # typed DAG, planner, scheduler, replay
-    ottmat/            # lexer, parser, checker, graph compiler
+    ottomat/            # lexer, parser, checker, graph compiler
     algorithms/        # policy adapters and numerical wrappers
     sdk/               # plugin registry, grants, host interface
     cli/               # import, validate, run, explain, replay
@@ -144,7 +144,7 @@ finpred/
     poindexter/         # valuation/spreadsheet workspace
   native/               # C11 wrappers and reviewed bindings
   contracts/            # versioned JSON/YAML schemas
-  strategies/           # Ottmat sources
+  strategies/           # Ottomat sources
   fixtures/             # frozen scenarios and observations
   tests/                # golden, replay, security, fuzz, integration
   docs/                 # ADRs, C ABI and execution contracts
@@ -384,14 +384,14 @@ For the workbook's synthetic test fixture, P50 = **EUR 175**, P40 = **EUR 171**,
 
 **Fail rather than improvise:** reject stale or non-bookable offers, incompatible currencies/conditions, infeasible room combinations, and insufficient independent property samples. Do not silently mix estimated rates with observed bookable rates.
 
-## 10. Algorithm Automat and Ottmat
+## 10. Algorithm Automat and Ottomat
 
 The **Automat** is a versioned typed DAG, not a bag of callable functions. Node families should include `Input`, `Source`, `Transform`, `Algorithm`, `Model`, `Strategy`, `Gate`, `Action`, and `Output`. Validate edge schema compatibility before scheduling. For the first release, require an acyclic plan; iterative algorithms should run as explicit bounded nodes.
 
 Recommended architecture:
 
 ```text
-Ottmat source -----------+
+Ottomat source -----------+
                          v
 On1x strategy API --> Typed Automat graph IR
                          |
@@ -402,7 +402,7 @@ On1x strategy API --> Typed Automat graph IR
                 artifacts + trace
 ```
 
-**Ottmat's job** is to declare dataflow, typed plugin invocations, decisions, and effects. It should reuse On1x/runtime facilities for computation and never directly grant I/O authority. A separate AOT lowering into On1x can be added later if profiling demonstrates a need. An Ottmat-authored strategy and an equivalent On1x-authored strategy must have consistent graph semantics and reproducible outputs.
+**Ottomat's job** is to declare dataflow, typed plugin invocations, decisions, and effects. It should reuse On1x/runtime facilities for computation and never directly grant I/O authority. A separate AOT lowering into On1x can be added later if profiling demonstrates a need. An Ottomat-authored strategy and an equivalent On1x-authored strategy must have consistent graph semantics and reproducible outputs.
 
 Run modes must be explicit: `analysis`, `recommendation`, `simulation`, and tightly authorized `execution`. Switching a source flag must **not** be sufficient to grant execution permissions.
 
@@ -424,14 +424,14 @@ Separate the **data plane** from plugin **control planes**: plugins exchange imm
 | **0 — feasibility** | Ratify core contracts and units; verify On1x build and reviewed imports; set up fixtures and ADRs. | Validate an offer and compute civil-night counts correctly. |
 | **1 — local engine** | Contract store, schemas, immutable refs, provenance, CSV/JSON import, fixed-graph runner, CLI. | Import and replay a dataset by artifact IDs, with precise errors. |
 | **2 — Yieldcraft MVP** | StayMatch, comparable distribution, price curve, shortcut, guardrails, recommendation trace. | Produce and replay the worked EUR 171 recommendation and its explanation. |
-| **3 — Automat / Ottmat / SDK** | Typed graph plan, strategy frontend, manifests, plugin host, at least one authorized Dragnet source. | A third-party plugin integrates without patching the core; previous runs remain replayable. |
+| **3 — Automat / Ottomat / SDK** | Typed graph plan, strategy frontend, manifests, plugin host, at least one authorized Dragnet source. | A third-party plugin integrates without patching the core; previous runs remain replayable. |
 | **4 — operational** | Durable state, scheduler, approvals, historical evaluation, observability and action reconciliation. | Recommendation mode is provably side-effect free; execution is gated and auditable. |
 | **5 — broader domains** | FX/portfolio verticals and independently evaluated models; distribute only if needed. | A second vertical reuses core contracts, SDK, and Automat without hospitality-specific hacks. |
 
 ### Priority checklist
 
 - **P0:** money/units; dates and valid-time semantics; contract schemas/registry; immutable persistence; reviewed kernel adapters; StayMatch comparison correctness; deterministic decision trace.
-- **P1:** graph planner, time-safe replay, durable run records, SDK isolation, Ottmat semantics, authorized Dragnet connectors.
+- **P1:** graph planner, time-safe replay, durable run records, SDK isolation, Ottomat semantics, authorized Dragnet connectors.
 - **P2:** Poindexter/UI expansion, richer forecasting and uncertainty models, distributed workers, live external actions.
 
 ### Minimum tests
@@ -447,7 +447,7 @@ Separate the **data plane** from plugin **control planes**: plugins exchange imm
 
 ## 13. Useful source references
 
-- FinPRED Workbook, edition 0.1: chapters **1–8** (platform, contracts, Automat, Ottmat, SDK), **9–12** (Yieldcraft and statistics), and **19–21** (roadmap, decisions, interface sketches).
+- FinPRED Workbook, edition 0.1: chapters **1–8** (platform, contracts, Automat, Ottomat, SDK), **9–12** (Yieldcraft and statistics), and **19–21** (roadmap, decisions, interface sketches).
 - [MuLIB repository](https://github.com/Chubek/mulib)
 - [On1x README](https://github.com/Chubek/mulib/blob/main/on1x/README.md)
 - [KernelBind limitations](https://github.com/Chubek/mulib/blob/main/on1x/KERNEL_DIRECT_USAGE.md)

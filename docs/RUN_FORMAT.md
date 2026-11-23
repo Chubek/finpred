@@ -53,7 +53,7 @@ normalized_offer=<H>
 ```
 
 The `strategy=` line shown above is for the default scenario policy. For an
-explicit [Ottmat 2 profile](../strategies/README.md) its value is
+explicit [Ottomat 2 profile](../strategies/README.md) its value is
 `yieldcraft.<profile-name>@1`, also recorded in the trace. `raw_strategy`
 still hashes the exact declaration bytes. Named profiles are supported only
 in v2 runs; the recommendation envelope retains the SDK family identity.

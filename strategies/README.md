@@ -3,7 +3,7 @@
 `FINPRED_STRATEGY` is a file path. For example, from the project root:
 
 ```sh
-FINPRED_STRATEGY=strategies/lead-quadratic.ottmat bin/finpred run
+FINPRED_STRATEGY=strategies/lead-quadratic.ottomat bin/finpred run
 bin/finpred explain <run-id>
 ```
 
@@ -13,11 +13,11 @@ properties. All amounts are **EUR cents per night**.
 
 | File | Target rule | Intended bps | Intended cents | Selected bps | Final cents |
 | --- | --- | ---: | ---: | ---: | ---: |
-| `value-p40.ottmat` | Fixed P40 | 4000 | 17100 | 4000 | 17100 |
-| `balanced-p55.ottmat` | Fixed P55 | 5500 | 17800 | 5500 | 17800 |
-| `premium-p75.ottmat` | Fixed P75 | 7500 | 19000 | 7500 | 19000 |
-| `lead-linear.ottmat` | Linear P40 → P75 | 5011 | 17507 | 4000 | 17100 |
-| `lead-quadratic.ottmat` | Quadratic P40 → P75 | 4292 | 17217 | 4000 | 17100 |
+| `value-p40.ottomat` | Fixed P40 | 4000 | 17100 | 4000 | 17100 |
+| `balanced-p55.ottomat` | Fixed P55 | 5500 | 17800 | 5500 | 17800 |
+| `premium-p75.ottomat` | Fixed P75 | 7500 | 19000 | 7500 | 19000 |
+| `lead-linear.ottomat` | Linear P40 → P75 | 5011 | 17507 | 4000 | 17100 |
+| `lead-quadratic.ottomat` | Quadratic P40 → P75 | 4292 | 17217 | 4000 | 17100 |
 
 These policies choose the target independently of the validated scenario's
 `target_bps` and `curve`. For `d` civil days to arrival, capped at 90, the
@@ -33,7 +33,7 @@ maximum movement then constrain the candidate. For example, limiting movement
 to 200 cents from 17500 raises the linear policy's 17100 candidate to 17300.
 Every recommendation has `published=false`.
 
-With no override, `yieldcraft.ottmat` retains the legacy rule: use the
+With no override, `yieldcraft.ottomat` retains the legacy rule: use the
 scenario target, or its curve when the target is zero. Named profiles use
 v2 runs only. The verified lineage and trace identify `yieldcraft.<name>@1`
 and the BLAKE3 digest of the exact declaration bytes; the recommendation
@@ -42,7 +42,7 @@ digest. `replay` and `explain` use the stored declaration, so they work
 even if the live policy file is unavailable.
 
 Selection follows the file contents, not the filename. Each named file has
-an `ottmat 2` header, the seven fixed graph declarations, and one versioned
+an `ottomat 2` header, the seven fixed graph declarations, and one versioned
 `profile` line. An unknown name, a mismatched target for a known name, or
 an incompatible graph is rejected before creating a run. Changing LF to
 CRLF retains the declared policy but changes the raw digest and run ID.

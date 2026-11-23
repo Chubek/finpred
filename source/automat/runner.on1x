@@ -1,5 +1,5 @@
 # Static lowering of the seven Yieldcraft slots. The plan is checked at the
-# call boundary, including for hosts other than Ottmat. There is no dynamic
+# call boundary, including for hosts other than Ottomat. There is no dynamic
 # dispatch, retry, artifact access or external-action handler.
 import automat.graph as Graph;
 import core.contracts as C;

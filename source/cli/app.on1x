@@ -12,7 +12,7 @@ import store.artifacts as Store;
 import cli.lineage as Lineage;
 import automat.graph as Graph;
 import automat.runner as Runner;
-import ottmat.ottmat as Ottmat;
+import ottomat.ottomat as Ottomat;
 import sdk.sdk as SDK;
 import sdk.static_host as Host;
 import algorithms.quantile as Quantile;
@@ -103,10 +103,10 @@ fn execute(scenario_raw: string, offers_raw: string, valuation_raw: string,
   expected_trace: string, expected_run_id: string) -> i64
 {
   let persist = mode == "run";
-  let declaration = Ottmat.lower(strategy_raw);
+  let declaration = Ottomat.lower(strategy_raw);
   let profile = sx_text(declaration["profile"]);
   if sx_text(declaration["graph"]) != Graph.version() || profile == ""
-  { tool_fail("automat/ottmat: invalid graph or incompatible strategy"); }
+  { tool_fail("automat/ottomat: invalid graph or incompatible strategy"); }
   if version == "finpred-run@1" && profile != "scenario"
   { tool_fail("replay: v1 requires the legacy scenario strategy"); }
   let evidence = buffer_new();
@@ -285,6 +285,6 @@ fn entry() -> i64
   return execute(source(env_default("FINPRED_SCENARIO","fixtures/scenario.csv")),
     source(env_default("FINPRED_OFFERS","fixtures/offers.csv")),
     source(env_default("FINPRED_VALUATION","fixtures/valuation.csv")),
-    source(env_default("FINPRED_STRATEGY","strategies/yieldcraft.ottmat")),
+    source(env_default("FINPRED_STRATEGY","strategies/yieldcraft.ottomat")),
     home,"finpred-run@2",mode,"","","");
 }

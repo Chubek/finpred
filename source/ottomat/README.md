@@ -1,12 +1,12 @@
-# Ottmat recommendation declarations
+# Ottomat recommendation declarations
 
-`Ottmat.lower(source)` parses a v1 or v2 declaration and resolves it to
+`Ottomat.lower(source)` parses a v1 or v2 declaration and resolves it to
 Automat's fixed seven-node recommendation plan. A valid `Plan` carries
 `syntax_version`, `graph` (the identity from `Graph.version()`), and
 `profile`. Nodes are the native `Graph.node(0)` through `Graph.node(6)` in
 order; the frontend does not construct a second execution graph.
 On failure the version is `0` and both text atoms are empty. The existing
-`Ottmat.profile(source)` and `Ottmat.checked_strategy(source)` return the
+`Ottomat.profile(source)` and `Ottomat.checked_strategy(source)` return the
 profile name or `""`, and its validity as a boolean, respectively.
 
 ## Grammar
@@ -16,8 +16,8 @@ space, `EOL` for LF or CRLF (chosen per line), and `[]` for optional syntax.
 EOF must follow the declaration.
 
 ```text
-v1       = "ottmat" SP "1" EOL nodes [EOL] EOF
-v2       = "ottmat" SP "2" EOL nodes EOL policy [EOL] EOF
+v1       = "ottomat" SP "1" EOL nodes [EOL] EOF
+v2       = "ottomat" SP "2" EOL nodes EOL policy [EOL] EOF
 nodes    = node EOL node EOL node EOL node EOL node EOL node EOL node
 node     = word SP contract
 contract = word "." word "@" number
@@ -66,7 +66,7 @@ different BLAKE3 identities. See [strategy outcomes](../../strategies/README.md)
 
 ## Verification
 
-`python3 tests/check_ottmat_plan.py` builds an independent On1x C11
+`python3 tests/check_ottomat_plan.py` builds an independent On1x C11
 consumer. It checks the graph identity and syntax version, the legacy APIs,
 24 accepted encodings, and 47 malformed, ill-typed, or unauthorized
 declarations. A second build substitutes a test graph to confirm that an

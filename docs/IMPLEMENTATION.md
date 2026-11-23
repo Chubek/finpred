@@ -29,7 +29,7 @@ replay(manifest ID) -----^ (no artifact mutations or external actions)
 `source/core/` owns validated scenario/offer/valuation values, date checks,
 minor-unit money, serialization, CSV. `source/yieldcraft/` owns the bounded
 whole-stay matcher and recommendation strategy. `source/automat/` checks the
-first fixed typed DAG. `source/ottmat/` is a version 1 exact descriptor
+first fixed typed DAG. `source/ottomat/` is a version 1 exact descriptor
 frontend, not a second runtime. `source/sdk/` holds a closed-by-default
 manifest policy. `source/store/` handles BLAKE3 identity, file snapshots and
 run manifests. The CLI and store perform local file access.
@@ -233,7 +233,7 @@ power-loss or hostile-filesystem certification.
 | P1 local store/CLI | BLAKE3 snapshots, v2 policy and parent lineage, atomic file visibility, read-only v1/v2 replay | Both fixture generations replayed; power-loss durability and symlink confinement outstanding |
 | P2 Yieldcraft | Bounded exact multiroom matching, property dedup, Type-7 quantile, curves, shortcut, guardrails, trace | Fixture prices and derived room-allocation witnesses verified; `source/automat/runner.on1x` executes the validated fixed plan for both runs and replay |
 | P3 Automat | Typed checked fixed DAG, action/effect denial | Narrow source implementation |
-| P3 Ottmat | Bounded v1/v2 declaration parser and checker | Lowers to the seven-node Automat plan; not a general DAG language |
+| P3 Ottomat | Bounded v1/v2 declaration parser and checker | Lowers to the seven-node Automat plan; not a general DAG language |
 | P3 SDK | Static package compatibility checks for three packages in On1x and C11, plus legacy C descriptor ABI v1 | Contract, dependency, budget and grant checks exercised; dynamic loading and untrusted worker isolation remain open |
 | P4/P5 | durable scheduler, approvals, action reconciliation, Poindexter/FX/etc. | Not implemented |
 
@@ -241,7 +241,7 @@ power-loss or hostile-filesystem certification.
 
 **Integrated source checkpoint:** `TMPDIR="$PWD/target" ./bin/build.sh` and
 `TMPDIR="$PWD/target" ./tests/run.sh` exited 0 on the pinned toolchain.
-The fixed runner rejected six invalid plans or modes; Ottmat accepted 24
+The fixed runner rejected six invalid plans or modes; Ottomat accepted 24
 valid encodings and rejected 47 malformed declarations and four incompatible
 graphs. Both SDK implementations passed the same 106 package cases. The
 static hosts now check compatibility before strategy, source and pricing-view
@@ -249,7 +249,7 @@ dispatch. Store tests exercised a handled artifact write failure and an
 interrupted manifest write. Replay, all five named profiles and the two
 frozen fixture prices remained intact.
 
-**Named target policies:** five [Ottmat 2 strategy files](../strategies/README.md)
+**Named target policies:** five [Ottomat 2 strategy files](../strategies/README.md)
 select fixed P40/P55/P75 or linear/quadratic lead-time targets. The pinned
 shared build and `TMPDIR="$PWD/target" ./tests/run.sh` passed
 (`strategy_profiles_ok=true profiles=5`). Named policies have distinct v2

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile an independent consumer of the Ottmat frontend on the native graph."""
+"""Compile an independent consumer of the Ottomat frontend on the native graph."""
 import os
 from pathlib import Path
 import shutil
@@ -13,14 +13,14 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     sdk = Path(os.environ.get("MULIB_ROOT", ROOT / "third_party/mulib")).resolve()
     compiler = Path(os.environ.get("ON1XC", sdk / "build/on1x/on1xc")).resolve()
-    policies = {p.stem: p.read_text("ascii") for p in (ROOT / "strategies").glob("*.ottmat")}
+    policies = {p.stem: p.read_text("ascii") for p in (ROOT / "strategies").glob("*.ottomat")}
     v1 = policies["yieldcraft"]
     v2 = policies["value-p40"]
     rows = v2.splitlines()
     invalid = {
         "", v2 + " " * (512 - len(v2)), v2 + " " * (513 - len(v2)),
-        v2.replace("ottmat 2", "ottmat 1"), v1.replace("ottmat 1", "ottmat 2"),
-        v2.replace("ottmat 2", "ottmat 02"), v2.replace("ottmat 2", "ottmat 3"),
+        v2.replace("ottomat 2", "ottomat 1"), v1.replace("ottomat 1", "ottomat 2"),
+        v2.replace("ottomat 2", "ottomat 02"), v2.replace("ottomat 2", "ottomat 3"),
         v2.replace("hospitality.", "hospitality.."), v2.replace("hospitality.", "hospitality/"),
         v2.replace("scenario@1", "scenario@01"), v2.replace("scenario@1", "scenario@2"),
         v2.replace("scenario@1", "offer@1"), v2.replace("gate pricing", "action pricing"),
@@ -39,9 +39,9 @@ def main():
     for i in range(len(rows)):
         invalid.add("\n".join(rows[:i] + rows[i+1:]))
 
-    with tempfile.TemporaryDirectory(prefix="finpred-ottmat-plan-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="finpred-ottomat-plan-") as tmp:
         exe = Path(tmp) / "plan"
-        consumer = ROOT / "tests/ottmat_plan_consumer"
+        consumer = ROOT / "tests/ottomat_plan_consumer"
 
         def build(include):
             subprocess.run([
@@ -50,8 +50,8 @@ def main():
             ], check=True, cwd=tmp)
 
         def check(source, expected, graph_change=""):
-            proc = subprocess.run([exe], cwd=tmp, env={**os.environ, "OTTMAT_DECL": source,
-                                  "OTTMAT_GRAPH_CHANGE": graph_change},
+            proc = subprocess.run([exe], cwd=tmp, env={**os.environ, "OTTOMAT_DECL": source,
+                                  "OTTOMAT_GRAPH_CHANGE": graph_change},
                                   capture_output=True, timeout=10)
             if proc.returncode or proc.stdout != expected.encode("ascii"):
                 raise ValueError(f"{source!r}: expected {expected!r}; got {proc}")
@@ -76,7 +76,7 @@ def main():
         check(v1, "1:scenario")
         for change in ("root", "record", "network", "denied"):
             check(v1, "invalid", change)
-    print(f"ottmat_plan_ok=true valid={4 * len(policies)} invalid={len(invalid)} incompatible_graphs=4")
+    print(f"ottomat_plan_ok=true valid={4 * len(policies)} invalid={len(invalid)} incompatible_graphs=4")
 
 
 if __name__ == "__main__":

@@ -63,7 +63,7 @@ def reject_number(token):
 def validate(home):
     strategies = {}
     for name in ("yieldcraft", *PROFILES):
-        lines = (ROOT / "strategies" / f"{name}.ottmat").read_text(encoding="ascii").splitlines()
+        lines = (ROOT / "strategies" / f"{name}.ottomat").read_text(encoding="ascii").splitlines()
         version = "percentile" if name == "yieldcraft" else name
         strategies[tuple(lines)] = f"yieldcraft.{version}@1"
     validators = {}

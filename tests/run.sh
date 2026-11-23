@@ -6,7 +6,7 @@ python3 tests/check_fixtures.py
 python3 tests/check_sdk.py
 python3 tests/check_sdk_packages.py
 python3 tests/check_fixed_runner.py
-python3 tests/check_ottmat_plan.py
+python3 tests/check_ottomat_plan.py
 work=$(mktemp -d "${TMPDIR:-/tmp}/finpred-test.XXXXXXXX")
 trap 'rm -rf -- "$work"' EXIT
 trap 'exit 1' HUP INT TERM
@@ -14,7 +14,7 @@ exe=${FINPRED_EXE:-"$ROOT/target/dev/finpred"}
 unset FINPRED_MODE FINPRED_RUN_ID
 FINPRED_HOME="$work/main"
 FINPRED_VALUATION="$ROOT/fixtures/valuation.csv"
-FINPRED_STRATEGY="$ROOT/strategies/yieldcraft.ottmat"
+FINPRED_STRATEGY="$ROOT/strategies/yieldcraft.ottomat"
 export FINPRED_HOME FINPRED_VALUATION FINPRED_STRATEGY FINPRED_SCENARIO FINPRED_OFFERS
 
 # Ignore access times: reading the files may legitimately update those.

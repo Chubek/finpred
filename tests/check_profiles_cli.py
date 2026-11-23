@@ -30,7 +30,7 @@ def failure(home, diagnostic, *args, strategy):
 
 def check(home, profile, expected, policy=None, **inputs):
     if policy is None:
-        policy = ROOT / "strategies" / f"{profile}.ottmat"
+        policy = ROOT / "strategies" / f"{profile}.ottomat"
     summary = invoke(home, "run", strategy=policy, **inputs)
     values = dict(line.split("=", 1) for line in summary.decode("ascii").splitlines())
     run_id = values["run_id"]
@@ -73,8 +73,8 @@ def main():
             raise ValueError("named strategies collided on identical inputs")
         # Same validated declaration under a different name, different bytes.
         # Pricing follows contents; run identity includes the exact bytes.
-        alias = root / "value-p40.ottmat"
-        alias.write_bytes((ROOT / "strategies/premium-p75.ottmat").read_bytes().replace(b"\n", b"\r\n"))
+        alias = root / "value-p40.ottomat"
+        alias.write_bytes((ROOT / "strategies/premium-p75.ottomat").read_bytes().replace(b"\n", b"\r\n"))
         if check(home, "premium-p75", CASES["premium-p75"], policy=alias) in ids:
             raise ValueError("strategy byte change reused an existing run ID")
         # Tighten the movement limit around the 17500 previous rate. The lead
@@ -93,7 +93,7 @@ def main():
         if tree(home) != before:
             raise ValueError("rejected v1 replay modified the store")
         # A valid-looking filename must not admit unknown policy or graph contents.
-        bad = root / "premium-p75.ottmat"
+        bad = root / "premium-p75.ottomat"
         valid = (ROOT / "strategies" / bad.name).read_bytes()
         for invalid in (valid.replace(b"premium-p75", b"premium-p76"),
                         valid.replace(b"target_bps 7500", b"target_bps 7400"),
