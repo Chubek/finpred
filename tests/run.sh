@@ -17,6 +17,7 @@ python3 tests/check_sdk_packages.py
 python3 tests/check_sdk_data1.py
 python3 tests/check_fx_reference.py
 python3 tests/check_forecast_baselines.py
+python3 tests/check_forecast_cli.py
 python3 tests/check_plugin_registry.py
 python3 tests/check_fixed_runner.py
 python3 tests/check_hospitality_adapters.py

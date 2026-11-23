@@ -39,22 +39,79 @@ from `0` through `1000000000000`. `FINPRED_SCALAR_BUDGET` accepts `1` through
 does not read the pricing CSVs or create a saved run. Its output digest
 identifies the selected node and its inputs, not a run ID or recommendation.
 
-## Point-in-time analysis beyond the CLI
+## Run point-in-time forecasts
 
-Ottomat v6 and the [typed financial graph](source/automat/README.md#typed-financial-graph)
-are library interfaces, not options for `run --engine`. The
-[guest-night baselines](plugins/forecast_baselines/README.md) use a frozen
-Eurostat-derived snapshot visible at the training cutoff. Post-issuance
-[scoring and evaluation replay](docs/FORECAST_SCORING.md) use a separately
-frozen actuals snapshot at a later scoring cutoff. Later observations never
-enter the original forecast; unavailable evidence is reported as `unknown`,
-not zero. Evaluation manifests are returned in memory, not written as
-pricing runs and not accepted by `finpred replay`.
+The forecast host analyzes the EU27 guest-night series from frozen Dragnet
+Eurostat captures. Set `FINPRED_FORECAST_HOME` to a private, trusted local
+directory with an existing parent. The default is `.finpred-forecast/`.
+File arguments outside the repository should be absolute paths.
 
-These aggregates and [ECB reference-rate observations](contracts/ANALYSIS.md)
-are analysis-only: neither supplies room-price comparables, and a reference
-rate is not an executable FX quote. FinPRED has no trading, booking or
-external price-publication command.
+Verify each capture with `plugins/dragnet/feeds verify` before importing
+its `observation.json`. Keep the original capture, including the provider
+body and capture metadata, if you need to audit the source. The forecast
+store keeps the exact normalized observations and validates their canonical
+profile and chronology. The operator attests to the capture provenance
+and times when importing historical material.
+
+```sh
+export FINPRED_FORECAST_HOME=/absolute/private/path/forecast
+old=$(./bin/finpred forecast import /absolute/path/old/observation.json)
+new=$(./bin/finpred forecast import /absolute/path/new/observation.json)
+printf '%s\n' "$old" "$new" | LC_ALL=C sort -u >/absolute/path/releases.txt
+catalog=$(./bin/finpred forecast catalog /absolute/path/releases.txt)
+```
+
+A catalog is a frozen set of 1–512 snapshot IDs, one per line, sorted and
+unique. Add a later release by importing it and creating a new catalog.
+The selector considers releases visible at the supplied cutoff. It prefers
+a release carrying the required months and then orders by provider update
+time and ingestion time, newest first. Ties at the selected rank fail.
+Each projection uses one release. An explicitly missing row stays unknown,
+and a visible release without the whole required window can yield an
+unknown result. A cutoff with zero visible releases fails explicitly.
+
+For example, save the following request as compact JSON with a final LF.
+Choose issuance and scoring timestamps that match the dates in your captures.
+
+```json
+{"issued_at":"2024-02-15T00:00:00Z","target_month":"2024-03","horizon_months":1}
+```
+
+```sh
+model=forecast.moving-average-3@1
+issue=$(./bin/finpred forecast issue "$catalog" "$model" \
+  2024-02-15T00:00:00Z /absolute/path/request.json)
+score=$(./bin/finpred forecast score "$issue" "$catalog" 2024-06-01T00:00:00Z)
+./bin/finpred forecast replay "$issue"
+./bin/finpred forecast replay "$score"
+```
+
+`forecast.seasonal-naive-12@1` selects last year's target month. Retain
+historical releases covering it. The current Dragnet poller captures the
+latest three months per request. A later scoring catalog may contain
+releases that were unavailable at issuance. Scoring replays the original
+issuance and selects actuals independently at the later cutoff.
+
+For a holdout, write a plan with a six-field first line
+`model,validation_through,selection_frozen_at,first_target,last_target,scoring_cutoff`.
+Follow it with a score ID per month in chronological order for the
+contiguous 1–24 month window. Use the same model and scoring cutoff for each
+score. The freeze timestamp records the operator's selection assertion.
+Freeze the model, window and evidence-selection policy before looking at
+holdout outcomes.
+
+```sh
+report=$(./bin/finpred forecast holdout /absolute/path/plan.txt)
+./bin/finpred forecast replay "$report"
+```
+
+Publishing commands print a 64-character BLAKE3 ID. Replay prints the
+original canonical JSON after recomputing it from archived bytes and the
+frozen catalog. It never writes to the store. Keep the whole forecast home
+and the matching forecast executable for replay across toolchain upgrades.
+The forecast host uses the same cooperative writer protocol as the pricing
+store. See [forecast scoring](docs/FORECAST_SCORING.md) for archive and
+holdout semantics.
 
 ## Run the default fixture
 

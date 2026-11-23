@@ -78,6 +78,7 @@ points elsewhere:
 | --- | --- |
 | On1x compiler, GrammarEmbed, and MuLIB/LibStone intermediates | `build/mulib/on1x/` |
 | FinPRED CLI (normally invoked as `./bin/finpred`) | `build/dev/finpred` |
+| Forecast host (invoked as `./bin/finpred forecast`) | `build/dev-forecast/finpred-forecast` |
 | Poindexter grid and optional GUI | `build/poindexter/` |
 | Dragnet CSV, Crossref, public-feed and dispatcher tools | `build/dragnet/`, `build/dragnet-crossref/`, `build/dragnet-feeds/`, `build/dragnet-dispatch/` (explicit dispatcher output) |
 | Standalone C review builds | `build/native/`, `build/poindexter-tui-review/` |
@@ -90,6 +91,8 @@ to its absolute executable path. The CLI build, launcher and suite share
 `FINPRED_BUILD_DIR`; relative values resolve from the FinPRED root. `FINPRED_EXE`
 overrides the launcher and a direct `./tests/run.sh` invocation only.
 `make test` ignores that override so it verifies the executable it just built.
+The forecast host builds in a sibling directory with the suffix `-forecast`,
+using the same `FINPRED_BUILD_DIR` base. Its launcher ignores `FINPRED_EXE`.
 
 Ottomat uses the native GrammarEmbed PPX at build time. The wrapper selects
 it explicitly for C emission; it does not enable PPX directives from strategy

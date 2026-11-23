@@ -168,8 +168,7 @@ and `bias` in guest-nights. Bias uses `estimate − actual`. Both means divide
 by `scored`, and both are null if `scored=0`. Coverage counts sum to the
 window length. The report ID is BLAKE3 over the compact JSON bytes including
 the final LF. Recomputing from the same trusted inputs gives identical
-bytes. No catalog, writer, CLI, action authorization, or historical format
-change is introduced.
+bytes. The aggregation API is pure. The forecast CLI supplies the frozen entries and writes the resulting report separately.
 
 The baseline scores have denominators of 1 or 3 and a magnitude of at most
 999,999,999,999 guest-nights. Summing exact thirds gives absolute and signed
@@ -182,6 +181,24 @@ root. The report emits neither approximations nor placeholder values.
 Status codes: `1` invalid plan or pins, `2` missing or incorrect month/request,
 `3` failed evaluation replay, `4` unexpected replayed score encoding or
 report hash failure. A failed report has no ID or bytes.
+
+## Operator archives
+
+The [forecast CLI](../GUIDE.md#run-point-in-time-forecasts) uses a separate,
+private home and the existing content-addressed cooperative artifact writer.
+The catalog is `forecast-catalog@1` followed by sorted normalized snapshot
+IDs. An issuance commit binds the catalog, model, cutoff, request, selected
+snapshot and forecast. A score commit binds the issuance, actuals catalog,
+scoring cutoff, evaluation manifest and score. A holdout commit binds the
+operator plan and report. The writer installs referenced objects before the
+final commit record. Repeated identical writes reuse the same IDs.
+
+Replay starts from the requested commit ID, verifies content addresses,
+repeats catalog selection at the archived cutoffs and compares regenerated
+outputs with the stored bytes. This works with the matching forecast build.
+Its model and scorer pins identify a build subject derived from the analysis
+sources and compiler hash. They provide reproducibility checks within a
+trusted build. The pricing store's v1/v2 format has its own verifier.
 
 ## Verification
 
@@ -220,8 +237,8 @@ python3 tests/check_forecast_scores.py --oracle-only
 
 ## Deliberately open gates
 
-- Integrate the in-memory manifest with a trusted host catalog and a
-  write-once evaluation store. No writer or CLI command exists for this format.
+- Extend operator evaluation to larger, real point-in-time datasets while
+  retaining the exact capture metadata and revisions needed for replay.
 - Add a trusted selection/plan catalog if the host must prove model selection
   preceded holdout access. Design checked wider accumulation for exact MSE
   and explicit precision/rounding rules for RMSE before adding either metric.

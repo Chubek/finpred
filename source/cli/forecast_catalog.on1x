@@ -1,0 +1,117 @@
+# An immutable catalog is a canonical, sorted list of stored snapshot IDs.
+import core.date as Date;
+import core.guest_nights as Guest;
+import forecast_baselines.model as Model;
+import store.artifacts as Store;
+import std.String as Str;
+import std.io.TextIO as IO;
+import std.os.OS_FileSys as FS;
+
+record Release { id:sexpr, raw:sexpr, projection:Guest.Projection }
+fn heading() -> string { return "forecast-catalog@1\n"; }
+fn limit() -> i64 { return 65 * 512; }
+
+fn input(path:string, limit:i64) -> string {
+  let size = FS.basis_fs_file_size(path);
+  if size < 1 || size > limit || FS.basis_fs_is_dir(path) {
+    tool_fail("forecast: input missing or outside size profile");
+  }
+  let bytes = IO.basis_text_io_input_all(path);
+  if text_len(bytes) != size { tool_fail("forecast: incomplete text input"); }
+  return bytes;
+}
+
+fn validate_snapshot(raw:string, id:string) {
+  let checked = Guest.project(raw,"blake3:$id","2399-12-31T23:59:59Z");
+  if checked["status"] != 0 { tool_fail("forecast: invalid Eurostat observation snapshot"); }
+}
+
+fn import_snapshot(home:string, path:string) -> string {
+  let raw = input(path,Guest.max_bytes());
+  validate_snapshot(raw,Store.digest(raw));
+  Store.ensure(home);
+  return Store.put(home,raw);
+}
+
+fn catalog_count(list:string) -> i64 {
+  let size = text_len(list);
+  if size < 65 || size > limit() || size % 65 != 0 { tool_fail("forecast: malformed catalog list"); }
+  let count = size / 65;
+  var previous = "";
+  for i in 0 .. count {
+    let start = i * 65;
+    let id = text_slice(list,start,start+64);
+    if !Store.valid_hash(id) || text_byte(list,start+64) != 10 || Str.compare(previous,id) >= 0 {
+      tool_fail("forecast: catalog IDs must be unique and sorted");
+    }
+    previous = id;
+  }
+  return count;
+}
+
+fn save(home:string, path:string) -> string {
+  let list = input(path,limit());
+  let count = catalog_count(list);
+  for i in 0 .. count {
+    let start = i * 65;
+    let id = text_slice(list,start,start+64);
+    validate_snapshot(Store.fetch(home,id),id);
+  }
+  return Store.put(home,text_concat(heading(),list));
+}
+
+fn covers(periods:sexpr, first:i64, last:i64) -> bool {
+  var found = 0;
+  var rest = periods;
+  while sx_kind(rest) == 3 {
+    let month = Guest.nat(sx_text(sx_head(rest)),6);
+    if first <= month && month <= last { found = found + 1; }
+    rest = sx_tail(rest);
+  }
+  return found == last - first + 1;
+}
+
+# Prefer a release carrying the whole requested window, even when a row
+# explicitly reports an unknown. Within either group rank by provider update,
+# then ingestion, and reject a tie for the selected rank.
+fn select(home:string, catalog:string, cutoff:string, first:i64, last:i64) -> Release {
+  if !Date.utc_timestamp(cutoff) { tool_fail("forecast: invalid cutoff"); }
+  let manifest = Store.fetch(home,catalog);
+  let prefix = text_len(heading());
+  if Guest.after(manifest,0,heading()) != prefix { tool_fail("forecast: invalid catalog"); }
+  let list = text_slice(manifest,prefix,text_len(manifest));
+  let count = catalog_count(list);
+  var best = record<Release>{id:sx_nil(),raw:sx_nil(),projection:Guest.fail(1)};
+  var best_coverage = 0 - 1;
+  var best_update = 0 - 1;
+  var best_ingestion = 0 - 1;
+  var ambiguous = false;
+  for i in 0 .. count {
+    let start = i * 65;
+    let id = text_slice(list,start,start+64);
+    let raw = Store.fetch(home,id);
+    let projection = Guest.project(raw,"blake3:$id",cutoff);
+    if projection["status"] == 3 { continue; }
+    if projection["status"] != 0 { tool_fail("forecast: invalid catalog member"); }
+    let parsed = Model.training(sx_text(projection["bytes"]),cutoff);
+    if parsed["state"] != projection["state"] { tool_fail("forecast: invalid projection"); }
+    var coverage = 0;
+    if covers(parsed["periods"],first,last) { coverage = 1; }
+    let updated = parsed["updated"];
+    let ingested = parsed["ingested"];
+    if coverage == best_coverage && updated == best_update && ingested == best_ingestion {
+      ambiguous = true;
+    }
+    if coverage > best_coverage || (coverage == best_coverage &&
+      (updated > best_update || (updated == best_update && ingested > best_ingestion))) {
+      best = record<Release>{id:sx_string(id),raw:sx_string(raw),projection:projection};
+      best_coverage = coverage;
+      best_update = updated;
+      best_ingestion = ingested;
+      ambiguous = false;
+    }
+  }
+  if best_coverage < 0 { tool_fail("forecast: no release visible at cutoff"); }
+  if ambiguous { tool_fail("forecast: ambiguous release vintage"); }
+  return best;
+}

@@ -63,10 +63,11 @@ workflow status on `master`, not verification of a local checkout.
 | **Artifact store** | [`source/store/`](source/store/) — versioned immutable object/run evidence in a private cooperative store |
 | **Native store candidate** | [`native/`](native/) — standalone security review target; **not** the CLI's admitted durable backend |
 
-The financial graph and forecast evaluation are exercised through independent
-compiled On1x consumers. They are not `finpred` CLI engines or new persisted
-pricing formats. The pricing CLI uses the legacy runner; scalar analysis
-(`./bin/finpred run --engine scalar`) prints a result without saving a run.
+The pricing CLI uses the legacy runner. Scalar analysis prints a result
+without saving a run. The typed financial graph is a library interface.
+The `finpred forecast` commands issue, score, aggregate and replay guest-night
+forecasts from an immutable release catalog in a separate local store.
+See the [forecast workflow](GUIDE.md#run-point-in-time-forecasts).
 
 ## Start here
 

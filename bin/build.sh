@@ -30,3 +30,36 @@ cp -R "$ROOT/plugins/poindexter/On1xfile" "$ROOT/plugins/poindexter/src" "$work/
 python3 "$ROOT/bin/on1x_grammar.py" "$work/on1xc" "$ON1XC" "$MULIB_ROOT"
 python3 "$MULIB_ROOT/on1x/tools/on1x-project.py" build "$work" \
   --on1xc "$work/on1xc" --mulib-root "$MULIB_ROOT" --output-dir "$out"
+
+cp -R "$ROOT/plugins/forecast_baselines/source/forecast_baselines" "$work/source/"
+cat >"$work/source/forecast_baselines/On1xfile.m" <<'EOF'
+on1xfile 1
+library "model.on1x"
+library "score.on1x"
+library "evaluation.on1x"
+library "holdout.on1x"
+EOF
+# Fingerprint the linked analysis source closure and compiler. Stable paths
+# and hashes keep temporary checkout locations out of archived identities.
+printf 'library "forecast_identity.on1x"\n' >>"$work/source/cli/On1xfile.m"
+compiler_hash=$(sha256sum <"$ON1XC")
+source_hashes=$(cd "$work/source" && sha256sum forecast_baselines/*.on1x \
+  core/date.on1x core/feed_snapshot.on1x core/format.on1x core/guest_nights.on1x sdk/callable.on1x)
+subject=$(printf '%s\n' "$compiler_hash" "$source_hashes" | sha256sum)
+printf 'fn source_subject() -> string { return "finpred-forecast-code@1:sha256:%s"; }\n' \
+  "${subject%% *}" >"$work/source/cli/forecast_identity.on1x"
+# The forecast host has its own entry point and doesn't need GrammarEmbed.
+# Keep the legacy generation replaceable by existing installs.
+cp "$ROOT/plugins/forecast_baselines/forecast_main.on1x" "$work/source/"
+rm "$work/source/main.on1x"
+printf 'on1xfile 1\nsource "forecast_main.on1x"\n' >"$work/source/On1xfile.m"
+cat >"$work/On1xfile" <<'EOF_FORECAST'
+on1xfile 1
+kind executable
+name "finpred-forecast"
+directory "source"
+target "finpred-forecast" "source/forecast_main.on1x"
+backend c11
+EOF_FORECAST
+python3 "$MULIB_ROOT/on1x/tools/on1x-project.py" build "$work" \
+  --target finpred-forecast --on1xc "$ON1XC" --mulib-root "$MULIB_ROOT" --output-dir "${out}-forecast"

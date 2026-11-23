@@ -1,0 +1,5 @@
+import cli.forecast as Forecast;
+
+fn main() -> i64 {
+  return Forecast.entry(Forecast.env("FINPRED_MODE"));
+}

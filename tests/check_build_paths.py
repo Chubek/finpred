@@ -37,12 +37,20 @@ def main():
         ):
             (root / source).mkdir(parents=True)
         write(root, "plugins/poindexter/On1xfile", "")
+        write(root, "source/cli/On1xfile.m", "")
+        write(root, "source/main.on1x", "")
+        write(root, "plugins/forecast_baselines/forecast_main.on1x", "")
+        for file in ("date", "feed_snapshot", "format", "guest_nights"):
+            write(root, f"source/core/{file}.on1x", "")
+        write(root, "source/sdk/callable.on1x", "")
+        write(root, "plugins/forecast_baselines/source/forecast_baselines/model.on1x", "")
         write(root, "third_party/mulib/on1x/tools/on1x-project.py", """
 from pathlib import Path
 import sys
 out = Path(sys.argv[sys.argv.index('--output-dir') + 1])
 out.mkdir(parents=True, exist_ok=True)
-exe = out / 'finpred'
+target = sys.argv[sys.argv.index('--target') + 1] if '--target' in sys.argv else 'finpred'
+exe = out / target
 exe.write_text('#!/bin/sh\\nprintf "%s\\\\n" "$0"\\n')
 exe.chmod(0o700)
 """)
@@ -92,6 +100,9 @@ test "$(./bin/finpred selftest)" = "$EXPECTED_EXE"
         outside = run(str(root / "bin/finpred"), "selftest", cwd=root / "tests",
                       FINPRED_BUILD_DIR="build/custom CLI")
         assert outside.returncode == 0 and outside.stdout.strip() == custom, outside
+        forecast = run("./bin/finpred", "forecast", "replay", "fixture",
+                       FINPRED_BUILD_DIR="build/custom CLI", FINPRED_EXE="target/dev/finpred")
+        assert forecast.returncode == 0 and forecast.stdout.strip() == str(Path(custom).parent) + "-forecast/finpred-forecast", forecast
         explicit = run("./bin/finpred", "selftest", FINPRED_EXE="target/dev/finpred")
         assert explicit.returncode == 99, explicit
 

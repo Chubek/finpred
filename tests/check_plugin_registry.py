@@ -36,7 +36,7 @@ def main():
         for directory in ("source", "bin"):
             shutil.copytree(ROOT / directory, project / directory)
         shutil.copy(ROOT / "On1xfile", project)
-        for package in ("yieldcraft", "scalar_diagnostics", "dragnet"):
+        for package in ("yieldcraft", "scalar_diagnostics", "dragnet", "forecast_baselines"):
             shutil.copytree(ROOT / "plugins" / package, project / "plugins" / package)
         sheet = project / "plugins/poindexter"
         shutil.copytree(ROOT / "plugins/poindexter/src", sheet / "src")
