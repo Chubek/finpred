@@ -20,6 +20,7 @@ python3 tests/check_fixed_runner.py
 python3 tests/check_hospitality_adapters.py
 python3 tests/check_financial_graph.py
 python3 tests/check_ottomat_financial.py
+python3 tests/check_forecast_graph.py
 python3 tests/check_dag.py
 python3 tests/check_dag_replay.py
 python3 tests/check_scalar_manifest.py

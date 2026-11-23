@@ -17,9 +17,10 @@ ordinary CLI and terminal workbench do not require X11.
 
 Use Git, CMake (On1x requires 3.20 or newer), a CMake build tool such as Make, C11 and C++20 toolchains, Perl for LibStone’s generators, and Python 3 for the build driver and tests. The C11 driver expects `cc` on `PATH`. The recorded build used GCC 16.2.1, CMake 4.4.3 and Python 3.14.7. The compiled pricing CLI itself does not use Python.
 
-The integration suite uses `jsonschema` 4 with Draft 2020-12 support. `make test`
-also runs the offline Dragnet suite, which needs `pkg-config`, libcurl ≥ 7.85,
-libxml2, and Jansson development headers. On Ubuntu 24.04 those headers are
+The integration suite uses `jsonschema` 4 with Draft 2020-12 support. The
+forecast graph test uses `pkg-config`, libxml2, and Jansson development headers
+for offline fixture decoding. `make test` also runs the offline Dragnet suite,
+which additionally needs libcurl ≥ 7.85. On Ubuntu 24.04 those headers are
 provided by `libcurl4-openssl-dev`, `libxml2-dev`, and `libjansson-dev`.
 If `jsonschema` is not already installed, create a test environment:
 
