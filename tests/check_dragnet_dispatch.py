@@ -57,13 +57,16 @@ def run(*args, input=None, env=None, cwd=ROOT, timeout=90, good=True):
 
 def inherited(exe, paths, work, env, *, good=True, trace=None):
     # All paths are positional parameters. No file content is interpolated
-    # into the shell source. Explicitly close any unused descriptor slots.
+    # into the shell source. Pass the six slots before the command vector.
     slots = [*paths, *([None] * (6 - len(paths)))]
-    redirs = " ".join(f'{fd}<"${fd - 1}"' if path else f"{fd}<&-"
+    redirs = " ".join(f'{fd}<"${fd - 2}"' if path else f"{fd}<&-"
                       for fd, path in enumerate(slots, 3))
-    prefix = ("strace", "-f", "-e", "trace=network", "-o", trace) if trace else ()
-    result = run(*prefix, "bash", "-c", 'exec "$1" ' + redirs, "dragnet", str(exe),
-                 *(str(p) if p else "" for p in paths), cwd=work, env=env, good=good, timeout=30)
+    # Trace only the dispatcher and its descendants. Some Bash builds probe
+    # stdin with getpeername() at startup, before the dispatcher is launched.
+    command = ("strace", "-f", "-e", "trace=network", "-o", trace, "--", exe) if trace else (exe,)
+    result = run("bash", "-c", 'exec "${@:7}" ' + redirs, "dragnet",
+                 *(str(p) if p else "" for p in slots), *command,
+                 cwd=work, env=env, good=good, timeout=30)
     if trace:
         # A successful strace with no network syscalls records only process exits.
         traced = trace.read_text().strip()
