@@ -53,6 +53,9 @@ jobs:
           python3 tests/check_poindexter_tty.py
           python3 tests/check_tui_kernel_admission.py --expect-dynlib-syntax
           make poindexter-tui-review
+      - name: Point-in-time forecast scoring and replay conformance
+        id: forecast_scores
+        run: python3 tests/check_forecast_scores.py
       - name: Public feed transport and replay conformance
         id: dragnet_feeds
         run: |
@@ -72,7 +75,7 @@ jobs:
       - name: Test outcomes
         if: always()
         run: |
-          echo '{"platform":"linux-x86_64","integration":"${{ steps.integration.outcome }}","packages":"${{ steps.packages.outcome }}","dragnet_feeds":"${{ steps.dragnet_feeds.outcome }}","dragnet_dispatch":"${{ steps.dragnet_dispatch.outcome }}","gui_step":"${{ steps.gui.outcome }}","other_platforms":"untested"}'
+          echo '{"platform":"linux-x86_64","integration":"${{ steps.integration.outcome }}","packages":"${{ steps.packages.outcome }}","forecast_scores":"${{ steps.forecast_scores.outcome }}","dragnet_feeds":"${{ steps.dragnet_feeds.outcome }}","dragnet_dispatch":"${{ steps.dragnet_dispatch.outcome }}","gui_step":"${{ steps.gui.outcome }}","other_platforms":"untested"}'
 
   native-store:
     runs-on: ubuntu-24.04

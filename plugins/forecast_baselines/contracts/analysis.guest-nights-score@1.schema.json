@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Point-in-time guest-night forecast score (analysis only)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind", "version", "unit", "currency", "pricing_input", "model",
+    "code_digest", "policy_digest", "forecast", "training", "actuals", "actuals_parent",
+    "issued_at", "training_cutoff", "scoring_cutoff", "target_month",
+    "state", "reason", "actual", "estimate", "error", "absolute_error"
+  ],
+  "properties": {
+    "kind": {"const": "analysis.guest-nights-score"},
+    "version": {"const": 1},
+    "unit": {"const": "guest_nights"},
+    "currency": {"type": "null"},
+    "pricing_input": {"const": false},
+    "model": {"enum": ["forecast.moving-average-3@1", "forecast.seasonal-naive-12@1"]},
+    "code_digest": {"$ref": "#/$defs/digest"},
+    "policy_digest": {"$ref": "#/$defs/digest"},
+    "forecast": {"$ref": "#/$defs/digest"},
+    "training": {"$ref": "#/$defs/digest"},
+    "actuals": {"$ref": "#/$defs/digest"},
+    "actuals_parent": {"$ref": "#/$defs/digest"},
+    "issued_at": {"$ref": "#/$defs/utc"},
+    "training_cutoff": {"$ref": "#/$defs/utc"},
+    "scoring_cutoff": {"$ref": "#/$defs/utc"},
+    "target_month": {"type": "string", "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"},
+    "state": {"enum": ["scored", "unknown"]},
+    "reason": {"enum": [null, "insufficient_evidence", "missing_actual"]},
+    "actual": {"type": ["integer", "null"], "minimum": 0, "maximum": 999999999999},
+    "estimate": {"type": ["object", "null"]},
+    "error": {"type": ["object", "null"]},
+    "absolute_error": {"type": ["object", "null"]}
+  },
+  "oneOf": [
+    {"properties": {
+      "state": {"const": "scored"}, "reason": {"type": "null"},
+      "actual": {"type": "integer"}, "estimate": {"$ref": "#/$defs/estimate"},
+      "error": {"$ref": "#/$defs/signed_error"},
+      "absolute_error": {"$ref": "#/$defs/absolute_error"}
+    }},
+    {"properties": {
+      "state": {"const": "unknown"},
+      "reason": {"enum": ["insufficient_evidence", "missing_actual"]},
+      "actual": {"type": "null"}, "estimate": {"type": "null"},
+      "error": {"type": "null"}, "absolute_error": {"type": "null"}
+    }}
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^blake3:[0-9a-f]{64}$"},
+    "utc": {
+      "type": "string", "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "positive_denominator": {"enum": [1, 3]},
+    "estimate": {"$ref": "#/$defs/estimate_shape"},
+    "estimate_shape": {
+      "type": "object", "additionalProperties": false,
+      "required": ["numerator", "denominator"],
+      "properties": {
+        "numerator": {"type": "integer", "minimum": 0, "maximum": 2999999999997},
+        "denominator": {"$ref": "#/$defs/positive_denominator"}
+      }
+    },
+    "signed_error": {
+      "type": "object", "additionalProperties": false,
+      "required": ["numerator", "denominator"],
+      "properties": {
+        "numerator": {"type": "integer", "minimum": -2999999999997, "maximum": 2999999999997},
+        "denominator": {"$ref": "#/$defs/positive_denominator"}
+      }
+    },
+    "absolute_error": {
+      "type": "object", "additionalProperties": false,
+      "required": ["numerator", "denominator"],
+      "properties": {
+        "numerator": {"type": "integer", "minimum": 0, "maximum": 2999999999997},
+        "denominator": {"$ref": "#/$defs/positive_denominator"}
+      }
+    }
+  }
+}

@@ -1,0 +1,156 @@
+# Pure, replayable scoring of one frozen guest-night forecast against an
+# independently acquired *later* Eurostat-shaped snapshot. This is NOT a
+# financial recommendation, a scheduler, or an authority to fetch a source.
+# The trusted host supplies exact raw snapshots, their expected BLAKE3s,
+# model code identity, and separately chosen issuance/scoring cutoffs.
+import core.date as Date;
+import core.format as F;
+import core.feed_snapshot as Feed;
+import core.guest_nights as Guest;
+import forecast_baselines.model as Model;
+import sdk.callable as SDK;
+import std.String as Str;
+
+record Rational { valid:bool, numerator:i64, denominator:i64 }
+record Score { status:i64, state:i64, bytes:sexpr }
+
+fn reject(status:i64) -> Score {
+  return record<Score>{status:status,state:0,bytes:sx_nil()};
+}
+fn accepted(state:i64, bytes:string) -> Score {
+  return record<Score>{status:0,state:state,bytes:sx_string(bytes)};
+}
+fn unknown() -> Rational {
+  return record<Rational>{valid:false,numerator:0,denominator:1};
+}
+
+# This reader is deliberately only for the output of the *re-executed*,
+# pinned Model.call. Do not use it as a general or untrusted JSON parser.
+fn estimate(canonical:string) -> Rational {
+  let prefix = ",\"state\":\"available\",\"reason\":null,\"estimate\":{\"numerator\":";
+  let max = text_len(canonical) - text_len(prefix) + 1;
+  if max < 0 { return unknown(); }
+  var begin = -1;
+  for i in 0 .. max {
+    let j = Feed.after(canonical,i,prefix);
+    if j >= 0 { begin = j; break; }
+  }
+  if begin < 0 { return unknown(); }
+  let (a,n) = Feed.token(canonical,begin,44,13);
+  let (b,d) = Feed.token(canonical,Feed.after(canonical,a,",\"denominator\":"),125,1);
+  if a < 0 || b < 0 || Feed.after(canonical,b,"},\"uncertainty\":\"unavailable\"}\n") != text_len(canonical)
+  { return unknown(); }
+  # Baseline model bounds guarantee that a 13-digit numerator is safe here.
+  # Guest.nat intentionally caps at 12 digits, so parse this one separately.
+  if text_len(n) < 1 || text_len(n) > 13 ||
+    (text_len(n) > 1 && text_byte(n,0) == 48) { return unknown(); }
+  var value = 0;
+  for i in 0 .. text_len(n) {
+    let c = Date.digit(n,i);
+    if c < 0 { return unknown(); }
+    value = value * 10 + c;
+  }
+  let divisor = Guest.nat(d,1);
+  if value > 2999999999997 || (divisor != 1 && divisor != 3)
+    || (divisor == 3 && value % 3 == 0) { return unknown(); }
+  return record<Rational>{valid:true,numerator:value,denominator:divisor};
+}
+
+# Returned status values: 0 accepted; 1 unknown handler/identity;
+# 2 rejected training evidence; 3 model invocation; 4 rejected scoring
+# evidence; 5 invalid scoring chronology; 6 tampered expected forecast.
+# State: 1 scored, 4 unknown (never silently drop an unscored case).
+fn evaluate(model:string, training_raw:string, training_parent:string,
+  request_bytes:string, expected_forecast:string, actual_raw:string,
+  actual_parent:string, training_cutoff:string, scoring_cutoff:string,
+  code_digest:string) -> Score
+{
+  let desc = Model.descriptor(model,code_digest);
+  if !desc["enabled"] { return reject(1); }
+  let req = Model.spec(request_bytes,training_cutoff);
+  if req["month"] < 0 || !Date.utc_timestamp(scoring_cutoff)
+    || Str.compare(scoring_cutoff,sx_text(req["issued"])) <= 0
+    || Str.compare(scoring_cutoff,training_cutoff) <= 0 { return reject(5); }
+  let next = Guest.next_month(sx_text(req["target"]));
+  let end_day = Date.date_days("$next-01");
+  let scored_at = Guest.clock(scoring_cutoff);
+  if end_day < 0 || scored_at < 0 || scored_at < end_day * 86400
+  { return reject(5); }
+
+  # The source bytes, not the projection's self-asserted parent, are checked.
+  let training = Guest.project(training_raw,training_parent,training_cutoff);
+  if training["status"] != 0 { return reject(2); }
+  let projection = sx_text(training["bytes"]);
+  let checked = Model.training(projection,training_cutoff);
+  if checked["state"] != training["state"] { return reject(2); }
+  let inputs = sx_cons(SDK.value_entry(training["state"],projection),
+    sx_cons(SDK.value_entry(1,request_bytes),sx_nil()));
+  let request = record<SDK.Request>{inputs:inputs,cutoff:sx_string(training_cutoff),work:1};
+  if !SDK.valid_inputs(desc["inputs"],inputs) { return reject(3); }
+  let forecast = Model.call(desc["pin"],request);
+  if forecast["status"] != 0
+    || !SDK.valid_output(desc["output"],forecast["state"],forecast["bytes"])
+  { return reject(3); }
+  let frozen = sx_text(forecast["bytes"]);
+  if text_len(expected_forecast) < 1 || text_len(expected_forecast) > 1024
+    || frozen != expected_forecast { return reject(6); }
+  var prediction = unknown();
+  if forecast["state"] == 1 {
+    prediction = estimate(frozen);
+    if !prediction["valid"] { return reject(3); }
+  } else {
+    if forecast["state"] != 4 { return reject(3); }
+  }
+
+  let actual = Guest.project(actual_raw,actual_parent,scoring_cutoff);
+  if actual["status"] != 0 { return reject(4); }
+  let actual_projection = sx_text(actual["bytes"]);
+  let actual_checked = Model.training(actual_projection,scoring_cutoff);
+  if actual_checked["state"] != actual["state"] { return reject(4); }
+  let truth = Model.at_month(actual_checked["rows"],req["month"]);
+  let forecast_ref = Model.digest(frozen);
+  let training_ref = Model.digest(projection);
+  let actual_ref = Model.digest(actual_projection);
+  if !Guest.digest(forecast_ref) || !Guest.digest(training_ref)
+    || !Guest.digest(actual_ref) { return reject(3); }
+
+  let issued = sx_text(req["issued"]);
+  let target = sx_text(req["target"]);
+  let code = sx_text(desc["pin"]["code_digest"]);
+  let policy = sx_text(desc["pin"]["policy_digest"]);
+  let out = buffer_new();
+  buffer_append(out,"{\"kind\":\"analysis.guest-nights-score\",\"version\":1,\"unit\":\"guest_nights\",\"currency\":null,\"pricing_input\":false");
+  buffer_append(out,",\"model\":\"$model\",\"code_digest\":\"$code\",\"policy_digest\":\"$policy\"");
+  buffer_append(out,",\"forecast\":\"$forecast_ref\",\"training\":\"$training_ref\",\"actuals\":\"$actual_ref\",\"actuals_parent\":\"$actual_parent\"");
+  buffer_append(out,",\"issued_at\":\"$issued\",\"training_cutoff\":\"$training_cutoff\",\"scoring_cutoff\":\"$scoring_cutoff\",\"target_month\":\"$target\"");
+  let usable = prediction["valid"] && truth >= 0;
+  if !usable {
+    var reason = "insufficient_evidence";
+    if truth < 0 { reason = "missing_actual"; }
+    buffer_append(out,",\"state\":\"unknown\",\"reason\":\"$reason\",\"actual\":null,\"estimate\":null,\"error\":null,\"absolute_error\":null}\n");
+    return accepted(4,buffer_text(out));
+  }
+  # All three operands are <= 3e12. Multiplication by a denominator of 3
+  # and subtraction remain inside signed 64-bit integer range.
+  let n = prediction["numerator"];
+  let d = prediction["denominator"];
+  var error_n = n - truth * d;
+  var error_d = d;
+  if error_d == 3 && error_n % 3 == 0 {
+    error_n = error_n / 3;
+    error_d = 1;
+  }
+  var abs_n = error_n;
+  if abs_n < 0 { abs_n = 0 - abs_n; }
+  let actual_value = F.num(truth);
+  let estimate_num = F.num(n);
+  let estimate_den = F.num(d);
+  let error_num = F.num(error_n);
+  let error_den = F.num(error_d);
+  let absolute_num = F.num(abs_n);
+  buffer_append(out,",\"state\":\"scored\",\"reason\":null,\"actual\":$actual_value");
+  buffer_append(out,",\"estimate\":{\"numerator\":$estimate_num,\"denominator\":$estimate_den}");
+  buffer_append(out,",\"error\":{\"numerator\":$error_num,\"denominator\":$error_den}");
+  buffer_append(out,",\"absolute_error\":{\"numerator\":$absolute_num,\"denominator\":$error_den}}\n");
+  return accepted(1,buffer_text(out));
+}

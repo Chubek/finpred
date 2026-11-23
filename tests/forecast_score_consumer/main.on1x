@@ -1,0 +1,43 @@
+# Independent compiled consumer: neither the CLI nor the pricing store is linked.
+import core.guest_nights as Guest;
+import forecast_baselines.model as Model;
+import forecast_baselines.score as Score;
+import sdk.callable as SDK;
+import std.io.TextIO as IO;
+import std.os.CommandLine as Env;
+
+fn env(key:string) -> string { return Env.basis_command_line_get_env(key); }
+fn code() -> string { return Model.digest(env("CODE_BYTES")); }
+fn lookup(key:string) -> SDK.Descriptor { return Model.descriptor(key,code()); }
+
+fn main() -> i64 {
+  let task = env("CASE");
+  if task == "digest" {
+    println(Model.digest(env("BYTES")));
+    return 0;
+  }
+  let model = env("MODEL");
+  let training_cutoff = env("TRAIN_CUTOFF");
+  let raw = env("TRAIN_RAW");
+  let parent = env("TRAIN_PARENT");
+  if task == "forecast" {
+    let training = Guest.project(raw,parent,training_cutoff);
+    if training["status"] != 0 { return 12; }
+    let descriptor = SDK.resolve(model,"analysis",lookup);
+    if !descriptor["enabled"] { return 11; }
+    let inputs = sx_cons(SDK.value_entry(training["state"],sx_text(training["bytes"])),
+      sx_cons(SDK.value_entry(1,env("REQUEST")),sx_nil()));
+    let request = record<SDK.Request>{inputs:inputs,cutoff:sx_string(training_cutoff),work:1};
+    let result = SDK.invoke(descriptor["pin"],"analysis",request,lookup,Model.call);
+    if result["status"] != 0 { return 13; }
+    IO.basis_text_io_print(sx_text(result["bytes"]));
+    return 0;
+  }
+  if task != "score" { return 10; }
+  let result = Score.evaluate(model,raw,parent,env("REQUEST"),
+    env("FROZEN_FORECAST"),env("ACTUAL_RAW"),env("ACTUAL_PARENT"),
+    training_cutoff,env("SCORE_CUTOFF"),code());
+  if result["status"] != 0 { return 30 + result["status"]; }
+  IO.basis_text_io_print(sx_text(result["bytes"]));
+  return 0;
+}

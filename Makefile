@@ -6,7 +6,7 @@ MULIB_JOBS ?= 4
 NATIVE_BUILD_DIR ?= build/native
 TUI_REVIEW_BUILD_DIR ?= build/poindexter-tui-review
 
-.PHONY: all build mulib test dragnet-test native-test poindexter poindexter-gui poindexter-gui-test poindexter-tui-review
+.PHONY: all build mulib test dragnet-test forecast-score-test native-test poindexter poindexter-gui poindexter-gui-test poindexter-tui-review
 
 all: build
 
@@ -20,6 +20,7 @@ test: build
 	python3 tests/check_build_paths.py
 	env -u FINPRED_EXE ./tests/run.sh
 	$(MAKE) dragnet-test
+	$(MAKE) forecast-score-test
 
 dragnet-test:
 	set -eu; . ./bin/build-env.sh; finpred_build_env "$(CURDIR)"; \
@@ -28,6 +29,9 @@ dragnet-test:
 		python3 tests/check_crossref_replay.py; \
 		python3 tests/check_dragnet_public_feeds.py; \
 		python3 tests/check_dragnet_dispatch.py
+
+forecast-score-test:
+	python3 tests/check_forecast_scores.py
 
 native-test:
 	$(CMAKE) -S native -B "$(NATIVE_BUILD_DIR)" -DBUILD_TESTING=ON -DCMAKE_C_FLAGS='-Wall -Wextra -Werror -pedantic'
