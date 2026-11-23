@@ -1,4 +1,4 @@
-import std.os.CommandLine as Env;
+import std.environ as Env;
 import std.io.TextIO as IO;
 import std.os.OS_FileSys as FS;
 import std.collections.Array as A;
@@ -25,8 +25,9 @@ import plugins.yieldcraft.entry as Yieldcraft;
 
 fn env_default(key: string, fallback: string) -> string
 {
-  let value = Env.basis_command_line_get_env(key);
-  if text_len(value) == 0 { return fallback; }
+  # Preserve the host configuration convention: both unset and empty use the default.
+  let (found,value) = Env.getenv(key);
+  if !found || text_len(value) == 0 { return fallback; }
   return value;
 }
 
@@ -333,7 +334,7 @@ fn entry() -> i64
   let home = env_default("FINPRED_HOME",".finpred");
   if mode == "replay" || mode == "explain" || mode == "evidence" || mode == "poindexter"
   {
-    let id = Env.basis_command_line_get_env("FINPRED_RUN_ID");
+    let id = env_default("FINPRED_RUN_ID","");
     if text_len(id) != 64 { tool_fail("replay: FINPRED_RUN_ID must be a digest"); }
     return replay(home,id,mode);
   }

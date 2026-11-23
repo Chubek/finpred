@@ -34,6 +34,7 @@ work=$(mktemp -d "$TMPDIR/finpred-test.XXXXXXXX")
 trap 'rm -rf -- "$work"' EXIT
 trap 'exit 1' HUP INT TERM
 exe=$FINPRED_EXE
+python3 tests/check_cli_environ.py "$exe"
 python3 tests/check_engines_cli.py
 unset FINPRED_MODE FINPRED_RUN_ID
 FINPRED_HOME="$work/main"
