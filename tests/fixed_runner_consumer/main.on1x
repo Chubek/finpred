@@ -1,0 +1,43 @@
+import automat.graph as G;
+import automat.runner as Runner;
+import std.os.CommandLine as Env;
+import std.io.TextIO as IO;
+
+# A native caller need not go through Ottmat. Supply malformed plans directly
+# to the execution boundary, with invalid CSV to establish rejection order.
+fn main() -> i64
+{
+  let test = Env.basis_command_line_get_env("RUNNER_CASE");
+  let premium = G.fixed_plan("premium-p75");
+  var algorithm = premium["algorithm"];
+  var output = premium["output"];
+  var gate = premium["gate"];
+  var policy = premium["profile"];
+  var mode = "recommendation";
+  if test == "algorithm_effect"
+  { algorithm = G.make_node(3,"algorithm","hospitality.offer@1","pricing.distribution@1","read"); }
+  if test == "output_effect"
+  { output = G.make_node(6,"output","pricing.recommendation@1","pricing.recommendation@1","external_action"); }
+  if test == "gate_edge"
+  { gate = G.make_node(5,"gate","pricing.distribution@1","pricing.recommendation@1","pure"); }
+  if test == "gate_order" { gate = premium["strategy"]; }
+  if test == "unknown_profile" { policy = sx_string("premium-p99"); }
+  if test == "execution" { mode = test; }
+  let plan = record<G.Plan>{input:premium["input"],source:premium["source"],
+    transform:premium["transform"],algorithm:algorithm,strategy:premium["strategy"],
+    gate:gate,output:output,profile:policy};
+  var scenario = "";
+  var offers = "";
+  var valuation = "";
+  if test == "premium"
+  {
+    scenario = IO.basis_text_io_input_all(Env.basis_command_line_get_env("RUNNER_SCENARIO"));
+    offers = IO.basis_text_io_input_all(Env.basis_command_line_get_env("RUNNER_OFFERS"));
+    valuation = IO.basis_text_io_input_all(Env.basis_command_line_get_env("RUNNER_VALUATION"));
+  }
+  let result = Runner.run(plan,mode,scenario,offers,valuation,false,buffer_new());
+  let r = result["recommendation"];
+  println(r["intended_bps"]);
+  println(r["recommended_cents"]);
+  return 0;
+}

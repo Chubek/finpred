@@ -21,6 +21,22 @@ A competing writer can reuse the completed file or fail with `publication
 reservation unavailable`. Failure also covers an inaccessible reservation:
 the stdlib returns a boolean, not `errno`. There is no automatic retry.
 
+For errors on a validated key, `artifact:` identifies a snapshot and
+`run:` a manifest (`replay:` for the manifest length and directory checks).
+`key=` gives its digest or run ID. For example, `run: staged
+write failed; key=<id>` identifies the manifest attempt, not a failed
+write of one of its parents. Errors raised inside the stdlib, such as NUL
+in text input, retain the runtime's own diagnostic.
+
+`store: expected directory: home|artifacts|runs` identifies a non-directory
+at that position. A writer checks all three positions before creating
+missing directories. A reader checks the relevant parent on a failed
+lookup, reporting `directory unavailable` when it cannot confirm the
+directory exists. If it sees a `.pending` name but no published entry,
+it reports `publication reservation present; no published entry observed`.
+These are observations, not a determination that a writer has died.
+Readers do not open staged payloads or create missing directories.
+
 If a staged write (including close) or rename **returns failure**, the
 writer removes its own `payload` and empty reservation before reporting
 the error. No final file is removed. A cleanup error is explicit; if the
@@ -67,6 +83,22 @@ manifest write to hit a 128-byte `RLIMIT_FSIZE`, with `SIGXFSZ` ignored so the
 writer can handle the error. The CLI must fail without a committed manifest
 or stale reservation; a normal retry must reproduce the original bytes and
 replay successfully.
+
+`python3 tests/check_store_publication_status.py` checks known bad layouts,
+directory-valued entries and keyed errors, then exercises two distinct
+failure paths: a handled short write of the first raw snapshot, and an
+actual `SIGXFSZ` exit during the final manifest write. The latter verifies
+read-only rejection of the pending manifest, offline cleanup after the
+writer exits and byte-identical recovery of the committed store.
+
+Verification (2026-11-23): in an isolated archive of `af96ea7` plus the
+store changes, the focused status test, `bin/build.sh`, `tests/run.sh`,
+`python3 tests/check_fixtures.py` and `python3 tests/validate_static.py`
+all exited 0 on Linux x86-64 with GCC 16.2.1 and
+`third_party/mulib/build/on1x/on1xc` at the pin above. Baseline reproduction:
+a file at `runs` caused `run` to leave a new `artifacts/` sibling;
+replay of that layout returned `unknown id`. A directory at a raw input's
+published name produced the runtime's `input read failure`.
 
 Verification (2026-11-23): in a scratch copy of the P1 tree with `MULIB_ROOT`
 pointing to the pinned checkout and `TMPDIR` on the scratch volume,

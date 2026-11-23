@@ -1,36 +1,104 @@
-# Both versions declare the fixed recommendation graph. V2 adds exactly one
-# allowlisted target policy; profile IDs are content declarations, not filenames.
-import core.csv as CSV;
+# Single-pass parser and checker for the fixed recommendation graph.
+import ottmat.tokens as T;
 import automat.graph as Graph;
+
+# A reference to the canonical Automat plan (node ids 0..6), parameterized
+# by an admitted profile. An empty profile means there is no validated plan.
+record Plan
+{
+  syntax_version: i64,
+  graph: sexpr,
+  profile: sexpr
+}
+
+fn invalid() -> Plan
+{
+  return record<Plan>{syntax_version:0,graph:sx_string(""),profile:sx_string("")};
+}
+
+fn contract(s: string, pos: i64) -> (string, i64)
+{
+  let(domain, dot) = T.word(s,pos);
+  let(kind, marker) = T.word(s,T.at(s,dot,46));
+  let(version, end) = T.number(s,T.at(s,marker,64));
+  if version != 1 { return ("",-1); }
+  return (text_slice(s,pos,end),end);
+}
+
+fn effect_allowed(family: string, effect: string) -> bool
+{
+  if family == "input" || family == "source" { return effect == "read"; }
+  if family == "transform" || family == "algorithm" || family == "strategy" || family == "gate"
+  { return effect == "pure"; }
+  return family == "output" && effect == "record";
+}
+
+fn policy(s: string, pos: i64) -> string
+{
+  let(keyword, space) = T.word(s,pos);
+  if keyword != "profile" { return ""; }
+  let(name, marker) = T.word(s,T.at(s,space,32));
+  let(version, gap) = T.number(s,T.at(s,marker,64));
+  if version != 1 { return ""; }
+  let(op, sep) = T.word(s,T.at(s,gap,32));
+  let arg = T.at(s,sep,32);
+  if op == "target_bps"
+  {
+    let(bps, end) = T.number(s,arg);
+    if T.line_end(s,end) != text_len(s) { return ""; }
+    if name == "value-p40" && bps == 4000 { return name; }
+    if name == "balanced-p55" && bps == 5500 { return name; }
+    if name == "premium-p75" && bps == 7500 { return name; }
+  }
+  if op == "curve"
+  {
+    let(curve, end) = T.word(s,arg);
+    if T.line_end(s,end) != text_len(s) { return ""; }
+    if name == "lead-linear" && curve == "linear" { return name; }
+    if name == "lead-quadratic" && curve == "quadratic" { return name; }
+  }
+  return "";
+}
+
+fn lower(s: string) -> Plan
+{
+  let size = text_len(s);
+  if size < 1 || size > 512 { return invalid(); }
+  let(header, space) = T.word(s,0);
+  if header != "ottmat" { return invalid(); }
+  let(version, eol) = T.number(s,T.at(s,space,32));
+  if version != 1 && version != 2 { return invalid(); }
+  var pos = T.line_end(s,eol);
+  var previous = "none";
+  for id in 0 .. 7
+  {
+    let(family, sep) = T.word(s,pos);
+    let(output, end) = contract(s,T.at(s,sep,32));
+    pos = T.line_end(s,end);
+    if pos < 0 { return invalid(); }
+    # Resolve the declaration to this exact native operation, checking its
+    # input against the previous declaration's output, including the root.
+    let n = Graph.node(id);
+    if n["id"] != id || sx_text(n["family"]) != family || sx_text(n["accepts"]) != previous
+      || sx_text(n["produces"]) != output || !effect_allowed(family,sx_text(n["effect"]))
+    { return invalid(); }
+    previous = output;
+  }
+  var selected = "scenario";
+  if version == 1 && pos != size { return invalid(); }
+  if version == 2
+  {
+    selected = policy(s,pos);
+    if selected == "" { return invalid(); }
+  }
+  if !Graph.validate("recommendation") { return invalid(); }
+  return record<Plan>{syntax_version:version,graph:sx_string(Graph.version()),profile:sx_string(selected)};
+}
 
 fn profile(source: string) -> string
 {
-  let size = text_len(source);
-  if size < 1 || size > 512 { return ""; }
-  # Count lines without CSV.rows' exceptions: malformed input returns "".
-  # CSV.line accepts LF, CRLF and an optional final line ending.
-  var rows = 0;
-  for i in 0 .. size { if text_byte(source,i) == 10 { rows = rows + 1; } }
-  if text_byte(source,size - 1) != 10 { rows = rows + 1; }
-  if rows != 8 && rows != 9 { return ""; }
-  let header = CSV.line(source,0);
-  if rows == 8 && header != "ottmat 1" { return ""; }
-  if rows == 9 && header != "ottmat 2" { return ""; }
-  for id in 0 .. 7
-  {
-    let n = Graph.node(id);
-    let declaration = text_concat(sx_text(n["family"]),text_concat(" ",sx_text(n["produces"])));
-    if CSV.line(source,id+1) != declaration { return ""; }
-  }
-  if !Graph.validate("recommendation") { return ""; }
-  if rows == 8 { return "scenario"; }
-  let policy = CSV.line(source,8);
-  if policy == "profile value-p40@1 target_bps 4000" { return "value-p40"; }
-  if policy == "profile balanced-p55@1 target_bps 5500" { return "balanced-p55"; }
-  if policy == "profile premium-p75@1 target_bps 7500" { return "premium-p75"; }
-  if policy == "profile lead-linear@1 curve linear" { return "lead-linear"; }
-  if policy == "profile lead-quadratic@1 curve quadratic" { return "lead-quadratic"; }
-  return "";
+  let plan = lower(source);
+  return sx_text(plan["profile"]);
 }
 
 fn checked_strategy(source: string) -> bool

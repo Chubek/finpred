@@ -71,7 +71,13 @@ Pass three bare 64-character lowercase hex IDs. Use the digest of the **normaliz
 
 ## Native callers: inspect the descriptor
 
-The [C11 SDK](source/sdk/README.md) is independently linkable without MuLIB. It describes **only** `yieldcraft.percentile`. Include `<finpred/sdk.h>` and link `-lfinpred_sdk`. The sequence in the [C consumer](tests/sdk_consumer.c) is:
+The [C11 SDK](source/sdk/README.md) is independently linkable without MuLIB.
+For any of the three packages, use `<finpred/sdk_v2.h>`: look up the package,
+then check its requested use against the host's linked dependencies, resource
+ceilings and grants. The [built-in On1x hosts](source/sdk/static_host.on1x)
+perform this check before dispatch and grant no external capabilities.
+
+The legacy v1 API describes **only** `yieldcraft.percentile`. Include `<finpred/sdk.h>` and link `-lfinpred_sdk`. The sequence in the [C consumer](tests/sdk_consumer.c) is:
 
 1. `finpred_sdk_lookup_v1(FINPRED_SDK_ABI_V1, "yieldcraft.percentile", &plugin)` obtains an opaque handle. Check for `FINPRED_SDK_OK` before use.
 2. `finpred_sdk_describe_v1(plugin)` exposes the version, contracts, effect, required capabilities and numerical limits. The library owns the handle and descriptor; neither is freed by the caller. Both expire when the library is unloaded.

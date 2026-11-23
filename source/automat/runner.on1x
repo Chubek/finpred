@@ -1,0 +1,52 @@
+# Static lowering of the seven Yieldcraft slots. The plan is checked at the
+# call boundary, including for hosts other than Ottmat. There is no dynamic
+# dispatch, retry, artifact access or external-action handler.
+import automat.graph as Graph;
+import core.contracts as C;
+import sdk.static_host as Host;
+import yieldcraft.matcher as Match;
+import yieldcraft.strategy as Strategy;
+
+record Output
+{
+  scenario: C.Scenario,
+  valuation: C.Valuation,
+  recommendation: Strategy.Recommendation
+}
+
+# Gate the strategy's output without recomputing or changing its price.
+fn within_limits(r: Strategy.Recommendation, s: C.Scenario, v: C.Valuation) -> bool
+{
+  let price = r["recommended_cents"];
+  if price < v["floor_cents"] || price > v["cap_cents"] { return false; }
+  let delta = price - v["current_cents"];
+  return delta <= v["max_move_cents"] && 0 - delta <= v["max_move_cents"]
+    && r["property_count"] >= s["min_properties"] && r["search_nodes"] <= s["search_budget"];
+}
+
+fn run(plan: Graph.Plan, mode: string, scenario_raw: string, offers_raw: string,
+  valuation_raw: string, collect: bool, evidence: buffer) -> Output
+{
+  if mode != "recommendation" || !Graph.validate_plan(plan,mode)
+  { tool_fail("automat: invalid fixed plan or capability denied"); }
+  if !Host.yieldcraft(mode) { tool_fail("sdk: capability denied"); }
+
+  # Input: the host supplies frozen bytes, never paths. Valuation is the
+  # strategy's side input, checked against the same decision time.
+  if text_len(scenario_raw) > 2000000 || text_len(valuation_raw) > 2000000
+  { tool_fail("input: file size outside bounded CSV/text profile"); }
+  let s = C.scenario_csv(scenario_raw);
+  let v = C.valuation_csv(valuation_raw,s);
+  # Source + Transform are fused: decode each offer, then filter into Pool.
+  # Algorithm consumes that pool once, including when collecting witnesses.
+  let pool = Match.ingest_mode(offers_raw,s,collect,evidence);
+  let dist = Match.distribution_mode(pool,s,collect,evidence);
+  Match.destroy(pool);
+
+  let r = Strategy.recommend_profile(s,v,dist,sx_text(plan["profile"]));
+  Match.destroy_distribution(dist);
+  if !within_limits(r,s,v) { tool_fail("automat: recommendation outside validated limits"); }
+  # Output's record effect hands typed data to the host. Only the host knows
+  # whether this is a new run or a read-only replay.
+  return record<Output>{scenario:s,valuation:v,recommendation:r};
+}

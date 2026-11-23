@@ -13,7 +13,7 @@ trap 'rm -rf -- "$work"' EXIT
 trap 'exit 1' HUP INT TERM
 cp "$pkg/On1xfile" "$work/"
 cp -R "$pkg/source" "$work/source"
-for dep in core algorithms yieldcraft; do
+for dep in core algorithms yieldcraft sdk; do
   mkdir "$work/source/$dep"
   cp "$root/source/$dep/On1xfile.m" "$root/source/$dep/"*.on1x "$work/source/$dep/"
 done

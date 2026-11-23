@@ -2,6 +2,7 @@
 # the caller. No source path or permission is obtained from a plugin or env var.
 import core.contracts as C;
 import dragnet.frozen_csv as Dragnet;
+import sdk.static_host as Host;
 import std.os.OS_FileSys as FS;
 import std.io.TextIO as IO;
 
@@ -17,6 +18,7 @@ fn snapshot(slot: string) -> string
 
 fn main() -> i64
 {
+  if !Host.dragnet() { tool_fail("sdk: incompatible frozen CSV source"); }
   let scenario = C.scenario_csv(snapshot("/proc/self/fd/3"));
   let offers = snapshot("/proc/self/fd/4");
   IO.basis_text_io_print(Dragnet.offers_as_of(offers,scenario));

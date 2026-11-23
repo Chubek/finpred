@@ -1,0 +1,26 @@
+import sdk.packages as P;
+import core.csv as CSV;
+import std.os.CommandLine as Env;
+
+fn env(k:string) -> string { return Env.basis_command_line_get_env(k); }
+fn atom(k:string) -> sexpr { return sx_string(env(k)); }
+fn names(k:string) -> sexpr {
+  let s = env(k);
+  var xs = sx_nil();
+  if s == "" { return xs; }
+  let n = CSV.columns(s);
+  for i in 0 .. n { xs = sx_cons(sx_string(CSV.field(s,n-1-i)),xs); }
+  return xs;
+}
+fn main() -> i64 {
+  let use = record<P.Use>{sdk_version:CSV.nat(env("SDK")),package_version:atom("VERSION"),
+    kind:atom("KIND"),inputs:names("INPUTS"),output:atom("OUTPUT"),mode:atom("MODE"),
+    effect:atom("EFFECT"),requested:names("REQUESTED")};
+  let host = record<P.Host>{dependencies:names("DEPS"),grants:names("GRANTS"),
+    ceilings:record<P.Limits>{csv_rows:CSV.nat(env("csv_rows")),bytes_per_input:CSV.nat(env("bytes_per_input")),
+      rooms_per_property:CSV.nat(env("rooms_per_property")),maximum_rooms:CSV.nat(env("maximum_rooms")),
+      adults:CSV.nat(env("adults")),children:CSV.nat(env("children")),search_budget_max:CSV.nat(env("search_budget_max")),
+      runs_per_call:CSV.nat(env("runs_per_call")),data_rows:CSV.nat(env("data_rows")),
+      columns:CSV.nat(env("columns")),output_bytes_max:CSV.nat(env("output_bytes_max"))}};
+  return P.check_v2(env("PACKAGE"),use,host);
+}

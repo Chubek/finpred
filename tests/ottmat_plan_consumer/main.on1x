@@ -1,0 +1,31 @@
+import ottmat.ottmat as Ottmat;
+import automat.graph as Graph;
+import std.os.CommandLine as Env;
+import std.io.TextIO as IO;
+
+# Independent consumer of the lowered plan and both compatibility APIs.
+fn main() -> i64
+{
+  let s = Env.basis_command_line_get_env("OTTMAT_DECL");
+  let plan = Ottmat.lower(s);
+  let name = sx_text(plan["profile"]);
+  if Ottmat.profile(s) != name || Ottmat.checked_strategy(s) != (name != "")
+  { tool_fail("Ottmat API disagreement"); }
+  if name == ""
+  {
+    if plan["syntax_version"] != 0 || sx_text(plan["graph"]) != ""
+    { tool_fail("partial plan escaped"); }
+    IO.basis_text_io_print("invalid");
+    return 0;
+  }
+  if sx_text(plan["graph"]) != Graph.version() || !Graph.validate("recommendation")
+  { tool_fail("Automat plan disagreement"); }
+  if plan["syntax_version"] == 1 { IO.basis_text_io_print("1:"); }
+  else
+  {
+    if plan["syntax_version"] != 2 { tool_fail("unknown syntax version"); }
+    IO.basis_text_io_print("2:");
+  }
+  IO.basis_text_io_print(name);
+  return 0;
+}

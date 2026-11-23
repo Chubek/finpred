@@ -23,6 +23,10 @@ For package entry points, permissions and test commands, see [the plugin develop
 
 ## What runs today
 
+The CLI passes frozen inputs to the [typed plan runner](source/automat/runner.on1x).
+It checks the plan before parsing inputs and checks the recommendation against
+the valuation limits before the CLI records or displays it.
+
 Choose a [Yieldcraft strategy profile](strategies/README.md) with
 `FINPRED_STRATEGY`, for example `FINPRED_STRATEGY=strategies/premium-p75.ottmat ./bin/finpred run`.
 

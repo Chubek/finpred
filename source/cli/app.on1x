@@ -11,10 +11,11 @@ import core.serialize as JSON;
 import store.artifacts as Store;
 import cli.lineage as Lineage;
 import automat.graph as Graph;
+import automat.runner as Runner;
 import ottmat.ottmat as Ottmat;
 import sdk.sdk as SDK;
+import sdk.static_host as Host;
 import algorithms.quantile as Quantile;
-import yieldcraft.matcher as Match;
 import yieldcraft.strategy as Strategy;
 import poindexter.sheet as Sheet;
 
@@ -97,43 +98,27 @@ fn normalized_object(home: string, value: string, persist: bool) -> string
   return digest;
 }
 
-fn matched_distribution(raw: string, s: C.Scenario, evidence: bool, out: buffer) -> Match.Distribution
-{
-  if evidence
-  {
-    let pool = Match.ingest_with_evidence(raw,s,out);
-    let dist = Match.distribution_with_evidence(pool,s,out);
-    Match.destroy(pool);
-    return dist;
-  }
-  let pool = Match.ingest(raw,s);
-  let dist = Match.distribution(pool,s);
-  Match.destroy(pool);
-  return dist;
-}
-
 fn execute(scenario_raw: string, offers_raw: string, valuation_raw: string,
   strategy_raw: string, home: string, version: string, mode: string, expected_rec: string,
   expected_trace: string, expected_run_id: string) -> i64
 {
   let persist = mode == "run";
-  let profile = Ottmat.profile(strategy_raw);
-  if profile == ""
+  let declaration = Ottmat.lower(strategy_raw);
+  let profile = sx_text(declaration["profile"]);
+  if sx_text(declaration["graph"]) != Graph.version() || profile == ""
   { tool_fail("automat/ottmat: invalid graph or incompatible strategy"); }
   if version == "finpred-run@1" && profile != "scenario"
   { tool_fail("replay: v1 requires the legacy scenario strategy"); }
-  let descriptor = SDK.yieldcraft_descriptor();
-  if !SDK.admit(descriptor,"recommendation") { tool_fail("sdk: capability denied"); }
-  let s = C.scenario_csv(scenario_raw);
-  let v = C.valuation_csv(valuation_raw,s);
+  let evidence = buffer_new();
+  let result = Runner.run(Graph.fixed_plan(profile),"recommendation",
+    scenario_raw,offers_raw,valuation_raw,mode == "evidence",evidence);
+  let s = result["scenario"];
+  let v = result["valuation"];
+  let r = result["recommendation"];
   let sd = Store.digest(scenario_raw);
   let od = Store.digest(offers_raw);
   let vd = Store.digest(valuation_raw);
   let td = Store.digest(strategy_raw);
-  let evidence = buffer_new();
-  let dist = matched_distribution(offers_raw,s,mode == "evidence",evidence);
-  let r = Strategy.recommend_profile(s,v,dist,profile);
-  Match.destroy_distribution(dist);
   if persist
   {
     Store.ensure(home);
@@ -197,6 +182,7 @@ fn execute(scenario_raw: string, offers_raw: string, valuation_raw: string,
     { tool_fail("replay: stored output differs from recomputation"); }
     if mode == "poindexter"
     {
+      if !Host.poindexter() { tool_fail("sdk: incompatible pricing sheet"); }
       let (ok,csv) = Sheet.render(id,rec_digest,nv,sx_text(s["currency"]),"room_night",
         v["current_cents"],r["recommended_cents"],sx_text(r["reason"]),false);
       if !ok { tool_fail(csv); }

@@ -28,19 +28,68 @@ fn node(id: i64) -> Node
   return make_node(id,"error","none","none","none");
 }
 
-fn validate(mode: string) -> bool
+record Plan
+{
+  input: Node,
+  source: Node,
+  transform: Node,
+  algorithm: Node,
+  strategy: Node,
+  gate: Node,
+  output: Node,
+  profile: sexpr
+}
+
+fn fixed_plan(profile: string) -> Plan
+{
+  return record<Plan>{input:node(0),source:node(1),transform:node(2),
+    algorithm:node(3),strategy:node(4),gate:node(5),output:node(6),profile:sx_string(profile)};
+}
+
+fn step(plan: Plan, id: i64) -> Node
+{
+  if id == 0 { return plan["input"]; }
+  if id == 1 { return plan["source"]; }
+  if id == 2 { return plan["transform"]; }
+  if id == 3 { return plan["algorithm"]; }
+  if id == 4 { return plan["strategy"]; }
+  if id == 5 { return plan["gate"]; }
+  if id == 6 { return plan["output"]; }
+  tool_fail("automat: unknown plan slot");
+  return plan["output"];
+}
+
+fn text_is(atom: sexpr, expected: string) -> bool
+{
+  return sx_kind(atom) == 2 && sx_text(atom) == expected;
+}
+
+fn validate_plan(plan: Plan, mode: string) -> bool
 {
   if mode != "analysis" && mode != "recommendation" && mode != "simulation"
   { return false; }
-  # A single monotonic topological order and exact edge schema equality.
-  for id in 0 .. 6
+  # Each native handler has exactly one slot. Check all slots before invoking
+  # any handler; a matching edge alone cannot authorize a substituted effect.
+  var incoming = "none";
+  for id in 0 .. 7
   {
-    let a = node(id);
-    let b = node(id + 1);
-    if sx_text(a["produces"]) != sx_text(b["accepts"]) || b["id"] <= a["id"] { return false; }
-    if sx_text(a["effect"]) == "external_action" || sx_text(b["effect"]) == "external_action" { return false; }
+    let n = step(plan,id);
+    let handler = node(id);
+    if n["id"] != id || !text_is(n["family"],sx_text(handler["family"]))
+      || !text_is(n["accepts"],incoming) || !text_is(n["accepts"],sx_text(handler["accepts"]))
+      || !text_is(n["produces"],sx_text(handler["produces"])) { return false; }
+    var effect = "pure";
+    if id < 2 { effect = "read"; }
+    if id == 6 { effect = "record"; }
+    if !text_is(n["effect"],effect) { return false; }
+    incoming = sx_text(n["produces"]);
   }
-  return true;
+  if sx_kind(plan["profile"]) != 2 { return false; }
+  let policy = sx_text(plan["profile"]);
+  return policy == "scenario" || policy == "value-p40" || policy == "balanced-p55"
+    || policy == "premium-p75" || policy == "lead-linear" || policy == "lead-quadratic";
 }
+
+fn validate(mode: string) -> bool { return validate_plan(fixed_plan("scenario"),mode); }
 
 fn version() -> string { return "yieldcraft.fixed-graph@1"; }

@@ -4,6 +4,9 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
 python3 tests/check_fixtures.py
 python3 tests/check_sdk.py
+python3 tests/check_sdk_packages.py
+python3 tests/check_fixed_runner.py
+python3 tests/check_ottmat_plan.py
 work=$(mktemp -d "${TMPDIR:-/tmp}/finpred-test.XXXXXXXX")
 trap 'rm -rf -- "$work"' EXIT
 trap 'exit 1' HUP INT TERM
@@ -171,4 +174,5 @@ python3 "$ROOT/tests/check_profiles_cli.py"
 python3 "$ROOT/tests/check_ingestion_cli.py"
 python3 "$ROOT/tests/check_poindexter_cli.py"
 python3 "$ROOT/tests/check_write_failure.py"
+python3 "$ROOT/tests/check_store_publication_status.py"
 echo 'on1x_integration_ok=true'

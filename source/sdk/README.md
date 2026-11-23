@@ -1,9 +1,67 @@
-# C11 descriptor SDK
+# Static package compatibility SDK
 
-Use `libfinpred_sdk` to discover the built-in Yieldcraft package, inspect its
-versioned contract names and matching limits, and check whether a proposed
-use is compatible. This library is independently linkable; it has no MuLIB
-runtime dependency. Pricing and run admission remain in the On1x executable.
+The **v2 package-use check** covers the three statically trusted packages,
+in [On1x](packages.on1x) and in the independently linkable
+[C11 library](sdk_v2.h). Pricing and run admission remain in the On1x hosts.
+The legacy Yieldcraft-only descriptor API is described below.
+
+| Manifest (SDK 1, package 1.0.0) | Invocation mode | Ordered input schema/format IDs → output | Required host dependency IDs |
+|---|---|---|---|
+| [`dragnet.frozen_csv`](../../plugins/dragnet/plugin.json) (`Source`) | `analysis` | `hospitality.scenario@1`, `finpred.offers.csv@1` → `hospitality.offer@1` | `finpred.core@1`, `yieldcraft.asof-whole-stay-property-min@1` |
+| [`yieldcraft.percentile`](../../plugins/yieldcraft/plugin.json) (`Strategy`) | `recommendation` | `hospitality.scenario@1`, `hospitality.offer@1`, `pricing.valuation@1` → `pricing.recommendation@1` | none declared |
+| [`poindexter.pricing-sheet`](../../plugins/poindexter/plugin.json) (`View`) | `analysis` | `pricing.recommendation@1`, `pricing.valuation@1` → `poindexter.pricing-sheet@1` | `yieldcraft.percentile@1` |
+
+### Host integration
+
+Import `sdk.packages as P` and call `P.check_v2(name, use, host)` before
+dispatch to a statically linked entry point. Native hosts include
+`<finpred/sdk_v2.h>`, look up a handle with `finpred_sdk_lookup_v2(2, name, &p)`,
+and call `finpred_sdk_check_v2(p, &use, &host)`. A host can inspect requirements
+through `finpred_sdk_describe_v2(p)`. Both interfaces take three independent inputs:
+
+- **Identity and use.** The checker selects the compiled profile by name;
+  the caller specifies its expected manifest SDK, package version, kind,
+  ordered inputs, output, effect, invocation mode and requested capabilities.
+  All schema/format/version identifiers must match literally. Dragnet consumes
+  raw offers CSV and emits normalized offer envelopes. The pricing sheet is a
+  versioned CSV view, not a new persisted pricing contract.
+- **Host inventory and budget.** The host supplies its own available dependency
+  IDs and ceilings, independently of the manifest. Extra inventory is allowed;
+  every declared dependency must be present at its exact `@version`. These are
+  static interface IDs, not dynamic discovery, version-range solving, or proof
+  of a dependency's provenance. Each declared resource maximum must fit within
+  the host's ceiling for that named dimension. Equality passes; zero budgets
+  cannot cover positive maxima. Zero in a compiled profile means the manifest
+  does not declare that dimension. The check does not meter actual consumption,
+  infer missing limits, or replace entry-point validation.
+- **Authority.** Requested capabilities must cover required capabilities and
+  be contained in the intersection of the host grants and package declaration.
+  All three declare `pure` and an empty capability set: even a host grant of
+  `network` cannot make a request for `network` admissible. Unknown modes,
+  `execution`, publication, and all non-pure effects fail. A compatible result
+  is metadata only: no filesystem handle, callback, loader, or action token.
+
+The checker returns `0` for compatibility; `1` for malformed lists or invalid
+C arguments; `2` for an incompatible package/contract/dependency/budget;
+`3` for unknown name at lookup; and `4` for denied mode/effect/capability.
+Lists have at most 16 unique nonempty names of at most 127 bytes each. On1x
+uses proper `sexpr` lists of string atoms. C strings/arrays must be valid and
+borrowed for the call; returned C metadata has library lifetime. See the
+[independent On1x](../../tests/sdk_packages_consumer/main.on1x) and
+[C](../../tests/sdk_packages_consumer/main.c) consumers for full call sites.
+Their environment-driven inputs are test vectors, not a production grant source.
+
+**Verify:** `python3 tests/check_sdk_packages.py` builds both consumers in a
+temporary directory and checks the same 106 cases per host against the three
+checked-in manifests, including every resource boundary and dependency.
+Verified with MuLIB `49de89acbc97efbee493d6b28d02c8f64ed4f725`,
+`third_party/mulib/build/on1x/on1xc` (C11), Linux x86_64 and GCC 16.2.1.
+The v1 consumer (`python3 tests/check_sdk.py`), independent Yieldcraft package
+test, Python fixture oracle, static checks, On1xfile build and `tests/run.sh`
+also passed (17100 and 16000 cents/night, both unpublished). For a full temp
+filesystem, set `TMPDIR` to a writable directory on a disk with space.
+
+### Build and use the legacy v1 API
 
 From the repository root:
 
