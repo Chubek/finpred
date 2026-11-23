@@ -51,6 +51,9 @@ jobs:
           python3 tests/check_poindexter_package.py
           ./bin/poindexter --build
           python3 tests/check_poindexter_workbench.py
+          python3 tests/check_poindexter_tty.py
+          python3 tests/check_tui_kernel_admission.py
+          make poindexter-tui-review
       - name: Optional Poindexter ImmGTK conformance
         id: gui
         run: |

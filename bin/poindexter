@@ -100,9 +100,8 @@ while :; do
   PX_CELL=${letters:col:1}$((row+1))
   read -r lines columns < <(stty size) || { lines=24; columns=80; }
   export PX_ROWS=$((lines>12 ? lines-11 : 1)) PX_COLS=$((columns>20 ? (columns-5)/14 : 1))
-  marker=''; if ((dirty)); then marker=' *'; fi
-  printf '\033[H\033[2J\033[1;36mPOINDEXTER\033[0m   Worksheet%s   |   %s\n\n' "$marker" "$PX_CELL"
-  if ! worker frame 2>"$tmp/error"; then printf '%s\n' "$(<"$tmp/error")"; fi
+  printf '\033[H\033[2J'
+  if ! PX_DIRTY="$dirty" worker terminal_frame 2>"$tmp/error"; then printf '%s\n' "$(<"$tmp/error")"; fi
   printf '\nArrows move  e edit  g goto  x code  @ script  s save  ? help  q quit\n%s\n' "$status"
   IFS= read -rsn1 key || break
   if [[ $key == $'\e' ]]; then

@@ -6,6 +6,7 @@ import std.os.OS_FileSys as FS;
 import std.os.CommandLine as Env;
 import std.collections.Array as A;
 import std.Int as Int;
+import std.tty.tty as Tty;
 
 fn env(k:string) -> string { return Env.basis_command_line_get_env(k); }
 fn read_file(path:string,max:i64) -> string {
@@ -92,9 +93,18 @@ fn field(buf:buffer,s:string,width:i64) {
   if n>width { buffer_append(buf,text_slice(s,0,width-1)); buffer_byte(buf,126); }
   else { buffer_append(buf,s); for i in n .. width { buffer_byte(buf,32); } }
 }
-fn frame(b:G.Book,id:i64) {
+fn terminal_title(buf:buffer,id:i64) {
+  # The trusted std.tty adapter returns plain text when styling is unavailable.
+  let(status,title)=Tty.basis_tty_render(1,"POINDEXTER",1,6,-1,false);
+  if status!=0 && status!=1 { tool_fail(text_concat("worksheet: terminal title render failed: ",Int.to_string(status))); }
+  buffer_append(buf,title); buffer_append(buf,"   Worksheet");
+  if env("PX_DIRTY")=="1" { buffer_append(buf," *"); }
+  buffer_append(buf,"   |   "); buffer_append(buf,G.name(id)); buffer_append(buf,"\n\n");
+}
+fn frame(b:G.Book,id:i64,terminal:bool) {
   let rows=dim("PX_ROWS",1,32); let cols=dim("PX_COLS",1,16);
   let r0=id/16/rows*rows; let c0=id%16/cols*cols; let buf=buffer_new();
+  if terminal { terminal_title(buf,id); }
   buffer_append(buf,"     ");
   for c in c0 .. Int.min(16,c0+cols) {
     buffer_append(buf,"| "); field(buf,text_slice("ABCDEFGHIJKLMNOP",c,c+1),12);
@@ -118,7 +128,7 @@ fn main() -> i64 {
   G.load(b,read_file(env("PX_BOOK"),210000));
   let mode=env("PX_OP"); let id=G.addr(env("PX_CELL"));
   if id<0 { tool_fail("worksheet: address must be A1:P64"); }
-  if mode=="frame" { frame(b,id); }
+  if mode=="frame" || mode=="terminal_frame" { frame(b,id,mode=="terminal_frame"); }
   if mode=="get" { println(F.display(b,id)); }
   if mode=="raw" { println(G.raw(b,id)); }
   if mode=="csv" { IO.basis_text_io_print(csv(b)); }
@@ -132,6 +142,6 @@ fn main() -> i64 {
     if mode=="import" { import_sheet(b,read_file(env("PX_DATA"),512)); }
     if mode=="importcsv" { import_values(b,read_file(env("PX_DATA"),210000)); }
     IO.basis_text_io_print(G.encode(b));
-  } else { if mode!="get" && mode!="raw" && mode!="csv" && mode!="frame" { tool_fail("worksheet: unknown operation"); } }
+  } else { if mode!="get" && mode!="raw" && mode!="csv" && mode!="frame" && mode!="terminal_frame" { tool_fail("worksheet: unknown operation"); } }
   G.close(b); return 0;
 }

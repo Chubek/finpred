@@ -13,6 +13,33 @@ An absent workbook starts empty. Try editing `A1` to `17500`, `B1` to
 shows the original expression. Edit `B1` again and the difference updates.
 Press `s` to save formulas as well as values.
 
+The terminal title uses the On1x `std.tty` facade, backed by MuLIB terminfo
+and terminal styling. Unsupported terminal styles and `NO_COLOR` fall
+back to a plain title. The GUI still reads the original unstyled frame
+format. Keyboard handling and workbook save behavior are unchanged.
+
+Direct `import kernel` for MuLIB's TUI headers is not currently admitted
+by the pinned On1x compiler. The terminal facade is part of the pinned
+standard library, not proof of a safe `mulib.tui` KernelBind profile.
+`import kernel[dynlib]` does not grant admission; a compatible compiler
+must also provide a reviewed callable TUI profile.
+
+To check the boundary and terminal behavior on a local build:
+
+```sh
+python3 tests/check_tui_kernel_admission.py
+python3 tests/check_poindexter_tty.py
+```
+
+With a matched newer compiler that supports `kernel[dynlib]` syntax,
+run the admission probe with `--expect-dynlib-syntax`. The release pin
+rejects that spelling at parse time; the newer compiler recognizes the
+request but still refuses TUI admission.
+
+`make poindexter-tui-review` exercises the separate
+[native viewport candidate](native/README.md) using `mulib-tui.h`.
+It does not install or link a production workbench backend.
+
 | Key | Action |
 |---|---|
 | Arrows or `h j k l` | Move; the viewport follows the selection |

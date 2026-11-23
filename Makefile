@@ -3,8 +3,9 @@
 CMAKE ?= cmake
 CTEST ?= ctest
 NATIVE_BUILD_DIR ?= build/native
+TUI_REVIEW_BUILD_DIR ?= build/poindexter-tui-review
 
-.PHONY: all build test native-test poindexter poindexter-gui poindexter-gui-test
+.PHONY: all build test native-test poindexter poindexter-gui poindexter-gui-test poindexter-tui-review
 
 all: build
 
@@ -27,3 +28,10 @@ poindexter-gui: poindexter
 
 poindexter-gui-test:
 	python3 tests/check_poindexter_gui.py
+
+poindexter-tui-review:
+	$(CMAKE) -S plugins/poindexter/workbench/native -B "$(TUI_REVIEW_BUILD_DIR)" \
+		-DMULIB_ROOT="$${MULIB_ROOT:-$(CURDIR)/third_party/mulib}" \
+		-DBUILD_TESTING=ON -DCMAKE_C_FLAGS='-Wall -Wextra -Werror -pedantic'
+	$(CMAKE) --build "$(TUI_REVIEW_BUILD_DIR)"
+	$(CTEST) --test-dir "$(TUI_REVIEW_BUILD_DIR)" --output-on-failure --no-tests=error

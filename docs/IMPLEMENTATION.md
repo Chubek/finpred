@@ -197,6 +197,30 @@ recalculation, and save. The private X11 display test reported a skip
 because the Xvfb tools were unavailable. Neither the main CLI nor the
 terminal spreadsheet requires X11.
 
+### Poindexter terminal kernel boundary
+
+The terminal workbench uses MuLIB's terminal styling via the supported
+On1x `std.tty` facade. The new terminal-only frame operation leaves the
+GUI protocol bytes unchanged. No direct TUI KernelBind import is used:
+the release loader does not admit the available TUI headers. A standalone
+renderer review candidate is separate from the production workbench;
+its native tests cannot confer admission.
+
+The staged probe `on1xc --emit-c --kernel-c11 --kernel-stage probe.on1x`
+with `import kernel[dynlib] mulib.tui as Tui;` failed on both compiler
+builds documented above. The release pin reports `ON1X-PARSE-EXPECTED`
+at `[`. The newer matching MuLIB/LibStone compiler parses the request
+and reports `ON1X-KERNEL-NOT-ADMITTED`. Using the dynamic backend is not
+a workaround for independent profile admission.
+
+On base `dc902b3`, `make test` passed with the release pins, preserving
+the two v2 golden IDs, output digests and both v1 replays. The terminal
+conformance passed nine cases on both toolchains (three redirected-output
+cases and six private PTY cases). The terminal edit/save regression and
+the GUI software-frame regression also passed. `make poindexter-tui-review`
+passed three strict C11 tests; the candidate is not linked into any
+production executable.
+
 ### Dragnet Elvi boundary
 
 MuLIB's ElviScrape is a C11 API with an offline provider compiler, keyword
