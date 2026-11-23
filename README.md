@@ -1,45 +1,65 @@
-# FinPRED: local accommodation pricing
+# FinPRED Dragnet patch bundle
 
-FinPRED’s Yieldcraft CLI recommends a nightly EUR price for a specific stay and party. It reads local CSV snapshots, finds the cheapest feasible room bundle at each independent property, and computes a percentile price subject to the operator’s pricing limits. It records the inputs, recommendation and decision trace locally so the result can be verified later. **A recommendation never publishes a price.**
+> **Archived patch-bundle notes.** For current installation and test commands
+> see [INSTALL.md](INSTALL.md) and [the verification workflow](.github/workflows/verify.yml).
+> Do not apply this overlay to a current checkout.
 
-| Frozen example | Recommendation | Why |
-| --- | ---: | --- |
-| Default: five comparable properties | **EUR 171/night** | P40 is EUR 4 below P50, less than the EUR 5 shortcut threshold. |
-| Multi-room: three comparable properties | **EUR 160/night** | The floor raises the EUR 150 nightly candidate. |
+Baseline: `Chubek/finpred` `master` at
+`6d3994a2c9caeda157592b5a556b002113ff5edf` (2026-11-23).
 
-## Start here
+**This is an overlay of changed/new files, not a complete copy of FinPRED.**
+The original repository, other plugins and historical run formats stay as-is.
+Do not try to execute the bundle independently of the original checkout.
 
-1. **[Install and verify](INSTALL.md)** — build the pinned MuLIB/LibStone compiler, then build and test FinPRED with the On1x C11 backend.
-2. **[Run the fixtures](GUIDE.md)** — select a private store, replay a recommendation by ID, and inspect the verified price trace and room-by-room evidence.
-3. **[Inspect the acceptance record](docs/IMPLEMENTATION.md#acceptance-record)** — see the native results, independent Python oracle, four JSON envelope schemas and replay checks.
-4. **[Use the C11 SDK](source/sdk/README.md)** — inspect the built-in strategy's contracts and resource limits and check compatibility from native code.
-5. **[Build the native store review target](native/README.md)** — exercise directory-relative reads, no-replace publication and sync failures independently of the CLI.
-6. **[Call the Yieldcraft package from On1x](plugins/yieldcraft/README.md)** — pass scenario, offers and valuation snapshots directly to the strategy and receive a recommendation in nightly cents.
-7. **[Import frozen offers with Dragnet](plugins/dragnet/README.md)** — select two local snapshots and emit eligible, normalized whole-stay offers as JSON Lines.
-8. **[Export a Poindexter pricing sheet](plugins/poindexter/README.md)** — run `./bin/finpred poindexter RUN_ID` to compare the verified recommendation to its frozen valuation in CSV.
-9. **[Open the Poindexter spreadsheet](plugins/poindexter/workbench/README.md)** — build with `./bin/poindexter --build`, then edit cells, recalculate formulas and run worksheet scripts with `./bin/poindexter --book prices.pxw`.
-10. **[Open the optional ImmGTK spreadsheet](plugins/poindexter/gui/README.md)** — `make poindexter-gui` builds the X11 frontend for editing local workbook copies.
+## Contents
 
-For package entry points, permissions and test commands, see [the plugin developer guide](PLUGIN.md).
+- `.github/workflows/verify.yml`: installs native test dependencies and
+  makes public-feed and trusted-source-dispatch compiled checks mandatory.
+- `Makefile`: `make dragnet-test`; `make test` now includes the expanded suite.
+- `plugins/dragnet/source/dragnet/source_registry.on1x`: closed, pure Source
+  dispatch and metadata for frozen CSV, Crossref and public-feed adapters.
+- `plugins/dragnet/source/dispatch_host.on1x`: independent offline host,
+  descriptor-only inputs and no access to the FinPRED store.
+- `plugins/dragnet/build-dispatch.sh`: On1xfile C11 build staging with no
+  changes to the existing frozen-CSV project manifest.
+- `tests/check_dragnet_dispatch.py`: compiled end-to-end parity, negative
+  and side-effect tests for all three source families.
+- `plugins/dragnet/SOURCE_DISPATCH.md`: exact interfaces and limitations.
 
-## What runs today
+## Apply
 
-The CLI defaults to the [legacy recommendation engine](source/automat/runner.on1x).
-It checks the plan and recommendation limits; the CLI supplies the statically
-linked Yieldcraft policy, which the runner does not import. Alternatively,
-`./bin/finpred run --engine scalar` runs an [Ottomat scalar DAG](source/automat/README.md)
-and prints a unitless analysis result without touching the pricing store.
-See the [engine options](GUIDE.md#choose-an-engine).
+On a clean working tree with the baseline commit checked out, unpack the ZIP
+**over the repository root**, preserving relative paths. For example:
 
-Choose a [Yieldcraft strategy profile](strategies/README.md) with
-`FINPRED_STRATEGY`, for example `FINPRED_STRATEGY=strategies/premium-p75.ottomat ./bin/finpred run`.
+```sh
+cd /path/to/finpred
+test "$(git rev-parse HEAD)" = 6d3994a2c9caeda157592b5a556b002113ff5edf
+unzip -o /path/to/finpred-dragnet-patch.zip
+# Remove bundle-only notes from the worktree if not wanted:
+# rm -f README_PATCH.md VALIDATION.md
+```
 
-The pricing logic is written in MuLIB’s **On1x**. It validates EUR amounts, civil dates and as-of timestamps; counts one whole-stay comparable per property; and applies a Type-7 quantile, a P40 shortcut and floor/cap/movement limits. The checked seven-node graph and [strategy declaration](strategies/yieldcraft.ottomat) support this built-in strategy. There is no general plugin host, network feed, trading or price-publishing gateway. See the [design specification](docs/USER_SPECIFICATION.md) for the broader roadmap.
+Check `git diff` before staging anything. Nothing in this patch requires
+writing to the GitHub repository or installing system services.
 
-New Yieldcraft runs use [v2 only](docs/RUN_FORMAT.md). V1 is read-only
-archive compatibility. Content digests establish integrity relative to a
-known run ID, not authorship. The [store protocol](source/store/README.md)
-supports cooperating writers in a private local directory; it does not
-guarantee power-loss durability or protection against hostile symlinks.
-The standard library’s [native bridges](native/README.md) are not
-independently admitted KernelBind imports.
+## Validation on a provisioned host
+
+CI expects Ubuntu 24.04 x86-64 with the existing pinned On1x/LibStone toolchain,
+plus `pkg-config libcurl4-openssl-dev libxml2-dev libjansson-dev`.
+
+```sh
+python3 tests/check_dragnet_public_feeds.py
+python3 tests/check_dragnet_dispatch.py
+make test
+```
+
+The public-feed suite performs loopback HTTP only. The dispatcher performs no
+network activity. Do not enable external polling during CI and do not infer
+that an offline fixture test establishes live-provider compatibility.
+
+## Limits
+
+The runtime and transport security audits, generalized SDK Source registration,
+financial-domain contract registry, signed KernelBind storage admission, and
+power-loss durability remain separate milestones. This patch does not claim to
+complete them. Read `VALIDATION.md` for tests actually run by the packager.
