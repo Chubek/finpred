@@ -9,7 +9,7 @@ fi
 MODE=${1:-run}
 usage() {
   echo "usage: bin/finpred [run [--engine legacy|scalar]|selftest|replay RUN_ID|explain RUN_ID|evidence RUN_ID|poindexter RUN_ID]" >&2
-  echo "       bin/finpred forecast {import SNAPSHOT|catalog ID_LIST|issue CATALOG MODEL CUTOFF REQUEST|score ISSUE CATALOG CUTOFF|holdout PLAN|replay ID}" >&2
+  echo "       bin/finpred forecast {import SNAPSHOT|catalog ID_LIST|issue CATALOG MODEL CUTOFF REQUEST|score ISSUE CATALOG CUTOFF|holdout PLAN|audit SORTED_ID_LIST|replay ID}" >&2
   exit 2
 }
 case "$MODE" in
@@ -33,7 +33,7 @@ case "$MODE" in
     MODE=forecast-$2
     shift 2
     case "$MODE" in
-      forecast-import|forecast-catalog|forecast-holdout|forecast-replay)
+      forecast-import|forecast-catalog|forecast-holdout|forecast-audit|forecast-replay)
         [ "$#" -eq 1 ] || usage
         FINPRED_FORECAST_INPUT=$1
         ;;

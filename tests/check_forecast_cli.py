@@ -132,15 +132,47 @@ def main():
         assert output["mae"] == {"numerator": 30, "denominator": 1}
         assert output["bias"] == {"numerator": -30, "denominator": 1}
 
+        # Read-only bounded audit of immutable forecast issue, score and
+        # holdout archives, across three kinds of replay.
+        audit_ids = sorted({*scores, report, season, unknown, unknown_score})
+        audit_path = work / "audit.ids"
+        audit_path.write_text("".join(f"{item}\n" for item in audit_ids))
+        before = tree()
+        audit = run("audit", audit_path)
+        assert tree() == before
+        result = json.loads(audit)
+        schema("analysis.forecast-audit").validate(result)
+        assert result["verified"] == len(audit_ids)
+        assert result["pricing_input"] is False and result["read_only"] is True
+        assert audit == json.dumps(result, separators=(",", ":")) + "\n"
+        assert run("audit", audit_path) == audit
+
+        def reject_audit(content, message):
+            invalid.write_text(content)
+            snapshot_before = tree()
+            run("audit", invalid, rejects=message)
+            assert tree() == snapshot_before
+
+        reject_audit(audit_ids[0].upper() + "\n", "invalid canonical identity")
+        reject_audit(audit_ids[0] + "\n" + audit_ids[0] + "\n", "strictly increasing")
+        reject_audit("".join(x + "\n" for x in reversed(audit_ids)), "strictly increasing")
+        reject_audit("f" * 64 + "\n", "missing snapshot")
+        reject_audit("".join(f"{i:064x}\n" for i in range(129)), "outside size profile")
+        one = work / "single-audit.ids"
+        one.write_text(audit_ids[0] + "\n")
+        assert json.loads(run("audit", one))["verified"] == 1
+
         for release in releases:
             (work / release).unlink()
         req.unlink()
         plan.unlink()
         assert replay(report, "analysis.guest-nights-holdout") == output
+        assert run("audit", audit_path) == audit
         obj = home / "artifacts" / f'blake3-{ids["actuals"]}.txt'
         obj.write_bytes(obj.read_bytes() + b"\n")
         before = tree()
         run("replay", report, rejects="snapshot digest mismatch")
+        run("audit", audit_path, rejects="snapshot digest mismatch")
         assert tree() == before
         assert not pricing.exists()
     print("forecast_cli_ok=true revisions=point_in_time holdout=replayed pricing_store=untouched")

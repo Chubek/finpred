@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Read-only verification of existing FinPRED forecast archives",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "version",
+    "pricing_input",
+    "read_only",
+    "verified",
+    "input_digest",
+    "evidence_digest"
+  ],
+  "properties": {
+    "kind": {
+      "const": "analysis.forecast-audit"
+    },
+    "version": {
+      "const": 1
+    },
+    "pricing_input": {
+      "const": false
+    },
+    "read_only": {
+      "const": true
+    },
+    "verified": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 128
+    },
+    "input_digest": {
+      "$ref": "#/$defs/digest"
+    },
+    "evidence_digest": {
+      "$ref": "#/$defs/digest"
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^blake3:[0-9a-f]{64}$"
+    }
+  }
+}

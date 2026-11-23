@@ -1,6 +1,7 @@
 # Operator workflow for frozen guest-night forecasts. Each returned ID is the
 # hash of a commit record in the forecast store, after its parents exist.
 import cli.forecast_catalog as Catalog;
+import cli.forecast_audit as Audit;
 import cli.forecast_identity as Identity;
 import core.csv as CSV;
 import forecast_baselines.evaluation as Eval;
@@ -195,6 +196,12 @@ fn entry(mode:string) -> i64 {
     Store.put(home,plan);
     Store.put(home,sx_text(report["bytes"]));
     println(Store.put(home,sx_text(report["manifest"])));
+    return 0;
+  }
+  if mode == "forecast-audit" {
+    let index = Catalog.input(input,Audit.max_bytes());
+    let verify_id = fn(id:string) -> string { return replay(home,id); };
+    IO.basis_text_io_print(Audit.verify(index,verify_id));
     return 0;
   }
   if mode == "forecast-replay" { IO.basis_text_io_print(replay(home,input)); return 0; }
