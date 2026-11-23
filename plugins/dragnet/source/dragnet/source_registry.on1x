@@ -1,98 +1,219 @@
-# Trusted, statically linked Source invocation gateway. This module is pure:
-# no paths, sockets, environment, clocks, filesystem grants or store handles.
-# Transport/capture/decode is a separate host responsibility.
+# Trusted static Source bindings for sdk.callable. No registry mutation,
+# filesystem, environment, clock, network, or capture/transport authority.
 import core.contracts as Contracts;
+import core.date as Date;
+import core.format as F;
 import dragnet.frozen_csv as FrozenCSV;
 import dragnet.frozen_crossref as Crossref;
 import dragnet.public_feeds as Feeds;
-import sdk.registry as SDK;
+import dragnet.source_identity as Identity;
+import sdk.registry as Legacy;
+import sdk.callable as SDK;
+import std.crypto.crypto as Crypto;
 
+fn frozen_key() -> string { return "dragnet.frozen_csv@1"; }
+fn crossref_key() -> string { return "dragnet.crossref@1"; }
+fn ecb_key() -> string { return "dragnet.public-feed.ecb@1"; }
+fn eurostat_key() -> string { return "dragnet.public-feed.eurostat@1"; }
+fn public_key() -> string { return "dragnet.public-feed@1"; }
+fn frozen_gate() -> string { return "dragnet.frozen_csv.offers_as_of"; }
+
+fn port(name:string, kind:string, unit:string, currency:string, states:i64, limit:i64) -> SDK.Port
+{
+  return record<SDK.Port>{name:sx_string(name),kind:sx_string(kind),major:1,unit:sx_string(unit),
+    currency:sx_string(currency),states:states,max_bytes:limit};
+}
+fn input(name:string, kind:string, currency:string, limit:i64, rest:sexpr) -> sexpr
+{
+  return sx_cons(SDK.port_entry(port(name,kind,"none",currency,1,limit)),rest);
+}
+fn frame(out:buffer, value:string)
+{
+  buffer_append(out,F.num(text_len(value))); buffer_append(out,":"); buffer_append(out,value);
+}
+fn frame_port(out:buffer, p:SDK.Port)
+{
+  frame(out,sx_text(p["name"])); frame(out,sx_text(p["kind"])); frame(out,F.num(p["major"]));
+  frame(out,sx_text(p["unit"])); frame(out,sx_text(p["currency"]));
+  frame(out,F.num(p["states"])); frame(out,F.num(p["max_bytes"]));
+}
+fn binding(package_name:string, key:string, clock_policy:string, inputs:sexpr, output:SDK.Port) -> SDK.Descriptor
+{
+  let policy = buffer_new();
+  frame(policy,"dragnet.static-source-policy@1"); frame(policy,key);
+  frame(policy,"Source"); frame(policy,"analysis"); frame(policy,"pure");
+  frame(policy,"no-grants"); frame(policy,clock_policy); frame(policy,"1");
+  frame_port(policy,output);
+  var rest = inputs;
+  while sx_kind(rest) == 3 {
+    frame_port(policy,SDK.decode_port(sx_head(rest))); rest = sx_tail(rest);
+  }
+  let (status,hash) = Crypto.basis_crypto_blake3(buffer_text(policy));
+  if status != 0 || text_len(hash) != 64 { return SDK.unavailable(); }
+  let pin = record<SDK.Pin>{package_name:sx_string(package_name),package_version:sx_string("1.0.0"),
+    handler_name:sx_string(key),handler_version:sx_string("1"),abi:1,
+    code_digest:sx_string(Identity.code_digest()),policy_digest:sx_string("blake3:$hash")};
+  return record<SDK.Descriptor>{enabled:true,pin:pin,role:sx_string("Source"),mode:sx_string("analysis"),
+    effect:sx_string("pure"),inputs:inputs,output:output,max_work:1};
+}
+fn lookup(key:string) -> SDK.Descriptor
+{
+  let nil = sx_nil();
+  if key == frozen_key() {
+    # Keep the original dependency/admission check on the same binding.
+    if !Legacy.admits(frozen_gate(),"analysis") { return SDK.unavailable(); }
+    let ports = input("scenario","hospitality.scenario","EUR",2000000,
+      input("offers","finpred.offers.csv","none",2000000,nil));
+    return binding("dragnet.frozen_csv",key,"scenario.decision_at=SDK.cutoff;legacy-frozen-csv-admission",
+      ports,port("offers","hospitality.offer","minor_per_stay","EUR",5,2000000));
+  }
+  if key == crossref_key() {
+    let ports = input("request","dragnet.crossref-request","none",1024,
+      input("search_raw","dragnet.crossref-search-json","none",262144,
+      input("work_raw","dragnet.crossref-work-json","none",262144,
+      input("search_decode","dragnet.crossref-search-decode","none",16384,
+      input("work_decode","dragnet.crossref-work-decode","none",16384,nil)))));
+    return binding("dragnet.crossref",key,"request.as_of=SDK.cutoff",
+      ports,port("evidence","dragnet.crossref-evidence","none","none",1,65536));
+  }
+  if key == ecb_key() {
+    let ports = input("capture","dragnet.feed-capture","none",512,
+      input("raw","dragnet.ecb-xml","none",65536,input("decode","dragnet.ecb-decode","none",4096,nil)));
+    return binding("dragnet.public-feed",key,"SDK.cutoff;capture.provider=ecb",
+      ports,port("snapshot","dragnet.ecb-fx-reference","quote_currency_per_EUR","EUR",1,8192));
+  }
+  if key == eurostat_key() {
+    let ports = input("capture","dragnet.feed-capture","none",512,
+      input("raw","dragnet.eurostat-jsonstat","none",65536,input("decode","dragnet.eurostat-decode","none",4096,nil)));
+    return binding("dragnet.public-feed",key,"SDK.cutoff;capture.provider=eurostat",
+      ports,port("snapshot","dragnet.eurostat-accommodation-nights","guest_nights","none",3,4096));
+  }
+  return SDK.unavailable();
+}
+fn payload(req:SDK.Request, index:i64) -> string
+{
+  return sx_text(SDK.value_bytes(SDK.port_at(req["inputs"],index)));
+}
+
+# Trusted invocation callback, supplied together with lookup to SDK.invoke.
+# Legacy parsers fail closed with their existing terminal diagnostics.
+fn call(pin:SDK.Pin, req:SDK.Request) -> SDK.Outcome
+{
+  let key = sx_text(pin["handler_name"]);
+  let cutoff = sx_text(req["cutoff"]);
+  if key == frozen_key() {
+    let scenario = Contracts.scenario_csv(payload(req,0));
+    if sx_text(scenario["decision_at"]) != cutoff { return SDK.failure(5); }
+    let bytes = FrozenCSV.offers_as_of(payload(req,1),scenario);
+    if text_len(bytes) == 0 { return SDK.success(4,bytes); }
+    return SDK.success(1,bytes);
+  }
+  if key == crossref_key() {
+    let request = payload(req,0);
+    if Crossref.request_as_of(request) != cutoff { return SDK.failure(5); }
+    return SDK.success(1,Crossref.evidence_as_of(request,payload(req,1),payload(req,2),
+      payload(req,3),payload(req,4)));
+  }
+  var provider = "";
+  if key == ecb_key() { provider = "ecb"; }
+  if key == eurostat_key() { provider = "eurostat"; }
+  if provider == "" { return SDK.failure(1); }
+  let (bytes,state) = Feeds.normalize_profile(payload(req,0),payload(req,1),payload(req,2),cutoff,provider);
+  return SDK.success(state,bytes);
+}
+
+# Compatibility shim for the existing P0b fd protocol and On1x callers.
+# It adapts the same trusted SDK descriptors; the public-feed selector is
+# only a framing mux, not a separate callable binding or authority.
 record SourceDescriptor {
   name:sexpr, version:sexpr, mode:sexpr, effect:sexpr,
   output_kind:sexpr, output_format:sexpr, max_input_bytes:i64, enabled:bool
 }
 record SourceOutcome { source:sexpr, contract:sexpr, format:sexpr, bytes:sexpr }
 
+fn legacy_key(name:string) -> string
+{
+  if name == frozen_key() || name == crossref_key() { return name; }
+  if name == public_key() { return ecb_key(); }
+  return "";
+}
 fn descriptor(name:string) -> SourceDescriptor
 {
-  if name == "dragnet.frozen_csv@1"
-  {
-    return record<SourceDescriptor>{name:sx_string(name),version:sx_string("1.0.0"),
-      mode:sx_string("analysis"),effect:sx_string("pure"),
-      output_kind:sx_string("hospitality.offer@1"),output_format:sx_string("ndjson"),
-      max_input_bytes:2000000,enabled:true};
+  let d = SDK.resolve(legacy_key(name),"analysis",lookup);
+  if !d["enabled"] {
+    let empty = sx_string("");
+    return record<SourceDescriptor>{name:empty,version:empty,mode:empty,effect:empty,
+      output_kind:empty,output_format:empty,max_input_bytes:0,enabled:false};
   }
-  if name == "dragnet.crossref@1"
-  {
-    return record<SourceDescriptor>{name:sx_string(name),version:sx_string("1.0.0"),
-      mode:sx_string("analysis"),effect:sx_string("pure"),
-      output_kind:sx_string("dragnet.crossref-evidence@1"),output_format:sx_string("json"),
-      max_input_bytes:262144,enabled:true};
+  let pin = d["pin"];
+  let output = d["output"];
+  let kind = sx_text(output["kind"]);
+  var output_kind = "$kind@1";
+  var format = "json";
+  if name == frozen_key() { format = "ndjson"; }
+  if name == public_key() { output_kind = public_key(); }
+  var limit = 0;
+  var inputs = d["inputs"];
+  while sx_kind(inputs) == 3 {
+    let port = SDK.decode_port(sx_head(inputs));
+    if port["max_bytes"] > limit { limit = port["max_bytes"]; }
+    inputs = sx_tail(inputs);
   }
-  if name == "dragnet.public-feed@1"
-  {
-    return record<SourceDescriptor>{name:sx_string(name),version:sx_string("1.0.0"),
-      mode:sx_string("analysis"),effect:sx_string("pure"),
-      output_kind:sx_string("dragnet.public-feed@1"),output_format:sx_string("json"),
-      max_input_bytes:65536,enabled:true};
-  }
-  return record<SourceDescriptor>{name:sx_string(""),version:sx_string(""),
-    mode:sx_string(""),effect:sx_string(""),output_kind:sx_string(""),
-    output_format:sx_string(""),max_input_bytes:0,enabled:false};
+  return record<SourceDescriptor>{name:sx_string(name),version:pin["package_version"],
+    mode:d["mode"],effect:d["effect"],output_kind:sx_string(output_kind),output_format:sx_string(format),
+    max_input_bytes:limit,enabled:true};
 }
-
-# A static source descriptor is not an authority token. The established
-# frozen-CSV SDK gate remains mandatory; the two additional pure adapters
-# have explicitly enumerated in-process host policies, not network grants.
 fn admitted(name:string, mode:string) -> bool
 {
-  let d = descriptor(name);
-  if !d["enabled"] || mode != sx_text(d["mode"]) ||
-     sx_text(d["effect"]) != "pure" { return false; }
-  if name == "dragnet.frozen_csv@1"
-  { return SDK.admits("dragnet.frozen_csv.offers_as_of","analysis"); }
-  return name == "dragnet.crossref@1" || name == "dragnet.public-feed@1";
+  let d = SDK.resolve(legacy_key(name),mode,lookup);
+  return d["enabled"];
 }
-
-# The five inputs are immutable host-provided snapshots, never filenames.
-# Each adapter validates its full input and as-of semantics before returning.
-# The result preserves the adapter's pre-existing canonical output bytes.
-fn normalized(d:SourceDescriptor, bytes:string) -> SourceOutcome
+fn input_limit(name:string, index:i64) -> i64
 {
-  return record<SourceOutcome>{source:d["name"],contract:d["output_kind"],
-    format:d["output_format"],bytes:sx_string(bytes)};
+  let d = SDK.resolve(legacy_key(name),"analysis",lookup);
+  let p = SDK.decode_port(SDK.port_at(d["inputs"],index));
+  return p["max_bytes"];
 }
-
+fn value(bytes:string, rest:sexpr) -> sexpr { return sx_cons(SDK.value_entry(1,bytes),rest); }
 fn invoke(name:string, mode:string, first:string, second:string,
   third:string, fourth:string, fifth:string) -> SourceOutcome
 {
-  if !admitted(name,mode) { tool_fail("dragnet source: denied or unknown source"); }
-  let d = descriptor(name);
-  if name == "dragnet.frozen_csv@1"
-  {
-    if text_len(first) < 1 || text_len(first) > 2000000 ||
-       text_len(second) < 1 || text_len(second) > 2000000 ||
-       third != "" || fourth != "" || fifth != ""
+  let compat = descriptor(name);
+  var key = legacy_key(name);
+  let planned = SDK.resolve(key,mode,lookup);
+  if !planned["enabled"] { tool_fail("dragnet source: denied or unknown source"); }
+  let nil = sx_nil();
+  var values = nil;
+  var cutoff = "";
+  if name == frozen_key() {
+    values = value(first,value(second,nil));
+    if !SDK.valid_inputs(planned["inputs"],values) || third != "" || fourth != "" || fifth != ""
     { tool_fail("dragnet source: invalid frozen CSV inputs"); }
     let scenario = Contracts.scenario_csv(first);
-    return normalized(d,FrozenCSV.offers_as_of(second,scenario));
+    cutoff = sx_text(scenario["decision_at"]);
   }
-  if name == "dragnet.crossref@1"
-  {
-    if text_len(first) < 1 || text_len(first) > 1024 ||
-       text_len(second) < 1 || text_len(second) > 262144 ||
-       text_len(third) < 1 || text_len(third) > 262144 ||
-       text_len(fourth) < 1 || text_len(fourth) > 16384 ||
-       text_len(fifth) < 1 || text_len(fifth) > 16384
-    { tool_fail("dragnet source: invalid Crossref inputs"); }
-    return normalized(d,Crossref.evidence_as_of(first,second,third,fourth,fifth));
+  else {
+    if name == crossref_key() {
+      values = value(first,value(second,value(third,value(fourth,value(fifth,nil)))));
+      if !SDK.valid_inputs(planned["inputs"],values)
+      { tool_fail("dragnet source: invalid Crossref inputs"); }
+      cutoff = Crossref.request_as_of(first);
+    }
+    else {
+      values = value(first,value(second,value(third,nil)));
+      if !SDK.valid_inputs(planned["inputs"],values) || text_len(fourth) != 20 || fifth != ""
+      { tool_fail("dragnet source: invalid public feed inputs"); }
+      cutoff = fourth;
+      if !Date.utc_timestamp(cutoff) { tool_fail("feed: expected second-precision UTC clock"); }
+      let provider = Feeds.capture_provider(first);
+      if provider == "eurostat" { key = eurostat_key(); }
+      if provider != "ecb" && provider != "eurostat" { tool_fail("feed: unknown source"); }
+    }
   }
-  if name != "dragnet.public-feed@1"
-  { tool_fail("dragnet source: missing implementation"); }
-  if text_len(first) < 1 || text_len(first) > 512 ||
-     text_len(second) < 1 || text_len(second) > 65536 ||
-     text_len(third) < 1 || text_len(third) > 4096 ||
-     text_len(fourth) != 20 || fifth != ""
-  { tool_fail("dragnet source: invalid public feed inputs"); }
-  return normalized(d,Feeds.normalize(first,second,third,fourth));
+  let d = SDK.resolve(key,mode,lookup);
+  let request = record<SDK.Request>{inputs:values,cutoff:sx_string(cutoff),work:1};
+  let outcome = SDK.invoke(d["pin"],mode,request,lookup,call);
+  if outcome["status"] != 0 { tool_fail("dragnet source: SDK invocation failed"); }
+  return record<SourceOutcome>{source:compat["name"],contract:compat["output_kind"],
+    format:compat["output_format"],bytes:outcome["bytes"]};
 }

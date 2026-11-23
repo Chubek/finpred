@@ -26,4 +26,19 @@ For replay, `core.guest_nights.verifies` reruns the transform on the frozen
 parent and checks exact output bytes. The schema describes shape, not
 temporal/lineage validity. Version 1 accepts only the canonical version 1
 Eurostat snapshot profile; a future profile requires an explicitly versioned
-validator or transform. ECB references are not convertible by this contract.
+validator or transform.
+
+`analysis.fx-reference@1` selects one explicit pair from a frozen ECB
+`eurofxref-daily` snapshot. `core.fx_reference.project(snapshot,
+expected_parent, cutoff, base, quote)` requires `base="EUR"` and a distinct
+quote currency present in the snapshot. The rate is the unchanged exact
+decimal text, in quote-currency units per one base-currency unit. The
+transform validates all quote rows and rejects duplicate currencies. It
+does not invert, round, or convert any amount.
+
+The reference date is an economic date, not a publication timestamp. The
+projection checks the frozen parent digest, source clocks, and cutoff and
+retains the original null `provider_updated_at`. The artifact declares
+`pricing_input=false` and `executable=false`. A missing quote is an explicit
+failure, never a default rate. `core.fx_reference.verifies` checks byte-exact
+replay using the same trusted parent and explicitly selected pair.

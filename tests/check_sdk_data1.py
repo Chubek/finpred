@@ -19,7 +19,7 @@ SDK_CASES = {
     "disabled": 1, "unknown": 1, "duplicate": 1, "bad-role": 1, "wrong-mode": 1,
     "wrong-pin": 2, "wrong-abi": 2, "wrong-policy": 2, "bad-state": 3,
     "bad-cutoff": 3, "bad-arity": 3, "big-value": 3, "bad-work": 4, "over-work": 4,
-    "wrong-output": 6,
+    "wrong-output": 6, "empty-output": 6,
 }
 
 

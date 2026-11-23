@@ -38,6 +38,9 @@ verifies contract semantics, bytes/digests and lineage. The protocol admits
 pure analysis and recommendation only. A work allowance is not hard resource
 metering, cancellation, or process isolation. `python3 tests/check_sdk_data1.py`
 compiles independent consumers and exercises both positive calls and denials.
+An explicitly `unknown` output can be zero bytes for formats with a canonical
+empty encoding, such as NDJSON. This does not relax input bounds or allow
+empty `available` output.
 
 ### Legacy package profiles
 

@@ -40,6 +40,7 @@ library "frozen_csv.on1x"
 library "frozen_crossref.on1x"
 library "public_feeds.on1x"
 library "source_registry.on1x"
+library "source_identity.on1x"
 MANIFEST
 python3 "$mulib/on1x/tools/on1x-project.py" build "$work" --offline \
   --on1xc "$compiler" --mulib-root "$mulib" --output-dir "$out"

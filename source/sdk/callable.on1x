@@ -164,6 +164,13 @@ fn value_bytes(entry:sexpr) -> sexpr { return port_at(entry,1); }
 fn valid_value(p:Port, state:i64, bytes:sexpr) -> bool {
   return accepts(p["states"],state) && atom(bytes,p["max_bytes"]);
 }
+# An explicitly unknown output can have a zero-byte canonical encoding
+# (for example, no rows in NDJSON). It is not an empty success for an
+# available/partial port, and request inputs still must be nonempty.
+fn valid_output(p:Port, state:i64, bytes:sexpr) -> bool {
+  return valid_value(p,state,bytes)
+    || (state == 4 && accepts(p["states"],state) && sx_kind(bytes) == 2 && sx_text(bytes) == "");
+}
 fn valid_inputs(ports:sexpr, values:sexpr) -> bool {
   var ps = ports;
   var vs = values;
@@ -190,6 +197,6 @@ fn invoke(pin:Pin, mode:string, request:Request, lookup:fn(string) -> Descriptor
   let result = call(d["pin"],request);
   if result["status"] == 4 { return failure(4); }
   if result["status"] != 0 { return failure(5); }
-  if !valid_value(d["output"],result["state"],result["bytes"]) { return failure(6); }
+  if !valid_output(d["output"],result["state"],result["bytes"]) { return failure(6); }
   return result;
 }

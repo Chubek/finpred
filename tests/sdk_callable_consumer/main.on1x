@@ -16,7 +16,7 @@ fn pin(name:string, version:string) -> SDK.Pin {
 }
 fn lookup(name:string) -> SDK.Descriptor {
   if name != "echo" && name != "read" && name != "record" && name != "action"
-    && name != "wrong-output" && name != "disabled" && name != "second"
+    && name != "wrong-output" && name != "empty-output" && name != "disabled" && name != "second"
     && name != "duplicate" && name != "over-work" && name != "bad-role" { return SDK.unavailable(); }
   var effect = "pure";
   if name == "read" || name == "record" || name == "action" { effect = name; }
@@ -32,6 +32,7 @@ fn lookup(name:string) -> SDK.Descriptor {
 fn call(p:SDK.Pin, request:SDK.Request) -> SDK.Outcome {
   let handler = sx_text(p["handler_name"]);
   if handler == "wrong-output" { return SDK.success(2,"x"); }
+  if handler == "empty-output" { return SDK.success(1,""); }
   if handler == "over-work" { return SDK.failure(4); }
   if handler == "second" { return SDK.success(1,"y"); }
   if handler != "echo" { tool_fail("denied handler ran"); }

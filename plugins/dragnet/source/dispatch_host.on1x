@@ -31,28 +31,33 @@ fn source_name() -> string
   return text_slice(raw,0,n-1);
 }
 
+fn input(source:string, index:i64, slot:string) -> string
+{
+  return snapshot(slot,Sources.input_limit(source,index));
+}
+
 fn dispatch(source:string) -> Sources.SourceOutcome
 {
   if !Sources.admitted(source,"analysis")
   { tool_fail("dragnet dispatch: unknown or denied source"); }
   if source == "dragnet.frozen_csv@1"
   {
-    return Sources.invoke(source,"analysis",snapshot("/proc/self/fd/4",2000000),
-      snapshot("/proc/self/fd/5",2000000),"","","");
+    return Sources.invoke(source,"analysis",input(source,0,"/proc/self/fd/4"),
+      input(source,1,"/proc/self/fd/5"),"","","");
   }
   if source == "dragnet.crossref@1"
   {
-    return Sources.invoke(source,"analysis",snapshot("/proc/self/fd/4",1024),
-      snapshot("/proc/self/fd/5",262144),snapshot("/proc/self/fd/6",262144),
-      snapshot("/proc/self/fd/7",16384),snapshot("/proc/self/fd/8",16384));
+    return Sources.invoke(source,"analysis",input(source,0,"/proc/self/fd/4"),
+      input(source,1,"/proc/self/fd/5"),input(source,2,"/proc/self/fd/6"),
+      input(source,3,"/proc/self/fd/7"),input(source,4,"/proc/self/fd/8"));
   }
   if source != "dragnet.public-feed@1"
   { tool_fail("dragnet dispatch: source unavailable"); }
   let as_of = snapshot("/proc/self/fd/7",21);
   if text_len(as_of) != 21 || text_byte(as_of,20) != 10
   { tool_fail("dragnet dispatch: malformed as-of timestamp"); }
-  return Sources.invoke(source,"analysis",snapshot("/proc/self/fd/4",512),
-    snapshot("/proc/self/fd/5",65536),snapshot("/proc/self/fd/6",4096),
+  return Sources.invoke(source,"analysis",input(source,0,"/proc/self/fd/4"),
+    input(source,1,"/proc/self/fd/5"),input(source,2,"/proc/self/fd/6"),
     text_slice(as_of,0,20),"");
 }
 

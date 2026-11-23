@@ -6,7 +6,7 @@ store, an action gateway, or authorization to retrieve any network resource.
 
 The implementation lives at:
 
-- `source/dragnet/source_registry.on1x`: closed allowlist and pure invocation.
+- `source/dragnet/source_registry.on1x`: trusted `sdk.callable` lookup and invoke bindings.
 - `source/dispatch_host.on1x`: host-controlled descriptor reader and stdout.
 - `build-dispatch.sh`: builds the host with the matching On1x/MuLIB toolchain.
 
@@ -29,18 +29,27 @@ Crossref/public feeds. This process never fetches URLs or runs the decoder.
 | `dragnet.crossref@1` | Request CSV | Search raw bytes | Work raw bytes | Search decode | Work decode | `dragnet.crossref-evidence@1` JSON |
 | `dragnet.public-feed@1` | Capture CSV | Raw HTTP body | Provider decode | As-of UTC with LF | — | `dragnet.public-feed@1` JSON |
 
-The descriptor API returns a version, output kind/encoding, effect, bounds and
-a pure `SourceOutcome`. The process prints only the existing adapter's output
-bytes; no new serialized contract identity or run ID is generated here. The
-host checks the registration and mode **before opening source content**. Both
-source module and process gate reject unknown source IDs and versions.
+The existing `SourceDescriptor`, `SourceOutcome`, and fd selectors are
+compatibility wrappers. The process prints only the existing adapter's bytes;
+it creates no new serialized contract or run ID. It checks the registration
+and mode before opening source content and uses the same SDK input ceilings.
 
-The existing `dragnet.frozen_csv` SDK admission check remains mandatory. The
-Crossref/public-feed policies are deliberately **local to this trusted
-process**; they are not yet entries in the general SDK package registry or
-callable through the financial Automat. A future registered Source SDK must
-perform independent capability and package-version checks and must not
-confer network permissions from strategy text alone.
+The SDK resolves the following exact, ordered source profiles, then checks
+the same pin again at invocation. It exposes only `pure`/`analysis`:
+
+| SDK handler | Ordered inputs | Cutoff | Output |
+| --- | --- | --- | --- |
+| `dragnet.frozen_csv@1` | `scenario`, `offers` | Equal to scenario `decision_at` | `hospitality.offer@1`; empty NDJSON is `unknown` |
+| `dragnet.crossref@1` | `request`, `search_raw`, `work_raw`, `search_decode`, `work_decode` | Equal to request `as_of` | `dragnet.crossref-evidence@1` |
+| `dragnet.public-feed.ecb@1` | `capture`, ECB XML `raw`, ECB `decode` | SDK cutoff | `dragnet.ecb-fx-reference@1` |
+| `dragnet.public-feed.eurostat@1` | `capture`, Eurostat JSON-stat `raw`, Eurostat `decode` | SDK cutoff | `dragnet.eurostat-accommodation-nights@1`; missing results may be `partial` |
+
+The frozen CSV binding retains the original `sdk.registry` dependency gate.
+The legacy public-feed selector maps the capture's provider to one of the
+two concrete SDK handlers. It is not itself a callable SDK handler or a grant.
+The application source-closure pin is checked by an independent consumer;
+it is not binary attestation or external provider authentication. Existing
+parsers still fail closed with their terminal diagnostics on malformed data.
 
 ## Semantics and safety
 
@@ -61,17 +70,18 @@ confer network permissions from strategy text alone.
 
 ## Tests and remaining gates
 
-`check_dragnet_dispatch.py` compares exact output bytes with the existing
-hosts for frozen CSV, Crossref, ECB and Eurostat, and independently validates
+`check_dragnet_dispatch.py` compares exact output bytes across the existing
+hosts, the fd dispatcher, and a separate compiled SDK caller for frozen CSV,
+Crossref, ECB and Eurostat, and independently validates
 their schemas. It checks selector syntax, missing/empty/oversized descriptors,
 duplicate CSV observations, mismatched handoffs and late captures. It also
-checks that direct registry invocation denies non-analysis modes, and checks
+checks forged pins, wrong provider, wrong arity/state/budget, a valid empty
+CSV result, and that direct registry invocation denies non-analysis modes. It checks
 for pricing-store changes and, when `strace` is available, network syscalls.
 CI installs native decoder dependencies and runs this test after the
 separate public-feed conformance test.
 
-The complete FinPRED plugin-runtime milestone remains open. Before allowing
-new Source packages without rebuilding this host, implement and review a
-versioned SDK source package registry, capability grants, build identities,
-error mapping, and an appropriate isolation boundary for untrusted plugins.
-No such authority is implied by the dispatcher introduced here.
+Financial Automat does not link these Source bindings by default. Dynamic
+packages, recoverable domain errors for the legacy parsers, hard cancellation
+and process/OS isolation remain separate work. No such authority is implied
+by the dispatcher.

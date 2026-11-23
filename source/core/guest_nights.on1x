@@ -1,9 +1,9 @@
 # Pure projection of the exact canonical Dragnet Eurostat snapshot profile.
 # No general JSON parser, original-provider transport, or pricing policy.
 import core.date as Date;
+import core.feed_snapshot as Feed;
 import core.format as F;
 import std.String as Str;
-import std.crypto.crypto as Crypto;
 
 record Projection { status:i64, state:i64, bytes:sexpr }
 
@@ -14,57 +14,18 @@ fn source_kind() -> string { return "dragnet.eurostat-accommodation-nights"; }
 fn states() -> i64 { return 3; } # available or partial
 fn max_bytes() -> i64 { return 4096; }
 
+# Keep the existing reader helpers for linked MODEL consumers.
+fn after(s:string, at:i64, expected:string) -> i64 { return Feed.after(s,at,expected); }
+fn token(s:string, at:i64, stop:i64, limit:i64) -> (i64,string) { return Feed.token(s,at,stop,limit); }
+fn quoted(s:string, at:i64, prefix:string, limit:i64) -> (i64,string) { return Feed.quoted(s,at,prefix,limit); }
+fn nat(s:string, max_digits:i64) -> i64 { return Feed.nat(s,max_digits); }
+fn digest(s:string) -> bool { return Feed.digest(s); }
+fn policy(s:string) -> bool { return Feed.policy(s); }
+fn clock(s:string) -> i64 { return Feed.clock(s); }
+fn field(out:buffer, name:string, value:string) { Feed.field(out,name,value); }
+
 fn fail(status:i64) -> Projection {
   return record<Projection>{status:status,state:0,bytes:sx_nil()};
-}
-fn after(s:string, at:i64, expected:string) -> i64 {
-  let end = at + text_len(expected);
-  if at < 0 || end > text_len(s) || text_slice(s,at,end) != expected { return 0 - 1; }
-  return end;
-}
-fn token(s:string, at:i64, stop:i64, limit:i64) -> (i64,string) {
-  if at < 0 { return (0 - 1,""); }
-  var end = at;
-  while end < text_len(s) && end - at <= limit {
-    let c = text_byte(s,end);
-    if c == stop && end > at { return (end,text_slice(s,at,end)); }
-    if c < 32 || c > 126 || c == 92 || c == 34 { return (0 - 1,""); }
-    end = end + 1;
-  }
-  return (0 - 1,"");
-}
-fn quoted(s:string, at:i64, prefix:string, limit:i64) -> (i64,string) {
-  let (end,value) = token(s,after(s,at,prefix),34,limit);
-  if end < 0 { return (0 - 1,""); }
-  return (end + 1,value);
-}
-fn nat(s:string, max_digits:i64) -> i64 {
-  let n = text_len(s);
-  if n < 1 || n > max_digits || (n > 1 && text_byte(s,0) == 48) { return 0 - 1; }
-  var value = 0;
-  for i in 0 .. n {
-    let digit = Date.digit(s,i);
-    if digit < 0 { return 0 - 1; }
-    value = value * 10 + digit;
-  }
-  return value;
-}
-fn digest(s:string) -> bool {
-  if text_len(s) != 71 || after(s,0,"blake3:") != 7 { return false; }
-  for i in 7 .. 71 {
-    let c = text_byte(s,i);
-    if !(c >= 48 && c <= 57) && !(c >= 97 && c <= 102) { return false; }
-  }
-  return true;
-}
-fn policy(s:string) -> bool {
-  if text_len(s) == 0 || text_len(s) > 64 { return false; }
-  for i in 0 .. text_len(s) {
-    let c = text_byte(s,i);
-    if !(c >= 48 && c <= 57) && !(c >= 65 && c <= 90)
-      && !(c >= 97 && c <= 122) && c != 45 && c != 46 && c != 95 { return false; }
-  }
-  return true;
 }
 fn valid_flag(s:string) -> bool {
   if text_len(s) < 1 || text_len(s) > 16 { return false; }
@@ -74,16 +35,9 @@ fn valid_flag(s:string) -> bool {
   }
   return true;
 }
-fn clock(s:string) -> i64 {
-  if !Date.utc_timestamp(s) { return 0 - 1; }
-  return Date.date_days(text_slice(s,0,10)) * 86400
-    + (Date.digit(s,11) * 10 + Date.digit(s,12)) * 3600
-    + (Date.digit(s,14) * 10 + Date.digit(s,15)) * 60
-    + Date.digit(s,17) * 10 + Date.digit(s,18);
-}
 fn provider_clock(s:string) -> i64 {
   if text_len(s) != 24 { return 0 - 1; }
-  let second = clock(text_concat(text_slice(s,0,19),"Z"));
+  let second = Feed.clock(text_concat(text_slice(s,0,19),"Z"));
   let sign = text_byte(s,19);
   let a = Date.digit(s,20);
   let b = Date.digit(s,21);
@@ -99,20 +53,16 @@ fn provider_clock(s:string) -> i64 {
 }
 fn next_month(period:string) -> string {
   var year = text_slice(period,0,4);
-  var month = nat(text_slice(period,5,7),2);
+  var month = Feed.nat(text_slice(period,5,7),2);
   if text_byte(period,5) == 48 { month = Date.digit(period,6); }
   month = month + 1;
   if month == 13 {
-    year = F.num(nat(year,4) + 1);
+    year = F.num(Feed.nat(year,4) + 1);
     month = 1;
   }
   var number = F.num(month);
   if month < 10 { number = text_concat("0",number); }
   return "$year-$number";
-}
-fn field(out:buffer, name:string, value:string) {
-  buffer_append(out,","); buffer_append(out,F.q(name));
-  buffer_append(out,":"); buffer_append(out,F.q(value));
 }
 fn observations(snapshot:string, start:i64, updated:i64, complete:bool, out:buffer) -> i64 {
   var at = start;
@@ -121,25 +71,25 @@ fn observations(snapshot:string, start:i64, updated:i64, complete:bool, out:buff
   var known = 0;
   var contiguous = true;
   while count < 3 {
-    let (period_end,period) = quoted(snapshot,at,"{\"period\":\"",7);
+    let (period_end,period) = Feed.quoted(snapshot,at,"{\"period\":\"",7);
     if period_end < 0 || text_len(period) != 7
       || Date.date_days("$period-01") < 0 || Str.compare(period,prev) <= 0 { return 0; }
     let next = next_month(period);
     let end = Date.date_days("$next-01");
     if end < 0 || end * 86400 > updated { return 0; }
     if prev != "" && period != next_month(prev) { contiguous = false; }
-    let (value_end,value) = token(snapshot,after(snapshot,period_end,",\"nights\":"),44,12);
-    if value_end < 0 || (value != "null" && nat(value,12) < 0) { return 0; }
-    let flag_start = after(snapshot,value_end,",\"provider_flag\":");
-    var flag_end = after(snapshot,flag_start,"null");
+    let (value_end,value) = Feed.token(snapshot,Feed.after(snapshot,period_end,",\"nights\":"),44,12);
+    if value_end < 0 || (value != "null" && Feed.nat(value,12) < 0) { return 0; }
+    let flag_start = Feed.after(snapshot,value_end,",\"provider_flag\":");
+    var flag_end = Feed.after(snapshot,flag_start,"null");
     var flag = "null";
     if flag_end < 0 {
-      let (read_end,read_flag) = quoted(snapshot,flag_start,"\"",16);
+      let (read_end,read_flag) = Feed.quoted(snapshot,flag_start,"\"",16);
       if read_end < 0 || !valid_flag(read_flag) { return 0; }
       flag_end = read_end;
       flag = F.q(read_flag);
     }
-    at = after(snapshot,flag_end,"}");
+    at = Feed.after(snapshot,flag_end,"}");
     if at < 0 { return 0; }
     var state = "unknown";
     if value != "null" { state = "available"; known = known + 1; }
@@ -147,12 +97,12 @@ fn observations(snapshot:string, start:i64, updated:i64, complete:bool, out:buff
     buffer_append(out,"{\"period\":\"$period\",\"state\":\"$state\",\"nights\":$value,\"provider_flag\":$flag}");
     prev = period;
     count = count + 1;
-    if after(snapshot,at,"]}\n") == text_len(snapshot) {
+    if Feed.after(snapshot,at,"]}\n") == text_len(snapshot) {
       if complete != (known == 3) { return 0; }
       if complete && contiguous { return 1; }
       return 2;
     }
-    at = after(snapshot,at,",");
+    at = Feed.after(snapshot,at,",");
   }
   return 0;
 }
@@ -162,52 +112,29 @@ fn observations(snapshot:string, start:i64, updated:i64, complete:bool, out:buff
 # Status: 0 success, 1 missing/mismatched evidence, 2 invalid contract,
 # 3 unavailable at cutoff. No output bytes survive a failed projection.
 fn project(snapshot:string, expected_parent:string, cutoff:string) -> Projection {
-  if text_len(snapshot) == 0 || !digest(expected_parent) { return fail(1); }
-  if text_len(snapshot) > max_bytes() || !Date.utc_timestamp(cutoff) { return fail(2); }
-  let (hashed,hash) = Crypto.basis_crypto_blake3(snapshot);
-  if hashed != 0 || "blake3:$hash" != expected_parent { return fail(1); }
+  let parent = Feed.parent_status(snapshot,expected_parent,cutoff,max_bytes());
+  if parent != 0 { return fail(parent); }
   let prefix = "{\"format\":\"dragnet.eurostat-accommodation-nights@1\",\"source\":\"Eurostat\",\"source_series\":\"tour_occ_nim\"";
-  let (a,updated) = quoted(snapshot,after(snapshot,0,prefix),",\"provider_updated_at\":\"",24);
+  let (a,updated) = Feed.quoted(snapshot,Feed.after(snapshot,0,prefix),",\"provider_updated_at\":\"",24);
   let dims = ",\"geography\":\"EU27_2020\",\"activity\":\"I551-I553\",\"residence\":\"TOTAL\",\"unit\":\"guest_nights\"";
-  let (b,status) = quoted(snapshot,after(snapshot,a,dims),",\"status\":\"",8);
-  let (c,mode) = quoted(snapshot,b,",\"mode\":\"",16);
-  let (d,observed) = quoted(snapshot,c,",\"observed_at\":\"",20);
-  let (e,received) = quoted(snapshot,d,",\"received_at\":\"",20);
-  let (f,ingested) = quoted(snapshot,e,",\"ingested_at\":\"",20);
-  let (g,source_cutoff) = quoted(snapshot,f,",\"as_of\":\"",20);
-  let (h,terms) = quoted(snapshot,g,",\"terms_ref\":\"",64);
-  let (i,retention) = quoted(snapshot,h,",\"retention_ref\":\"",64);
-  let (j,raw) = quoted(snapshot,i,",\"raw_evidence\":\"",71);
-  let (k,capture) = quoted(snapshot,j,",\"capture_evidence\":\"",71);
-  let (l,size) = token(snapshot,after(snapshot,k,",\"raw_bytes\":"),44,5);
-  let start = after(snapshot,l,",\"pricing_input\":false,\"observations\":[");
+  let tail = Feed.tail(snapshot,Feed.after(snapshot,a,dims));
   let published = provider_clock(updated);
-  let receipt = clock(received);
-  let n = nat(size,5);
-  if start < 0 || (status != "complete" && status != "partial")
-    || (mode != "offline_snapshot" && mode != "loopback_fixture" && mode != "public_https")
-    || observed != received || receipt < 0 || published < 0 || published > receipt
-    || receipt - published > 10368000 || !Date.utc_timestamp(ingested) || !Date.utc_timestamp(source_cutoff)
-    || Str.compare(ingested,received) < 0 || Str.compare(source_cutoff,ingested) < 0
-    || !policy(terms) || !policy(retention) || !digest(raw) || !digest(capture) || n < 1 || n > 65536
+  let receipt = Feed.clock(sx_text(tail["received"]));
+  if tail["start"] < 0 || published < 0 || published > receipt || receipt - published > 10368000
   { return fail(2); }
-  if Str.compare(ingested,cutoff) > 0 || Str.compare(source_cutoff,cutoff) > 0 { return fail(3); }
+  if !Feed.visible(tail,cutoff) { return fail(3); }
   let rows = buffer_new();
-  let state = observations(snapshot,start,published,status == "complete",rows);
+  let state = observations(snapshot,tail["start"],published,sx_text(tail["status"]) == "complete",rows);
   if state == 0 { return fail(2); }
   let out = buffer_new();
   buffer_append(out,"{\"kind\":\"analysis.guest-nights-monthly\",\"version\":1,\"unit\":\"guest_nights\",\"currency\":null,\"pricing_input\":false");
   buffer_append(out,",\"source_kind\":\"dragnet.eurostat-accommodation-nights@1\",\"source_series\":\"tour_occ_nim\",\"geography\":\"EU27_2020\",\"activity\":\"I551-I553\",\"residence\":\"TOTAL\"");
   var state_name = "available";
   if state == 2 { state_name = "partial"; }
-  field(out,"state",state_name);
-  field(out,"parent",expected_parent);
-  field(out,"provider_updated_at",updated);
-  field(out,"observed_at",observed);
-  field(out,"received_at",received);
-  field(out,"ingested_at",ingested);
-  field(out,"source_as_of",source_cutoff);
-  field(out,"cutoff",cutoff);
+  Feed.field(out,"state",state_name);
+  Feed.field(out,"parent",expected_parent);
+  Feed.field(out,"provider_updated_at",updated);
+  Feed.times(out,tail,cutoff);
   buffer_append(out,",\"observations\":[");
   buffer_append(out,buffer_text(rows));
   buffer_append(out,"]}\n");

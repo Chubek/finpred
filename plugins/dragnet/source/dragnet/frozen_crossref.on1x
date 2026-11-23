@@ -162,8 +162,7 @@ fn times(out: buffer, observed: string, ingested: string)
   buffer_append(out,"}");
 }
 
-fn evidence_as_of(request: string, raw_search: string, raw_work: string,
-  search_decode: string, work_decode: string) -> string
+fn request_row(request:string) -> string
 {
   if text_len(request) > 1024 || CSV.rows(request) != 3 ||
     CSV.line(request,0) != "dragnet.crossref-request@1"
@@ -172,6 +171,20 @@ fn evidence_as_of(request: string, raw_search: string, raw_work: string,
     "search_observed_at,search_ingested_at,work_observed_at,work_ingested_at,as_of,terms_ref,retention_ref,fields");
   let row = CSV.line(request,2);
   CSV.require_width(row,8);
+  return row;
+}
+
+fn request_as_of(request:string) -> string
+{
+  let as_of = CSV.field(request_row(request),4);
+  if !Date.utc_timestamp(as_of) { tool_fail("crossref: expected UTC timestamps"); }
+  return as_of;
+}
+
+fn evidence_as_of(request: string, raw_search: string, raw_work: string,
+  search_decode: string, work_decode: string) -> string
+{
+  let row = request_row(request);
   let so = CSV.field(row,0);
   let si = CSV.field(row,1);
   let wo = CSV.field(row,2);

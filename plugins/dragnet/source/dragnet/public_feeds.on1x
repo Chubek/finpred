@@ -193,14 +193,24 @@ fn tourism_rows(out: buffer, decode: string, rows: i64, updated: i64) -> i64
   return present;
 }
 
-# The trusted host regenerates the decoder handoff from raw before calling.
-# The digest tie checks transport/copy integrity, not provenance authenticity.
-fn normalize(capture: string, raw: string, decode: string, as_of: string) -> string
+fn capture_meta(capture:string) -> string
 {
   if framed(capture,512) != 2 || CSV.line(capture,0) != "dragnet.feed-capture@1"
   { tool_fail("feed: invalid capture contract"); }
   let meta = CSV.line(capture,1);
   CSV.require_width(meta,6);
+  return meta;
+}
+fn capture_provider(capture:string) -> string { return CSV.field(capture_meta(capture),0); }
+
+# The trusted host regenerates the decoder handoff from raw before calling.
+# The digest tie checks transport/copy integrity, not provenance authenticity.
+# The SDK binds the expected provider. The legacy direct caller leaves it
+# empty and continues to use the provider in its capture record.
+fn normalize_profile(capture:string, raw:string, decode:string, as_of:string,
+  expected_provider:string) -> (string,i64)
+{
+  let meta = capture_meta(capture);
   let feed = CSV.field(meta,0);
   let mode = CSV.field(meta,1);
   let receipt = CSV.field(meta,2);
@@ -208,6 +218,7 @@ fn normalize(capture: string, raw: string, decode: string, as_of: string) -> str
   let terms = CSV.field(meta,4);
   let retention = CSV.field(meta,5);
   if feed != "ecb" && feed != "eurostat" { tool_fail("feed: unknown source"); }
+  if expected_provider != "" && feed != expected_provider { tool_fail("feed: capture provider mismatch"); }
   if mode != "public_https" && mode != "loopback_fixture" && mode != "offline_snapshot"
   { tool_fail("feed: unknown capture mode"); }
   let received = seconds(receipt);
@@ -271,5 +282,13 @@ fn normalize(capture: string, raw: string, decode: string, as_of: string) -> str
   append(out,"pricing_input","false");
   append(out,"observations",text_concat("[",text_concat(buffer_text(observations),"]")));
   buffer_append(out,"}\n");
-  return buffer_text(out);
+  var state = 1;
+  if status == "partial" { state = 2; }
+  return (buffer_text(out),state);
+}
+
+fn normalize(capture: string, raw: string, decode: string, as_of: string) -> string
+{
+  let (bytes,_) = normalize_profile(capture,raw,decode,as_of,"");
+  return bytes;
 }
