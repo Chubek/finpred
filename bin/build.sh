@@ -24,5 +24,6 @@ cp -R "$ROOT/source" "$work/source"
 mkdir -p "$work/source/plugins" "$work/plugins/poindexter"
 cp -R "$ROOT/plugins/yieldcraft" "$ROOT/plugins/scalar_diagnostics" "$work/source/plugins/"
 cp -R "$ROOT/plugins/poindexter/On1xfile" "$ROOT/plugins/poindexter/src" "$work/plugins/poindexter/"
+python3 "$ROOT/bin/on1x_grammar.py" "$work/on1xc" "$ON1XC" "$MULIB_ROOT"
 python3 "$MULIB_ROOT/on1x/tools/on1x-project.py" build "$work" \
-  --on1xc "$ON1XC" --mulib-root "$MULIB_ROOT" --output-dir "$out"
+  --on1xc "$work/on1xc" --mulib-root "$MULIB_ROOT" --output-dir "$out"

@@ -7,6 +7,8 @@ import subprocess
 import sys
 import tempfile
 
+from ottomat_build import flags
+
 ROOT = Path(__file__).resolve().parents[1]
 MAIN_ID = "28b145fb8f902a239e76502a40c138bd60c7ae6af98ca70e21faf0e0f06e85db"
 
@@ -51,7 +53,7 @@ def main():
             subprocess.run([sys.executable, sdk / "on1x/tools/on1x-build.py",
                             ROOT / "tests/plugin_registry_consumer/main.on1x", "--backend", "c11",
                             "--on1xc", compiler, "--mulib-root", sdk, "-I", project / "source",
-                            "-I", project, "-o", consumer], check=True, cwd=work)
+                            *flags(compiler, sdk, work), "-I", project, "-o", consumer], check=True, cwd=work)
 
         def build_app():
             subprocess.run([project / "bin/build.sh"], cwd=project,

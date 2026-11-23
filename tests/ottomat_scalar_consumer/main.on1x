@@ -2,6 +2,7 @@ import automat.dag as D;
 import automat.scalar_manifest as M;
 import ottomat.scalar as S;
 import ottomat.scalar_run as R;
+import ottomat.grammar as Syntax;
 import std.crypto.crypto as Crypto;
 import std.Int as Int;
 import std.io.TextIO as IO;
@@ -60,6 +61,13 @@ fn main() -> i64
   }
 
   let source = IO.basis_text_io_input_all("strategy");
+  if setting("TASK") == "grammar"
+  {
+    let (status, lines, offset) = Syntax.scalar(source);
+    IO.basis_text_io_print("$status $offset\n");
+    if status != 0 && sx_kind(lines) != 0 { tool_fail("partial GrammarEmbed parse"); }
+    return 0;
+  }
   let lower = S.lower(source,mode,budget);
   let wrapped = R.freeze(source,mode,budget,first,second);
   let snapshot = wrapped["snapshot"];

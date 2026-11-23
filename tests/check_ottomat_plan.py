@@ -7,6 +7,8 @@ import subprocess
 import sys
 import tempfile
 
+from ottomat_build import flags
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -49,7 +51,8 @@ def main():
         def build(include):
             subprocess.run([
                 sys.executable, sdk / "on1x/tools/on1x-build.py", consumer / "main.on1x",
-                "--backend", "c11", "--on1xc", compiler, "--mulib-root", sdk, "-I", include, "-o", exe,
+                "--backend", "c11", "--on1xc", compiler, "--mulib-root", sdk,
+                *flags(compiler, sdk, tmp), "-I", include, "-o", exe,
             ], check=True, cwd=tmp)
 
         def check(source, expected, graph_change=""):

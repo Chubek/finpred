@@ -7,6 +7,8 @@ import subprocess
 import sys
 import tempfile
 
+from ottomat_build import flags
+
 ROOT = Path(__file__).resolve().parents[1]
 TRACE = (
     b"hi=maximum@1(first,second):42\n"
@@ -67,7 +69,8 @@ def main():
         subprocess.run([
             sys.executable, sdk / "on1x/tools/on1x-build.py",
             ROOT / "tests/ottomat_scalar_consumer/main.on1x", "--backend", "c11",
-            "--on1xc", compiler, "--mulib-root", sdk, "-I", ROOT / "source", "-I", ROOT, "-o", exe,
+            "--on1xc", compiler, "--mulib-root", sdk, *flags(compiler, sdk, work),
+            "-I", ROOT / "source", "-I", ROOT, "-o", exe,
         ], check=True, cwd=work)
 
         def run(raw=source, *, task="lower", mode="analysis", budget=3, first=17):
@@ -86,6 +89,11 @@ def main():
 
         native = run(task="native")
         assert native == golden()
+        assert run(task="grammar") == f"0 {len(source)}\n".encode()
+        assert run(edit(b"let hi =", b"let hi =="), task="grammar") == (
+            f"2 {source.index(b'= maximum')}\n".encode()
+        )
+        assert run(source[:-1], task="grammar") == f"2 {len(source) - 1}\n".encode()
         digest, payload = accepted()
         assert payload == native
         reordered = b"".join([*lines[:4], lines[6], *lines[4:6], *lines[7:]])
@@ -169,7 +177,7 @@ def main():
         # Freezing also enforces artifact-profile budgets and concrete input values.
         reject("freeze budget", source, "ok 0 0", "budget 0 0", budget=17)
         reject("freeze input", source, "ok 0 0", "invalid_input 0 0", first=-1)
-    print(f"ottomat_scalar_ok=true successful=5 rejected={len(rejections) + 6}")
+    print(f"ottomat_scalar_ok=true successful=5 rejected={len(rejections) + 6} generated_parser_cases=3")
 
 
 if __name__ == "__main__":

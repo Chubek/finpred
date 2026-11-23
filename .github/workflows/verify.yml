@@ -28,8 +28,9 @@ jobs:
         run: |
           cmake -S "$MULIB_ROOT/on1x" -B "$MULIB_ROOT/build/on1x" \
             -DBUILD_TESTING=ON -DON1X_REQUIRE_LIBSTONE=ON \
+            -DON1X_BUILD_NATIVE_PPX=ON -DON1X_BUILD_GRAMMAREMBED=ON \
             -DON1X_LIBSTONE_ROOT="$MULIB_ROOT/on1x/third_party/libstone"
-          cmake --build "$MULIB_ROOT/build/on1x" --parallel 4 --target on1xc
+          cmake --build "$MULIB_ROOT/build/on1x" --parallel 4 --target on1xc on1x_ppx_GrammarEmbed
           sha256sum "$MULIB_ROOT/build/on1x/on1xc"
       - name: Install schema validator
         run: |

@@ -221,6 +221,31 @@ the GUI software-frame regression also passed. `make poindexter-tui-review`
 passed three strict C11 tests; the candidate is not linked into any
 production executable.
 
+### Ottomat GrammarEmbed
+
+The fixed and scalar grammars in `source/ottomat/grammar.on1x` use the
+pinned On1x `stdppx/grammarembed` processor with DFA/LALR(1) tables. The
+project wrapper selects the PPX at C emission only, retaining On1xfile
+dependency checks. The small build adapter sends only the grammar markers
+to the processor (its whole-unit collision scan timed out on the merged
+CLI), then checks generated declaration collisions before handing the
+merged unit back to the compiler. Runtime parsing and lowerers are On1x;
+no grammar processor is needed on the deployment host.
+
+The scalar byte/line preflight is retained for its historical diagnostics.
+The fixed grammar accepts original spelling, LF/CRLF, and optional final
+newline as before. The native graph still decides type and effect admission;
+GrammarEmbed does not confer permission to execute a handler.
+
+Verified on base `28c43f9` using the release pins listed above and a
+freshly built `on1x_ppx_GrammarEmbed` (SHA-256
+`0849487eb6679eaf490e8d56313510e06efc80499f2a4c628e601928e4f58ee2`).
+`make test` exited 0: 48 accepted fixed encodings, 50 rejected ones, four
+incompatible graph checks, 41 scalar rejections, and three direct generated
+parser cases. Scalar selection and registry goldens, both historical
+Yieldcraft v2 IDs and output digests, both archived v1 replays, and all five
+named profiles passed. No format, schema, or runtime authority changed.
+
 ### Dragnet Elvi boundary
 
 MuLIB's ElviScrape is a C11 API with an offline provider compiler, keyword

@@ -5,6 +5,14 @@ use [v3 scalar analysis](#v3-scalar-analysis) or
 [v4 scalar selection](#v4-scalar-selection), or
 [v5 registered scalar algorithms](#v5-registered-scalar-algorithms).
 
+Both dialect families use [embedded grammars](grammar.on1x) compiled by
+On1x `stdppx/grammarembed` (DFA lexer and LALR(1) parser). GrammarEmbed is
+a build-time processor; the finished program parses strategy bytes in On1x
+and does not launch a processor or read grammar files at runtime.
+Lowering separately checks the fixed graph, registered handler signatures,
+effects, and resource bounds. The scalar preflight preserves the existing
+source limits and exact whitespace diagnostics.
+
 `Ottomat.lower(source)` parses a v1 or v2 declaration and resolves it to
 Automat's fixed seven-node recommendation plan. A valid `Plan` carries
 `syntax_version`, `graph` (the identity from `Graph.version()`), and

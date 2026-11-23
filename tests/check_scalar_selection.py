@@ -7,6 +7,8 @@ import subprocess
 import sys
 import tempfile
 
+from ottomat_build import flags
+
 ROOT = Path(__file__).resolve().parents[1]
 SELECT = b"node=picked,select@1,spread,hi,lo\n"
 SPREAD = b"let spread = distance@1 hi lo\n"
@@ -84,7 +86,8 @@ def main():
         subprocess.run([
             sys.executable, sdk / "on1x/tools/on1x-build.py",
             ROOT / "tests/scalar_selection_consumer/main.on1x", "--backend", "c11",
-            "--on1xc", compiler, "--mulib-root", sdk, "-I", ROOT / "source", "-I", ROOT, "-o", exe,
+            "--on1xc", compiler, "--mulib-root", sdk, *flags(compiler, sdk, work),
+            "-I", ROOT / "source", "-I", ROOT, "-o", exe,
         ], check=True, cwd=work)
 
         def invoke(task, directory=work, **env):

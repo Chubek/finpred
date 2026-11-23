@@ -7,6 +7,8 @@ import subprocess
 import sys
 import tempfile
 
+from ottomat_build import flags
+
 ROOT = Path(__file__).resolve().parents[1]
 V3 = b"scalar-run@3\n"
 DAG3 = b"plan=automat.scalar-dag@3\n"
@@ -97,7 +99,7 @@ def main():
             sys.executable, sdk / "on1x/tools/on1x-build.py",
             ROOT / "tests/scalar_registry_consumer/main.on1x", "--backend", "c11",
             "--on1xc", compiler, "--mulib-root", sdk, "-I", ROOT / "source", "-I", ROOT,
-            "-o", exe,
+            *flags(compiler, sdk, work), "-o", exe,
         ], check=True, cwd=work)
 
         def invoke(task, directory=work, **env):

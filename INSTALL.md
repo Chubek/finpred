@@ -51,13 +51,22 @@ For an existing pinned checkout, export its **absolute path** as `MULIB_ROOT` in
 ```sh
 cmake -S "$MULIB_ROOT/on1x" -B "$MULIB_ROOT/build/on1x" \
   -DBUILD_TESTING=ON -DON1X_REQUIRE_LIBSTONE=ON \
+  -DON1X_BUILD_NATIVE_PPX=ON -DON1X_BUILD_GRAMMAREMBED=ON \
   -DON1X_LIBSTONE_ROOT="$MULIB_ROOT/on1x/third_party/libstone"
-cmake --build "$MULIB_ROOT/build/on1x" --parallel 4 --target on1xc
+cmake --build "$MULIB_ROOT/build/on1x" --parallel 4 --target on1xc on1x_ppx_GrammarEmbed
 ./bin/build.sh
 ./bin/finpred selftest
 ```
 
 Expect `On1x scanner: LibStone ASDL+Aurocks generated frontend` during configuration and `selftest_ok=true` from the last command. The [build wrapper](bin/build.sh) runs MuLIB’s `on1x/tools/on1x-project.py` against FinPRED’s [On1xfile](On1xfile). By default it uses `$MULIB_ROOT/build/on1x/on1xc` and produces `target/dev/finpred`. To reuse another build of the **same** compiler, export `ON1XC` as its absolute executable path. To select another built **FinPRED** executable for the launcher and suite, export `FINPRED_EXE` as its absolute path.
+
+Ottomat uses the native GrammarEmbed PPX at build time. The wrapper selects
+it explicitly for C emission; it does not enable PPX directives from strategy
+files. By default the processor is located in `stdppx/` next to `on1xc`. If
+using a separate installation, set `FINPRED_STDPPX_DIR` to the directory
+containing the matching `on1x-ppx-GrammarEmbed` executable and
+`category.schema.json`. MuLIB's source checkout is still required for
+the build tools.
 
 ## 4. Check the build
 

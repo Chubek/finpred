@@ -82,7 +82,7 @@ with an Ottomat syntax version, plugin version, or contract version.
 | `plugins/yieldcraft/{matcher,strategy}.on1x` | Exact bounded room-subset/occupancy matching, one cheapest eligible bundle/property, curve, shortcut, guardrails and evidence | Full hospitality policy semantics; probabilistic demand forecasting |
 | `source/algorithms/quantile.on1x` | Integer-cent Type-7 quantile, linear/quadratic lead-time policy | General weighted distributions/statistical algorithm registry |
 | `source/automat/{graph,runner}.on1x` | Validates/executes **one fixed seven-node** plan with effect and output checks | Arbitrary typed DAGs, node plugins, job scheduler, retry state |
-| `source/ottomat/{tokens,ottomat}.on1x`; `strategies/*.ottomat` | Bounded `ottomat 1/2` fixed-graph parser/checker; default plus five named price profiles | Real general-purpose strategy grammar and graph lowering |
+| `source/ottomat/{grammar,ottomat,scalar}.on1x`; `strategies/*.ottomat` | GrammarEmbed parsers for the original fixed plan and bounded native scalar strategies; separate graph/effect validation | General-purpose strategy grammar and hospitality DAG lowering |
 | `source/sdk/{packages,static_host}.on1x`, `source/sdk/sdk_v2.{c,h}` | Static metadata/compatibility checks across Dragnet, Yieldcraft, Poindexter; versioned C ABI | Dynamic discovery/loading, invocation, process isolation, enforcement of real usage budgets |
 | `plugins/dragnet/` | Host-selected **offline frozen CSV** import and eligible offer JSONL output | Authorized network/remote adapters and streaming checkpoints |
 | `plugins/yieldcraft/` | Standalone callable On1x strategy package; no store or publication authority | Fully dynamic plugin registration |
@@ -123,8 +123,9 @@ git -C "$MULIB_ROOT" rev-parse HEAD
 git -C "$MULIB_ROOT/on1x/third_party/libstone" rev-parse HEAD
 cmake -S "$MULIB_ROOT/on1x" -B "$MULIB_ROOT/build/on1x" \
   -DBUILD_TESTING=ON -DON1X_REQUIRE_LIBSTONE=ON \
+  -DON1X_BUILD_NATIVE_PPX=ON -DON1X_BUILD_GRAMMAREMBED=ON \
   -DON1X_LIBSTONE_ROOT="$MULIB_ROOT/on1x/third_party/libstone"
-cmake --build "$MULIB_ROOT/build/on1x" --parallel 4 --target on1xc
+cmake --build "$MULIB_ROOT/build/on1x" --parallel 4 --target on1xc on1x_ppx_GrammarEmbed
 ./bin/build.sh
 ./bin/finpred selftest
 python3 tests/check_fixtures.py

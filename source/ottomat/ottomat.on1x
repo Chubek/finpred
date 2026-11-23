@@ -1,6 +1,7 @@
-# Single-pass parser and checker for the fixed recommendation graph.
-import ottomat.tokens as T;
+# Semantic checker for the GrammarEmbed fixed recommendation grammar.
+import ottomat.grammar as Syntax;
 import automat.graph as Graph;
+import std.collections.List as L;
 
 # A reference to the canonical Automat plan (node ids 0..6), parameterized
 # by an admitted profile. An empty profile means there is no validated plan.
@@ -16,13 +17,15 @@ fn invalid() -> Plan
   return record<Plan>{syntax_version:0,graph:sx_string(""),profile:sx_string("")};
 }
 
-fn contract(s: string, pos: i64) -> (string, i64)
+fn bounded_contract(contract:string) -> bool
 {
-  let(domain, dot) = T.word(s,pos);
-  let(kind, marker) = T.word(s,T.at(s,dot,46));
-  let(version, end) = T.number(s,T.at(s,marker,64));
-  if version != 1 { return ("",-1); }
-  return (text_slice(s,pos,end),end);
+  # The generated CONTRACT token establishes the spelling. Keep the old
+  # 32-byte ceiling independently for both dot-separated components.
+  for i in 0 .. text_len(contract)
+  {
+    if text_byte(contract,i) == 46 { return i <= 32 && text_len(contract)-i-3 <= 32; }
+  }
+  return false;
 }
 
 fn effect_allowed(family: string, effect: string) -> bool
@@ -33,29 +36,26 @@ fn effect_allowed(family: string, effect: string) -> bool
   return family == "output" && effect == "record";
 }
 
-fn policy(s: string, pos: i64) -> string
+fn field(row:sexpr, i:i64) -> string
 {
-  let(keyword, space) = T.word(s,pos);
-  if keyword != "profile" { return ""; }
-  let(name, marker) = T.word(s,T.at(s,space,32));
-  let(version, gap) = T.number(s,T.at(s,marker,64));
-  if version != 1 { return ""; }
-  let(op, sep) = T.word(s,T.at(s,gap,32));
-  let arg = T.at(s,sep,32);
+  return sx_text(L.basis_list_nth(row,i));
+}
+
+fn policy(row:sexpr) -> string
+{
+  let id = field(row,1);
+  let op = field(row,2);
+  let arg = field(row,3);
   if op == "target_bps"
   {
-    let(bps, end) = T.number(s,arg);
-    if T.line_end(s,end) != text_len(s) { return ""; }
-    if name == "value-p40" && bps == 4000 { return name; }
-    if name == "balanced-p55" && bps == 5500 { return name; }
-    if name == "premium-p75" && bps == 7500 { return name; }
+    if id == "value-p40@1" && arg == "4000" { return "value-p40"; }
+    if id == "balanced-p55@1" && arg == "5500" { return "balanced-p55"; }
+    if id == "premium-p75@1" && arg == "7500" { return "premium-p75"; }
   }
   if op == "curve"
   {
-    let(curve, end) = T.word(s,arg);
-    if T.line_end(s,end) != text_len(s) { return ""; }
-    if name == "lead-linear" && curve == "linear" { return name; }
-    if name == "lead-quadratic" && curve == "quadratic" { return name; }
+    if id == "lead-linear@1" && arg == "linear" { return "lead-linear"; }
+    if id == "lead-quadratic@1" && arg == "quadratic" { return "lead-quadratic"; }
   }
   return "";
 }
@@ -64,18 +64,18 @@ fn lower(s: string) -> Plan
 {
   let size = text_len(s);
   if size < 1 || size > 512 { return invalid(); }
-  let(header, space) = T.word(s,0);
-  if header != "ottmat" && header != "ottomat" { return invalid(); }
-  let(version, eol) = T.number(s,T.at(s,space,32));
-  if version != 1 && version != 2 { return invalid(); }
-  var pos = T.line_end(s,eol);
+  let lines = Syntax.fixed(s);
+  if sx_kind(lines) == 0 { return invalid(); }
+  var version = 1;
+  if field(sx_head(lines),1) == "2" { version = 2; }
+  var rest = sx_tail(lines);
   var previous = "none";
   for id in 0 .. 7
   {
-    let(family, sep) = T.word(s,pos);
-    let(output, end) = contract(s,T.at(s,sep,32));
-    pos = T.line_end(s,end);
-    if pos < 0 { return invalid(); }
+    let row = sx_head(rest);
+    let family = field(row,0);
+    let output = field(row,1);
+    if !bounded_contract(output) { return invalid(); }
     # Resolve the declaration to this exact native operation, checking its
     # input against the previous declaration's output, including the root.
     let n = Graph.node(id);
@@ -83,12 +83,12 @@ fn lower(s: string) -> Plan
       || sx_text(n["produces"]) != output || !effect_allowed(family,sx_text(n["effect"]))
     { return invalid(); }
     previous = output;
+    rest = sx_tail(rest);
   }
   var selected = "scenario";
-  if version == 1 && pos != size { return invalid(); }
   if version == 2
   {
-    selected = policy(s,pos);
+    selected = policy(sx_head(rest));
     if selected == "" { return invalid(); }
   }
   if !Graph.validate("recommendation") { return invalid(); }

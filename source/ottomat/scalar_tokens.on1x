@@ -1,5 +1,6 @@
-# Byte lexer for scalar declarations. It does not interpret token text.
-import std.collections.List as L;
+# Historical source limits and lexical diagnostics. GrammarEmbed, not this
+# preflight, produces the parsed lines consumed by the lowerer.
+import ottomat.grammar as Syntax;
 
 record Lexed { status:sexpr, lines:sexpr, line:i64, column:i64 }
 
@@ -31,8 +32,6 @@ fn scan_version(source:string, v4:bool) -> Lexed
     return failure("source_limit",line,4096-line_start+1);
   }
 
-  var lines = sx_nil();
-  var tokens = sx_nil();
   var completed = 0;
   var token_start = 0;
   for i in 0 .. size
@@ -48,12 +47,9 @@ fn scan_version(source:string, v4:bool) -> Lexed
         if byte == lf && i != line_start { return failure("syntax",line,column-1); }
         return failure("syntax",line,column);
       }
-      tokens = sx_cons(sx_string(text_slice(source,token_start,i)),tokens);
       token_start = i+1;
       if byte == lf
       {
-        lines = sx_cons(L.basis_list_rev(tokens),lines);
-        tokens = sx_nil();
         completed = 0;
         line = line+1;
         line_start = i+1;
@@ -68,7 +64,15 @@ fn scan_version(source:string, v4:bool) -> Lexed
   }
 
   if size == 0 || line_start != size { return failure("syntax",line,size-line_start+1); }
-  return record<Lexed>{status:sx_string("ok"),lines:L.basis_list_rev(lines),line:0,column:0};
+  let (status,lines,offset) = Syntax.scalar(source);
+  if status != 0
+  {
+    var error_line = 1;
+    for i in 0 .. offset { if text_byte(source,i) == lf { error_line = error_line+1; } }
+    if status == 3 { return failure("source_limit",error_line,1); }
+    return failure("syntax",error_line,1);
+  }
+  return record<Lexed>{status:sx_string("ok"),lines:lines,line:0,column:0};
 }
 
 fn scan(source:string) -> Lexed { return scan_version(source,false); }
