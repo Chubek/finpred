@@ -33,13 +33,19 @@ maximum movement then constrain the candidate. For example, limiting movement
 to 200 cents from 17500 raises the linear policy's 17100 candidate to 17300.
 Every recommendation has `published=false`.
 
-With no override, `yieldcraft.ottomat` retains the legacy rule: use the
-scenario target, or its curve when the target is zero. Named profiles use
-v2 runs only. The verified lineage and trace identify `yieldcraft.<name>@1`
-and the BLAKE3 digest of the exact declaration bytes; the recommendation
-JSON retains the SDK family `yieldcraft.percentile@1` and its strategy
-digest. `replay` and `explain` use the stored declaration, so they work
-even if the live policy file is unavailable.
+With no override, `yieldcraft.ottomat` uses the scenario target, or its
+curve when the target is zero. Its `ottmat 1` header is a declaration syntax
+version, just as `ottmat 2` is for named profiles. The CLI writes only
+[`finpred-run@2`](../docs/RUN_FORMAT.md) for both; there is no writer or
+option for `finpred-run@1`.
+
+For named profiles, the verified lineage and trace identify
+`yieldcraft.<name>@1` and the BLAKE3 digest of the exact declaration bytes;
+the recommendation JSON retains the SDK family `yieldcraft.percentile@1`
+and its strategy digest. Neither identifier selects a run format.
+`replay`, `explain`, `evidence`, and `poindexter` use the stored declaration,
+so they work even if the live policy file is unavailable. Archived
+`finpred-run@1` records with the scenario policy are read-only.
 
 Selection follows the file contents, not the filename. Each named file has
 an `ottmat 2` header, the seven fixed graph declarations, and one versioned
@@ -47,5 +53,14 @@ an `ottmat 2` header, the seven fixed graph declarations, and one versioned
 an incompatible graph is rejected before creating a run. Changing LF to
 CRLF retains the declared policy but changes the raw digest and run ID.
 The parser also accepts `ottomat` for both header versions. The packaged
-files keep the original `ottmat` bytes so their historical runs retain
-their identities; changing the header spelling creates a distinct run.
+default keeps its original `ottmat 1` bytes and the named profiles keep
+their `ottmat 2` bytes to preserve the pinned `finpred-run@2` IDs. Changing
+the header spelling changes the raw digest and therefore the run ID.
+
+## Scalar analysis examples
+
+[`scalar-spread.ottomat`](scalar-spread.ottomat) is a v3 input for the
+[native scalar host API](../source/ottomat/README.md#v3-scalar-analysis).
+[`scalar-select.ottomat`](scalar-select.ottomat) adds
+[v4 typed selection](../source/ottomat/README.md#v4-scalar-selection).
+Neither is a Yieldcraft profile: do not pass them as `FINPRED_STRATEGY`.

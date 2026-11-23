@@ -1,0 +1,39 @@
+# Canonical byte encodings for validated scalar DAG identifiers, registry
+# fields, values, and raw parent digests. The caller bounds these fields.
+import std.crypto.crypto as Crypto;
+
+fn input_bytes(name:string, value:i64) -> string
+{
+  return "scalar-input@1\nname=$name\nkind=scalar.level@1\nvalue=$value\n";
+}
+
+fn node_bytes(id:string, op:string, kind:string, left:string, right:string, value:i64) -> string
+{
+  return "scalar-node@1\nid=$id\nowner=finpred.core@1\nhandler=$op\nkind=$kind\nleft=$left\nright=$right\nvalue=$value\n";
+}
+
+fn select_bytes(id:string, condition:string, positive:string, zero:string, value:i64) -> string
+{
+  return """scalar-select@1
+id=$id
+owner=finpred.core@1
+handler=select@1
+kind=scalar.level@1
+condition=$condition
+positive=$positive
+zero=$zero
+value=$value
+""";
+}
+
+fn digest(bytes:string) -> string
+{
+  let (status, hash) = Crypto.basis_crypto_blake3(bytes);
+  if status != 0 || text_len(hash) != 64 { tool_fail("dag artifact: digest provider failure"); }
+  return hash;
+}
+
+fn entry(hash:string, bytes:string) -> sexpr
+{
+  return sx_cons(sx_string(hash),sx_cons(sx_string(bytes),sx_nil()));
+}

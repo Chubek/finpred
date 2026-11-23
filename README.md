@@ -32,4 +32,10 @@ Choose a [Yieldcraft strategy profile](strategies/README.md) with
 
 The pricing logic is written in MuLIB’s **On1x**. It validates EUR amounts, civil dates and as-of timestamps; counts one whole-stay comparable per property; and applies a Type-7 quantile, a P40 shortcut and floor/cap/movement limits. The checked seven-node graph and [strategy declaration](strategies/yieldcraft.ottomat) support this built-in strategy. There is no general plugin host, network feed, trading or price-publishing gateway. See the [design specification](docs/USER_SPECIFICATION.md) for the broader roadmap.
 
-New runs use [v2 lineage](docs/RUN_FORMAT.md); the reader also verifies original v1 runs. Content digests establish integrity relative to a known run ID, not authorship. The [store protocol](source/store/README.md) supports cooperating writers in a private local directory; it does not guarantee power-loss durability or protection against hostile symlinks. The standard library’s [native bridges](native/README.md) are not independently admitted KernelBind imports.
+New Yieldcraft runs use [v2 only](docs/RUN_FORMAT.md). V1 is read-only
+archive compatibility. Content digests establish integrity relative to a
+known run ID, not authorship. The [store protocol](source/store/README.md)
+supports cooperating writers in a private local directory; it does not
+guarantee power-loss durability or protection against hostile symlinks.
+The standard library’s [native bridges](native/README.md) are not
+independently admitted KernelBind imports.

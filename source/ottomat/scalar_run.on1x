@@ -1,0 +1,33 @@
+# Host-facing adapter. It freezes the same graph as a native caller and
+# keeps source provenance separate from the canonical scalar run identity.
+import ottomat.scalar as Scalar;
+import automat.scalar_manifest as Manifest;
+import automat.dag_artifacts as Art;
+
+record Result
+{
+  status:sexpr, line:i64, column:i64, source_digest:sexpr, lowering:sexpr,
+  snapshot:Manifest.Snapshot
+}
+
+fn freeze(source:string, mode:string, budget:i64, first:i64, second:i64) -> Result
+{
+  let lowered = Scalar.lower(source,mode,budget);
+  let status = lowered["status"];
+  if sx_text(status) != "ok"
+  {
+    return record<Result>{status:status,line:lowered["line"],column:lowered["column"],
+      source_digest:sx_nil(),lowering:sx_nil(),snapshot:Manifest.failed(status)};
+  }
+  let snapshot = Manifest.freeze(lowered["plan"],mode,budget,first,second);
+  if sx_text(snapshot["status"]) != "ok"
+  {
+    return record<Result>{status:snapshot["status"],line:0,column:0,
+      source_digest:sx_nil(),lowering:sx_nil(),snapshot:snapshot};
+  }
+  var lowering = "ottomat.scalar-lowering@1";
+  let plan = lowered["plan"];
+  if sx_text(plan["version"]) == "automat.scalar-dag@2" { lowering = "ottomat.scalar-lowering@2"; }
+  return record<Result>{status:sx_string("ok"),line:0,column:0,source_digest:sx_string(Art.digest(source)),
+    lowering:sx_string(lowering),snapshot:snapshot};
+}

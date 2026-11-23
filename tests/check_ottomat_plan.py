@@ -13,12 +13,14 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     sdk = Path(os.environ.get("MULIB_ROOT", ROOT / "third_party/mulib")).resolve()
     compiler = Path(os.environ.get("ON1XC", sdk / "build/on1x/on1xc")).resolve()
-    policies = {p.stem: p.read_text("ascii") for p in (ROOT / "strategies").glob("*.ottomat")}
+    names = ("yieldcraft", "value-p40", "balanced-p55", "premium-p75", "lead-linear", "lead-quadratic")
+    policies = {name: (ROOT / "strategies" / f"{name}.ottomat").read_text("ascii") for name in names}
     v1 = policies["yieldcraft"]
     v2 = policies["value-p40"]
     rows = v2.splitlines()
     invalid = {
-        "", v2 + " " * (512 - len(v2)), v2 + " " * (513 - len(v2)),
+        "", (ROOT / "strategies/scalar-spread.ottomat").read_text("ascii"),
+        v2 + " " * (512 - len(v2)), v2 + " " * (513 - len(v2)),
         v2.replace("ottmat 2", "ottmat 1"), v1.replace("ottmat 1", "ottmat 2"),
         v2.replace("ottmat 2", "ottmat 02"), v2.replace("ottmat 2", "ottmat 3"),
         v1.replace("ottmat 1", "otomat 1"), v1.replace("ottmat 1", "ottomat 0"),

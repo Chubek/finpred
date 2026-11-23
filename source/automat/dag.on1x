@@ -1,0 +1,379 @@
+# Pure scalar analysis IR, separate from the persisted fixed-graph plan.
+import std.collections.Array as A;
+import std.collections.List as L;
+import automat.dag_artifacts as Art;
+import automat.scalar_memo as Memo;
+
+record Plan { version:sexpr, nodes:sexpr, output:sexpr }
+record Outcome {
+  status:sexpr, output_kind:sexpr, value:sexpr, trace:sexpr, artifacts:sexpr, output_digest:sexpr,
+  invocations:i64, memo_hits:i64
+}
+
+fn failed(reason:string) -> Outcome
+{
+  return record<Outcome>{status:sx_string(reason),output_kind:sx_nil(),value:sx_nil(),trace:sx_string(""),
+    artifacts:sx_nil(),output_digest:sx_nil(),invocations:0,memo_hits:0};
+}
+
+# A declaration binds the left and right ports in that order. Each node
+# publishes one result under its id. The static registry owns the signatures.
+fn node(id:string, op:string, left:string, right:string) -> sexpr
+{
+  return sx_cons(sx_string(id),sx_cons(sx_string(op),
+    sx_cons(sx_string(left),sx_cons(sx_string(right),sx_nil()))));
+}
+
+fn select_node(id:string, condition:string, positive:string, zero:string) -> sexpr
+{
+  return sx_cons(sx_string(id),sx_cons(sx_string("select@1"),sx_cons(sx_string(condition),
+    sx_cons(sx_string(positive),sx_cons(sx_string(zero),sx_nil())))));
+}
+
+fn field(n:sexpr, i:i64) -> string { return sx_text(L.basis_list_nth(n,i)); }
+
+fn valid_shape(n:sexpr, select_enabled:bool) -> bool
+{
+  var rest = n;
+  var width = 4;
+  var i = 0;
+  while i < width
+  {
+    if sx_kind(rest) != 3 { return false; }
+    let a = sx_head(rest);
+    if sx_kind(a) != 2 { return false; }
+    let s = sx_text(a);
+    if text_len(s) < 1 || text_len(s) > 32 { return false; }
+    if i == 1
+    {
+      if select_enabled && s == "select@1" { width = 5; }
+    }
+    else
+    {
+      for j in 0 .. text_len(s)
+      {
+        let c = text_byte(s,j);
+        if c < 97 || c > 122 { return false; }
+      }
+    }
+    rest = sx_tail(rest);
+    i = i + 1;
+  }
+  return sx_kind(rest) == 0;
+}
+
+# Descriptors come only from host code, never from plan declarations.
+# Binary ports share accepts; select uses it for its condition only.
+record Descriptor
+{
+  handler:i64, identity:sexpr, owner:sexpr, accepts:sexpr, produces:sexpr,
+  effect:sexpr, grants:sexpr, cost:i64
+}
+
+fn resolve(op:string) -> Descriptor
+{
+  var handler = 0;
+  var input = "scalar.level@1";
+  var output = "scalar.level@1";
+  if op == "minimum@1" { handler = 1; }
+  if op == "maximum@1" { handler = 2; }
+  if op == "distance@1" { handler = 3; output = "scalar.distance@1"; }
+  if op == "select@1" { handler = 4; input = "scalar.distance@1"; }
+  return record<Descriptor>{handler:handler,identity:sx_string(op),owner:sx_string("finpred.core@1"),
+    accepts:sx_string(input),produces:sx_string(output),
+    effect:sx_string("pure"),grants:sx_nil(),cost:1};
+}
+
+fn input_kind(d:Descriptor, port:i64) -> string
+{
+  if d["handler"] == 4 && port > 2 { return "scalar.level@1"; }
+  return sx_text(d["accepts"]);
+}
+
+fn admitted(d:Descriptor, mode:string) -> bool
+{
+  return mode == "analysis" && d["handler"] > 0 && sx_text(d["effect"]) == "pure"
+    && sx_kind(d["grants"]) == 0 && d["cost"] == 1;
+}
+
+# Values are nonnegative integers <= 10^12; subtraction stays exact.
+fn invoke(op:string, mode:string, left:i64, right:i64) -> i64
+{
+  let d = resolve(op);
+  if !admitted(d,mode) { tool_fail("dag: invocation denied"); }
+  if d["handler"] == 1 { if left < right { return left; } return right; }
+  if d["handler"] == 2 { if left > right { return left; } return right; }
+  if d["handler"] == 3 { if left < right { return right-left; } return left-right; }
+  tool_fail("dag: no registered pure handler");
+  return 0;
+}
+
+fn invoke_select(mode:string, condition:i64, positive:i64, zero:i64) -> i64
+{
+  if !admitted(resolve("select@1"),mode) { tool_fail("dag: invocation denied"); }
+  if condition == 0 { return zero; }
+  return positive;
+}
+
+# Slot 0/1 is an immutable graph input; later slots follow declaration order.
+fn slot(nodes:sexpr, name:string) -> i64
+{
+  if name == "first" { return 0; }
+  if name == "second" { return 1; }
+  var rest = nodes;
+  var i = 2;
+  while sx_kind(rest) == 3
+  {
+    if field(sx_head(rest),0) == name { return i; }
+    rest = sx_tail(rest);
+    i = i + 1;
+  }
+  return 0 - 1;
+}
+
+fn fill_order(nodes:sexpr, count:i64, ready:i64, order:i64) -> bool
+{
+  # Complete Kahn planning before dispatch; always take the first ready
+  # declaration. With <=16 nodes, bounded scans need no recursive traversal.
+  A.basis_array_update(ready,0,1);
+  A.basis_array_update(ready,1,1);
+  for step in 0 .. count
+  {
+    var chosen = 0 - 1;
+    for i in 0 .. count
+    {
+      if chosen < 0 && A.basis_array_sub(ready,i+2) == 0
+      {
+        let n = L.basis_list_nth(nodes,i);
+        let left = slot(nodes,field(n,2));
+        let right = slot(nodes,field(n,3));
+        if A.basis_array_sub(ready,left) == 1 && A.basis_array_sub(ready,right) == 1
+        {
+          if field(n,1) != "select@1" { chosen = i; }
+          else
+          {
+            let zero = slot(nodes,field(n,4));
+            if A.basis_array_sub(ready,zero) == 1 { chosen = i; }
+          }
+        }
+      }
+    }
+    if chosen < 0 { return false; }
+    A.basis_array_update(ready,chosen+2,1);
+    A.basis_array_update(order,step,chosen);
+  }
+  return true;
+}
+
+fn evaluate(nodes:sexpr, count:i64, output:i64, mode:string, order:i64,
+  values:i64, memoized:bool, select_enabled:bool) -> Outcome
+{
+  let trace = buffer_new();
+  let first = Art.input_bytes("first",A.basis_array_sub(values,0));
+  let second = Art.input_bytes("second",A.basis_array_sub(values,1));
+  var artifacts = sx_cons(Art.entry(Art.digest(second),second),
+    sx_cons(Art.entry(Art.digest(first),first),sx_nil()));
+  # Slot -> execution position. Prepend entries during execution and reverse once.
+  let positions = A.basis_array_array(count+2,0);
+  A.basis_array_update(positions,1,1);
+  var entries = sx_nil();
+  var invocations = 0;
+  var hits = 0;
+  for step in 0 .. count
+  {
+    let i = A.basis_array_sub(order,step);
+    let n = L.basis_list_nth(nodes,i);
+    let op = field(n,1);
+    let left = field(n,2);
+    let right = field(n,3);
+    let left_slot = slot(nodes,left);
+    let right_slot = slot(nodes,right);
+    let left_entry = L.basis_list_nth(artifacts,step+1-A.basis_array_sub(positions,left_slot));
+    let right_entry = L.basis_list_nth(artifacts,step+1-A.basis_array_sub(positions,right_slot));
+    let left_digest = sx_text(sx_head(left_entry));
+    let right_digest = sx_text(sx_head(right_entry));
+    let desc = resolve(op);
+    let selecting = desc["handler"] == 4;
+    if !admitted(desc,mode) || (selecting && !select_enabled)
+    {
+      A.basis_array_destroy(positions);
+      return failed("denied");
+    }
+    let kind = sx_text(desc["produces"]);
+    var zero = "";
+    var zero_slot = 0;
+    var zero_digest = "";
+    # For select, the first two declaration slots are condition and positive.
+    if selecting
+    {
+      zero = field(n,4);
+      zero_slot = slot(nodes,zero);
+      let zero_entry = L.basis_list_nth(artifacts,step+1-A.basis_array_sub(positions,zero_slot));
+      zero_digest = sx_text(sx_head(zero_entry));
+    }
+    var k = "";
+    var cached:Option<i64> = option_none();
+    if memoized
+    {
+      if selecting { k = Memo.select_key(left_digest,right_digest,zero_digest); }
+      else { k = Memo.key(sx_text(desc["owner"]),sx_text(desc["identity"]),kind,left_digest,right_digest); }
+      cached = Memo.lookup(entries,k);
+    }
+    let v = cached ~ {
+      Some(value) => { hits = hits + 1; value },
+      None() => {
+        let a = A.basis_array_sub(values,left_slot);
+        let b = A.basis_array_sub(values,right_slot);
+        var value = 0;
+        if selecting { value = invoke_select(mode,a,b,A.basis_array_sub(values,zero_slot)); }
+        else { value = invoke(op,mode,a,b); }
+        invocations = invocations + 1;
+        if memoized { entries = Memo.remember(entries,k,value); }
+        value
+      },
+    };
+    A.basis_array_update(values,i+2,v);
+    let id = field(n,0);
+    var bytes = "";
+    if selecting
+    {
+      bytes = Art.select_bytes(id,left_digest,right_digest,zero_digest,v);
+      buffer_append(trace,"$id=$op($left,$right,$zero):$v\n");
+    }
+    else
+    {
+      bytes = Art.node_bytes(id,op,kind,left_digest,right_digest,v);
+      buffer_append(trace,"$id=$op($left,$right):$v\n");
+    }
+    artifacts = sx_cons(Art.entry(Art.digest(bytes),bytes),artifacts);
+    A.basis_array_update(positions,i+2,step+2);
+  }
+  let descriptor = resolve(field(L.basis_list_nth(nodes,output-2),1));
+  let ordered = L.basis_list_rev(artifacts);
+  let selected = L.basis_list_nth(ordered,A.basis_array_sub(positions,output));
+  A.basis_array_destroy(positions);
+  return record<Outcome>{status:sx_string("ok"),output_kind:descriptor["produces"],
+    value:sx_string("${A.basis_array_sub(values,output)}"),
+    trace:sx_string(buffer_text(trace)),artifacts:ordered,output_digest:sx_head(selected),
+    invocations:invocations,memo_hits:hits};
+}
+
+fn check_header(plan:Plan, mode:string) -> string
+{
+  if mode != "analysis" { return "denied"; }
+  if sx_kind(plan["version"]) != 2 { return "version"; }
+  let version = sx_text(plan["version"]);
+  if version != "automat.scalar-dag@1" && version != "automat.scalar-dag@2" { return "version"; }
+  return "ok";
+}
+
+record Planned { status:sexpr, count:i64, output:i64, order:i64 }
+
+fn rejected_plan(reason:string) -> Planned
+{
+  return record<Planned>{status:sx_string(reason),count:0,output:0,order:0};
+}
+
+# Caller checks the header first. Only success transfers ownership of order.
+fn plan_graph(plan:Plan, mode:string, budget:i64) -> Planned
+{
+  let nodes = plan["nodes"];
+  let select_enabled = sx_text(plan["version"]) == "automat.scalar-dag@2";
+  var rest = nodes;
+  var count = 0;
+  while sx_kind(rest) == 3
+  {
+    if count >= 16 || count >= budget { return rejected_plan("budget"); }
+    let n = sx_head(rest);
+    if !valid_shape(n,select_enabled) { return rejected_plan("invalid_node"); }
+    let d = resolve(field(n,1));
+    if d["handler"] == 0 || (d["handler"] == 4 && !select_enabled)
+    { return rejected_plan("unknown_handler"); }
+    if !admitted(d,mode) { return rejected_plan("denied"); }
+    count = count + 1;
+    rest = sx_tail(rest);
+  }
+  if sx_kind(rest) != 0 || count == 0 { return rejected_plan("invalid_plan"); }
+  for i in 0 .. count
+  {
+    let n = L.basis_list_nth(nodes,i);
+    if slot(nodes,field(n,0)) != i+2 { return rejected_plan("duplicate"); }
+  }
+  for i in 0 .. count
+  {
+    let n = L.basis_list_nth(nodes,i);
+    let dest = resolve(field(n,1));
+    var width = 4;
+    if dest["handler"] == 4 { width = 5; }
+    for port in 2 .. width
+    {
+      let from = slot(nodes,field(n,port));
+      if from < 0 { return rejected_plan("missing_port"); }
+      var incoming = "scalar.level@1";
+      if from >= 2
+      {
+        let parent = resolve(field(L.basis_list_nth(nodes,from-2),1));
+        incoming = sx_text(parent["produces"]);
+      }
+      if incoming != input_kind(dest,port) { return rejected_plan("type_mismatch"); }
+    }
+  }
+  if sx_kind(plan["output"]) != 2 { return rejected_plan("missing_output"); }
+  let out = sx_text(plan["output"]);
+  if text_len(out) > 32 { return rejected_plan("missing_output"); }
+  let output = slot(nodes,out);
+  if output < 2 { return rejected_plan("missing_output"); }
+  let ready = A.basis_array_array(count+2,0);
+  let order = A.basis_array_array(count,0);
+  let ordered = fill_order(nodes,count,ready,order);
+  A.basis_array_destroy(ready);
+  if !ordered
+  {
+    A.basis_array_destroy(order);
+    return rejected_plan("cycle");
+  }
+  return record<Planned>{status:sx_string("ok"),count:count,output:output,order:order};
+}
+
+# Preflight the entire graph without runtime values or evidence generation.
+fn validate(plan:Plan, mode:string, budget:i64) -> string
+{
+  let header = check_header(plan,mode);
+  if header != "ok" { return header; }
+  let planned = plan_graph(plan,mode,budget);
+  let status = sx_text(planned["status"]);
+  if status == "ok" { A.basis_array_destroy(planned["order"]); }
+  return status;
+}
+
+fn run_validated(plan:Plan, mode:string, budget:i64, first:i64, second:i64, memoized:bool) -> Outcome
+{
+  let header = check_header(plan,mode);
+  if header != "ok" { return failed(header); }
+  # Runtime input errors precede structural graph errors, but not header errors.
+  if first < 0 || second < 0 || first > 1000000000000 || second > 1000000000000
+  { return failed("invalid_input"); }
+  let planned = plan_graph(plan,mode,budget);
+  let status = sx_text(planned["status"]);
+  if status != "ok" { return failed(status); }
+  let count = planned["count"];
+  let order = planned["order"];
+  let values = A.basis_array_array(count+2,0);
+  A.basis_array_update(values,0,first);
+  A.basis_array_update(values,1,second);
+  let result = evaluate(plan["nodes"],count,planned["output"],mode,order,values,memoized,
+    sx_text(plan["version"]) == "automat.scalar-dag@2");
+  A.basis_array_destroy(values);
+  A.basis_array_destroy(order);
+  return result;
+}
+
+fn run(plan:Plan, mode:string, budget:i64, first:i64, second:i64) -> Outcome
+{
+  return run_validated(plan,mode,budget,first,second,false);
+}
+
+fn run_memoized(plan:Plan, mode:string, budget:i64, first:i64, second:i64) -> Outcome
+{
+  return run_validated(plan,mode,budget,first,second,true);
+}

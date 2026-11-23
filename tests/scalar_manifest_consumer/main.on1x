@@ -1,0 +1,92 @@
+import automat.dag as D;
+import automat.scalar_manifest as M;
+import automat.scalar_verify as V;
+import std.crypto.crypto as Crypto;
+import std.Int as Int;
+import std.io.TextIO as IO;
+import std.os.CommandLine as Env;
+
+fn setting(s:string) -> string { return Env.basis_command_line_get_env(s); }
+fn decimal(s:string) -> i64
+{
+  var v = 0;
+  for i in 0 .. text_len(s) { v = 10*v + text_byte(s,i)-48; }
+  return v;
+}
+
+fn produce()
+{
+  let hi = D.node("hi","maximum@1","first","second");
+  let lo = D.node("lo","minimum@1","first","second");
+  let spread = D.node("spread","distance@1","hi","lo");
+  var nodes = sx_cons(spread,sx_cons(hi,sx_cons(lo,sx_nil())));
+  var output = "spread";
+  if setting("INTERMEDIATE") == "yes" { output = "hi"; }
+  if setting("SINGLE") == "yes" { nodes = sx_cons(hi,sx_nil()); output = "hi"; }
+  if setting("DUPLICATE_WORK") == "yes"
+  {
+    nodes = sx_cons(hi,sx_cons(D.node("again","maximum@1","first","second"),sx_nil()));
+    output = "again";
+  }
+  let plan = record<D.Plan>{version:sx_string("automat.scalar-dag@1"),
+    nodes:nodes,output:sx_string(output)};
+  emit(snapshot(plan,setting("MODE"),decimal(setting("BUDGET"))));
+}
+
+fn snapshot(plan:D.Plan, mode:string, budget:i64) -> M.Snapshot
+{
+  if setting("MEMOIZED") == "yes" { return M.freeze_memoized(plan,mode,budget,17,42); }
+  return M.freeze(plan,mode,budget,17,42);
+}
+
+fn emit(r:M.Snapshot)
+{
+  if sx_text(r["status"]) != "ok"
+  {
+    if sx_kind(r["artifacts"]) != 0 || sx_kind(r["run_id"]) != 0 || sx_kind(r["manifest"]) != 0
+    { tool_fail("failed freeze returned partial snapshot"); }
+    IO.basis_text_io_print("failed\n"); return;
+  }
+  IO.basis_text_io_print(sx_text(r["run_id"]));
+  IO.basis_text_io_print("\n");
+  IO.basis_text_io_print(sx_text(r["manifest"]));
+  IO.basis_text_io_print("END\n");
+  var rest = r["artifacts"];
+  while sx_kind(rest) == 3
+  {
+    let pair = sx_head(rest);
+    let tail = sx_tail(pair);
+    if sx_kind(sx_tail(tail)) != 0 { tool_fail("long artifact entry"); }
+    IO.basis_text_io_print(sx_text(sx_head(pair)));
+    IO.basis_text_io_print("\n");
+    IO.basis_text_io_print(sx_text(sx_head(tail)));
+    IO.basis_text_io_print("END\n");
+    rest = sx_tail(rest);
+  }
+  if sx_kind(rest) != 0 { tool_fail("improper artifacts"); }
+}
+
+fn main() -> i64
+{
+  if setting("TASK") == "produce" { produce(); return 0; }
+  let manifest = IO.basis_text_io_input_all("manifest");
+  var id = IO.basis_text_io_input_all("id");
+  if setting("TASK") == "rehashed"
+  {
+    let (status, hash) = Crypto.basis_crypto_blake3(manifest);
+    if status != 0 { tool_fail("cannot hash malformed fixture"); }
+    id = hash;
+  }
+  let count = decimal(setting("COUNT"));
+  var entries = sx_nil();
+  for j in 0 .. count
+  {
+    let idx = Int.to_string(count-1-j);
+    let digest = IO.basis_text_io_input_all(text_concat("hash",idx));
+    let data = IO.basis_text_io_input_all(text_concat("data",idx));
+    entries = sx_cons(sx_cons(sx_string(digest),sx_cons(sx_string(data),sx_nil())),entries);
+  }
+  if V.verify(id,manifest,entries) { IO.basis_text_io_print("true\n"); }
+  else { IO.basis_text_io_print("false\n"); }
+  return 0;
+}

@@ -4,9 +4,11 @@ The store runs on a local POSIX filesystem under an operator-controlled
 `FINPRED_HOME`. Use a private directory and protect its ancestors. All writers
 must use the same reservation protocol. Replay reads only published paths.
 
-`put_at` publishes each artifact or manifest at its existing v1-compatible
-name. A byte-identical existing file is reused without changing its inode or
-creating a reservation. A different file at that name is an immutable conflict.
+`put_at` publishes bytes at a host-selected artifact or manifest name.
+The Yieldcraft CLI only writes v2 manifests; it can still read v1 archives
+at their original paths. A byte-identical existing file is reused without
+changing its inode or creating a reservation. A different file at that name
+is an immutable conflict.
 
 1. Reserve a missing destination by creating the sibling directory
    `<destination>.pending` with `mkdir`. Only its creator may write inside it.

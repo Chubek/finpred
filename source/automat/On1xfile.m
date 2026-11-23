@@ -1,3 +1,10 @@
 on1xfile 1
 library "graph.on1x"
+library "dag.on1x"
+library "dag_artifacts.on1x"
+library "dag_replay.on1x"
+library "scalar_manifest.on1x"
+library "scalar_memo.on1x"
+library "scalar_decode.on1x"
+library "scalar_verify.on1x"
 library "runner.on1x"

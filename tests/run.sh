@@ -3,11 +3,18 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
 python3 tests/validate_static.py
+python3 tests/check_on1x_features.py
 python3 tests/check_fixtures.py
 python3 tests/check_sdk.py
 python3 tests/check_sdk_packages.py
 python3 tests/check_fixed_runner.py
+python3 tests/check_dag.py
+python3 tests/check_dag_replay.py
+python3 tests/check_scalar_manifest.py
+python3 tests/check_scalar_memo.py
 python3 tests/check_ottomat_plan.py
+python3 tests/check_ottomat_scalar.py
+python3 tests/check_scalar_selection.py
 work=$(mktemp -d "${TMPDIR:-/tmp}/finpred-test.XXXXXXXX")
 trap 'rm -rf -- "$work"' EXIT
 trap 'exit 1' HUP INT TERM
@@ -169,9 +176,14 @@ expect_failure 'malformed identity' bin/finpred replay "$(printf '%064d' 0 | tr 
 expect_failure 'scenario: invalid' env FINPRED_SCENARIO="$ROOT/fixtures/invalid_scenario.csv" bin/finpred run
 expect_failure 'capability denied' env FINPRED_MODE=execution bin/finpred run
 expect_failure 'capability denied' env FINPRED_MODE=execution "$exe"
+expect_failure 'invalid graph or incompatible strategy' env \
+    FINPRED_STRATEGY="$ROOT/strategies/scalar-spread.ottomat" bin/finpred run
+expect_failure 'invalid graph or incompatible strategy' env \
+    FINPRED_STRATEGY="$ROOT/strategies/scalar-select.ottomat" bin/finpred run
 [ ! -e "$FINPRED_HOME" ]
 python3 "$ROOT/tests/check_pricing_cli.py"
 python3 "$ROOT/tests/check_profiles_cli.py"
+python3 "$ROOT/tests/check_yieldcraft_formats.py"
 python3 "$ROOT/tests/check_ingestion_cli.py"
 python3 "$ROOT/tests/check_poindexter_cli.py"
 python3 "$ROOT/tests/check_write_failure.py"

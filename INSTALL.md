@@ -5,6 +5,9 @@ Build from the **FinPRED repository root**. The verified platform is x86-64 GNU/
 The build wrapper assembles the host and `plugins/yieldcraft` in a temporary
 project because On1xfile discovers one source tree. Use `./bin/build.sh`
 for the CLI; set `FINPRED_BUILD_DIR` to choose a different output directory.
+After building `on1xc`, `make` is equivalent to `./bin/build.sh`.
+Use `make test` to build and verify the CLI, `make native-test` for the
+standalone C store tests, and `make poindexter` to build the workbench.
 
 ## 1. Prepare the host
 

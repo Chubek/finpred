@@ -1,10 +1,14 @@
 # FinPRED immutable run formats
 
+`finpred-run@2` is the only format the Yieldcraft CLI writes. There is no
+`finpred-run@1` writer or option to select it. Archived v1 runs are supported
+read-only by `replay`, `explain`, `evidence`, and `poindexter`.
+
 `runs/<run_id>.txt` is the commit record for a successful recommendation.
-All referenced bytes must be present before publishing it. Both formats use
-the same canonical, **404-byte** manifest: seven comma-separated ASCII
-fields, no spaces, and exactly one final LF. No CRLF or optional fields.
-Each `H` below is 64 lowercase hexadecimal characters (BLAKE3-256).
+All referenced bytes must be present before publishing it. Both Yieldcraft
+formats use the same canonical, **404-byte** manifest: seven comma-separated
+ASCII fields, no spaces, and exactly one final LF. No CRLF or optional
+fields. Each `H` below is 64 lowercase hexadecimal characters (BLAKE3-256).
 
 ```text
 finpred-run@V,Hraw_scenario,Hraw_offers,Hraw_valuation,Hraw_strategy,Hrecommendation,Htrace
@@ -52,11 +56,17 @@ offer_count=<N>
 normalized_offer=<H>
 ```
 
-The `strategy=` line shown above is for the default scenario policy. For an
-explicit [Ottomat 2 profile](../strategies/README.md) its value is
-`yieldcraft.<profile-name>@1`, also recorded in the trace. `raw_strategy`
-still hashes the exact declaration bytes. Named profiles are supported only
-in v2 runs; the recommendation envelope retains the SDK family identity.
+The `strategy=` line shown above is for the default scenario policy. Its
+packaged declaration keeps the exact `ottmat 1` bytes that the pinned v2
+run IDs depend on. Named [Ottomat profiles](../strategies/README.md) use
+`ottmat 2`; for those profiles, `strategy=` is `yieldcraft.<profile-name>@1`,
+also recorded in the trace. Both declarations produce `finpred-run@2`
+records when used with `run`. `raw_strategy` hashes the exact declaration
+bytes. Ottomat syntax and plugin SDK versions are separate from the run
+format. Likewise, `finpred.yieldcraft-engine@1` identifies the engine in
+v2 lineage, and `pricing.recommendation@1` identifies an output contract;
+neither selects `finpred-run@1`. The recommendation envelope retains the
+SDK family identity.
 
 The last line repeats `N` times (`1..512`, canonical decimal). It lists the
 normalized JSON for **every** data row in raw offers CSV order, including
@@ -115,18 +125,91 @@ The original run ID is BLAKE3 over the literal `finpred-run@1`, LF, and
 the four raw digests in manifest order separated by LF, **no final LF**.
 There is no artifact named for that run ID. Its normalized objects are
 derived from the raw snapshots. Its original trace and recommendation
-contain no v2 lineage extension. Replay selects v1 by the manifest version
-and verifies the original identity, normalized objects, output hashes and
-bytes without writing anything. Formats can coexist in one store.
+contain no v2 lineage extension. The verifier selects v1 by the manifest
+version and checks the original identity, normalized objects, output hashes
+and bytes without writing anything. It accepts only the scenario policy
+for archived v1 runs. Both formats can coexist in one store.
 
-New runs write v2 only. To obtain v2 lineage for an old run, use the four
-verified raw artifacts as the four `FINPRED_{SCENARIO,OFFERS,VALUATION,STRATEGY}`
-inputs to `run`; retain the old manifest and outputs under the old ID. A
-fresh run with current files is equivalent only if their **bytes** match.
-Output references and run IDs change even where the economic result does
-not. Do not rewrite old runs, silently reinterpret policy versions, or
-infer v2 metadata for v1. Reject unknown formats. A future semantic change
-must get a distinct identity and retain the old evaluation path (or require
-the matching archived engine for read-only replay). Content-addressing
-checks integrity relative to the supplied ID; it does not authenticate who
-created a run.
+Migration means creating a **new `finpred-run@2` identity**, not upgrading
+the archive in place. Verify the v1 run first, then pass its four frozen raw
+artifacts as `FINPRED_SCENARIO`, `FINPRED_OFFERS`, `FINPRED_VALUATION`, and
+`FINPRED_STRATEGY` to `run`. Keep the original v1 manifest and artifacts
+under their existing identities. Use current files instead of the frozen
+snapshots only if their **bytes** match. The run ID and output references
+change even when the economic result does not. Do not rewrite old runs,
+silently reinterpret policy versions, or infer v2 metadata for v1. Reject
+unknown formats. A future semantic change must get a distinct identity and
+retain the old evaluation path (or require the matching archived engine for
+read-only replay). Content-addressing checks integrity relative to the
+supplied ID; it does not authenticate who created a run.
+
+## scalar-run@1: native analysis
+
+The [native scalar graph API](../source/automat/README.md#frozen-runs)
+uses a separate byte format. Its run ID is the lowercase BLAKE3-256 digest
+of the **manifest itself**, including the final LF. The selected node's digest
+is a different identity. This manifest is not a `runs/<run_id>.txt` CLI
+recommendation record.
+
+```text
+scalar-run@1
+plan=automat.scalar-dag@1
+mode=analysis
+budget=<invocation ceiling>
+first=<input value>
+second=<input value>
+output=<selected node id>
+node=<id>,<handler>,<left binding>,<right binding>
+artifact=<digest>
+root=<selected node digest>
+```
+
+The template's `node` line repeats once per declaration (1–16), in
+declaration order. `artifact` repeats once for each input (`first`, `second`)
+and then each evaluated node, in execution order. `root` appears once and may
+refer to a node other than the last one. Budget is 1–16; input values are
+0–10¹². Integers have no sign or leading zeros except the single digit `0`.
+All fields are ASCII, with LF terminators, no spaces or optional lines,
+and a maximum manifest size of 4096 bytes.
+
+A verifier needs the expected run ID, manifest and ordered `(digest, bytes)`
+pairs. It checks the manifest identity, reconstructs the declared graph,
+runs the pinned handler versions and compares the evidence and selected
+output. A budget from the manifest cannot exceed the native 16-node ceiling
+or authorize execution mode. A new handler meaning requires a new handler
+identity; a new encoding requires its own format version. No v1/v2
+migration is involved.
+
+An [Ottomat v3 scalar program](../source/ottomat/README.md#v3-scalar-analysis)
+that lowers to the same native plan produces this same manifest, byte for
+byte. The host adapter reports the source digest and lowering identity
+separately; verifying a scalar bundle does not authenticate a source file
+as the origin of its graph.
+
+## scalar-run@2: typed selection
+
+This native analysis format uses the same ordered fields, byte limits and
+identity rules as `scalar-run@1`, with `scalar-run@2` on the first line and
+`plan=automat.scalar-dag@2` on the second. A selection declaration adds one
+binding: `node=<id>,select@1,<condition>,<positive>,<zero>`. All other
+node lines retain their original arity. The verifier rejects a mismatch
+between the manifest version and graph version, or an attempt to put a
+selection node in a v1 bundle.
+
+Selection output uses these exact ordered fields with a final LF:
+
+```text
+scalar-select@1
+id=<node id>
+owner=finpred.core@1
+handler=select@1
+kind=scalar.level@1
+condition=<condition digest>
+positive=<positive branch digest>
+zero=<zero branch digest>
+value=<decimal>
+```
+
+Even if a branch is not selected, its digest is still part of the
+selection artifact. Binary node and input artifact encodings do not
+change. The manifest remains separate from the Yieldcraft store format.

@@ -1,0 +1,21 @@
+import std.io.TextIO as IO;
+
+fn describe(value: Option<i64>) -> string
+{
+  return value ~ {
+    Some(n) => "some:${n}",
+    None() => "none",
+  };
+}
+
+fn main() -> i64
+{
+  let label = "present";
+  # These look like valid holes in this scope, but arrive as literal data.
+  let payload = r!"""$label ${label}
+{} {""";
+  let zero = describe(variant<Option<i64>>(Some, 0));
+  let absent = describe(variant<Option<i64>>(None, record {}));
+  IO.basis_text_io_print("$label=$zero\nmissing=$absent\npayload=$payload\n");
+  return 0;
+}

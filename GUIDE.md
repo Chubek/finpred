@@ -4,7 +4,7 @@ Start with a tested executable from [INSTALL.md](INSTALL.md). The [overview](REA
 
 ## Run the default fixture
 
-Use an empty private directory for this walkthrough. If `mktemp` fails, choose a writable `TMPDIR` with enough space before continuing. Keep the printed path if you want to come back to the run.
+Use an empty private directory for this walkthrough. If `mktemp` fails, choose a writable `TMPDIR` with enough space before continuing. Keep the printed path if you want to come back to the run. `run` writes only `finpred-run@2`; there is no v1 writer or format-selection option.
 
 ```sh
 umask 077
@@ -37,6 +37,10 @@ published=false
 ```
 
 Use the **run ID**, not either output digest. IDs are 64 lowercase hex characters. `replay` reads the manifest and snapshots from the same `FINPRED_HOME`, checks their integrity and recomputes the decision without reading today’s input files or writing to the store. Success prints `replay_ok=true` and the original summary. `explain` performs the same checks, then prints the stored decision trace between `trace_begin` and `trace_end`. Look for `decision_at`, `independent_properties`, `rejected_offers`, `intended_nightly_minor`, `candidate_nightly_minor` and `recommended_nightly_minor`. A missing or altered object is an error, not a partial explanation.
+
+Archived `finpred-run@1` records still work with `replay`, `explain`,
+`evidence`, and the `poindexter` export. These commands do not modify the
+store.
 
 To export this verified comparison for a spreadsheet, run:
 
@@ -92,7 +96,7 @@ Set paths on the `run` command as above. The [launcher](bin/finpred) changes to 
 | `FINPRED_SCENARIO` | [`fixtures/scenario.csv`](fixtures/scenario.csv) | One stay, decision timestamp, party, target and matching limits. |
 | `FINPRED_OFFERS` | [`fixtures/offers.csv`](fixtures/offers.csv) | One inventory unit per row, with capacities, validity, fees and taxes. |
 | `FINPRED_VALUATION` | [`fixtures/valuation.csv`](fixtures/valuation.csv) | One row: current nightly price, floor, cap, maximum movement and shortcut threshold. |
-| `FINPRED_STRATEGY` | [`strategies/yieldcraft.ottomat`](strategies/yieldcraft.ottomat) | The default follows the scenario target. Choose a [named profile](strategies/README.md) to override target selection while retaining the same evidence checks and guardrails. |
+| `FINPRED_STRATEGY` | [`strategies/yieldcraft.ottomat`](strategies/yieldcraft.ottomat) | The default uses `ottmat 1` syntax and follows the scenario target. [Named profiles](strategies/README.md) use `ottmat 2` syntax and override target selection while retaining the same evidence checks and guardrails. Both are inputs to `finpred-run@2`. |
 | `FINPRED_HOME` | `.finpred/` | Private local state; the parent directory must exist. Use the same home when replaying. |
 
 Use the launcher arguments for the command and run ID; it sets `FINPRED_MODE` and `FINPRED_RUN_ID` for the executable. `FINPRED_MODE=execution` is explicitly denied. No mode books rooms or changes a listed price.
@@ -105,7 +109,7 @@ Use the launcher arguments for the command and run ID; it sets `FINPRED_MODE` an
 
 ## Keep and recover a run
 
-- `runs/<run_id>.txt` is the commit record. `artifacts/blake3-<digest>.txt` holds exact raw inputs, normalized [contract envelopes](contracts/), outputs and traces. New v2 IDs hash a lineage record: it binds the raw digests, ordered normalized parents (including rejected offers), graph and policy versions. V1 runs still verify under their own IDs. Do not rewrite a v1 manifest to upgrade it; see [formats and migration](docs/RUN_FORMAT.md).
+- `runs/<run_id>.txt` is the commit record. `artifacts/blake3-<digest>.txt` holds exact raw inputs, normalized [contract envelopes](contracts/), outputs and traces. A `finpred-run@2` ID hashes the lineage record, which binds the raw digests, ordered normalized parents (including rejected offers), graph and policy versions. To migrate an archive, run its verified snapshots to create a new v2 identity; leave the original v1 record and artifacts unchanged. See [formats and migration](docs/RUN_FORMAT.md).
 - Back up the **whole home** while writers are stopped; copying the manifest alone loses its inputs. Verify a restored copy with `replay` using a previously saved run ID. `unknown id` can mean the wrong home. For missing snapshots, digest mismatches or immutable path conflicts, stop and check the backup; replay does not repair or overwrite published files.
 - Use a private local POSIX directory with trusted ancestors. Cooperating writers reserve `<destination>.pending`, close and rename the staged payload on the same filesystem, then publish the manifest last. If a staged write or rename reports failure, the writer cleans up its own payload and reservation or reports a cleanup error. A busy reservation can fail explicitly. Rename makes a complete file visible, but does not prevent another program from replacing it. Power-loss durability and hostile-symlink confinement still require a [reviewed storage interface](native/STORE_ADMISSION.md). Content digests are not signatures.
 - After an interrupted writer, **stop all writers before cleanup**. Inspect the named reservation. Remove only a confirmed abandoned `payload` and its `.pending` directory (it may already be empty). Never promote a staged file or delete a published conflict. Rerun with the same inputs and verify the resulting ID by replay. Complete artifacts left without a manifest may be reused. See the [publication and recovery protocol](source/store/README.md).

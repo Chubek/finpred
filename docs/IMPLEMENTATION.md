@@ -36,6 +36,139 @@ remain to be verified on GitHub.
 
 ### Data and control flow
 
+Alongside the legacy CLI plan, the [native scalar DAG](../source/automat/README.md)
+executes bounded analysis graphs with two level algorithms and a distance
+transform. This first P1 slice adds an in-memory plan version; it changes no
+contract schema, persisted artifact, run version or storage permission.
+Verification from base `db9cd08` used the S0 pinned compiler recorded above:
+`./bin/build.sh && ./tests/run.sh` exited 0. The independent DAG consumer
+verified four successful executions and fourteen rejected calls; the historical
+v2 IDs, recommendation/trace digests and both archived v1 replays passed.
+
+The next P1 slice adds BLAKE3-addressed input and intermediate output bytes
+to the native outcome. Node bytes name the versioned handler and bind the
+left and right parent digests in port order. The caller can independently
+re-execute the graph and verify the complete returned list and selected
+output via `automat.dag_replay.verify`.
+The integrated pinned build and `tests/run.sh` exited 0: five successful
+graph executions (including an 18-artifact maximum-depth chain), fourteen
+graph rejections, three byte-exact golden runs, three replay verifications
+and fourteen evidence rejection cases. The two historical v2 fixture
+identities and both archived v1 read-only replays also passed.
+
+For a fresh process, `automat.scalar_manifest.freeze` emits the versioned
+[`scalar-run@1` manifest](RUN_FORMAT.md#scalar-run1-native-analysis).
+`automat.scalar_verify.verify` needs only its expected run ID, manifest and
+ordered artifacts. There is no host filesystem access in these modules;
+storing the bundle is a caller decision. The CLI continues to use only the
+existing recommendation formats.
+
+With the pinned compiler above, `./bin/build.sh` and `./tests/run.sh`
+exited 0. The frozen-run consumer verified 18 snapshots in fresh processes,
+rejected 25 invalid bundles and checked four failed freezes for partial
+outputs. Its independent 626-byte manifest fixture has BLAKE3 identity
+`e7fcc371e632492f6a007942aa0546fe74c5cf0072bf80ae27a85b5e24fd89b0`.
+
+The native scalar evaluator now also offers [run-local memoization](../source/automat/README.md#reusing-pure-results-within-a-run).
+The host opts in with `run_memoized` or `freeze_memoized`. Duplicate work
+can avoid handler calls while retaining one artifact and trace row per
+declaration. The table is never loaded from a manifest or shared with a
+later run, so results cannot survive a change of linked implementation.
+The `scalar-run@1` verifier still uses uncached execution.
+`./bin/build.sh` and `./tests/run.sh` passed on the same pinned C11
+toolchain. In the compiled conformance test 16 identical sibling operations
+needed one invocation and produced 15 hits. Three successful cases and two
+rejections passed, and the separate frozen-run consumer verified 19
+snapshots, including a memoized one in a fresh process.
+
+### On1x source modernization
+
+The scalar analysis modules use On1x interpolation for canonical text and a
+typed `Option<i64>` with an exhaustive enum match for memo lookup. The
+manifest decoder uses character literals for byte-level ASCII comparisons. These
+changes require no new compiler flags or KernelBind capabilities. The
+release pins remain unchanged. The newer compatibility toolchain uses MuLIB
+`87cbf7c361667c62f82759bd0c02834b2b07315c` with its matching LibStone
+`4c35077601899944594737559534aafd9014f330`, not a mix of the two toolchain
+revisions.
+
+`make test` passed on both toolchains from base `db9cd08`. The newer
+compiler SHA-256 is `faed6639728d5a39e1fa7ac86f1322f45f78853526a21fcff95f03990e2ab041`.
+The feature fixture executed once and checked two compiler rejections.
+The memo consumer also verified a cached zero. Scalar golden bytes and
+historical Yieldcraft v1/v2 replay remained unchanged.
+
+Use `make test` to build the CLI and run the integration suite with the
+selected `MULIB_ROOT` and `ON1XC`. The Makefile also wraps the Poindexter
+build and the standalone native CTests; it does not download a toolchain
+or grant storage admission. `make native-test` passed both CTests, and
+`make poindexter` built the terminal executable.
+
+### Ottomat v3 scalar lowering
+
+The [scalar dialect](../source/ottomat/README.md#v3-scalar-analysis) parses
+typed input declarations, explicit registered imports, node bindings and a
+selected output. It lowers to the existing `automat.scalar-dag@1` plan and
+asks the native planner to validate it without running a handler. The native
+freeze wrapper supplies a digest of the exact Ottomat source and a lowering
+identity alongside the unchanged `scalar-run@1` snapshot. These are separate
+identities: source changes can leave the lowered graph and run ID identical.
+The legacy CLI still rejects v3 as a recommendation strategy.
+
+On the release pins above (base FinPRED `db9cd08`), `make test` exited 0:
+five v3 successes matched the native result, trace and evidence; 41 v3
+cases were rejected. The native and DSL snapshots share the pinned scalar
+run ID `e7fcc371e632492f6a007942aa0546fe74c5cf0072bf80ae27a85b5e24fd89b0`.
+Both archived v1 replays and the historical v2 run IDs and output digests
+passed unchanged. The three plugin package checks, Poindexter workbench
+test and both standalone CTests also passed. The focused v3 consumer
+passed on the newer compatibility toolchain listed above. No native store
+admission, run-format change, or action permission was introduced.
+
+### Ottomat v4 typed value selection
+
+`ottomat 4` builds `automat.scalar-dag@2`. Its pure `select@1` handler
+routes a `scalar.distance@1` condition to one of two `scalar.level@1`
+results. The native planner requires all three dependencies. Both
+alternatives still execute and get recorded, so the selection cannot
+hide an invalid branch, an effect or a budget overrun. The versioned
+[`scalar-run@2` format](RUN_FORMAT.md#scalar-run2-typed-selection) binds
+the roles of all three parents, even when swapping them would not change
+the final numeric result.
+The fixture `strategies/scalar-select.ottomat`, with inputs 17 and 42 and a
+budget of four nodes, has independently computed BLAKE3 run ID
+`396debcfd132cb40dcd87f42e5bcdf5dfe5150a6f3ebd45282e2925f8ee6ae78`.
+This profile is analysis-only. It adds no lazy branch execution,
+filesystem access, or action capabilities.
+The native boundary test freezes and replays a reverse-declared,
+16-node selection chain. The pinned compiler and the documented newer
+compatibility compiler both passed the chain and existing scalar
+manifest checks.
+On base `db9cd08` with the release pins above, `make test` exited 0.
+The selection consumer passed six read-only replays and rejected 11 native
+plans, 13 strategy sources and eight replay bundles. The same consumer
+passed on the newer compatibility compiler. Both v2 Yieldcraft run IDs
+and output digests, the two archived v1 runs, and the original
+`scalar-run@1` golden snapshot stayed unchanged. `make native-test`
+passed 2/2 standalone CTests; storage admission remains blocked.
+
+### Yieldcraft current versus archival runs
+
+New Yieldcraft runs can only publish `finpred-run@2`. The CLI recognizes
+`finpred-run@1` only when decoding a frozen manifest for read-only
+inspection. Both paths retain the same vetted recommendation engine and
+their original version-specific evidence. Strategy syntax and SDK/contract
+versions are independent of this split.
+
+The CLI writer in `source/cli/app.on1x` has no version argument, and
+`source/cli/run_formats.on1x` exposes only a v2 manifest encoder. The replay
+path has no store writes. On base `db9cd08` and the release pins above,
+`make test` exited 0: the format check observed four v2 writes, two read-only
+v1 archives, and two unknown-version rejections. The pinned v2 run IDs and
+output digests were unchanged, as were the archived fixture bytes.
+Both native CTests passed; the newer compatibility compiler also built the
+CLI and passed the focused format check. No schema or permission changed.
+
 ```text
 CSV/fixtures (local-only) -> On1x CSV/schema contract validation
                         -> As-of eligibility filter

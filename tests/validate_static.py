@@ -12,8 +12,10 @@ assert not (root/'source/plugins').exists()
 assert len(sources) >= 12, len(sources)
 for module in sources:
     text = module.read_text()
-    stripped = re.sub(r'"(?:\\.|[^"\\])*"', '""', text)
-    stripped = re.sub(r'#.*', '', stripped)
+    # The smoke check ignores text, character literals and line comments.
+    # `#\` starts an On1x character literal, not a comment.
+    stripped = re.sub(r'"(?:\\.|[^"\\])*"|#\\(?:[a-zA-Z][\w+]*|[^\n])|#[^\n]*',
+                      '', text)
     pairs = {')':'(',']':'[','}':'{'}
     stack = []
     for c in stripped:

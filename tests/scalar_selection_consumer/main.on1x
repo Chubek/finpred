@@ -1,0 +1,192 @@
+import automat.dag as D;
+import automat.scalar_decode as Decode;
+import automat.scalar_manifest as M;
+import automat.scalar_verify as V;
+import ottomat.scalar as S;
+import ottomat.scalar_run as R;
+import std.crypto.crypto as Crypto;
+import std.Int as Int;
+import std.io.TextIO as IO;
+import std.os.CommandLine as Env;
+
+fn setting(key:string) -> string { return Env.basis_command_line_get_env(key); }
+
+fn integer(key:string) -> i64
+{
+  let (ok, value) = Int.from_string(setting(key));
+  if !ok { tool_fail("invalid test environment integer"); }
+  return value;
+}
+
+fn native_plan(which:string) -> D.Plan
+{
+  var version = "automat.scalar-dag@2";
+  if which == "legacy" || which == "legacy_binary" { version = "automat.scalar-dag@1"; }
+  let hi = D.node("hi","maximum@1","first","second");
+  var lo = D.node("lo","minimum@1","first","second");
+  var left = "hi";
+  var right = "lo";
+  if which == "zero" { left = "first"; right = "first"; }
+  if which == "positive" || which == "cycle" { left = "first"; right = "second"; }
+  if which == "cycle" { lo = D.node("lo","minimum@1","picked","second"); }
+  let spread = D.node("spread","distance@1",left,right);
+  var condition = "spread";
+  var positive = "hi";
+  var zero = "lo";
+  if which == "condition_type" { condition = "hi"; }
+  if which == "positive_type" { positive = "spread"; }
+  if which == "zero_type" { zero = "spread"; }
+  if which == "missing" { zero = "absent"; }
+  var picked = D.select_node("picked",condition,positive,zero);
+  if which == "arity" || which == "legacy_binary" { picked = D.node("picked","select@1","spread","hi"); }
+  if which == "action_handler" { picked = D.node("picked","publish@1","hi","lo"); }
+  var rest = sx_cons(spread,sx_cons(hi,sx_cons(lo,sx_nil())));
+  if which == "memo_roles"
+  {
+    let reroute = D.select_node("reroute","spread","hi","first");
+    let again = D.select_node("again","spread","hi","lo");
+    rest = sx_cons(reroute,sx_cons(again,rest));
+  }
+  return record<D.Plan>{version:sx_string(version),nodes:sx_cons(picked,rest),output:sx_string("picked")};
+}
+
+fn hash(raw:string) -> string
+{
+  let (status, digest) = Crypto.basis_crypto_blake3(raw);
+  if status != 0 { tool_fail("BLAKE3 unavailable"); }
+  return digest;
+}
+
+fn failed_snapshot(r:M.Snapshot)
+{
+  if sx_kind(r["run_id"]) != 0 || sx_kind(r["manifest"]) != 0 || sx_kind(r["artifacts"]) != 0
+  { tool_fail("rejected freeze returned partial evidence"); }
+}
+
+fn emit(run:D.Outcome, r:M.Snapshot)
+{
+  if sx_text(run["status"]) != "ok" || sx_text(r["status"]) != "ok"
+  { tool_fail("expected successful run and snapshot"); }
+  IO.basis_text_io_print("${sx_text(run["output_kind"])}:${sx_text(run["value"])}\n");
+  IO.basis_text_io_print("${sx_text(run["output_digest"])}\n${sx_text(run["trace"])}END\n");
+  IO.basis_text_io_print("${sx_text(r["run_id"])}\n${sx_text(r["manifest"])}END\n");
+  var rest = r["artifacts"];
+  while sx_kind(rest) == 3
+  {
+    let pair = sx_head(rest);
+    if sx_kind(pair) != 3 { tool_fail("not an artifact pair"); }
+    let tail = sx_tail(pair);
+    if sx_kind(tail) != 3 || sx_kind(sx_tail(tail)) != 0 { tool_fail("malformed artifact pair"); }
+    IO.basis_text_io_print("${sx_text(sx_head(pair))}\n${sx_text(sx_head(tail))}END\n");
+    rest = sx_tail(rest);
+  }
+  if sx_kind(rest) != 0 { tool_fail("improper artifact list"); }
+}
+
+fn native(mode:string, budget:i64, first:i64, second:i64)
+{
+  let shape = setting("SHAPE");
+  let memoized = setting("MEMO") == "yes";
+  let plan = native_plan(shape);
+  let status = D.validate(plan,mode,budget);
+  var run = D.run(plan,mode,budget,first,second);
+  var frozen = M.freeze(plan,mode,budget,first,second);
+  if memoized
+  {
+    run = D.run_memoized(plan,mode,budget,first,second);
+    frozen = M.freeze_memoized(plan,mode,budget,first,second);
+  }
+  IO.basis_text_io_print("$status ${sx_text(run["status"])} ${sx_text(frozen["status"])}\n");
+  if sx_text(run["status"]) != "ok"
+  {
+    failed_snapshot(frozen);
+    if run["invocations"] != 0 || run["memo_hits"] != 0 || sx_text(run["trace"]) != ""
+      || sx_kind(run["artifacts"]) != 0 || sx_kind(run["value"]) != 0
+      || sx_kind(run["output_kind"]) != 0 || sx_kind(run["output_digest"]) != 0
+    { tool_fail("rejected native run returned partial execution evidence"); }
+    return;
+  }
+  var calls = 4;
+  var hits = 0;
+  if shape == "memo_roles"
+  {
+    calls = 6;
+    if memoized { calls = 5; hits = 1; }
+  }
+  if run["invocations"] != calls || run["memo_hits"] != hits
+  { tool_fail("unexpected calls or memo reuse"); }
+  emit(run,frozen);
+}
+
+fn ottomat(mode:string, budget:i64, first:i64, second:i64)
+{
+  let source = IO.basis_text_io_input_all("strategy");
+  let lowered = S.lower(source,mode,budget);
+  let result = R.freeze(source,mode,budget,first,second);
+  let frozen = result["snapshot"];
+  let plan = lowered["plan"];
+  let status = sx_text(lowered["status"]);
+  let frozen_status = sx_text(result["status"]);
+  IO.basis_text_io_print("$status ${lowered["line"]} ${lowered["column"]}\n");
+  IO.basis_text_io_print("$frozen_status ${result["line"]} ${result["column"]}\n");
+  if frozen_status != sx_text(frozen["status"]) { tool_fail("snapshot status mismatch"); }
+  if status != "ok"
+  {
+    if sx_kind(plan["version"]) != 0 || sx_kind(plan["nodes"]) != 0 || sx_kind(plan["output"]) != 0
+    { tool_fail("lowering returned a partial plan"); }
+  }
+  if frozen_status != "ok"
+  {
+    if sx_kind(result["source_digest"]) != 0 || sx_kind(result["lowering"]) != 0
+    { tool_fail("rejected Ottomat program returned provenance"); }
+    failed_snapshot(frozen);
+    return;
+  }
+  if status != "ok" || sx_text(plan["version"]) != "automat.scalar-dag@2"
+    || sx_text(result["source_digest"]) != hash(source)
+  { tool_fail("invalid Ottomat v4 lowering or source provenance"); }
+  IO.basis_text_io_print("${sx_text(result["lowering"])}\n${sx_text(result["source_digest"])}\n");
+  emit(D.run(plan,mode,budget,first,second),frozen);
+}
+
+fn verify()
+{
+  let count = integer("COUNT");
+  var entries = sx_nil();
+  for j in 0 .. count
+  {
+    let idx = Int.to_string(count-1-j);
+    let digest = IO.basis_text_io_input_all(text_concat("hash",idx));
+    let data = IO.basis_text_io_input_all(text_concat("data",idx));
+    entries = sx_cons(sx_cons(sx_string(digest),sx_cons(sx_string(data),sx_nil())),entries);
+  }
+  let id = IO.basis_text_io_input_all("id");
+  let manifest = IO.basis_text_io_input_all("manifest");
+  if V.verify(id,manifest,entries) { IO.basis_text_io_print("true\n"); }
+  else { IO.basis_text_io_print("false\n"); }
+}
+
+fn main() -> i64
+{
+  let task = setting("TASK");
+  if task == "verify" { verify(); return 0; }
+  if task == "decode"
+  {
+    let d = Decode.decode(IO.basis_text_io_input_all("manifest"));
+    if d["valid"] { IO.basis_text_io_print("true\n"); }
+    else { IO.basis_text_io_print("false\n"); }
+    return 0;
+  }
+  if task == "hash"
+  {
+    IO.basis_text_io_print("${hash(IO.basis_text_io_input_all("hash-input"))}\n");
+    return 0;
+  }
+  let mode = setting("MODE");
+  let budget = integer("BUDGET");
+  let first = integer("FIRST");
+  let second = integer("SECOND");
+  if task == "native" { native(mode,budget,first,second); }
+  else { ottomat(mode,budget,first,second); }
+  return 0;
+}

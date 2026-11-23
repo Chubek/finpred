@@ -10,6 +10,7 @@ import core.contracts as C;
 import core.serialize as JSON;
 import store.artifacts as Store;
 import cli.lineage as Lineage;
+import cli.run_formats as Formats;
 import automat.graph as Graph;
 import automat.runner as Runner;
 import ottomat.ottomat as Ottomat;
@@ -67,46 +68,113 @@ fn trace(s: C.Scenario, r: C.Recommendation, profile: string,
   return buffer_text(b);
 }
 
-fn make_manifest(version: string, s: string, o: string, v: string, strategy: string,
-  rec: string, tr: string) -> string
+fn strategy_profile(strategy_raw: string) -> string
 {
-  let b = buffer_new();
-  buffer_append(b,version); buffer_append(b,","); buffer_append(b,s);
-  buffer_append(b,","); buffer_append(b,o);
-  buffer_append(b,","); buffer_append(b,v);
-  buffer_append(b,","); buffer_append(b,strategy);
-  buffer_append(b,","); buffer_append(b,rec);
-  buffer_append(b,","); buffer_append(b,tr);
-  buffer_append(b,"\n");
-  return buffer_text(b);
+  let declaration = Ottomat.lower(strategy_raw);
+  let profile = sx_text(declaration["profile"]);
+  if sx_text(declaration["graph"]) != Graph.version() || profile == ""
+  { tool_fail("automat/ottomat: invalid graph or incompatible strategy"); }
+  return profile;
 }
 
-fn legacy_run_key(s: string, o: string, v: string, strategy: string) -> string
+fn start_lineage(lineage: buffer, sd: string, od: string, vd: string, td: string,
+  profile: string, ns: string, nv: string, rows: i64)
 {
-  return Store.digest(text_concat("finpred-run@1\n",
-    text_concat(s,text_concat("\n",text_concat(o,text_concat("\n",
-      text_concat(v,text_concat("\n",strategy))))))));
+  Lineage.start(lineage,sd,od,vd,td,profile);
+  Lineage.field(lineage,"normalized_scenario",ns);
+  Lineage.field(lineage,"normalized_valuation",nv);
+  Lineage.field(lineage,"offer_count",F.num(rows - 1));
 }
 
-fn normalized_object(home: string, value: string, persist: bool) -> string
+fn lineage_trace(explanation: string, id: string) -> string
 {
-  if persist { return Store.put(home,value); }
+  return text_concat(explanation,text_concat("lineage_blake3=",text_concat(id,"\n")));
+}
+
+fn summary(s: C.Scenario, r: C.Recommendation, id: string, rec_digest: string,
+  trace_digest: string)
+{
+  println(text_concat("run_id=",id));
+  println(text_concat("recommendation_minor=",F.num(r["recommended_cents"])));
+  println(text_concat("currency=",sx_text(s["currency"])));
+  println(text_concat("reason=",sx_text(r["reason"])));
+  println(text_concat("recommendation_digest=",rec_digest));
+  println(text_concat("trace_digest=",trace_digest));
+  println("published=false");
+}
+
+# Only the current run format can be published. Nothing supplied by the caller
+# selects a manifest version or the corresponding identity rules.
+fn publish(scenario_raw: string, offers_raw: string, valuation_raw: string,
+  strategy_raw: string, home: string) -> i64
+{
+  let profile = strategy_profile(strategy_raw);
+  let result = Runner.run(Graph.fixed_plan(profile),"recommendation",
+    scenario_raw,offers_raw,valuation_raw,false,buffer_new());
+  let s = result["scenario"];
+  let v = result["valuation"];
+  let r = result["recommendation"];
+  let sd = Store.digest(scenario_raw);
+  let od = Store.digest(offers_raw);
+  let vd = Store.digest(valuation_raw);
+  let td = Store.digest(strategy_raw);
+  Store.ensure(home);
+  # The raw input snapshots are independent immutable artifacts.
+  if Store.put(home,scenario_raw) != sd || Store.put(home,offers_raw) != od
+    || Store.put(home,valuation_raw) != vd || Store.put(home,strategy_raw) != td
+  { tool_fail("artifact: input snapshot changed during persistence"); }
+  let ns = Store.put(home,JSON.scenario(s,sd));
+  let nv = Store.put(home,JSON.valuation(v,vd));
+  let lineage = buffer_new();
+  let rows = CSV.rows(offers_raw);
+  start_lineage(lineage,sd,od,vd,td,profile,ns,nv,rows);
+  # Include all schema-valid observations, including rejected competitors.
+  for i in 1 .. rows
+  {
+    let offer = C.offer_csv(CSV.line(offers_raw,i));
+    let no = Store.put(home,JSON.offer(offer,od));
+    Lineage.field(lineage,"normalized_offer",no);
+  }
+  let recipe = buffer_text(lineage);
+  let id = Store.digest(recipe);
+  if Store.put(home,recipe) != id { tool_fail("artifact: lineage persistence divergence"); }
+  let rec = JSON.recommendation(s,r,id,sd,od,vd,td);
+  let explanation = lineage_trace(trace(s,r,profile,sd,od,vd,td),id);
+  let rec_digest = Store.digest(rec);
+  let trace_digest = Store.digest(explanation);
+  if Store.put(home,rec) != rec_digest || Store.put(home,explanation) != trace_digest
+  { tool_fail("artifact: recommendation/trace persistence divergence"); }
+  Store.put_run(home,id,Formats.encode_current(sd,od,vd,td,rec_digest,trace_digest));
+  summary(s,r,id,rec_digest,trace_digest);
+  return 0;
+}
+
+fn verify_normalized(home: string, value: string) -> string
+{
   let digest = Store.digest(value);
   if Store.fetch(home,digest) != value
   { tool_fail("replay: normalized contract differs from recomputation"); }
   return digest;
 }
 
-fn execute(scenario_raw: string, offers_raw: string, valuation_raw: string,
-  strategy_raw: string, home: string, version: string, mode: string, expected_rec: string,
-  expected_trace: string, expected_run_id: string) -> i64
+# Every archive and current-format read uses the same verification, with no
+# store creation, repair or publication even if called directly.
+fn replay(home: string, expected_run_id: string, mode: string) -> i64
 {
-  let persist = mode == "run";
-  let declaration = Ottomat.lower(strategy_raw);
-  let profile = sx_text(declaration["profile"]);
-  if sx_text(declaration["graph"]) != Graph.version() || profile == ""
-  { tool_fail("automat/ottomat: invalid graph or incompatible strategy"); }
-  if version == "finpred-run@1" && profile != "scenario"
+  if mode != "replay" && mode != "explain" && mode != "evidence" && mode != "poindexter"
+  { tool_fail("capability denied: execution mode and unknown modes unavailable"); }
+  let manifest = Formats.read(Store.read_run(home,expected_run_id));
+  let version = sx_text(manifest["version"]);
+  let v2 = version == Formats.current();
+  if !v2 && version != Formats.archive_version() { tool_fail("replay: unknown run format"); }
+  let scenario_raw = Store.fetch(home,sx_text(manifest["scenario"]));
+  let offers_raw = Store.fetch(home,sx_text(manifest["offers"]));
+  let valuation_raw = Store.fetch(home,sx_text(manifest["valuation"]));
+  let strategy_raw = Store.fetch(home,sx_text(manifest["strategy"]));
+  let expected_rec = sx_text(manifest["recommendation"]);
+  let expected_trace = sx_text(manifest["trace"]);
+  let profile = strategy_profile(strategy_raw);
+  if !v2 && profile != "scenario"
   { tool_fail("replay: v1 requires the legacy scenario strategy"); }
   let evidence = buffer_new();
   let result = Runner.run(Graph.fixed_plan(profile),"recommendation",
@@ -118,31 +186,15 @@ fn execute(scenario_raw: string, offers_raw: string, valuation_raw: string,
   let od = Store.digest(offers_raw);
   let vd = Store.digest(valuation_raw);
   let td = Store.digest(strategy_raw);
-  if persist
-  {
-    Store.ensure(home);
-    # The raw input snapshots are independent immutable artifacts.
-    if Store.put(home,scenario_raw) != sd || Store.put(home,offers_raw) != od
-      || Store.put(home,valuation_raw) != vd || Store.put(home,strategy_raw) != td
-    { tool_fail("artifact: input snapshot changed during persistence"); }
-  }
-  let ns = normalized_object(home,JSON.scenario(s,sd),persist);
-  let nv = normalized_object(home,JSON.valuation(v,vd),persist);
-  let v2 = version == "finpred-run@2";
+  let ns = verify_normalized(home,JSON.scenario(s,sd));
+  let nv = verify_normalized(home,JSON.valuation(v,vd));
   let lineage = buffer_new();
   let rows = CSV.rows(offers_raw);
-  if v2
-  {
-    Lineage.start(lineage,sd,od,vd,td,profile);
-    Lineage.field(lineage,"normalized_scenario",ns);
-    Lineage.field(lineage,"normalized_valuation",nv);
-    Lineage.field(lineage,"offer_count",F.num(rows - 1));
-  }
-  # Include all schema-valid observations, including rejected competitors.
+  if v2 { start_lineage(lineage,sd,od,vd,td,profile,ns,nv,rows); }
   for i in 1 .. rows
   {
     let offer = C.offer_csv(CSV.line(offers_raw,i));
-    let no = normalized_object(home,JSON.offer(offer,od),persist);
+    let no = verify_normalized(home,JSON.offer(offer,od));
     if v2 { Lineage.field(lineage,"normalized_offer",no); }
   }
   var id = "";
@@ -150,53 +202,30 @@ fn execute(scenario_raw: string, offers_raw: string, valuation_raw: string,
   {
     let recipe = buffer_text(lineage);
     id = Store.digest(recipe);
-    if persist
-    {
-      if Store.put(home,recipe) != id { tool_fail("artifact: lineage persistence divergence"); }
-    }
-    else
-    {
-      if expected_run_id != id { tool_fail("replay: run lineage divergence"); }
-      if Store.fetch(home,id) != recipe { tool_fail("replay: stored lineage divergence"); }
-    }
+    if expected_run_id != id { tool_fail("replay: run lineage divergence"); }
+    if Store.fetch(home,id) != recipe { tool_fail("replay: stored lineage divergence"); }
   }
-  else { id = legacy_run_key(sd,od,vd,td); }
+  else { id = Formats.archive_key(sd,od,vd,td); }
   let rec = JSON.recommendation(s,r,id,sd,od,vd,td);
   var explanation = trace(s,r,profile,sd,od,vd,td);
-  if v2
-  { explanation = text_concat(explanation,text_concat("lineage_blake3=",text_concat(id,"\n"))); }
+  if v2 { explanation = lineage_trace(explanation,id); }
   let rec_digest = Store.digest(rec);
   let trace_digest = Store.digest(explanation);
-  if persist
+  if expected_run_id != id || expected_rec != rec_digest || expected_trace != trace_digest
+  { tool_fail("replay: snapshot/plan/output divergence"); }
+  if Store.fetch(home,expected_rec) != rec || Store.fetch(home,expected_trace) != explanation
+  { tool_fail("replay: stored output differs from recomputation"); }
+  if mode == "poindexter"
   {
-    if Store.put(home,rec) != rec_digest || Store.put(home,explanation) != trace_digest
-    { tool_fail("artifact: recommendation/trace persistence divergence"); }
-    Store.put_run(home,id,make_manifest(version,sd,od,vd,td,rec_digest,trace_digest));
+    if !Host.poindexter() { tool_fail("sdk: incompatible pricing sheet"); }
+    let (ok,csv) = Sheet.render(id,rec_digest,nv,sx_text(s["currency"]),"room_night",
+      v["current_cents"],r["recommended_cents"],sx_text(r["reason"]),false);
+    if !ok { tool_fail(csv); }
+    IO.basis_text_io_print(csv);
+    return 0;
   }
-  else
-  {
-    if expected_run_id != id || expected_rec != rec_digest || expected_trace != trace_digest
-    { tool_fail("replay: snapshot/plan/output divergence"); }
-    if Store.fetch(home,expected_rec) != rec || Store.fetch(home,expected_trace) != explanation
-    { tool_fail("replay: stored output differs from recomputation"); }
-    if mode == "poindexter"
-    {
-      if !Host.poindexter() { tool_fail("sdk: incompatible pricing sheet"); }
-      let (ok,csv) = Sheet.render(id,rec_digest,nv,sx_text(s["currency"]),"room_night",
-        v["current_cents"],r["recommended_cents"],sx_text(r["reason"]),false);
-      if !ok { tool_fail(csv); }
-      IO.basis_text_io_print(csv);
-      return 0;
-    }
-    println("replay_ok=true");
-  }
-  println(text_concat("run_id=",id));
-  println(text_concat("recommendation_minor=",F.num(r["recommended_cents"])));
-  println(text_concat("currency=",sx_text(s["currency"])));
-  println(text_concat("reason=",sx_text(r["reason"])));
-  println(text_concat("recommendation_digest=",rec_digest));
-  println(text_concat("trace_digest=",trace_digest));
-  println("published=false");
+  println("replay_ok=true");
+  summary(s,r,id,rec_digest,trace_digest);
   if mode == "explain"
   {
     println("trace_begin");
@@ -214,29 +243,6 @@ fn execute(scenario_raw: string, offers_raw: string, valuation_raw: string,
     println("evidence_end");
   }
   return 0;
-}
-
-fn replay(home: string, id: string, mode: string) -> i64
-{
-  let manifest = Store.read_run(home,id);
-  if CSV.rows(manifest) != 1 { tool_fail("replay: malformed run manifest"); }
-  let line = CSV.line(manifest,0);
-  CSV.require_width(line,7);
-  let version = CSV.field(line,0);
-  if version != "finpred-run@1" && version != "finpred-run@2"
-  { tool_fail("replay: unknown run format"); }
-  let s = CSV.field(line,1);
-  let o = CSV.field(line,2);
-  let v = CSV.field(line,3);
-  let strategy = CSV.field(line,4);
-  let rec = CSV.field(line,5);
-  let tr = CSV.field(line,6);
-  if !Store.valid_hash(s) || !Store.valid_hash(o) || !Store.valid_hash(v)
-    || !Store.valid_hash(strategy) || !Store.valid_hash(rec) || !Store.valid_hash(tr)
-    || manifest != make_manifest(version,s,o,v,strategy,rec,tr)
-  { tool_fail("replay: malformed run manifest"); }
-  return execute(Store.fetch(home,s), Store.fetch(home,o),Store.fetch(home,v),
-    Store.fetch(home,strategy),home,version,mode,rec,tr,id);
 }
 
 fn selftest() -> i64
@@ -281,9 +287,9 @@ fn entry() -> i64
     return replay(home,id,mode);
   }
   if mode != "run" { tool_fail("capability denied: execution mode and unknown modes unavailable"); }
-  return execute(source(env_default("FINPRED_SCENARIO","fixtures/scenario.csv")),
+  return publish(source(env_default("FINPRED_SCENARIO","fixtures/scenario.csv")),
     source(env_default("FINPRED_OFFERS","fixtures/offers.csv")),
     source(env_default("FINPRED_VALUATION","fixtures/valuation.csv")),
     source(env_default("FINPRED_STRATEGY","strategies/yieldcraft.ottomat")),
-    home,"finpred-run@2",mode,"","","");
+    home);
 }

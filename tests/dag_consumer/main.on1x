@@ -1,0 +1,110 @@
+import automat.dag as D;
+import std.io.TextIO as IO;
+import std.os.CommandLine as Env;
+import std.collections.List as L;
+import automat.dag_replay as Replay;
+import automat.scalar_manifest as Manifest;
+import automat.scalar_verify as Frozen;
+
+fn main() -> i64
+{
+  let test = Env.basis_command_line_get_env("DAG_CASE");
+  var mode = "analysis";
+  var version = "automat.scalar-dag@1";
+  var op = "maximum@1";
+  var left = "first";
+  var budget = 3;
+  var output = "spread";
+  var first = 17;
+  if test == "mode" { mode = "execution"; }
+  if test == "version" { version = "automat.scalar-dag@99"; }
+  if test == "unknown" { op = "maximum@2"; }
+  if test == "action" { op = "publish@1"; }
+  if test == "budget" { budget = 2; }
+  if test == "missing" { left = "absent"; }
+  if test == "cycle" { left = "hi"; }
+  if test == "type" { left = "spread"; }
+  if test == "output" { output = "absent"; }
+  if test == "input" { first = 0 - 1; }
+  var hi = D.node("hi",op,left,"second");
+  let lo = D.node("lo","minimum@1","first","second");
+  let spread = D.node("spread","distance@1","hi","lo");
+  if test == "duplicate" { hi = lo; }
+  if test == "malformed" { hi = sx_string("hi"); }
+  var nodes = sx_cons(spread,sx_cons(hi,sx_cons(lo,sx_nil())));
+  if test == "reverse" { nodes = sx_cons(spread,sx_cons(lo,sx_cons(hi,sx_nil()))); }
+  if test == "short"
+  { output = "lo"; first = 1000000000000; nodes = sx_cons(lo,sx_nil()); }
+  if test == "oversize"
+  { budget = 100; for i in 0 .. 14 { nodes = sx_cons(lo,nodes); } }
+  if test == "nonlist" { nodes = sx_string("nodes"); }
+  if test == "limit"
+  {
+    let names = "abcdefghijklmnop";
+    nodes = sx_nil();
+    for i in 0 .. 16
+    {
+      var parent = "first";
+      if i > 0 { parent = text_slice(names,i-1,i); }
+      nodes = sx_cons(D.node(text_slice(names,i,i+1),"maximum@1",parent,"second"),nodes);
+    }
+    output = "p";
+    budget = 16;
+  }
+  if test == "selectlimit"
+  {
+    let names = "abcdefghijklmnop";
+    nodes = sx_cons(D.node("a","distance@1","first","second"),sx_nil());
+    for i in 1 .. 16
+    {
+      var previous = "second";
+      if i > 1 { previous = text_slice(names,i-1,i); }
+      nodes = sx_cons(D.select_node(text_slice(names,i,i+1),"a",previous,"first"),nodes);
+    }
+    output = "p";
+    budget = 16;
+    version = "automat.scalar-dag@2";
+  }
+  let plan = record<D.Plan>{version:sx_string(version),nodes:nodes,output:sx_string(output)};
+  let r = D.run(plan,mode,budget,first,42);
+  IO.basis_text_io_print(sx_text(r["status"]));
+  IO.basis_text_io_print("\n");
+  if sx_text(r["status"]) == "ok"
+  {
+    if test == "limit" || test == "selectlimit"
+    {
+      if L.basis_list_length(r["artifacts"]) != 18 ||
+        !Replay.verify(plan,mode,budget,first,42,r["artifacts"],r["output_digest"])
+      { tool_fail("maximum-depth lineage did not replay"); }
+      let snapshot = Manifest.freeze(plan,mode,budget,first,42);
+      if sx_text(snapshot["status"]) != "ok" ||
+        !Frozen.verify(sx_text(snapshot["run_id"]),sx_text(snapshot["manifest"]),snapshot["artifacts"])
+      { tool_fail("maximum-depth manifest did not replay"); }
+    }
+    if test == "short"
+    {
+      # Identical computation under two valid host budgets: node identities
+      # are reusable, but the two manifests must not verify under each other's ID.
+      let narrow = Manifest.freeze(plan,mode,1,first,42);
+      let wide = Manifest.freeze(plan,mode,16,first,42);
+      let narrow_id = sx_text(narrow["run_id"]);
+      let wide_id = sx_text(wide["run_id"]);
+      let wide_manifest = sx_text(wide["manifest"]);
+      if narrow_id == wide_id || Frozen.verify(narrow_id,wide_manifest,narrow["artifacts"]) ||
+        !Frozen.verify(wide_id,wide_manifest,narrow["artifacts"])
+      { tool_fail("host budget not bound independently of node identity"); }
+    }
+    IO.basis_text_io_print(sx_text(r["output_kind"]));
+    IO.basis_text_io_print(":");
+    IO.basis_text_io_print(sx_text(r["value"]));
+    IO.basis_text_io_print("\n");
+  }
+  else
+  {
+    if sx_kind(r["value"]) != 0 || sx_kind(r["output_kind"]) != 0
+      || sx_kind(r["artifacts"]) != 0 || sx_kind(r["output_digest"]) != 0
+    { tool_fail("partial output escaped"); }
+  }
+  IO.basis_text_io_print(sx_text(r["trace"]));
+  return 0;
+}

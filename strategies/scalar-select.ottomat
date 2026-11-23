@@ -1,0 +1,13 @@
+ottomat 4
+input first scalar.level@1
+input second scalar.level@1
+effect pure
+import maximum@1
+import minimum@1
+import distance@1
+import select@1
+let picked = select@1 spread hi lo
+let spread = distance@1 hi lo
+let hi = maximum@1 first second
+let lo = minimum@1 first second
+emit picked

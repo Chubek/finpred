@@ -1,0 +1,46 @@
+import automat.dag as D;
+
+fn digest_shape(atom:sexpr) -> bool
+{
+  if sx_kind(atom) != 2 { return false; }
+  return text_len(sx_text(atom)) == 64;
+}
+
+# A proper two-element list: (digest payload).
+fn entry_shape(entry:sexpr) -> bool
+{
+  if sx_kind(entry) != 3 { return false; }
+  if !digest_shape(sx_head(entry)) { return false; }
+  let rest = sx_tail(entry);
+  if sx_kind(rest) != 3 { return false; }
+  if sx_kind(sx_tail(rest)) != 0 { return false; }
+  let payload = sx_head(rest);
+  if sx_kind(payload) != 2 { return false; }
+  return text_len(sx_text(payload)) <= 512;
+}
+
+fn verify(plan:D.Plan,mode:string,budget:i64,first:i64,second:i64,
+  artifacts:sexpr,output_digest:sexpr) -> bool
+{
+  if !digest_shape(output_digest) { return false; }
+  let result = D.run(plan,mode,budget,first,second);
+  if sx_text(result["status"]) != "ok" { return false; }
+  if sx_text(output_digest) != sx_text(result["output_digest"]) { return false; }
+  var expected = result["artifacts"];
+  var supplied = artifacts;
+  var count = 0;
+  while sx_kind(expected) == 3
+  {
+    if count >= 18 || sx_kind(supplied) != 3 { return false; }
+    let entry = sx_head(supplied);
+    if !entry_shape(entry) { return false; }
+    let canonical = sx_head(expected);
+    if sx_text(sx_head(entry)) != sx_text(sx_head(canonical)) { return false; }
+    if sx_text(sx_head(sx_tail(entry))) != sx_text(sx_head(sx_tail(canonical)))
+    { return false; }
+    expected = sx_tail(expected);
+    supplied = sx_tail(supplied);
+    count = count + 1;
+  }
+  return sx_kind(expected) == 0 && sx_kind(supplied) == 0;
+}

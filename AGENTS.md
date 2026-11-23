@@ -53,6 +53,20 @@ If `docs/USER_SPECIFICATION.md` contains examples marked proposed, do not assume
 
 The inspected repository has much more than its earliest scaffold. **The historical introductory inventory in the original `AGENTS.md` is stale**; use the following as the updated starting point and confirm it against `git status`/`git log`.
 
+Later checkpoint (`db9cd08` plus the scalar DAG working changes): Gate S0
+has a [verification workflow](.github/workflows/verify.yml) and a
+[coverage index](tests/COVERAGE.md). For P1, keep the persisted fixed runner
+and the in-memory [native scalar graph](source/automat/README.md) distinct.
+The latter is an independently callable analysis profile: `scalar-run@1`
+freezes its inputs and graph for read-only verification by another native
+host. It is not a CLI recommendation run format.
+The [Ottomat scalar frontend](source/ottomat/README.md#v3-scalar-analysis)
+lowers into that same graph. Its v4 selector uses `automat.scalar-dag@2`
+and `scalar-run@2`, without replacing the v1/v2 price decoders.
+Yieldcraft's active writer is `finpred-run@2` only. Keep `finpred-run@1`
+archive verification read-only; do not confuse the persisted run version
+with an Ottomat syntax version, plugin version, or contract version.
+
 | Component / path | Verified-from-source current role | Not yet achieved |
 |---|---|---|
 | `On1xfile`, `source/*/On1xfile.m`, `bin/build.sh` | On1xfile C11 application build; Poindexter local library dependency | Fully portable, routinely CI-verified toolchains |

@@ -41,6 +41,10 @@ Compile the host with `-I "$PWD/source" -I "$PWD"` from the FinPRED root. The [p
 
 Each feasible property contributes one cheapest room bundle. Limits include 512 offer rows, 10 eligible rooms per property, 4 selected rooms, 8 adults, 8 children and a search budget of at most 1,000,000. Fewer than the required independent properties yields `insufficient_evidence` via `tool_fail`, not a fallback price. The frozen fixtures return `17100` (`lower_percentile_shortcut`) and `16000` (`guardrail_adjustment`) cents per night. The CLI shares the matcher and strategy implementations and owns its own evidence, lineage and replay path.
 
+The CLI writes only [`finpred-run@2`](docs/RUN_FORMAT.md#v2-writer-and-verifier).
+That store format does not version the plugin or the `pricing.recommendation@1`
+contract. The pure package neither selects a run format nor accesses archives.
+
 ## Poindexter: render a verified pricing sheet
 
 To see the complete host flow for the default fixture, start in the repository root after `./bin/build.sh`:

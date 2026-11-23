@@ -1,0 +1,30 @@
+import automat.dag_artifacts as A;
+import automat.dag_replay as Replay;
+import automat.scalar_decode as Decode;
+
+fn verify(run_id:string, manifest:string, artifacts:sexpr) -> bool
+{
+  if text_len(manifest) > 4096 || text_len(run_id) != 64 { return false; }
+  if A.digest(manifest) != run_id { return false; }
+  let decoded = Decode.decode(manifest);
+  if !decoded["valid"] { return false; }
+
+  var hashes = decoded["hashes"];
+  var pairs = artifacts;
+  var count = 0;
+  while sx_kind(hashes) == 3
+  {
+    if count >= 18 || sx_kind(pairs) != 3 { return false; }
+    let hash = sx_head(hashes);
+    let pair = sx_head(pairs);
+    if !Replay.digest_shape(hash) || !Replay.entry_shape(pair) { return false; }
+    if sx_text(hash) != sx_text(sx_head(pair)) { return false; }
+    hashes = sx_tail(hashes);
+    pairs = sx_tail(pairs);
+    count = count + 1;
+  }
+  if sx_kind(hashes) != 0 || sx_kind(pairs) != 0 { return false; }
+
+  return Replay.verify(decoded["plan"],"analysis",decoded["budget"],decoded["first"],
+    decoded["second"],artifacts,decoded["root"]);
+}

@@ -1,0 +1,94 @@
+import automat.dag as D;
+import automat.scalar_manifest as M;
+import ottomat.scalar as S;
+import ottomat.scalar_run as R;
+import std.crypto.crypto as Crypto;
+import std.Int as Int;
+import std.io.TextIO as IO;
+import std.os.CommandLine as Env;
+
+fn setting(key:string) -> string { return Env.basis_command_line_get_env(key); }
+
+fn integer(key:string) -> i64
+{
+  let (ok, value) = Int.from_string(setting(key));
+  if !ok { tool_fail("invalid test input"); }
+  return value;
+}
+
+fn native_plan() -> D.Plan
+{
+  let spread = D.node("spread","distance@1","hi","lo");
+  let hi = D.node("hi","maximum@1","first","second");
+  let lo = D.node("lo","minimum@1","first","second");
+  return record<D.Plan>{version:sx_string("automat.scalar-dag@1"),
+    nodes:sx_cons(spread,sx_cons(hi,sx_cons(lo,sx_nil()))),output:sx_string("spread")};
+}
+
+fn emit(plan:D.Plan, mode:string, budget:i64, first:i64, second:i64, frozen:M.Snapshot)
+{
+  let run = D.run(plan,mode,budget,first,second);
+  if sx_text(run["status"]) != "ok" || sx_text(frozen["status"]) != "ok"
+  { tool_fail("accepted plan must run and freeze"); }
+  IO.basis_text_io_print("${sx_text(run["output_kind"])}:${sx_text(run["value"])}\n");
+  IO.basis_text_io_print("${sx_text(run["output_digest"])}\n${sx_text(run["trace"])}END\n");
+  IO.basis_text_io_print("${sx_text(frozen["run_id"])}\n${sx_text(frozen["manifest"])}END\n");
+  var rest = frozen["artifacts"];
+  while sx_kind(rest) == 3
+  {
+    let pair = sx_head(rest);
+    let tail = sx_tail(pair);
+    if sx_kind(pair) != 3 || sx_kind(tail) != 3 || sx_kind(sx_tail(tail)) != 0
+    { tool_fail("malformed artifact pair"); }
+    IO.basis_text_io_print("${sx_text(sx_head(pair))}\n${sx_text(sx_head(tail))}END\n");
+    rest = sx_tail(rest);
+  }
+  if sx_kind(rest) != 0 { tool_fail("improper artifacts"); }
+}
+
+fn main() -> i64
+{
+  let mode = setting("MODE");
+  let budget = integer("BUDGET");
+  let first = integer("FIRST");
+  let second = 42;
+  if setting("TASK") == "native"
+  {
+    let plan = native_plan();
+    emit(plan,mode,budget,first,second,M.freeze(plan,mode,budget,first,second));
+    return 0;
+  }
+
+  let source = IO.basis_text_io_input_all("strategy");
+  let lower = S.lower(source,mode,budget);
+  let wrapped = R.freeze(source,mode,budget,first,second);
+  let snapshot = wrapped["snapshot"];
+  let status = sx_text(lower["status"]);
+  let wrap_status = sx_text(wrapped["status"]);
+  IO.basis_text_io_print("$status ${lower["line"]} ${lower["column"]}\n");
+  IO.basis_text_io_print("$wrap_status ${wrapped["line"]} ${wrapped["column"]}\n");
+  if wrap_status != sx_text(snapshot["status"]) { tool_fail("snapshot status mismatch"); }
+  if status != "ok"
+  {
+    let plan = lower["plan"];
+    if sx_kind(plan["version"]) != 0 || sx_kind(plan["nodes"]) != 0 || sx_kind(plan["output"]) != 0
+    { tool_fail("lowering returned a partial plan"); }
+    if status != wrap_status || lower["line"] != wrapped["line"] || lower["column"] != wrapped["column"]
+    { tool_fail("freeze did not propagate lowering failure"); }
+  }
+  if wrap_status != "ok"
+  {
+    if sx_kind(wrapped["source_digest"]) != 0 || sx_kind(wrapped["lowering"]) != 0
+      || sx_kind(snapshot["run_id"]) != 0 || sx_kind(snapshot["manifest"]) != 0
+      || sx_kind(snapshot["artifacts"]) != 0
+    { tool_fail("freeze returned partial evidence"); }
+    return 0;
+  }
+  let (hash_status, hash) = Crypto.basis_crypto_blake3(source);
+  if hash_status != 0 || sx_text(wrapped["source_digest"]) != hash
+    || sx_text(wrapped["lowering"]) != "ottomat.scalar-lowering@1"
+  { tool_fail("incorrect source provenance"); }
+  IO.basis_text_io_print("$hash\n");
+  emit(lower["plan"],mode,budget,first,second,snapshot);
+  return 0;
+}

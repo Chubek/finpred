@@ -1,0 +1,125 @@
+# Ottomat 3/4 lower to native scalar analysis plans; they never dispatch.
+import ottomat.scalar_tokens as T;
+import automat.dag as D;
+import std.collections.List as L;
+
+record Lowered { status:sexpr, plan:D.Plan, line:i64, column:i64 }
+
+fn fail(status:sexpr, line:i64, column:i64) -> Lowered
+{
+  let empty = record<D.Plan>{version:sx_nil(),nodes:sx_nil(),output:sx_nil()};
+  return record<Lowered>{status:status,plan:empty,line:line,column:column};
+}
+
+fn reject(reason:string, line:i64) -> Lowered
+{
+  return fail(sx_string(reason),line,1);
+}
+
+fn peek(lines:sexpr) -> sexpr
+{
+  if sx_kind(lines) == 3 { return sx_head(lines); }
+  return sx_nil();
+}
+
+fn starts(words:sexpr, keyword:string) -> bool
+{
+  return sx_kind(words) == 3 && sx_text(sx_head(words)) == keyword;
+}
+
+fn is_input(words:sexpr, name:string) -> bool
+{
+  return L.basis_list_length(words) == 3 && starts(words,"input")
+    && D.field(words,1) == name && D.field(words,2) == "scalar.level@1";
+}
+
+fn has_import(imports:sexpr, handler:string) -> bool
+{
+  var rest = imports;
+  while sx_kind(rest) == 3
+  {
+    if sx_text(sx_head(rest)) == handler { return true; }
+    rest = sx_tail(rest);
+  }
+  return false;
+}
+
+fn lower(source:string, mode:string, budget:i64) -> Lowered
+{
+  # Only an exact v4 header admits a seventh token on a line. Invalid headers
+  # and v3 sources are scanned with the original cap and diagnostics.
+  let v4 = text_len(source) >= 10 && text_slice(source,0,10) == "ottomat 4\n";
+  let lexed = T.scan_version(source,v4);
+  if sx_text(lexed["status"]) != "ok"
+  { return fail(lexed["status"],lexed["line"],lexed["column"]); }
+
+  var syntax_version = "3";
+  var plan_version = "automat.scalar-dag@1";
+  if v4 { syntax_version = "4"; plan_version = "automat.scalar-dag@2"; }
+  var rest = lexed["lines"];
+  let header = peek(rest);
+  if L.basis_list_length(header) != 2 || !starts(header,"ottomat") || D.field(header,1) != syntax_version
+  { return reject("syntax",1); }
+  rest = sx_tail(rest);
+  if !is_input(peek(rest),"first") { return reject("syntax",2); }
+  rest = sx_tail(rest);
+  if !is_input(peek(rest),"second") { return reject("syntax",3); }
+  rest = sx_tail(rest);
+  let effect = peek(rest);
+  if L.basis_list_length(effect) != 2 || !starts(effect,"effect") { return reject("syntax",4); }
+  if D.field(effect,1) != "pure" { return reject("denied",4); }
+  rest = sx_tail(rest);
+
+  var line = 5;
+  var imports = sx_nil();
+  var count = 0;
+  while starts(peek(rest),"import")
+  {
+    let words = sx_head(rest);
+    if count >= 16 || L.basis_list_length(words) != 2 { return reject("syntax",line); }
+    let handler = D.field(words,1);
+    if !v4 && handler == "select@1" { return reject("unknown_handler",line); }
+    let desc = D.resolve(handler);
+    if desc["handler"] <= 0 { return reject("unknown_handler",line); }
+    if has_import(imports,handler) { return reject("duplicate_import",line); }
+    imports = sx_cons(sx_string(handler),imports);
+    count = count+1;
+    line = line+1;
+    rest = sx_tail(rest);
+  }
+  if count == 0 { return reject("syntax",line); }
+
+  var nodes = sx_nil();
+  count = 0;
+  while starts(peek(rest),"let")
+  {
+    let words = sx_head(rest);
+    let tokens = L.basis_list_length(words);
+    if count >= 16 || tokens < 6 || D.field(words,2) != "="
+    { return reject("syntax",line); }
+    let handler = D.field(words,3);
+    let is_select = v4 && handler == "select@1";
+    if (is_select && tokens != 7) || (!is_select && tokens != 6) { return reject("syntax",line); }
+    if !has_import(imports,handler) { return reject("undeclared_import",line); }
+    let id = D.field(words,1);
+    let first = D.field(words,4);
+    let second = D.field(words,5);
+    if is_select { nodes = sx_cons(D.select_node(id,first,second,D.field(words,6)),nodes); }
+    else { nodes = sx_cons(D.node(id,handler,first,second),nodes); }
+    count = count+1;
+    line = line+1;
+    rest = sx_tail(rest);
+  }
+  if count == 0 { return reject("syntax",line); }
+
+  let emit = peek(rest);
+  if L.basis_list_length(emit) != 2 || !starts(emit,"emit") { return reject("syntax",line); }
+  if sx_kind(sx_tail(rest)) != 0 { return reject("syntax",line+1); }
+
+  # Native validation owns node IDs, forward references, types, mode and budget.
+  let plan = record<D.Plan>{version:sx_string(plan_version),
+    nodes:L.basis_list_rev(nodes),output:sx_string(D.field(emit,1))};
+  let status = D.validate(plan,mode,budget);
+  if status != "ok" { return reject(status,line); }
+  return record<Lowered>{status:sx_string("ok"),plan:plan,line:0,column:0};
+}
