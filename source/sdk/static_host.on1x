@@ -1,35 +1,22 @@
-# Requests made by FinPRED's statically linked hosts. Keep host ceilings
-# independent of package descriptors: an increase in a manifest is not a grant.
-import sdk.packages as P;
+# Legacy package compatibility API, not an engine admission gate.
+import sdk.registry as Registry;
 
 fn compatible(name:string, kind:string, inputs:sexpr, output:string, mode:string, linked:sexpr) -> bool
 {
-  let ceilings = record<P.Limits>{csv_rows:512,bytes_per_input:2000000,
-    rooms_per_property:10,maximum_rooms:4,adults:8,children:8,search_budget_max:1000000,
-    runs_per_call:1,data_rows:1,columns:11,output_bytes_max:512};
-  let host = record<P.Host>{dependencies:linked,ceilings:ceilings,grants:sx_nil()};
-  let use = record<P.Use>{sdk_version:1,package_version:sx_string("1.0.0"),
-    kind:sx_string(kind),inputs:inputs,output:sx_string(output),mode:sx_string(mode),
-    effect:sx_string("pure"),requested:sx_nil()};
-  return P.check_v2(name,use,host) == 0;
+  return Registry.compatible(name,kind,inputs,output,mode,linked);
 }
 
 fn yieldcraft(mode:string) -> bool
 {
-  let inputs = P.prepend("hospitality.scenario@1",P.prepend("hospitality.offer@1",P.prepend("pricing.valuation@1",sx_nil())));
-  return compatible("yieldcraft.percentile","Strategy",inputs,"pricing.recommendation@1",mode,sx_nil());
+  return Registry.package_compatible("yieldcraft.fixed-graph@1",mode);
 }
 
 fn poindexter() -> bool
 {
-  let inputs = P.prepend("pricing.recommendation@1",P.prepend("pricing.valuation@1",sx_nil()));
-  return compatible("poindexter.pricing-sheet","View",inputs,"poindexter.pricing-sheet@1",
-    "analysis",P.prepend("yieldcraft.percentile@1",sx_nil()));
+  return Registry.package_compatible("poindexter.sheet.render","analysis");
 }
 
 fn dragnet() -> bool
 {
-  let inputs = P.prepend("hospitality.scenario@1",P.prepend("finpred.offers.csv@1",sx_nil()));
-  let linked = P.prepend("finpred.core@1",P.prepend("yieldcraft.asof-whole-stay-property-min@1",sx_nil()));
-  return compatible("dragnet.frozen_csv","Source",inputs,"hospitality.offer@1","analysis",linked);
+  return Registry.package_compatible("dragnet.frozen_csv.offers_as_of","analysis");
 }

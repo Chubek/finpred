@@ -84,7 +84,7 @@ def main():
         subprocess.run([
             sys.executable, sdk / "on1x/tools/on1x-build.py",
             ROOT / "tests/scalar_selection_consumer/main.on1x", "--backend", "c11",
-            "--on1xc", compiler, "--mulib-root", sdk, "-I", ROOT / "source", "-o", exe,
+            "--on1xc", compiler, "--mulib-root", sdk, "-I", ROOT / "source", "-I", ROOT, "-o", exe,
         ], check=True, cwd=work)
 
         def invoke(task, directory=work, **env):

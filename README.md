@@ -18,6 +18,7 @@ FinPRED’s Yieldcraft CLI recommends a nightly EUR price for a specific stay an
 7. **[Import frozen offers with Dragnet](plugins/dragnet/README.md)** — select two local snapshots and emit eligible, normalized whole-stay offers as JSON Lines.
 8. **[Export a Poindexter pricing sheet](plugins/poindexter/README.md)** — run `./bin/finpred poindexter RUN_ID` to compare the verified recommendation to its frozen valuation in CSV.
 9. **[Open the Poindexter spreadsheet](plugins/poindexter/workbench/README.md)** — build with `./bin/poindexter --build`, then edit cells, recalculate formulas and run worksheet scripts with `./bin/poindexter --book prices.pxw`.
+10. **[Open the optional ImmGTK spreadsheet](plugins/poindexter/gui/README.md)** — `make poindexter-gui` builds the X11 frontend for editing local workbook copies.
 
 For package entry points, permissions and test commands, see [the plugin developer guide](PLUGIN.md).
 

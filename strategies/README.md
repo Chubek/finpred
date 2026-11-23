@@ -63,4 +63,6 @@ the header spelling changes the raw digest and therefore the run ID.
 [native scalar host API](../source/ottomat/README.md#v3-scalar-analysis).
 [`scalar-select.ottomat`](scalar-select.ottomat) adds
 [v4 typed selection](../source/ottomat/README.md#v4-scalar-selection).
-Neither is a Yieldcraft profile: do not pass them as `FINPRED_STRATEGY`.
+[`scalar-midpoint.ottomat`](scalar-midpoint.ottomat) uses the
+[v5 registered diagnostic](../source/ottomat/README.md#v5-registered-scalar-algorithms).
+None is a Yieldcraft profile: do not pass them as `FINPRED_STRATEGY`.

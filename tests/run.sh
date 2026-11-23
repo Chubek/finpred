@@ -7,6 +7,7 @@ python3 tests/check_on1x_features.py
 python3 tests/check_fixtures.py
 python3 tests/check_sdk.py
 python3 tests/check_sdk_packages.py
+python3 tests/check_plugin_registry.py
 python3 tests/check_fixed_runner.py
 python3 tests/check_dag.py
 python3 tests/check_dag_replay.py
@@ -15,6 +16,8 @@ python3 tests/check_scalar_memo.py
 python3 tests/check_ottomat_plan.py
 python3 tests/check_ottomat_scalar.py
 python3 tests/check_scalar_selection.py
+python3 tests/check_scalar_registry.py
+python3 tests/check_scalar_diagnostics_package.py
 work=$(mktemp -d "${TMPDIR:-/tmp}/finpred-test.XXXXXXXX")
 trap 'rm -rf -- "$work"' EXIT
 trap 'exit 1' HUP INT TERM
@@ -180,6 +183,8 @@ expect_failure 'invalid graph or incompatible strategy' env \
     FINPRED_STRATEGY="$ROOT/strategies/scalar-spread.ottomat" bin/finpred run
 expect_failure 'invalid graph or incompatible strategy' env \
     FINPRED_STRATEGY="$ROOT/strategies/scalar-select.ottomat" bin/finpred run
+expect_failure 'invalid graph or incompatible strategy' env \
+    FINPRED_STRATEGY="$ROOT/strategies/scalar-midpoint.ottomat" bin/finpred run
 [ ! -e "$FINPRED_HOME" ]
 python3 "$ROOT/tests/check_pricing_cli.py"
 python3 "$ROOT/tests/check_profiles_cli.py"

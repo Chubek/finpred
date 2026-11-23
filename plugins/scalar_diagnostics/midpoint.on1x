@@ -1,0 +1,7 @@
+# Floor of the exact unitless midpoint. Also safe for direct On1x callers.
+fn midpoint(left:i64, right:i64) -> i64
+{
+  if left < 0 || left > 1000000000000 || right < 0 || right > 1000000000000
+  { tool_fail("scalar diagnostics: level outside input range"); }
+  return (left + right) / 2;
+}

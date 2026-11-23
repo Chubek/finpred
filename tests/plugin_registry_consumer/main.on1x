@@ -1,0 +1,52 @@
+import sdk.registry as Registry;
+import sdk.static_host as Host;
+import automat.dag as Dag;
+import plugins.scalar_diagnostics.midpoint as Midpoint;
+import plugins.yieldcraft.entry as Yieldcraft;
+import std.os.CommandLine as Env;
+import std.io.TextIO as IO;
+import ottomat.scalar as Ottomat;
+
+fn main() -> i64
+{
+  let task = Env.basis_command_line_get_env("REGISTRY_CASE");
+  if task == "lookup"
+  {
+    assert(Registry.admits("yieldcraft.fixed-graph@1","recommendation"));
+    assert(Registry.admits("poindexter.sheet.render","analysis"));
+    assert(Registry.admits("dragnet.frozen_csv.offers_as_of","analysis"));
+    assert(Registry.admits("plugins.scalar_diagnostics.midpoint.midpoint","analysis"));
+    assert(!Registry.admits("yieldcraft.fixed-graph@1","analysis"));
+    assert(!Registry.admits("poindexter.sheet.render","execution"));
+    assert(!Registry.admits("dragnet.frozen_csv.offers_as_of","recommendation"));
+    assert(!Registry.admits("plugins.scalar_diagnostics.midpoint.midpoint","execution"));
+    assert(!Registry.admits("external.unregistered","analysis"));
+    assert(!Registry.admits("dragnet.frozen_crossref.evidence_as_of","analysis"));
+    assert(!Registry.admits("","analysis"));
+    assert(Host.yieldcraft("recommendation") && Host.poindexter() && Host.dragnet());
+    assert(!Host.yieldcraft("execution"));
+    return 0;
+  }
+  let n = Dag.node("midpoint","midpoint@1","first","second");
+  let plan = record<Dag.Plan>{version:sx_string("automat.scalar-dag@3"),
+    nodes:sx_cons(n,sx_nil()),output:sx_string("midpoint")};
+  if task == "invoke" { println("${Dag.invoke_binary("midpoint@1","automat.scalar-dag@3","analysis",17,42)}"); }
+  if task == "direct" { println("${Midpoint.midpoint(17,42)}"); }
+  if task == "direct_yieldcraft"
+  {
+    let r = Yieldcraft.recommend("recommendation",
+      IO.basis_text_io_input_all(Env.basis_command_line_get_env("FINPRED_SCENARIO")),
+      IO.basis_text_io_input_all(Env.basis_command_line_get_env("FINPRED_OFFERS")),
+      IO.basis_text_io_input_all(Env.basis_command_line_get_env("FINPRED_VALUATION")));
+    println("${r["recommended_cents"]}");
+  }
+  if task == "plan"
+  {
+    let outcome = Dag.run_memoized(plan,"analysis",1,17,42);
+    println(sx_text(outcome["status"]));
+    println("${outcome["invocations"]}");
+    let lowered = Ottomat.lower(IO.basis_text_io_input_all("midpoint.ottomat"),"analysis",3);
+    println(sx_text(lowered["status"]));
+  }
+  return 0;
+}

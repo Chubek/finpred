@@ -21,10 +21,12 @@ fn freeze_plan(plan:D.Plan, mode:string, budget:i64, first:i64, second:i64, memo
   if sx_text(r["status"]) != "ok" { return failed(r["status"]); }
 
   let plan_version = sx_text(plan["version"]);
-  let select_allowed = plan_version == "automat.scalar-dag@2";
-  var format = "scalar-run@1";
-  if select_allowed { format = "scalar-run@2"; }
-  else { if plan_version != "automat.scalar-dag@1" { return failed(sx_string("version")); } }
+  var format = "";
+  if plan_version == "automat.scalar-dag@1" { format = "scalar-run@1"; }
+  if plan_version == "automat.scalar-dag@2" { format = "scalar-run@2"; }
+  if plan_version == "automat.scalar-dag@3" { format = "scalar-run@3"; }
+  if format == "" { return failed(sx_string("version")); }
+  let select_allowed = plan_version != "automat.scalar-dag@1";
   let b = buffer_new();
   buffer_append(b,"""$format
 plan=$plan_version

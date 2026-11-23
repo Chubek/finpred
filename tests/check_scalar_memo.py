@@ -84,7 +84,7 @@ with tempfile.TemporaryDirectory(prefix="finpred-scalar-memo-") as tmp:
     exe = Path(tmp) / "consumer"
     subprocess.run([sys.executable, sdk / "on1x/tools/on1x-build.py",
                     ROOT / "tests/scalar_memo_consumer/main.on1x", "--backend", "c11",
-                    "--on1xc", compiler, "--mulib-root", sdk, "-I", ROOT / "source",
+                    "--on1xc", compiler, "--mulib-root", sdk, "-I", ROOT / "source", "-I", ROOT,
                     "-o", exe], cwd=tmp, check=True)
     for case in ("siblings", "equal", "zero", "limit", "budget", "denied"):
         raw = subprocess.check_output([exe], cwd=tmp, env={"CASE": case}, timeout=20)

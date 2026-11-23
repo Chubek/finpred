@@ -213,3 +213,13 @@ value=<decimal>
 Even if a branch is not selected, its digest is still part of the
 selection artifact. Binary node and input artifact encodings do not
 change. The manifest remains separate from the Yieldcraft store format.
+
+## scalar-run@3: registered scalar algorithms
+
+This format retains the `scalar-run@2` grammar and uses the paired
+`scalar-run@3` and `plan=automat.scalar-dag@3` headers. It admits
+`midpoint@1`, a statically linked binary handler. Its `scalar-node@1`
+artifact has `owner=scalar-diagnostics@1`; previously admitted handlers
+retain their existing owner and encoding. Replay verifies that owner and
+the versioned handler via canonical recomputation, rather than trusting a
+declaration or an artifact hash alone.

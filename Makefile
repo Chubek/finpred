@@ -4,7 +4,7 @@ CMAKE ?= cmake
 CTEST ?= ctest
 NATIVE_BUILD_DIR ?= build/native
 
-.PHONY: all build test native-test poindexter
+.PHONY: all build test native-test poindexter poindexter-gui poindexter-gui-test
 
 all: build
 
@@ -21,3 +21,9 @@ native-test:
 
 poindexter:
 	./bin/poindexter --build
+
+poindexter-gui: poindexter
+	bash plugins/poindexter/gui/build.sh
+
+poindexter-gui-test:
+	python3 tests/check_poindexter_gui.py

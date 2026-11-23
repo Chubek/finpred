@@ -1,0 +1,67 @@
+#!/bin/sh
+# Offline launcher for trusted local paths and built Crossref tools.
+set -eu
+
+fail() {
+  printf 'crossref: %s\n' "$1" >&2
+  exit 1
+}
+
+case "$#:${1-}" in
+  5:import|6:verify) ;;
+  *)
+    printf 'usage: %s import QUERY REQUEST.csv SEARCH.json WORK.json\n' "$0" >&2
+    printf '       %s verify QUERY REQUEST.csv SEARCH.json WORK.json EXPECTED.json\n' "$0" >&2
+    exit 2
+    ;;
+esac
+
+root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd -P)
+bin=${DRAGNET_CROSSREF_BIN:-"$root/target/dragnet-crossref"}
+capture=$bin/dragnet-crossref-capture
+importer=$bin/dragnet-crossref-import
+for tool in "$capture" "$importer"; do
+  [ -f "$tool" ] && [ -x "$tool" ] || fail "missing executable: $tool"
+done
+
+umask 077
+stage=$(mktemp -d -- "${TMPDIR:-/tmp}/dragnet-crossref.XXXXXXXX")
+trap 'rm -rf -- "$stage"' EXIT
+trap 'exit 1' HUP INT TERM
+
+snapshot() {
+  label=$1
+  source=$2
+  limit=$3
+  dest=$stage/$label
+  [ -f "$source" ] || fail "$label input is not a regular file"
+  # Probe one extra byte without reading an unbounded or growing file.
+  head -c "$((limit + 1))" <"$source" >"$dest" || fail "cannot stage $label input"
+  size=$(wc -c <"$dest")
+  if [ "$size" -lt 1 ] || [ "$size" -gt "$limit" ]; then
+    fail "$label input must contain 1 through $limit bytes"
+  fi
+}
+
+snapshot request "$3" 1024
+snapshot search "$4" 262144
+snapshot work "$5" 262144
+if [ "$1" = verify ]; then
+  snapshot expected "$6" 16384
+fi
+
+"$capture" search "$2" <"$stage/search" >"$stage/search.decode" || fail "search decode failed"
+"$capture" work <"$stage/work" >"$stage/work.decode" || fail "work decode failed"
+"$importer" </dev/null 3<"$stage/request" 4<"$stage/search" 5<"$stage/work" \
+  6<"$stage/search.decode" 7<"$stage/work.decode" >"$stage/evidence" || fail "import failed"
+
+if [ "$1" = import ]; then
+  cat -- "$stage/evidence"
+elif cmp -s -- "$stage/evidence" "$stage/expected"; then
+  printf 'crossref_replay_ok=true\n'
+else
+  case $? in
+    1) fail "replay divergence: evidence differs from EXPECTED.json" ;;
+    *) fail "cannot compare replay evidence to EXPECTED.json" ;;
+  esac
+fi

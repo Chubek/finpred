@@ -2,11 +2,13 @@
 
 `automat.dag` is a native On1x entry point alongside the fixed Yieldcraft
 runner. See the [compiled consumer](../../tests/dag_consumer/main.on1x).
+To compile a host directly, add both `source/` and the repository root to
+its module search paths so the statically registered packages are available.
 Hosts can freeze and verify this IR through the module APIs below, or lower
-an [Ottomat v3 program](../ottomat/README.md#v3-scalar-analysis) to the same
+an [Ottomat scalar program](../ottomat/README.md#v3-scalar-analysis) to the same
 plan. The CLI still uses the legacy Yieldcraft graph.
 
-`Plan` identifies a version (`automat.scalar-dag@1` or `@2`), a declaration
+`Plan` identifies a version (`automat.scalar-dag@1`, `@2`, or `@3`), a declaration
 list, and an output node by name. `node(id, handler, left, right)` binds both required ports to
 the single result of another declaration or to a graph input (`first` or
 `second`). Forward references are valid. IDs are 1–32 lowercase ASCII letters;
@@ -28,6 +30,11 @@ distance selects the positive value; zero selects the zero value. Every
 binding is an ordinary dependency, even for the unselected alternative.
 The trace records them in role order:
 `id=select@1(condition,positive,zero):value`.
+
+V3 also admits the statically linked `midpoint@1` binary handler, owned
+by [`scalar-diagnostics@1`](../../plugins/scalar_diagnostics/README.md).
+The versioned registry is shared by native planning, invocation and DSL import
+resolution. The scalar plan never gains capabilities from an import line.
 
 Planning validates every binding and determines the complete order before
 running a handler. `validate(plan, mode, budget)` checks the same structure

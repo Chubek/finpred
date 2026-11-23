@@ -3,7 +3,7 @@
 # dispatch, retry, artifact access or external-action handler.
 import automat.graph as Graph;
 import core.contracts as C;
-import sdk.static_host as Host;
+import sdk.registry as Registry;
 import plugins.yieldcraft.matcher as Match;
 import plugins.yieldcraft.strategy as Strategy;
 
@@ -29,7 +29,7 @@ fn run(plan: Graph.Plan, mode: string, scenario_raw: string, offers_raw: string,
 {
   if mode != "recommendation" || !Graph.validate_plan(plan,mode)
   { tool_fail("automat: invalid fixed plan or capability denied"); }
-  if !Host.yieldcraft(mode) { tool_fail("sdk: capability denied"); }
+  if !Registry.admits(Graph.version(),mode) { tool_fail("sdk: capability denied"); }
 
   # Input: the host supplies frozen bytes, never paths. Valuation is the
   # strategy's side input, checked against the same decision time.

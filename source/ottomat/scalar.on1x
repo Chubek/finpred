@@ -1,4 +1,4 @@
-# Ottomat 3/4 lower to native scalar analysis plans; they never dispatch.
+# Ottomat 3/4/5 lower to native scalar analysis plans; they never dispatch.
 import ottomat.scalar_tokens as T;
 import automat.dag as D;
 import std.collections.List as L;
@@ -46,16 +46,19 @@ fn has_import(imports:sexpr, handler:string) -> bool
 
 fn lower(source:string, mode:string, budget:i64) -> Lowered
 {
-  # Only an exact v4 header admits a seventh token on a line. Invalid headers
+  # Only an exact v4 or v5 header admits a seventh token on a line. Invalid headers
   # and v3 sources are scanned with the original cap and diagnostics.
   let v4 = text_len(source) >= 10 && text_slice(source,0,10) == "ottomat 4\n";
-  let lexed = T.scan_version(source,v4);
+  let v5 = text_len(source) >= 10 && text_slice(source,0,10) == "ottomat 5\n";
+  let wide_calls = v4 || v5;
+  let lexed = T.scan_version(source,wide_calls);
   if sx_text(lexed["status"]) != "ok"
   { return fail(lexed["status"],lexed["line"],lexed["column"]); }
 
   var syntax_version = "3";
   var plan_version = "automat.scalar-dag@1";
   if v4 { syntax_version = "4"; plan_version = "automat.scalar-dag@2"; }
+  if v5 { syntax_version = "5"; plan_version = "automat.scalar-dag@3"; }
   var rest = lexed["lines"];
   let header = peek(rest);
   if L.basis_list_length(header) != 2 || !starts(header,"ottomat") || D.field(header,1) != syntax_version
@@ -78,9 +81,8 @@ fn lower(source:string, mode:string, budget:i64) -> Lowered
     let words = sx_head(rest);
     if count >= 16 || L.basis_list_length(words) != 2 { return reject("syntax",line); }
     let handler = D.field(words,1);
-    if !v4 && handler == "select@1" { return reject("unknown_handler",line); }
     let desc = D.resolve(handler);
-    if desc["handler"] <= 0 { return reject("unknown_handler",line); }
+    if !D.available(desc,plan_version) { return reject("unknown_handler",line); }
     if has_import(imports,handler) { return reject("duplicate_import",line); }
     imports = sx_cons(sx_string(handler),imports);
     count = count+1;
@@ -98,7 +100,7 @@ fn lower(source:string, mode:string, budget:i64) -> Lowered
     if count >= 16 || tokens < 6 || D.field(words,2) != "="
     { return reject("syntax",line); }
     let handler = D.field(words,3);
-    let is_select = v4 && handler == "select@1";
+    let is_select = wide_calls && handler == "select@1";
     if (is_select && tokens != 7) || (!is_select && tokens != 6) { return reject("syntax",line); }
     if !has_import(imports,handler) { return reject("undeclared_import",line); }
     let id = D.field(words,1);

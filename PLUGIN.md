@@ -2,6 +2,9 @@
 
 FinPRED integrates **trusted On1x code at build time**. Choose the package by the data you have: Dragnet normalizes frozen offers, Yieldcraft computes a price from snapshots, and Poindexter presents a verified run. Each has a different calling convention. Copying a `plugin.json` into `plugins/` does not register code or add a CLI command.
 
+The [engine registry](source/sdk/README.md#engine-registry) admits only
+host-registered call sites. It does not dynamically load packages from disk.
+
 | Package and descriptor | What the caller supplies | What the caller gets |
 | --- | --- | --- |
 | [Dragnet `Source`](plugins/dragnet/plugin.json) | Offers CSV contents and a validated scenario | Zero or more `hospitality.offer@1` JSON envelopes, one per line |
@@ -25,6 +28,11 @@ To embed [the adapter](plugins/dragnet/source/dragnet/frozen_csv.on1x), add `sou
 
 The default fixture emits five eligible offers in source order. Prices include taxes and fees for the **whole stay**. Each envelope names the BLAKE3 digest of the complete original offers CSV as its parent. A valid dataset with no eligible rows succeeds with empty output; malformed input fails before the host prints any envelopes. Retain both snapshots to reproduce the as-of selection. The NDJSON is for consumers of the [offer schema](contracts/hospitality.offer@1.schema.json); Yieldcraft's entry point below expects the original CSV, not this stream.
 
+The [offline Elvi tools](plugins/dragnet/README.md#frozen-crossref-search-and-work-evidence)
+are separate: they extract bibliographic evidence from saved Crossref
+responses. They do not fetch live pages or feed unvalidated metadata
+into the pricing engine.
+
 ## Yieldcraft: call the strategy from On1x
 
 ```on1x
@@ -44,6 +52,10 @@ Each feasible property contributes one cheapest room bundle. Limits include 512 
 The CLI writes only [`finpred-run@2`](docs/RUN_FORMAT.md#v2-writer-and-verifier).
 That store format does not version the plugin or the `pricing.recommendation@1`
 contract. The pure package neither selects a run format nor accesses archives.
+
+For a pure algorithm registered with the native scalar graph rather than
+the pricing CLI, see the [scalar diagnostics package](plugins/scalar_diagnostics/README.md).
+It is linked by the native host, not discovered through an SDK descriptor.
 
 ## Poindexter: render a verified pricing sheet
 

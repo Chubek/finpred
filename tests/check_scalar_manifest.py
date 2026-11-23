@@ -45,7 +45,7 @@ with tempfile.TemporaryDirectory(prefix="finpred-scalar-manifest-") as temp:
     exe = work / "consumer"
     subprocess.run([sys.executable, sdk / "on1x/tools/on1x-build.py",
                     ROOT / "tests/scalar_manifest_consumer/main.on1x", "--backend", "c11",
-                    "--on1xc", compiler, "--mulib-root", sdk, "-I", ROOT / "source",
+                    "--on1xc", compiler, "--mulib-root", sdk, "-I", ROOT / "source", "-I", ROOT,
                     "-o", exe], cwd=work, check=True)
 
     def invoke(directory, **settings):

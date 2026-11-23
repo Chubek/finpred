@@ -32,7 +32,7 @@ with tempfile.TemporaryDirectory(prefix="finpred-dag-replay-") as tmp:
     exe = Path(tmp) / "consumer"
     subprocess.run([sys.executable, sdk / "on1x/tools/on1x-build.py",
                     ROOT / "tests/dag_replay_consumer/main.on1x", "--backend", "c11",
-                    "--on1xc", compiler, "--mulib-root", sdk, "-I", ROOT / "source",
+                    "--on1xc", compiler, "--mulib-root", sdk, "-I", ROOT / "source", "-I", ROOT,
                     "-o", exe], cwd=tmp, check=True)
 
     def check(case, expected, items=entries, root=spread, output="spread"):

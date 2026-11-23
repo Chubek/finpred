@@ -53,7 +53,7 @@ If `docs/USER_SPECIFICATION.md` contains examples marked proposed, do not assume
 
 The inspected repository has much more than its earliest scaffold. **The historical introductory inventory in the original `AGENTS.md` is stale**; use the following as the updated starting point and confirm it against `git status`/`git log`.
 
-Later checkpoint (`db9cd08` plus the scalar DAG working changes): Gate S0
+Later checkpoint (`271eb49` plus the registry working changes): Gate S0
 has a [verification workflow](.github/workflows/verify.yml) and a
 [coverage index](tests/COVERAGE.md). For P1, keep the persisted fixed runner
 and the in-memory [native scalar graph](source/automat/README.md) distinct.
@@ -63,6 +63,13 @@ host. It is not a CLI recommendation run format.
 The [Ottomat scalar frontend](source/ottomat/README.md#v3-scalar-analysis)
 lowers into that same graph. Its v4 selector uses `automat.scalar-dag@2`
 and `scalar-run@2`, without replacing the v1/v2 price decoders.
+The v5 profile uses `automat.scalar-dag@3` and `scalar-run@3` to admit
+the statically linked `scalar-diagnostics@1` package.
+The [engine registry](source/sdk/README.md#engine-registry) controls linked
+plugin dispatch. Dragnet's [Crossref adapter](plugins/dragnet/README.md) is
+offline evidence, not an admitted live feed or pricing input. Poindexter's
+[ImmGTK host](plugins/poindexter/gui/README.md) edits local workbook copies
+without changing the verified-run store.
 Yieldcraft's active writer is `finpred-run@2` only. Keep `finpred-run@1`
 archive verification read-only; do not confuse the persisted run version
 with an Ottomat syntax version, plugin version, or contract version.

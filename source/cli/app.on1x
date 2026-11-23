@@ -15,7 +15,7 @@ import automat.graph as Graph;
 import automat.runner as Runner;
 import ottomat.ottomat as Ottomat;
 import sdk.sdk as SDK;
-import sdk.static_host as Host;
+import sdk.registry as Registry;
 import algorithms.quantile as Quantile;
 import poindexter.sheet as Sheet;
 
@@ -163,6 +163,8 @@ fn replay(home: string, expected_run_id: string, mode: string) -> i64
 {
   if mode != "replay" && mode != "explain" && mode != "evidence" && mode != "poindexter"
   { tool_fail("capability denied: execution mode and unknown modes unavailable"); }
+  if mode == "poindexter" && !Registry.admits("poindexter.sheet.render","analysis")
+  { tool_fail("sdk: incompatible pricing sheet"); }
   let manifest = Formats.read(Store.read_run(home,expected_run_id));
   let version = sx_text(manifest["version"]);
   let v2 = version == Formats.current();
@@ -217,7 +219,6 @@ fn replay(home: string, expected_run_id: string, mode: string) -> i64
   { tool_fail("replay: stored output differs from recomputation"); }
   if mode == "poindexter"
   {
-    if !Host.poindexter() { tool_fail("sdk: incompatible pricing sheet"); }
     let (ok,csv) = Sheet.render(id,rec_digest,nv,sx_text(s["currency"]),"room_night",
       v["current_cents"],r["recommended_cents"],sx_text(r["reason"]),false);
     if !ok { tool_fail(csv); }

@@ -152,6 +152,82 @@ and output digests, the two archived v1 runs, and the original
 `scalar-run@1` golden snapshot stayed unchanged. `make native-test`
 passed 2/2 standalone CTests; storage admission remains blocked.
 
+### Ottomat v5 and static scalar diagnostics
+
+The planner, evaluator and DSL share the graph-version availability
+check for registered handlers. `ottomat 5` can now import `midpoint@1`,
+whose On1x implementation lives in `plugins/scalar_diagnostics/`.
+The native host statically links the pure, bounded algorithm; there
+is no dynamic plugin discovery. The existing grammar does not need
+an operation-specific change to import the new binary handler.
+`scalar-run@3` pins the graph admission profile and replay verifies
+the versioned handler and package owner from computed artifact bytes.
+
+On base `271eb49` with the release pins above, `make test` passed.
+The registry consumer verified five native/DSL results and rejected
+25 invalid cases, including rehashed false owner and version claims.
+A separate package consumer checked four direct results and two
+out-of-range calls. Both consumers passed on the newer compatibility
+compiler, as did the full `make test` suite. The midpoint fixture's
+independently computed run ID is
+`8b5bf2d4db688b9b40f2921f3dbd835311af8fcaff264ea72ee5e370a896bd56`.
+The legacy scalar snapshots, the two historical Yieldcraft v2 IDs and
+digests, both v1 archives and the 17100/16000 prices remained unchanged.
+No changes to KernelBind, action permissions, or the pricing store format.
+
+### Engine plugin registry
+
+`sdk.registry` is the host-owned default-deny policy for the four shipped
+plugin dispatch sites: Yieldcraft, Poindexter View, Dragnet frozen CSV and
+scalar midpoint. The linked-code conformance test disables the entries
+and verifies that even linked implementations and an on-disk manifest
+cannot make an engine call available. The C SDK remains a metadata API.
+The registry grants no filesystem, network or action capabilities.
+`make test` with the pinned toolchain passed all four disabled-binding
+checks, the dependency-denial check, and both direct-library controls.
+
+### Optional Poindexter GUI
+
+The [ImmGTK frontend](../plugins/poindexter/gui/README.md) presents a
+local editing copy with an X11 software framebuffer. Formula evaluation
+and workbook encoding stay in the existing On1x worksheet worker.
+`make poindexter-gui` and `make poindexter-gui-test` passed on the pinned
+toolchain, including native rendered pixels, a pointer-driven edit, On1x
+recalculation, and save. The private X11 display test reported a skip
+because the Xvfb tools were unavailable. Neither the main CLI nor the
+terminal spreadsheet requires X11.
+
+### Dragnet Elvi boundary
+
+MuLIB's ElviScrape is a C11 API with an offline provider compiler, keyword
+URL renderer and search-response parser. Its online search path requires the
+caller to supply a verified transport. The pinned On1x compiler rejects
+`import kernel mulib.elvi_scrape` with `ON1X-KERNEL-NOT-ADMITTED`; the
+upstream C fixture is not evidence of an admitted On1x capability.
+Elvi's result links are untrusted data, not permission to retrieve them.
+The pinned standalone MuLIB demo built with strict C11 warnings and
+rendered the keyword `C11 compiler` to a Crossref request, extracting two
+rows from the checked-in response without making a network request.
+
+[Dragnet's offline Crossref tools](../plugins/dragnet/README.md) now use
+Elvi in a standalone C decoder and normalize the frozen handoff through
+On1x. The normalized evidence distinguishes search and work timestamps
+and binds the selected `title`, `publisher` and/or `type` to exact
+input digests. This is bibliographic source evidence, not a pricing input.
+The live provider transport, page fetching and generic contract
+registration remain unimplemented.
+
+The offline `crossref` launcher regenerates the decoder handoffs from
+bounded copies of operator-selected raw files before invoking the importer.
+Its `verify` command compares the exact evidence bytes to a supplied
+reference. This checks reproducibility without trusting a separately
+supplied decoder file; it does not authenticate the provider, prove the
+association of a response with a query, or verify asserted capture times.
+The plugin-local schema conformance test validates emitted records, and
+`tests/check_crossref_replay.py` passes with exact golden bytes and
+read-only input snapshots. Both tests are included in package verification
+on the pinned CI job.
+
 ### Yieldcraft current versus archival runs
 
 New Yieldcraft runs can only publish `finpred-run@2`. The CLI recognizes

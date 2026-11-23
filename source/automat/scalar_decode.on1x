@@ -126,9 +126,11 @@ fn decode(raw:string) -> Decoded
   let ordered = L.basis_list_rev(lines);
   let format = D.field(ordered,0);
   let plan_line = D.field(ordered,1);
-  let select_allowed = format == "scalar-run@2" && plan_line == "plan=automat.scalar-dag@2";
-  if !select_allowed && (format != "scalar-run@1" || plan_line != "plan=automat.scalar-dag@1")
-  { return invalid(); }
+  let v1 = format == "scalar-run@1" && plan_line == "plan=automat.scalar-dag@1";
+  let v2 = format == "scalar-run@2" && plan_line == "plan=automat.scalar-dag@2";
+  let v3 = format == "scalar-run@3" && plan_line == "plan=automat.scalar-dag@3";
+  if !v1 && !v2 && !v3 { return invalid(); }
+  let select_allowed = v2 || v3;
   if D.field(ordered,2) != "mode=analysis" { return invalid(); }
   let budget = decimal(payload(D.field(ordered,3),"budget="),16);
   let first = decimal(payload(D.field(ordered,4),"first="),1000000000000);

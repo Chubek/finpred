@@ -13,7 +13,7 @@ with tempfile.TemporaryDirectory(prefix="finpred-dag-") as tmp:
     exe = Path(tmp) / "consumer"
     subprocess.run([sys.executable, sdk / "on1x/tools/on1x-build.py",
                     ROOT / "tests/dag_consumer/main.on1x", "--backend", "c11",
-                    "--on1xc", compiler, "--mulib-root", sdk, "-I", ROOT / "source",
+                    "--on1xc", compiler, "--mulib-root", sdk, "-I", ROOT / "source", "-I", ROOT,
                     "-o", exe], cwd=tmp, check=True)
     hi = "hi=maximum@1(first,second):42\n"
     lo = "lo=minimum@1(first,second):17\n"

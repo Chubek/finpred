@@ -5,6 +5,19 @@ in [On1x](packages.on1x) and in the independently linkable
 [C11 library](sdk_v2.h). Pricing and run admission remain in the On1x hosts.
 The legacy Yieldcraft-only descriptor API is described below.
 
+### Engine registry
+
+[`sdk.registry`](registry.on1x) holds the default-deny policy for the
+statically linked call sites. The built-in Yieldcraft runner, Poindexter
+view host, frozen CSV source host, and scalar midpoint dispatch consult it.
+An entry still has to pass its mode and dependency checks; the midpoint also
+has to be available in the graph version. A `plugin.json` describes a package
+but cannot register it, and an SDK compatibility result alone cannot invoke it.
+
+The registry is not a sandbox for arbitrary On1x programs. An independent
+host linking a library directly controls its own calls. The stand-alone
+Crossref tools and worksheet frontends are not engine-dispatched plugins.
+
 | Manifest (SDK 1, package 1.0.0) | Invocation mode | Ordered input schema/format IDs → output | Required host dependency IDs |
 |---|---|---|---|
 | [`dragnet.frozen_csv`](../../plugins/dragnet/plugin.json) (`Source`) | `analysis` | `hospitality.scenario@1`, `finpred.offers.csv@1` → `hospitality.offer@1` | `finpred.core@1`, `yieldcraft.asof-whole-stay-property-min@1` |

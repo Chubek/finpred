@@ -3,6 +3,8 @@ import std.collections.Array as A;
 import std.collections.List as L;
 import automat.dag_artifacts as Art;
 import automat.scalar_memo as Memo;
+import sdk.registry as Registry;
+import plugins.scalar_diagnostics.midpoint as Midpoint;
 
 record Plan { version:sexpr, nodes:sexpr, output:sexpr }
 record Outcome {
@@ -66,22 +68,50 @@ fn valid_shape(n:sexpr, select_enabled:bool) -> bool
 # Binary ports share accepts; select uses it for its condition only.
 record Descriptor
 {
-  handler:i64, identity:sexpr, owner:sexpr, accepts:sexpr, produces:sexpr,
+  handler:i64, min_dialect:i64, identity:sexpr, owner:sexpr, accepts:sexpr, produces:sexpr,
   effect:sexpr, grants:sexpr, cost:i64
 }
 
 fn resolve(op:string) -> Descriptor
 {
   var handler = 0;
+  var min_dialect = 1;
+  var owner = "finpred.core@1";
   var input = "scalar.level@1";
   var output = "scalar.level@1";
   if op == "minimum@1" { handler = 1; }
   if op == "maximum@1" { handler = 2; }
   if op == "distance@1" { handler = 3; output = "scalar.distance@1"; }
-  if op == "select@1" { handler = 4; input = "scalar.distance@1"; }
-  return record<Descriptor>{handler:handler,identity:sx_string(op),owner:sx_string("finpred.core@1"),
-    accepts:sx_string(input),produces:sx_string(output),
+  if op == "select@1" { handler = 4; min_dialect = 2; input = "scalar.distance@1"; }
+  let entry = Registry.scalar_entry(op);
+  if entry == "plugins.scalar_diagnostics.midpoint.midpoint"
+  {
+    let b = Registry.resolve(entry);
+    if b["enabled"]
+    {
+      handler = 5;
+      min_dialect = 3;
+      owner = sx_text(b["package"]);
+      input = sx_text(sx_head(b["inputs"]));
+      output = sx_text(b["output"]);
+    }
+  }
+  return record<Descriptor>{handler:handler,min_dialect:min_dialect,identity:sx_string(op),
+    owner:sx_string(owner),accepts:sx_string(input),produces:sx_string(output),
     effect:sx_string("pure"),grants:sx_nil(),cost:1};
+}
+
+fn plan_dialect(version:string) -> i64
+{
+  if version == "automat.scalar-dag@1" { return 1; }
+  if version == "automat.scalar-dag@2" { return 2; }
+  if version == "automat.scalar-dag@3" { return 3; }
+  return 0;
+}
+
+fn available(d:Descriptor, version:string) -> bool
+{
+  return d["handler"] > 0 && d["min_dialect"] > 0 && plan_dialect(version) >= d["min_dialect"];
 }
 
 fn input_kind(d:Descriptor, port:i64) -> string
@@ -92,27 +122,42 @@ fn input_kind(d:Descriptor, port:i64) -> string
 
 fn admitted(d:Descriptor, mode:string) -> bool
 {
+  if d["handler"] == 5 && !Registry.admits(Registry.scalar_entry(sx_text(d["identity"])),mode)
+  { return false; }
   return mode == "analysis" && d["handler"] > 0 && sx_text(d["effect"]) == "pure"
     && sx_kind(d["grants"]) == 0 && d["cost"] == 1;
 }
 
 # Values are nonnegative integers <= 10^12; subtraction stays exact.
-fn invoke(op:string, mode:string, left:i64, right:i64) -> i64
+fn invoke_binary(op:string, version:string, mode:string, left:i64, right:i64) -> i64
 {
   let d = resolve(op);
-  if !admitted(d,mode) { tool_fail("dag: invocation denied"); }
+  if !admitted(d,mode) || !available(d,version) { tool_fail("dag: invocation denied"); }
   if d["handler"] == 1 { if left < right { return left; } return right; }
   if d["handler"] == 2 { if left > right { return left; } return right; }
   if d["handler"] == 3 { if left < right { return right-left; } return left-right; }
+  if d["handler"] == 5 { return Midpoint.midpoint(left,right); }
   tool_fail("dag: no registered pure handler");
   return 0;
 }
 
-fn invoke_select(mode:string, condition:i64, positive:i64, zero:i64) -> i64
+# Keep the unversioned helpers restricted to the legacy handler set.
+fn invoke(op:string, mode:string, left:i64, right:i64) -> i64
 {
-  if !admitted(resolve("select@1"),mode) { tool_fail("dag: invocation denied"); }
+  return invoke_binary(op,"automat.scalar-dag@2",mode,left,right);
+}
+
+fn invoke_select_versioned(version:string, mode:string, condition:i64, positive:i64, zero:i64) -> i64
+{
+  let d = resolve("select@1");
+  if !admitted(d,mode) || !available(d,version) { tool_fail("dag: invocation denied"); }
   if condition == 0 { return zero; }
   return positive;
+}
+
+fn invoke_select(mode:string, condition:i64, positive:i64, zero:i64) -> i64
+{
+  return invoke_select_versioned("automat.scalar-dag@2",mode,condition,positive,zero);
 }
 
 # Slot 0/1 is an immutable graph input; later slots follow declaration order.
@@ -166,7 +211,7 @@ fn fill_order(nodes:sexpr, count:i64, ready:i64, order:i64) -> bool
 }
 
 fn evaluate(nodes:sexpr, count:i64, output:i64, mode:string, order:i64,
-  values:i64, memoized:bool, select_enabled:bool) -> Outcome
+  values:i64, memoized:bool, version:string) -> Outcome
 {
   let trace = buffer_new();
   let first = Art.input_bytes("first",A.basis_array_sub(values,0));
@@ -194,11 +239,13 @@ fn evaluate(nodes:sexpr, count:i64, output:i64, mode:string, order:i64,
     let right_digest = sx_text(sx_head(right_entry));
     let desc = resolve(op);
     let selecting = desc["handler"] == 4;
-    if !admitted(desc,mode) || (selecting && !select_enabled)
+    if !admitted(desc,mode) || !available(desc,version)
     {
       A.basis_array_destroy(positions);
       return failed("denied");
     }
+    let owner = sx_text(desc["owner"]);
+    let identity = sx_text(desc["identity"]);
     let kind = sx_text(desc["produces"]);
     var zero = "";
     var zero_slot = 0;
@@ -216,7 +263,7 @@ fn evaluate(nodes:sexpr, count:i64, output:i64, mode:string, order:i64,
     if memoized
     {
       if selecting { k = Memo.select_key(left_digest,right_digest,zero_digest); }
-      else { k = Memo.key(sx_text(desc["owner"]),sx_text(desc["identity"]),kind,left_digest,right_digest); }
+      else { k = Memo.key(owner,identity,kind,left_digest,right_digest); }
       cached = Memo.lookup(entries,k);
     }
     let v = cached ~ {
@@ -225,8 +272,8 @@ fn evaluate(nodes:sexpr, count:i64, output:i64, mode:string, order:i64,
         let a = A.basis_array_sub(values,left_slot);
         let b = A.basis_array_sub(values,right_slot);
         var value = 0;
-        if selecting { value = invoke_select(mode,a,b,A.basis_array_sub(values,zero_slot)); }
-        else { value = invoke(op,mode,a,b); }
+        if selecting { value = invoke_select_versioned(version,mode,a,b,A.basis_array_sub(values,zero_slot)); }
+        else { value = invoke_binary(identity,version,mode,a,b); }
         invocations = invocations + 1;
         if memoized { entries = Memo.remember(entries,k,value); }
         value
@@ -242,7 +289,7 @@ fn evaluate(nodes:sexpr, count:i64, output:i64, mode:string, order:i64,
     }
     else
     {
-      bytes = Art.node_bytes(id,op,kind,left_digest,right_digest,v);
+      bytes = Art.node_bytes_owned(id,owner,identity,kind,left_digest,right_digest,v);
       buffer_append(trace,"$id=$op($left,$right):$v\n");
     }
     artifacts = sx_cons(Art.entry(Art.digest(bytes),bytes),artifacts);
@@ -262,8 +309,7 @@ fn check_header(plan:Plan, mode:string) -> string
 {
   if mode != "analysis" { return "denied"; }
   if sx_kind(plan["version"]) != 2 { return "version"; }
-  let version = sx_text(plan["version"]);
-  if version != "automat.scalar-dag@1" && version != "automat.scalar-dag@2" { return "version"; }
+  if plan_dialect(sx_text(plan["version"])) == 0 { return "version"; }
   return "ok";
 }
 
@@ -278,7 +324,9 @@ fn rejected_plan(reason:string) -> Planned
 fn plan_graph(plan:Plan, mode:string, budget:i64) -> Planned
 {
   let nodes = plan["nodes"];
-  let select_enabled = sx_text(plan["version"]) == "automat.scalar-dag@2";
+  let version = sx_text(plan["version"]);
+  # Preserve @1 shape checking before handler admission, even for select.
+  let select_enabled = available(resolve("select@1"),version);
   var rest = nodes;
   var count = 0;
   while sx_kind(rest) == 3
@@ -287,8 +335,7 @@ fn plan_graph(plan:Plan, mode:string, budget:i64) -> Planned
     let n = sx_head(rest);
     if !valid_shape(n,select_enabled) { return rejected_plan("invalid_node"); }
     let d = resolve(field(n,1));
-    if d["handler"] == 0 || (d["handler"] == 4 && !select_enabled)
-    { return rejected_plan("unknown_handler"); }
+    if !available(d,version) { return rejected_plan("unknown_handler"); }
     if !admitted(d,mode) { return rejected_plan("denied"); }
     count = count + 1;
     rest = sx_tail(rest);
@@ -361,8 +408,7 @@ fn run_validated(plan:Plan, mode:string, budget:i64, first:i64, second:i64, memo
   let values = A.basis_array_array(count+2,0);
   A.basis_array_update(values,0,first);
   A.basis_array_update(values,1,second);
-  let result = evaluate(plan["nodes"],count,planned["output"],mode,order,values,memoized,
-    sx_text(plan["version"]) == "automat.scalar-dag@2");
+  let result = evaluate(plan["nodes"],count,planned["output"],mode,order,values,memoized,sx_text(plan["version"]));
   A.basis_array_destroy(values);
   A.basis_array_destroy(order);
   return result;

@@ -27,7 +27,9 @@ fn freeze(source:string, mode:string, budget:i64, first:i64, second:i64) -> Resu
   }
   var lowering = "ottomat.scalar-lowering@1";
   let plan = lowered["plan"];
-  if sx_text(plan["version"]) == "automat.scalar-dag@2" { lowering = "ottomat.scalar-lowering@2"; }
+  let version = sx_text(plan["version"]);
+  if version == "automat.scalar-dag@2" { lowering = "ottomat.scalar-lowering@2"; }
+  if version == "automat.scalar-dag@3" { lowering = "ottomat.scalar-lowering@3"; }
   return record<Result>{status:sx_string("ok"),line:0,column:0,source_digest:sx_string(Art.digest(source)),
     lowering:sx_string(lowering),snapshot:snapshot};
 }

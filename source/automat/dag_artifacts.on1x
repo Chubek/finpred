@@ -9,7 +9,12 @@ fn input_bytes(name:string, value:i64) -> string
 
 fn node_bytes(id:string, op:string, kind:string, left:string, right:string, value:i64) -> string
 {
-  return "scalar-node@1\nid=$id\nowner=finpred.core@1\nhandler=$op\nkind=$kind\nleft=$left\nright=$right\nvalue=$value\n";
+  return node_bytes_owned(id,"finpred.core@1",op,kind,left,right,value);
+}
+
+fn node_bytes_owned(id:string, owner:string, op:string, kind:string, left:string, right:string, value:i64) -> string
+{
+  return "scalar-node@1\nid=$id\nowner=$owner\nhandler=$op\nkind=$kind\nleft=$left\nright=$right\nvalue=$value\n";
 }
 
 fn select_bytes(id:string, condition:string, positive:string, zero:string, value:i64) -> string

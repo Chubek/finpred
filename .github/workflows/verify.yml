@@ -46,13 +46,23 @@ jobs:
         run: |
           python3 tests/check_yieldcraft_package.py
           python3 tests/check_dragnet_frozen_csv.py
+          python3 tests/check_dragnet_elvi.py
+          python3 tests/check_crossref_replay.py
           python3 tests/check_poindexter_package.py
           ./bin/poindexter --build
           python3 tests/check_poindexter_workbench.py
+      - name: Optional Poindexter ImmGTK conformance
+        id: gui
+        run: |
+          if command -v pkg-config >/dev/null && pkg-config --exists x11; then
+            make poindexter-gui-test
+          else
+            echo 'poindexter_gui=skipped missing_x11_development_library'
+          fi
       - name: Test outcomes
         if: always()
         run: |
-          echo '{"platform":"linux-x86_64","integration":"${{ steps.integration.outcome }}","packages":"${{ steps.packages.outcome }}","other_platforms":"untested"}'
+          echo '{"platform":"linux-x86_64","integration":"${{ steps.integration.outcome }}","packages":"${{ steps.packages.outcome }}","gui_step":"${{ steps.gui.outcome }}","other_platforms":"untested"}'
 
   native-store:
     runs-on: ubuntu-24.04

@@ -3,6 +3,8 @@
 For the interactive **spreadsheet with formulas and worksheet scripts**,
 see the [terminal workbench](workbench/README.md). The read-only View
 below supplies its verified pricing input.
+The optional [ImmGTK spreadsheet](gui/README.md) opens and edits the
+same local workbook format using the same On1x worksheet engine.
 
 `poindexter.pricing-sheet` 1.0.0 compares **one unpublished recommendation**
 with its scenario’s frozen current valuation. It returns a spreadsheet-ready

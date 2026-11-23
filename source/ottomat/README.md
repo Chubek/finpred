@@ -2,7 +2,8 @@
 
 The CLI uses the legacy recommendation grammar below. Native hosts can
 use [v3 scalar analysis](#v3-scalar-analysis) or
-[v4 scalar selection](#v4-scalar-selection).
+[v4 scalar selection](#v4-scalar-selection), or
+[v5 registered scalar algorithms](#v5-registered-scalar-algorithms).
 
 `Ottomat.lower(source)` parses a v1 or v2 declaration and resolves it to
 Automat's fixed seven-node recommendation plan. A valid `Plan` carries
@@ -153,3 +154,19 @@ source bounds and diagnostic rules stay the same. It lowers to
 `automat.scalar-dag@2`, freezes as `scalar-run@2`, and reports
 `ottomat.scalar-lowering@2`. V3 does not admit `select@1`, and v4 is not a
 Yieldcraft recommendation profile.
+
+## V5 registered scalar algorithms
+
+[`strategies/scalar-midpoint.ottomat`](../../strategies/scalar-midpoint.ottomat)
+uses the v4 grammar with `ottomat 5`. It imports `midpoint@1` from the
+[statically linked scalar diagnostics package](../../plugins/scalar_diagnostics/README.md).
+Import availability comes from the native registry for the requested graph
+version; the parser does not implement or name the midpoint handler.
+`midpoint@1` takes two `scalar.level@1` bindings and returns their floor
+midpoint with the same kind. The package and handler identities appear in
+the node artifact. The mode, effect and resource limits remain unchanged.
+
+V5 lowers to `automat.scalar-dag@3`, freezes as `scalar-run@3`, and
+reports `ottomat.scalar-lowering@3`. An older profile does not admit the
+new handler, even as an unused import. This is static host linking, not
+dynamic SDK discovery or invocation.
