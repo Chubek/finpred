@@ -1,425 +1,381 @@
-# AGENTS.md — Continue implementing FinPRED in On1x
+# AGENTS.md — FinPRED implementation mandate
 
-> **Repository:** https://github.com/Chubek/finpred  
-> **Base inspected:** `master` at `b1d6f027f99b3738148d416843bfa30bc9c51cb1` (2026-11-23)  
-> **Upstream pinned by the repository's acceptance record:** MuLIB `49de89acbc97efbee493d6b28d02c8f64ed4f725`; LibStone `b5c962721a32df18b2fb22de136c1f2ef8b6390d`  
-> **Audience:** autonomous or human coding agents making actual, tested changes.  
-> **Status:** executable, tested *local Yieldcraft vertical slice*; **not** a complete general-purpose FinPRED platform.
+> Repository: https://github.com/Chubek/finpred  
+> Inspected branch/commit: `master` at `ec958f21864f42a6a1141aa61a96b5bb7bfee689` (2026-11-23 14:04:02 UTC).  
+> Comparison checkpoint: `6d3994a2c9caeda157592b5a556b002113ff5edf`.  
+> Historical release-toolchain pins used by GitHub Actions: MuLIB `49de89acbc97efbee493d6b28d02c8f64ed4f725`; LibStone `b5c962721a32df18b2fb22de136c1f2ef8b6390d`.  
+> **Current-head CI (confirmed after initial inspection): failed** — workflow `45190236799`: application job failed at `Build C11 CLI` with exit code 2 because `bin/build.sh` looked for `build/mulib/on1x/on1xc`, while CI built `third_party/mulib/build/on1x/on1xc`. Both new Dragnet tests were therefore **skipped**. Native-store job passed. Prior commit `6d3994a` passed both jobs, **without** the new Dragnet dispatcher/feed CI gates.  
+> Purpose: instructions to **implement and verify code**, not to write aspirational documentation.
 
-This is an **implementation mandate**, not a request to produce another design document. Study the current code before changing it, make narrowly scoped, working improvements, run the relevant tests, and leave independently verifiable evidence. When working from a later commit, **re-inventory and reconcile this file first**; its snapshot is historical, not an assertion that current `master` remains identical.
+**IMPORTANT:** This file is tied to a specific inspection. At the start of every agent session, re-read the actual files and current commit. Never represent this snapshot, GitHub workflow configuration, a test file, or an earlier report as evidence that the *current* checkout passed.
 
-## 0. Mission, architecture, and hard rules
+## 1. Product and architecture
 
-FinPRED is a contract-driven financial observation, analysis, forecasting, optimization, decision, and controlled-action platform. Preserve this conceptual chain:
+FinPRED is intended to be a contract-driven financial observation, analysis, forecasting, optimization, decision and eventually controlled-action system. Its present verified business slice is **local accommodation-price recommendation**, not a universal forecasting engine.
 
 ```text
-observe -> normalize -> analyze -> predict/optimize -> decide -> act -> evaluate
+CONTROL PLANE                       DATA PLANE
+Trusted On1x host                   Versioned, typed observations and artifacts
+  -> SDK source/algorithm registry     ^            ^
+  -> Ottomat -> validated Automat DAG  |            |
+  -> effect / capability policy        |            |
+  -> bounded execution             Dragnet -> normalization -> contracts
+  -> decision, lineage, replay         |
+  -> approval gateway (FUTURE)         +-> analysis/model/strategy artifacts
 
-  sources / Dragnet                 DATA PLANE: On1x + MuLIB
-       |                   validated, versioned, as-of contracts
-       v                               + immutable artifacts
-  transformations -----------------------------+
-                                                |
-                                                v
-                                     CONTROL PLANE: On1x Automat
-                                     Ottomat -> typed execution DAG
-                                     algorithms / rules / gates
-                                                |
-                                                v
-                                    decision + trace + run manifest
-                                                |
-                         review / authorization / action gateway
-                         (NOT CURRENTLY ENABLED BY THE CLI)
+External publication / booking / trading: UNIMPLEMENTED AND DENIED.
 ```
 
-- **On1x is FinPRED's primary implementation language.** Keep application semantics, validators, domain algorithms, strategy logic, and the Automat in On1x. Use MuLIB C11 kernels for carefully scoped lower-level facilities and high-performance computations; use Python only for tests, tooling and independent reference oracles. Do not quietly replace the application with Python, C++ or Rust.
-- **Keep plugin implementations under `plugins/` only.** The host can link packages and own their shared contract types. Keep Yieldcraft's matcher and pricing policy in `plugins/yieldcraft/`.
-- **Contracts before computation.** Every decision input must identify its kind/version, units, source, observed/ingested/valid times, and immutable evidence. The program must separate an observation, forecast, recommendation, intent and executed action.
-- **Recommendation is NEVER authorization.** All current built-in packages are pure/read-only except host-controlled local recording; `execution` remains denied. No live trade, price publication, booking, or outbound write is allowed by changing a strategy file or plugin descriptor.
-- **Do not sacrifice replay for new features.** Existing v1 and v2 run IDs, bytes, digests, schema semantics and historical pricing results must remain readable without rewriting them.
-- **No fabricated safety or completion claims.** A C header, `.on1x` module, JSON manifest, standalone C test, compiler-generated binding, signed test fixture or documentation entry is not itself proof of an admitted safe import or a working runtime capability.
-- **Local first.** Do not start with distributed execution, model marketplaces, live scraping, automated trading or a broad UI rewrite. Complete the typed engine, safe native boundary and replay invariants first.
+Core principles:
+
+1. **On1x first.** Keep financial rules, contract semantics, planning, DSL lowering, registry policies, replay and source normalization in On1x. MuLIB C11 kernels and narrow reviewed C11 helpers may supply lower-level facilities. Python is for tooling, tests and independent oracles, not a replacement FinPRED runtime.
+2. **Host-owned effects.** A plugin descriptor, Ottomat declaration or source URL is never an authority grant. Trusted host grants are explicit, scoped, checked before execution and again at call boundaries. No action or publication grant exists in the current CLI.
+3. **Clear provenance.** Record versioned kind, units, economic/valid time, source observation, receipt and ingestion times, immutable bytes and parents. A BLAKE3 digest proves content consistency relative to trusted identities; it does **not** prove authorship or an external provider's authenticity.
+4. **Local and replayable.** Frozen evidence must reconstruct each decision without reopening live data sources, modifying an original archive or changing its historical interpretation.
+5. **Separate control/data planes.** Dragnet acquisition processes may use explicitly authorized read-only transport. Pure On1x normalization/analysis handlers must not inherit network, file write or action permissions.
+6. **Minimalism and honesty.** Prefer one working, independently tested vertical feature over ten stub APIs. Call incomplete gates *blocked*; do not silently add fallback unsafe FFI.
 
 ### Source precedence
 
-1. `docs/USER_SPECIFICATION.md` — product scope, architectural intent and acceptance milestones; it is a **design**, not proof that code runs.
-2. `docs/IMPLEMENTATION.md`, `docs/RUN_FORMAT.md`, `native/STORE_ADMISSION.md`, `source/store/README.md`, `PLUGIN.md`, `INSTALL.md` — current documented implementation, run compatibility, testing and known safety limits. Their claims must be verified by actual execution.
-3. Actual source, headers, schemas, manifests, tests and the checked-out MuLIB/On1x toolchain. If they disagree with prose, record the discrepancy, correct code/tests or documentation appropriately, and do not silently change a persisted protocol.
-4. Pinned MuLIB sources: `on1x/README.md`, `on1x/KERNEL_DIRECT_USAGE.md`, `on1x/docs/kernel-bind.md`, `on1x/docs/kernel-numerics.md`, `on1x/docs/kernel-review.md`, plus matching `include/mulib-*.h` and On1x standard-library modules.
+- **Product intent:** `docs/USER_SPECIFICATION.md` (design, not an executable proof).
+- **Actual system behavior:** current `source/`, `plugins/`, `contracts/`, `native/`, `strategies/`, `On1xfile*`, executable scripts and tests.
+- **Historical formats:** `docs/RUN_FORMAT.md`, `fixtures/replay_v1.json`, golden test artifacts. These are compatibility contracts.
+- **Risk decisions:** `native/STORE_ADMISSION.md`, `source/store/README.md`, `plugins/dragnet/PUBLIC_FEEDS.md`, `plugins/dragnet/SOURCE_DISPATCH.md`.
+- **Recorded execution history:** `docs/IMPLEMENTATION.md`, `tests/COVERAGE.md`, CI logs. Verify against actual executions; many notes refer to earlier compiler revisions or earlier commit SHAs.
+- **Upstream:** the exact checked-out MuLIB and nested LibStone revisions, not imagined APIs or the current upstream `master`.
 
-If `docs/USER_SPECIFICATION.md` contains examples marked proposed, do not assume their modules or generic signatures already exist. Avoid speculative On1x syntax: copy *compilable forms* from the repository and add a compile/run fixture for new language constructs.
+When sources conflict, record the contradiction and its risk. Do not rewrite a persisted format to make disparate documents agree.
 
-## 1. Actual checkpoint and inventory (do not regress)
+## 2. Current implementation inventory (checkpoint `ec958f21`)
 
-The inspected repository has much more than its earliest scaffold. **The historical introductory inventory in the original `AGENTS.md` is stale**; use the following as the updated starting point and confirm it against `git status`/`git log`.
+| Path / subsystem | Implemented or materially present | Still missing / qualification |
+| --- | --- | --- |
+| `source/core/` and four `contracts/*.schema.json` | Bounded CSV parsing, civil dates/as-of checking, integer EUR cents, deterministic contract envelopes | General typed schema registry, currencies/units, semantic migrations and unknown/stale states |
+| `plugins/yieldcraft/`, `source/algorithms/quantile.on1x` | Exact room-bundle feasibility, property deduplication, Type-7 quantile, five named strategies and guardrails | General model/predictor, independent domain abstraction |
+| `source/automat/{graph,runner}.on1x` | Seven-node fixed recommendation plan with host-supplied Yieldcraft policy and validation | General financial contract DAG, extensible execution lifecycle |
+| `source/automat/{dag,dag_artifacts,dag_replay,scalar_*}.on1x` | Typed bounded scalar DAG, versioned operators, content-addressed intermediate artifacts, run-local memoization and scalar replay | Execute actual hospitality/FX contracts, effects and durable general runs |
+| `source/ottomat/` | GrammarEmbed-powered legacy declarations and `ottomat` v3/v4/v5 scalar graph dialects | General financial typed graph language and common executable lowering |
+| `source/sdk/` | On1x/C metadata interfaces, static trusted engine/handler registry | Unified invocable generic SDK, dynamic packages and isolation for untrusted code |
+| `plugins/dragnet/source/dragnet/source_registry.on1x` | **New:** static pure dispatcher for frozen CSV, Crossref, public-feed normalization | Independent general SDK Source registration, non-Dragnet consumers, dynamic loading and trusted invocation lifecycle |
+| `plugins/dragnet/source/dispatch_host.on1x`, `build-dispatch.sh` | **New:** standalone offline On1x dispatcher with inherited bounded descriptor bytes | Proof of successful compiled execution at latest SHA; host-controlled error/capability object; process isolation |
+| `tests/check_dragnet_dispatch.py`, `tests/check_dragnet_public_feeds.py` | **New CI targets** for dispatcher parity and ECB/Eurostat loopback acquisition, integrity, cancellation and replay | Latest CI application job must **finish successfully**; live-provider compatibility remains separate and opt-in |
+| `plugins/dragnet/feeds`, `feed_{fetch,decode}.c`, public feeds | Fixed read-only ECB reference-rate and Eurostat guest-night snapshots; pure On1x normalization; separate foreground capture host | Real-provider end-to-end verification, provider compatibility maintenance, generic Source lifecycle and durable scheduling |
+| `plugins/dragnet/crossref*`, frozen CSV | Offline bibliographic evidence and eligible hospitality offers | Source package versioning in common SDK; Crossref metadata is not room-price evidence |
+| `plugins/poindexter/` | Verified-run CSV projection, terminal worksheet, optional ImmGTK X11 editor, separate workbook storage | General multi-domain worksheet, robust large-workbook operations; no need to rewrite UI now |
+| `source/store/` | BLAKE3 private cooperating-writer artifact publication, v1 archive replay/v2 writer | Adversarial filesystem confinement, power-loss durability and approved native KernelBind import |
+| `native/store.{c,h}` | Independently tested Linux C11 durable-publication **candidate** | No independently admitted On1x FFI; no production storage claim or proven power-cut/remount semantics |
+| `.github/workflows/verify.yml` | Pinned application/native jobs; new Dragnet packages/feeds/dispatch CI steps | Current head **failed** at CLI build due to compiler path; Dragnet checks skipped |
+| `bin/build.sh`, `bin/build-env.sh`, `Makefile`, `INSTALL.md` | Attempted move of build outputs to `build/`; compiler path documented as `build/mulib/on1x/on1xc` | **Known contradictory paths and missing target; P0 gate below** |
 
-Gate S0 has a [verification workflow](.github/workflows/verify.yml) and a
-[coverage index](tests/COVERAGE.md). For P1, keep the persisted fixed runner
-and the in-memory [native scalar graph](source/automat/README.md) distinct.
-The latter is an independently callable analysis profile: `scalar-run@1`
-freezes its inputs and graph for read-only verification by another native
-host. It is not a CLI recommendation run format.
-The [Ottomat scalar frontend](source/ottomat/README.md#v3-scalar-analysis)
-lowers into that same graph. Its v4 selector uses `automat.scalar-dag@2`
-and `scalar-run@2`, without replacing the v1/v2 price decoders.
-The v5 profile uses `automat.scalar-dag@3` and `scalar-run@3` to admit
-the statically linked `scalar-diagnostics@1` package.
-The [CLI engine selector](GUIDE.md#choose-an-engine) exposes `legacy`
-recommendation and read-only `scalar` analysis. `automat.runner` checks
-the fixed plan and output, while the CLI owns its Yieldcraft policy
-binding; pricing replay ignores the `run` selector.
-The [engine registry](source/sdk/README.md#engine-registry) controls linked
-plugin dispatch. Dragnet's [Crossref adapter](plugins/dragnet/README.md) is
-offline evidence. Its separate [public feeds](plugins/dragnet/PUBLIC_FEEDS.md)
-host is tested on loopback; neither adapter is a pricing input. The On1x
-`std.daemon` launcher is blocked pending an admitted process API.
-Poindexter's [ImmGTK host](plugins/poindexter/gui/README.md) edits local
-workbook copies without changing the verified-run store.
-Yieldcraft's active writer is `finpred-run@2` only. Keep `finpred-run@1`
-archive verification read-only; do not confuse the persisted run version
-with an Ottomat syntax version, plugin version, or contract version.
+The new Dragnet dispatcher is not a generic plugin host. `source_registry.on1x` enumerates three names in source code; `SOURCE_DISPATCH.md` explicitly states it is offline, static, and not registered in the general SDK package registry.
 
-| Component / path | Verified-from-source current role | Not yet achieved |
-|---|---|---|
-| `On1xfile`, `source/*/On1xfile.m`, `bin/build.sh` | On1xfile C11 application build; Poindexter local library dependency | Fully portable, routinely CI-verified toolchains |
-| `source/core/{csv,date,money,contracts,serialize}.on1x` | Strict bounded CSV, civil dates, EUR integer cents, as-of checks, four envelope serialization paths | General financial units, multi-currency/FX, universal schema registry |
-| `contracts/{hospitality.scenario,hospitality.offer,pricing.valuation,pricing.recommendation}@1.schema.json` | Four versioned JSON Schema 2020-12 envelopes checked against fixture outputs | Complete runtime general-purpose schema validation/migration |
-| `plugins/yieldcraft/{matcher,strategy}.on1x` | Exact bounded room-subset/occupancy matching, one cheapest eligible bundle/property, curve, shortcut, guardrails and evidence | Full hospitality policy semantics; probabilistic demand forecasting |
-| `source/algorithms/quantile.on1x` | Integer-cent Type-7 quantile, linear/quadratic lead-time policy | General weighted distributions/statistical algorithm registry |
-| `source/automat/{graph,runner}.on1x` | Validates/executes **one fixed seven-node** plan with effect and output checks; host supplies its policy | Extensible hospitality DAG, job scheduler, retry state |
-| `source/automat/dag.on1x` | Bounded typed scalar DAG, selectable for read-only CLI analysis | General financial contracts and recommendation execution |
-| `source/ottomat/{grammar,ottomat,scalar}.on1x`; `strategies/*.ottomat` | GrammarEmbed parsers for the original fixed plan and bounded native scalar strategies; separate graph/effect validation | General-purpose strategy grammar and hospitality DAG lowering |
-| `source/sdk/{packages,static_host}.on1x`, `source/sdk/sdk_v2.{c,h}` | Static metadata/compatibility checks across Dragnet, Yieldcraft, Poindexter; versioned C ABI | Dynamic discovery/loading, invocation, process isolation, enforcement of real usage budgets |
-| `plugins/dragnet/` | Frozen CSV import and eligible offer JSONL, offline Crossref, standalone versioned ECB FX and Eurostat accommodation observations with loopback-tested polling and offline replay | End-to-end live validation, an admitted On1x daemon and streaming checkpoints |
-| `plugins/yieldcraft/` | Standalone callable On1x strategy package; no store or publication authority | Fully dynamic plugin registration |
-| `plugins/poindexter/` | Verified pricing-sheet CSV projection | General accounting contract types/valuation models |
-| `plugins/poindexter/workbench/` | Separate On1x terminal spreadsheet with formulas, edits, scripting, persistence, import | General spreadsheet/accounting workbench; large/unbounded spreadsheets |
-| `source/store/artifacts.on1x`, `docs/RUN_FORMAT.md` | BLAKE3 objects, v2 lineage + old v1 replay, cooperating-writer staged publication | Hostile-filesystem confinement and proven power-loss durability |
-| `native/store.{c,h}`, `native/tests/`, `native/STORE_ADMISSION.md` | Standalone directory-relative C11 store candidate with local Linux tests | **Not** invoked by compiled FinPRED On1x CLI; no approved storage KernelBind profile |
-| `tests/run.sh`, `tests/check_*.py`, `fixtures/` | Native CLI integration, independent oracle, corruption, profile, package, SDK, workbench and replay tests | A hosted CI pipeline and cross-platform/fault-model qualification |
+### Historical and business invariants (NEVER REGRESS)
 
-### Golden results and compatibility anchors
+- Default synthetic stay: `recommendation_minor=17100` (EUR 171/night), reason `lower_percentile_shortcut`, five eligible independent comparable properties, two rejected offers, `published=false`.
+- Multi-room synthetic stay: `recommendation_minor=16000` (EUR 160/night), reason `guardrail_adjustment`, `published=false`.
+- Five named strategy profiles: `value-p40`, `balanced-p55`, `premium-p75`, `lead-linear`, `lead-quadratic`; retain checked golden prices and lineage.
+- Historical `finpred-run@1` archives remain **read-only** and byte-preserving. New pricing writes are `finpred-run@2` only; preserve exact run IDs, artifact digests, recommendation/trace bytes, and replay semantics.
+- Distinguish `scalar-run@1`, `scalar-run@2`, `scalar-run@3` from `finpred-run@1/@2`; these are **not** interchangeable persisted formats.
+- Distinguish Ottomat syntax version, Automat Graph IR version, SDK ABI version, plugin package version, artifact schema version, and run format version.
+- Source spelling is **Ottomat** / `ottomat` (not `ottmat`) for new names and sources. Legacy `ottmat 1/2` strategy headers may remain accepted **only** to preserve archived source-byte identities. Migrate/newly emit the canonical `ottomat` spelling without rewriting old evidence.
+- `replay`, `explain`, `evidence`, and Poindexter projections do not mutate run stores; source paths can be unavailable during replay. Failed validation may not partially publish a recommendation.
+- ECB rates are **non-executable indicative reference quotes**; Eurostat nights are aggregates. Both use `pricing_input=false` and are not hotel offers, tradable quotes, or automatic currency conversions.
 
-Maintain these immutable **synthetic** acceptance outcomes (EUR **cents per night**):
+## 3. Required agent bootstrap
 
-- Default fixture: `17100`, `lower_percentile_shortcut`, 5 feasible independent properties, 2 rejected offers, `published=false`.
-- Multi-room fixture: `16000`, `guardrail_adjustment`, 3 feasible properties, 1 infeasible property, `published=false`.
-- Existing v1 and v2 run IDs, normalized artifacts, raw bytes, content digests and trace digests must remain stable under an unchanged versioned engine. `fixtures/replay_v1.json` contains archived original v1 data; keep it byte-preserving.
-- V2 lineage includes raw and normalized parent artifacts (including *rejected* offer observations in source order), the seven graph nodes and versioned policy identities. An output's content-addressed fingerprint is an integrity identifier, **not** a signature or authenticated provenance.
-- Five named policies (`value-p40`, `balanced-p55`, `premium-p75`, `lead-linear`, `lead-quadratic`) must continue producing their independently recorded fixture outputs. Unknown or malformed profile declarations must fail before a run is published.
-- `replay`, `explain`, `evidence` and Poindexter projections must verify frozen runs without writing to the store. Test run-tree bytes, timestamps and inodes when asserting read-only behavior.
-
-Do **not** change older run formats to make new features convenient. Introduce **new** graph/strategy/contract/run versions with explicit readers and migration rules where semantics change; keep original replay engines for prior versions.
-
-## 2. Environment and mandatory first actions
-
-At the beginning of every session:
-
-1. Read `git status --short`, `git log -5 --oneline` and the current SHA. Preserve unrelated working tree changes. Resolve any conflict between this document and source inventory.
-2. Confirm MuLIB/LibStone pins; if a newer toolchain is used, record both source SHAs and any changed callable profiles. Never upgrade them as an unrelated side effect.
-3. Read the specific source, manifests, tests and architecture decisions for the chosen gate. Do not edit by filename-based guessing.
-4. Reproduce the baseline build and tests **before** behavior changes when the toolchain is available; record failure modes and environment blockers. Existing tests may document previous success but do not replace running them on the working branch.
-5. Declare a small change set, acceptance criteria, interfaces and immutable fixture coverage. Prefer one coherent PR/commit per gate.
-
-Expected Linux x86-64 bootstrap, assuming the pinned MuLIB source exists:
+Before coding:
 
 ```sh
-export MULIB_ROOT="${MULIB_ROOT:-$PWD/third_party/mulib}"
-git -C "$MULIB_ROOT" rev-parse HEAD
-git -C "$MULIB_ROOT/on1x/third_party/libstone" rev-parse HEAD
-make mulib
+git status --short
+git log -7 --oneline
+git rev-parse HEAD
+git submodule status third_party/mulib
+git -C third_party/mulib submodule status on1x/third_party/libstone
+sed -n '1,150p' .github/workflows/verify.yml
+sed -n '1,130p' Makefile
+sed -n '1,130p' INSTALL.md
+```
+
+If MuLIB/LibStone are not provisioned, follow their checked-in submodule records and the documented historical pins. Do **not** silently mix `third_party/mulib`'s recorded commit with the older toolchain fetched by CI; record each combination explicitly. Neither On1x's compiler nor a reviewed kernel profile should be guessed into existence.
+
+For the historical CI pin, an explicit baseline configuration is:
+
+```sh
+export MULIB_ROOT="$PWD/third_party/mulib"
+# Provision a matching on1xc and GrammarEmbed with the selected MuLIB/LibStone revision.
+export ON1XC="$MULIB_ROOT/build/on1x/on1xc"   # if built in the MuLIB checkout
+export FINPRED_EXE="$PWD/build/dev/finpred"     # current project output convention
 ./bin/build.sh
 ./bin/finpred selftest
-python3 tests/check_fixtures.py
-python3 tests/validate_static.py
 ./tests/run.sh
+python3 tests/check_dragnet_public_feeds.py
+python3 tests/check_dragnet_dispatch.py
 ```
 
-See `INSTALL.md` for `ON1XC`, `FINPRED_EXE`, `TMPDIR`, `jsonschema==4.26.0` and clean installation. If missing dependencies block execution, **do not mark integration passed**; finish permissible standalone code/tests/docs and record exact blockers and commands.
+If the source checkout/compiler are instead built at `build/mulib/on1x`, set `ON1XC` accordingly. **These commands are a test recipe, not proof of execution on this assessment's container.** Record toolchain SHAs, compiler binary SHA-256, host architecture and exact result.
 
-Native standalone store baseline:
+Use a private, executable temporary filesystem with adequate disk space, plus `jsonschema` Draft 2020-12, `pkg-config`, libcurl >= 7.85, libxml2 and Jansson headers for Dragnet native conformance. Test CI offline with loopback transport only.
+
+## 4. Gate P0 — Repair and certify the build (START HERE)
+
+**Owner:** release/CI integration agent. **Paths:** `Makefile`, `bin/build*.sh`, `bin/finpred`, `bin/poindexter`, `INSTALL.md`, `.github/workflows/verify.yml`, affected `tests/` paths.
+
+The current head **actually failed CI** due to the first mismatch below (`Build C11 CLI`, exit 2, workflow `45190236799`). The other two are separate source-verified contradictions. Do not add platform features before resolving them:
+
+1. **Compiler path conflict.** CI configures the compiler inside `$MULIB_ROOT/build/on1x`; `bin/build.sh` now defaults to `$ROOT/build/mulib/on1x/on1xc`. No CI export of `ON1XC` is present. **GitHub Actions log confirms the exact missing-compiler error.** Choose ONE canonical build directory, or explicitly export `ON1XC` and `FINPRED_STDPPX_DIR` consistent with the chosen build in every test path. Ensure GrammarEmbed and compiler binary come from the same source revision.
+2. **Missing `make mulib`.** `INSTALL.md`, `AGENTS.md` and `bin/build.sh` instruct users to run `make mulib`, but the current `Makefile` contains no `mulib:` rule. Either implement the real CMake target with explicit out-of-tree build/pins or update all documentation and error messages to the actual command. No false build target in release instructions.
+3. **Incorrect `make test` executable.** The default CLI output is now `build/dev/finpred`, but `make test` explicitly sets `FINPRED_EXE` from `${FINPRED_BUILD_DIR:-target/dev}`. Update it to the same default as `bin/build.sh` and `bin/finpred`; test an isolated clean checkout, not a stale `target/dev` executable. Prefer a single shared build-path resolution instead of duplicating defaults.
+
+Additionally:
+
+- Document whether the checked-in MuLIB Git submodule SHA or the earlier independent CI `MULIB_SHA`/`LIBSTONE_SHA` pair is authoritative. Test the selected pair; maintain a compatibility matrix only for combinations actually run.
+- Keep outputs, temporary projects, generated PPX artifacts, compiler builds and caches within an explicitly configured build root where possible, without modifying source trees. Verify clean builds with `TMPDIR` set and unset.
+- Remove contradictory stale paths from scripts, test fixtures, `INSTALL.md`, `docs/IMPLEMENTATION.md`, `SOURCE_DISPATCH.md` and documentation. Update only verified commands.
+- `AGENTS.md` appears in `.gitignore` despite being tracked. Check that source-control behavior is intentional; remove the misleading ignore rule if appropriate, without deleting the tracked file.
+- `README_PATCH.md` and `VALIDATION.md` were committed as patch-bundle metadata. Move their useful details into canonical implementation/release documentation or explicitly mark them archival; they should not be authoritative current instructions.
+
+**P0 acceptance:** clean source checkout, correct submodules/compiler/PPX, `make` and `make test` build and run the **same intended executable**; `make dragnet-test` passes; GitHub application and native-store jobs pass on the latest head. Reject stale executable paths, mismatched toolchain pins, or missing target names automatically. CI success on a previous commit is not P0 acceptance.
+
+## 5. Gate P0b — Prove the new Dragnet patch actually works
+
+**Owners:** Dragnet + CI verification. **Paths:** `plugins/dragnet/`, `tests/check_dragnet_{public_feeds,dispatch}.py`, `.github/workflows/verify.yml`, `tests/COVERAGE.md`.
+
+The new dispatch source files exist, but **the current-head CI never reached their compiled conformance steps**: the earlier CLI build failed. Fix P0 first, rerun the new CI gates to completion; if they fail, analyze logs and make the smallest correction. Preserve the previous adapters' exact bytes and negative cases.
+
+Mandatory checks:
+
+- `python3 tests/check_dragnet_frozen_csv.py`
+- `python3 tests/check_dragnet_elvi.py`
+- `python3 tests/check_crossref_replay.py`
+- `python3 tests/check_dragnet_public_feeds.py`
+- `python3 tests/check_dragnet_dispatch.py`
+- `make dragnet-test`
+
+Inspect actual `source_registry.on1x` and `dispatch_host.on1x`. Validate selector syntax/version rejection, input descriptors and size caps, correct adapter dispatch, independence from `FINPRED_HOME`, and exact parity with prior direct hosts. Ensure failed normalizations cannot emit half-valid observations. Test bad decoder/raw pairs, unauthorized effect modes, duplicate inputs, invalid-as-of data, unavailable handlers, deadline/cancellation, corrupted archives, `429/503` backoff and no network calls during offline replay. Include original-provider byte snapshots and independent schema validation.
+
+The dispatcher currently has **five generic string arguments**; this is a useful first trusted adapter but not a sound long-term typed plugin ABI. Define typed source request/result/error records and exact per-provider argument profiles without changing existing output bytes. The source selector must stay host-owned and deny unknown identities by default. Avoid granting raw OS paths or action privileges to a strategy.
+
+**Acceptance:** current-head CI application job actually executes and passes both new compiled test steps; all three sources are compared byte-for-byte with existing hosts; no pricing state or network is touched by the offline dispatcher. Real public-provider polling is a **separate, explicitly opt-in** compatibility gate and cannot make offline CI flaky.
+
+## 6. Gate A1 — Converge the two Automats into a general typed financial DAG
+
+**Owner:** Automat lead. **Paths:** `source/automat/`, `source/cli/`, `plugins/yieldcraft/`, `source/sdk/registry.on1x`, new independent consumers/tests.
+
+**Now:** `automat.runner.run` checks a fixed seven-node pricing plan and accepts a trusted host-supplied Yieldcraft function. `automat.dag` runs bounded scalar operators (minimum, maximum, distance, select, midpoint), with versions, deterministic ordering, memoization and scalar-run replay. These are two distinct executors.
+
+Implement a common, versioned **Graph IR** with:
+
+- Named typed input/output ports and explicit edge types (contract kind, major version, units, currency, presence semantics).
+- Stable graph/node identities and handler owner/version/policy identity; declared effect classification: `pure`, `read`, `record`, `action` (the last remains denied).
+- Deterministic bounded topological ordering, cycle rejection, resource limits, no hidden global evaluation state.
+- Host-controlled static handler resolution first. At least two **independently registered** pure algorithms must execute on a genuine nontrivial financial contract graph.
+- Pure replayable immutable intermediate artifacts, full parent lineage, input/handler/strategy digests, typed errors, as-of constraints.
+- Correct memo keys including exact inputs, versioned handler identity and policy/code identity; memoization must be in-run and never alter artifact ordering or meaning.
+- Planning and invocation-time capability enforcement; no external action inference from Ottomat.
+
+**Migration rule:** do not replace the old fixed runner for historical `finpred-run@1/@2`. Introduce adapters that allow a new general graph to *compute equivalent Yieldcraft decisions* on frozen fixtures while preserving an independent legacy replay implementation. Do not create a `finpred-run@3` until its payload/compatibility rules are stable and independently tested.
+
+**Acceptance:** one graph combines normalized offers, comparable distribution, an independently registered diagnostic/algorithm, Yieldcraft decision and guardrails. Both native On1x builder and Ottomat compile to the same typed IR; cross-engine semantic outputs and corresponding trace events agree. Existing archived run IDs/bytes remain identical. Test cycles, wrong port kind/version/units, denied effect, missing handler, budget overflow, duplicate IDs and wrong replay parents.
+
+## 7. Gate A2 — Ottomat: one typed lowering, no second runtime
+
+**Owner:** language/frontend agent. **Paths:** `source/ottomat/`, `strategies/`, versioned Graph IR, tests.
+
+- Preserve legacy source-byte replay. Keep accepted old headers where necessary but standardize **new** source to `ottomat`.
+- Extend the existing GrammarEmbed frontend with typed financial input/output declarations, registered imports, bounded let bindings and `emit`; support explicit declared effects and source spans.
+- Lower exclusively to the *same* validated Graph IR used by native On1x; no secret Ottomat-only execution shortcuts.
+- Resolve names/versions/contracts/units at compile/plan time; reject unknown algorithms and effect escalation before work begins.
+- Record source bytes/hash, compiler + lowering identity, resolved plugin identities, and Graph IR digest. Distinguish source identity from semantically equivalent graph/run identity.
+- Avoid arbitrary recursion/unbounded loops; repeated model computations should be bounded handler operations.
+
+**Acceptance:** a general hospitality strategy written in Ottomat yields the same semantic result and compatible trace as a native On1x graph. Negative grammar/type/effect tests compile and execute using the pinned compiler/GrammarEmbed, with exact diagnostics where practical. Original `ottomat` 1/2 and scalar dialect tests remain passing.
+
+## 8. Gate SDK1 — Make plugin invocation real, typed and controllable
+
+**Owner:** SDK/security agent. **Paths:** `source/sdk/`, `plugins/*/`, `PLUGIN.md`, `plugins/dragnet/source/dragnet/source_registry.on1x`, ABI tests.
+
+First reconcile **two** existing registries: `sdk.registry` controls linked engine policies; `dragnet.source_registry` independently hard-codes source IDs. Do not create a third incompatible registry.
+
+Provide a versioned, host-authoritative interface for registered `Source`, `Transformer`, `Algorithm`, `Model`, `Strategy`, `View`, and future `Action` handler types. Use actual callable registered handlers, not only descriptors.
+
+- Explicit immutable package and handler identity (`name@version`, code digest, ABI/schema, owner, dependencies).
+- Exact input and output kinds, port names/arity, units, effects, budget, source as-of and capability requirements.
+- Register **trusted static On1x implementations first**, including Dragnet Source and scalar midpoint, without editing core dispatch for every additional *trusted* handler.
+- Deny malformed/unavailable packages, conflicting versions, weakly typed argument bags and permission escalation.
+- Add typed outcome/error records for failure/partial/missing data; enforce measured resource ceilings, timeouts and cancellation at the host boundary.
+- Any untrusted native code must execute in a separately reviewed process/OS isolation boundary. A descriptor, C function pointer, shell wrapper or KernelBind annotation is **not** isolation.
+- Preserve the current C ABI v1/v2 and static consumers. If interface semantics change, publish a new ABI and conformance fixtures.
+
+**Acceptance:** at least two separate packages are registered, called through the same SDK/Automat runtime, and provenance captures exact handler identities. Disabling a package causes a clear failure before its code executes. Neither Dragnet nor Ottomat grants external network or action authority.
+
+## 9. Gate DATA1 — General contract registry, as-of semantics, and durable lineage
+
+**Owner:** contracts/data-plane agent. **Paths:** `source/core/`, `contracts/`, registry code, `source/store/`, source adapter contracts.
+
+- Add registered kind/version schemas, versioned transforms, explicit input/output artifacts and semantic validators; distinguish schema compatibility from binary equality.
+- Model source/economic period, observed, received, ingested, valid, forecast target and decision cutoffs distinctly. Historical as-of replay must not read later-ingested observations even if their economic period is old.
+- Introduce explicit units/currency/quantity semantics and available/partial/stale/unknown/redacted states. EUR minor-unit pricing stays integer and exact.
+- Onboard validated ECB FX and Eurostat aggregate observations as **analysis-only** contract kinds. No implicit FX conversion; an FX transformation requires dated reference-rate units, explicit target and clear semantics. Never feed aggregate guest-night counts to hotel-room comparable selection.
+- Define a query/index path over verified immutable artifacts, source and parent IDs that can be reconstructed without becoming the authority over original bytes.
+- Document schema migrations and incompatible version boundaries. New data plane must allow another financial domain without importing `plugins/yieldcraft` into universal core modules.
+
+**Acceptance:** a new source observation and registered transformation produce a typed artifact with stable provenance; invalid version, as-of lookahead, cross-unit misuse, missing source and parent tampering fail deterministically; old four `@1` schemas and old pricing records retain exact meaning.
+
+## 10. Gate STORE1 — Independently reviewed native storage admission
+
+**Owner:** native storage + upstream FFI reviewer. **Paths:** `native/`, `native/STORE_ADMISSION.md`, `source/store/`, MuLIB/On1x KernelBind sources; new direct compiled consumers.
+
+The standalone C11 native store is a **candidate**, not an admitted On1x capability. Do not bind it using an unreviewed Exotract/ExoML declaration, manually signed test profile, or fallback raw libc calls and then advertise production safety.
+
+Required:
+
+1. Explicit sealed/owned read-only and read-write handles with caller lifetime, close/error semantics and no arbitrary caller-controlled path traversal.
+2. Independently reviewed, approved KernelBind profile with compiled On1x caller and correct C ABI lowering for handles, buffers, errors and cancellation.
+3. Directory-relative constrained access, no-follow/no-replace, safe ownership checks, bounded IO and clear conflict/uncertain-durability results.
+4. Publish referenced objects **before** manifests and use file and directory sync according to a documented filesystem crash model; replay reads never modify or repair stores.
+5. Adversarial tests for competing publishers, symlink/rename races, special files, short writes, `ENOSPC`, `EINTR`, partial sync, power cut/remount and unchanged historical artifact bytes.
+
+**Acceptance:** only after independent admission, compiled On1x invocation and power-loss tests may the CLI claim the corresponding guarantees. If external review is unavailable, keep native storage disconnected and work on independent gates; status remains **BLOCKED**.
+
+## 11. Gate DRAG1 — Complete reproducible acquisition, not speculative scraping
+
+**Owner:** Dragnet transport and adapters. **Paths:** `plugins/dragnet/`, source contracts, `tests/check_dragnet_*`.
+
+- Keep frozen hospitality CSV, offline Crossref and ECB/Eurostat providers. Live ECB/Eurostat compatibility checks are opt-in; CI must remain deterministic and offline.
+- Refactor the static dispatcher into a reusable typed registered Source interface **after** SDK1's identity/capability contract is frozen. Avoid two independently evolving source registries.
+- Reuse a common conceptual pipeline: `transport -> capture -> decode -> validate -> normalize -> evidence -> offline replay`, without collapsing provider-specific formats or data licensing policies.
+- Capture provenance, provider terms/retention IDs, actual capture metadata, source identity, time-of-knowledge and raw snapshots where permitted. Policy IDs do not prove authorization; hashes do not authenticate a provider.
+- Harden HTTP/parse limits, XML external entities, duplicate JSON dimensions, redirects, timeouts, truncated bodies, backoff, lock/checkpoints and restart/cancellation. Add regression tests *before* fixing any discovered defect.
+- Make sure failures never produce misleading partial success. A valid Eurostat missing observation is `partial`; a truncated/invalid HTTP transfer is `failed`.
+- Explicitly separate the existing native libcurl/libxml2/Jansson helper dependencies from MuLIB's no-external-dependency kernel policy. Do not introduce silent dependencies into the core On1x runtime.
+- Defer general web scraping, booking inventory and price-sourcing until an explicitly licensed/authorized provider contract, identity and rate policy exist.
+
+**Acceptance:** a newly added trusted Source handler can run through the common SDK without editing Automat; offline source evidence verifies exactly from frozen bytes, no network on replay, and as-of correctness is enforced. The product never misclassifies a reference rate or aggregate statistic as live market price.
+
+## 12. Gate MODEL1 — Actual forecasting, testing and uncertainty
+
+**Owner:** models/algorithms agent. **Paths:** new typed forecast contracts, model registry, On1x algorithm implementations, evaluation tests.
+
+Yieldcraft's current percentile recommendation is **not** a trained demand forecast. Implement at least two reproducible baselines, e.g., moving average and seasonal naive, with:
+
+- Clearly typed forecast target, horizon, training cutoff, issuance time, source and model/code identity.
+- Missing-data/insufficient-evidence state; uncertainty intervals or explicit unavailable status. No guarantee of economic profitability.
+- Walk-forward evaluation with no lookahead or late-ingested observations, training/validation/holdout distinction and MAE/RMSE where well-defined.
+- Full offline replay and independent baseline comparisons; documented unit/currency correctness.
+- At least one additional financial analysis domain (e.g. FX **research**, not execution) using the *same* contracts and Automat/SDK rather than a new specialized engine.
+
+**Acceptance:** two registered models execute in one general graph and can be independently backtested from frozen point-in-time inputs with reproducible artifacts, typed uncertainty and no unapproved external side effect.
+
+## 13. Gate OPS1 — Operability and Poindexter
+
+**Owner:** operations/UI agent. No broad rewrite before the platform APIs stabilize.
+
+- Extend CLI `run`, `replay`, `explain`, `evidence` and inspection commands to versioned generic analysis only after Graph IR and contracts are stable. Legacy CLI remains default where needed for compatibility.
+- Add explicit job lifecycle (`planned`, `validated`, `running`, `completed`, `failed`, `cancelled`, `blocked`), bounded retry semantics, real cancellation and idempotency; persist only with approved storage guarantees.
+- Keep Poindexter as a **view** of verified runs/analysis artifacts. Formulas/worksheet scripts cannot mutate upstream pricing evidence or grant trading/booking permissions.
+- Future `Action` requires separate human/operator approval, audited intent, idempotency keys and isolated authorization. **Do not enable in this milestone.**
+
+**Acceptance:** a general read-only analysis is observable/explainable, failures are typed and reproducible, cancellation does not leave a false completed state, and all current worksheet/GUI tests remain passing.
+
+## 14. Verification matrix and executable gates
+
+Use existing compiled tests; avoid a second redundant Python-only framework. After P0, the expected command set is:
 
 ```sh
-cmake -S native -B build/native \
-  -DCMAKE_C_FLAGS='-Wall -Wextra -Werror -pedantic'
-cmake --build build/native --parallel 4
-ctest --test-dir build/native --output-on-failure
-```
-
-These native tests **do not** certify the On1x store or grant safe KernelBind admission.
-
-### Existing callable On1x style (use as a compiler-checked reference)
-
-This is the shape of the **existing**, statically linked Yieldcraft entry point documented in `PLUGIN.md`, not a proposed generic plugin API. It takes **already loaded CSV bytes**; host code owns file access, storage, artifact IDs and replay. Compile an independent consumer using the paths and flags in `plugins/yieldcraft/README.md` before relying on it:
-
-```on1x
-import plugins.yieldcraft.entry as Yieldcraft;
-
-fn nightly_minor(scenario: string, offers: string, valuation: string) -> i64
-{
-  let r = Yieldcraft.recommend("recommendation",scenario,offers,valuation);
-  return r["recommended_cents"];
-}
-```
-
-The actual `source/automat/runner.on1x` currently returns an `Output` containing `Scenario`, `Valuation` and `Recommendation`; it does **not** dynamically dispatch arbitrary algorithm names. Do not write invented imports such as `import kernel mulib.staymatch` and call them safe unless upstream KernelBind independently supports and admits that exact signature.
-
-## 3. Work queue: required order and measurable exit gates
-
-Use the gates below, rather than spending effort on unrelated kernels, speculative models, or a large GUI rewrite. Tasks inside a gate can be split across independent workers; interfaces and version semantics must be agreed before parallel changes. If a gate depends on unavailable independent security review, **do not bypass it**: continue on the next independent gate with the unsafe capability disabled.
-
-### Gate S0 — Freeze the baseline, automate its verification (highest leverage)
-
-**Owner paths:** `tests/`, `bin/`, `INSTALL.md`, `docs/IMPLEMENTATION.md`, optionally `.github/workflows/`.
-
-- Add a CI workflow that provisions the pinned MuLIB/LibStone toolchain (or uses a transparently pinned, checksum-verified build), compiles the On1x C11 executable, runs oracle/static/full integration checks, builds the native store, and runs its CTests.
-- Cache only reproducible build intermediates; never cache `FINPRED_HOME` state as test evidence or introduce secret credentials to fixture tests.
-- Run focused tests under separate clean temporary stores; publish concise machine-readable test summaries and artifact/run hashes to CI logs.
-- Retain explicit unsupported-platform/skipped indicators rather than substituting an untested platform build.
-- Add a source/test coverage index mapping each claimed feature to at least one positive and one negative compiled-execution test.
-
-**Exit:** CI passes from a clean checkout; historical v1/v2 identities, five strategies, 17100/16000 results and the read-only replay assertions remain unchanged. Document exact pinned versions and every skipped gate.
-
-### Gate S1 — Safely integrate the native store (security-critical, review-gated)
-
-**Owner paths:** `native/store.{c,h}`, `native/STORE_ADMISSION.md`, `source/store/`, On1x upstream binding profile as necessary, `tests/check_store*.py`, `tests/check_write_failure.py`, `docs/RUN_FORMAT.md`.
-
-The standalone candidate uses Linux directory-relative filesystem operations, no-replace installation and file/directory sync. **The CLI still uses the old On1x private-store path.** Complete the missing cross-language security contract, not merely a C shim that happens to link.
-
-1. Specify a **sealed, typed On1x store handle** with explicit read-only/read-write grants, ownership, lifetime, `close`, and structured error outcomes. Paths and raw file descriptors are not application-level capabilities.
-2. Work with upstream On1x/Exotract/ExoML KernelBind on a canonical profile: known headers, strict C types, native implementation-TU plan, reviewed adapters, correct record/handle/error lowering, and independently signed authorization. **No review key ships with FinPRED.** Do not label a standalone test or self-issued signature as production approval.
-3. Preserve candidate host semantics: `openat2`-based confinement where supported, no-follow/no-cross-device constraints, owner/type validation, no-replace install, bounded I/O, content comparison on an existing name, and distinct uncertain-sync outcomes.
-4. Migrate `source/store/artifacts.on1x` behind a narrow storage interface once the **compiled On1x** caller and review gate work. Reads/replay must not create, sync or repair directories. Publish every referenced object durably **before** the manifest. Never emit success for a possibly unsynced manifest.
-5. Test adversarial symlink swaps, nonregular files, hardlink restrictions, directory traversal, 1-byte and max-size objects, short writes, `ENOSPC`, `EINTR`, file/dir sync failures, competing writers, failures just before and after install, and external sentinels. Separately test **real/simulated power loss plus remount** on each claimed filesystem; process `kill` is insufficient.
-6. Recover from partial publishing only by documented idempotent reattempt and explicit status reconciliation. Never overwrite committed content or silently delete another writer's stage.
-
-**Exit:** independently admitted/verified On1x storage profile; compiled FinPRED CLI uses it without a fallback to an unsafe path; all v1/v2 replays and fixed fixture digests unchanged; power-loss tests justify any durability claim. If approval is unavailable, keep `native/` as an isolated candidate and report **blocked**, not done.
-
-### Gate P1 — Make the Algorithm Automat general, typed and deterministic
-
-**Owner paths:** `source/automat/`, new `source/automat/*` modules and `On1xfile.m`, `tests/check_fixed_runner.py`, new graph tests.
-
-**Current:** `graph.node(0..6)` and `runner.run(...)` execute one fixed
-chain using a host-supplied policy. `dag.run(...)` separately executes
-versioned scalar analysis graphs. Preserve the **legacy plan** and its
-serialized version as the typed graph support expands.
-
-Implement:
-
-- A versioned `NodeDescriptor` with stable ID, owner plugin, input/output contract kinds (with versions), pure/read/record/action effect classification, declared resource budget, deterministic code/policy identity, and required host capability set.
-- Graph representation with explicitly named ports and edges, typed edge validation, unique node/port IDs, no undeclared imports, graph input/output bindings, and explicit handling of optional/missing inputs.
-- Deterministic **topological sort**, cycle rejection and dependency planning; stable tie-breaking (e.g. declaration order then ID); bounded nodes/edges/depth; no unbounded recursive dispatch.
-- A registry of **statically linked, trusted On1x handlers first**. Do not conflate a manifest declaration with a callable handler. Support two truly independent registered pure algorithms and a transformation in a single graph as the first generic fixture.
-- Run-state machine: `planned`, `validated`, `running`, `recommended`, `blocked`/`failed`, and explicitly gated future execution states. Model errors as typed outcomes, not synthetic prices or silent partial success.
-- Immutable input snapshots, deterministic node memoization (only if input/policy/code version matches), resource accounting and parent references for each output.
-- Effects and capabilities checked **at planning and immediately before invocation**. Do not grant `action` by trusting strategy source; do not dispatch an action in any MVP mode.
-
-Suggested *conceptual* interface (not asserted to be implemented On1x syntax):
-
-```text
-Graph.validate(plan, registry, grants) -> Result<ValidatedPlan, PlanError>
-Graph.toposort(validated) -> Result<OrderedNodes, CycleError>
-Automat.run(validated, immutable_inputs, mode) -> Result<RunRef, RunError>
-Automat.explain(run_id) -> DecisionTrace
-```
-
-**Exit:** two different registered On1x algorithms execute through a nontrivial typed DAG; invalid edges, unknown nodes, cycles, bad versions, resource overflow and action/effect escalation fail **before** any effect; same pinned inputs produce byte-identical node outputs/trace. All old Yieldcraft `fixed-graph@1` runs still replay under their original semantics.
-
-### Gate P2 — Extend Ottomat as a *strategy DSL*, not a second systems language
-
-**Owner paths:** `source/ottomat/`, `strategies/`, `tests/check_ottomat_plan.py`, `docs/`.
-
-**Current:** `ottomat 1/2` handles a fixed seven-node declaration and, in v2, a policy profile. Retain these decoders for archived strategies. Define **new explicit language version** for general graphs.
-
-Required language features:
-
-- Version header, imports by registered algorithm/contract identity, typed named inputs/outputs, let-bound graph node results, algorithm/transform/strategy calls, conditional and matched-result routing, `emit`, and explicit declarative effects.
-- Lexical grammar with bounded input size, source spans, deterministic parse trees, meaningful errors with line/column, no implicit identifier resolution or unbounded evaluation.
-- Name/type/effect checker: schema kind and major-version compatibility, units and currency constraints, declared capability checks, no automatic conversions, no untyped global environment.
-- Lower to **exactly the same versioned Graph IR** as a native On1x builder. An Ottomat strategy must not have its own less-restricted runtime.
-- Keep loops and model iteration as bounded algorithm nodes; no arbitrary recursion or hidden network/filesystem operations in the DSL.
-- Stable serialization/code hashes: each run records Ottomat source digest, compiler/lowering version, resolved plugin versions and resulting graph digest.
-
-Minimal new-program acceptance scenario: a saved scenario input -> validated offers -> existing comparable distribution -> an independently registered pure comparison/diagnostic algorithm -> existing pricing strategy -> guardrail -> emitted recommendation. In a separate test, register an extra pure algorithm and use it without editing the parser or fixed Yieldcraft runner.
-
-**Exit:** equivalent native On1x and Ottomat graph definitions execute the same handlers and produce the same semantic result and **semantically corresponding node trace** (source text and plan identity may legitimately have different digests); malformed syntax, incompatible types, unknown imports and attempted effects are rejected. Archived `ottomat 1/2` declarations still parse and replay byte-for-byte.
-
-### Gate P3 — Turn static SDK metadata into an invocable plugin runtime
-
-**Owner paths:** `source/sdk/`, `plugins/*/`, `PLUGIN.md`, `tests/check_sdk*.py`, new worker tests.
-
-**Current:** v1 and v2 C descriptor ABIs and On1x package checks have static tables for Dragnet, Yieldcraft and Poindexter, with documented host budgets and **no dynamic invocation**. Keep existing C ABI compatibility and current manifest interpretation. Add a new SDK/protocol version when extending semantics.
-
-- Build a registry that resolves declared `Source`, `ContractProvider`, `Transformer`, `Algorithm`, `Model`, `Strategy`, `Action` and `View` kinds to **actual verified callable implementations**, with immutable package identities and artifact digests.
-- Start with **statically linked trusted On1x plugins**; add an out-of-process worker/IPC mode for untrusted or separately distributed plugins. Do not claim that an in-process C ABI or Lua `pcall` forms a sandbox.
-- Specify narrow versioned C ABI structs and opaque handles with ownership, borrow duration, allocation/freeing, thread-safety, cancellation, error/timeout, feature negotiation and binary-compatibility policy.
-- The host independently enforces resource/capability grants, input/output schema checks, filesystem/network visibility, CPU/memory limits and action permissions. Metadata matching is not runtime resource metering.
-- Process isolation: allowlist origins and methods; deny credentials, host filesystem, arbitrary dynamic libraries, subprocesses and network by default. Pin process/IPC policy versions to run metadata. If practical OS facilities cannot guarantee a claim, state the weaker guarantee explicitly.
-- Lua via MuLIB Mune must execute in a restricted host with disabled dangerous global facilities and explicit memory/instruction/time budgets. No Lua validator receives implicit source-plugin privileges.
-- Conformance test: a separately authored plugin with no FinPRED-core source modifications is discovered, validated and invoked; a rejected manifest cannot invoke its entry point; malformed responses and worker crashes become typed failures; a plugin cannot publish a price.
-
-**Exit:** one real independently registered third-party *pure algorithm* and one source adapter can be invoked through the SDK; host denies unknown capabilities and incompatible contracts; versioned plugins can coexist; prior runs replay using pinned implementation versions. Do not mark complete based on successfully loading `plugin.json` alone.
-
-### Gate P4 — Contract registry and generic data plane
-
-**Owner paths:** `source/core/`, `source/store/`, `contracts/`, `source/sdk/` registration interfaces, new tests.
-
-- Generalize contract envelopes without changing existing four `@1` schemas. Add registered kind/major/minor schemas, content-addressed immutable payload references, parent lineage, explicit presence states (`present`, `unknown`, `not_applicable`, `stale`, `redacted`), and source/quality diagnostics.
-- Separate `observed_at`, `ingested_at`, `valid_at`/economic period and `decision_at`; enforce as-of reads in transformations, algorithms, models and backtests. Never use a later-known datum in historical replay.
-- Introduce typed money and quantity semantics for at least one additional domain. EUR minor-unit logic stays exact; cross-currency operations require an explicit **observed, timestamped** FX contract, not an implicit conversion.
-- Provide a small, queryable registry/index for `kind`, `scenario`, source, as-of time, parent and run ID; immutable object bytes remain the authority. For the local release, an index may be rebuilt from verified run/object data and must not determine immutable artifact identity.
-- Schema upgrades require explicit compatibility/migration procedures and recorded transform identity, never silent changes to price units or fee inclusion.
-
-**Exit:** a new contract kind and a versioned transformation are registered from a plugin without editing the core schema switch; invalid version, late observation, missing quantity unit, corrupted parent and incompatible currencies are rejected. Existing hospitality fixtures remain identical.
-
-### Gate P5 — Expand Dragnet lawfully and reproducibly
-
-**Owner paths:** `plugins/dragnet/`, contract/SDK extensions and acquisition tests.
-
-- Keep frozen CSV ingestion as the baseline. Add one **explicitly authorized** source integration (prefer licensed/public API over general scraping), with source metadata, rate limiting, retries/backoff, pagination, checkpoints, partial-batch status and immutable acquisition evidence.
-- Source identity, observed time, receipt/ingest time, provider terms and data-retention policy must be part of the adapter contract. Capture raw source evidence or a permitted minimal reproducibility record.
-- Never let the source plugin call a trading/publishing gateway or silently normalize away missing taxes/fees/cancellation conditions.
-- Test duplicate source records, partial download, interrupted checkpoint, invalid/stale data, different provider timezones, and mismatched snapshots. Support offline replay with no network access.
-
-**Exit:** authorized adapter converts a known provider fixture into validated versioned observations and a reproducible dataset; partial input is reported honestly; disabling network yields a deterministic replay from stored evidence. Do not fabricate live-feed results.
-
-### Gate P6 — Prediction, optimization and evaluation become real capabilities
-
-**Owner paths:** new `source/models/`, `source/algorithms/`, contracts/models, plugin registry, backtest tests.
-
-The current Yieldcraft percentile policy is a **deterministic decision strategy**, **not** a trained demand predictor. Do not label descriptive market percentiles as forecasts.
-
-- Add a typed `Forecast` contract: target, horizon, observed-as-of time, model/code/config identity, point estimate, uncertainty/interval or explicit unavailable status, training cutoff and provenance.
-- Implement basic baseline models in On1x (e.g. moving averages/seasonal naive) and optionally reviewed MuLIB Histprice/PriceOpt bindings where genuinely appropriate. Do not invent callable KernelBind profiles.
-- Add train/validation/holdout separation, walk-forward replay, no look-ahead from training or future model selection, baseline comparisons, MAE/RMSE and calibration diagnostics where applicable.
-- Model `insufficient_evidence`, stale data, out-of-distribution conditions and forecast uncertainty explicitly; forecasts are never conflated with guaranteed financial performance.
-- Add a second small domain (e.g. FX research or portfolio valuation) to prove shared core contracts, Automat, SDK, replay and audit generalize without embedding hotel concepts into universal code.
-
-**Exit:** two model implementations can be selected via the same graph/SDK, reproducibly backtested against frozen point-in-time inputs; failure/uncertainty artifacts are typed; another financial domain runs without a separate platform core.
-
-### Gate P7 — Operations, Poindexter and actions (after all earlier safety gates)
-
-- Extend Poindexter through versioned valuation/worksheet input contracts, never by passing unverified mutable sheet pointers into strategies. Preserve `poindexter-workbook@1` and the verified-run vs editable-copy distinction.
-- Implement durable local schedules, run cancellation/deadlines, bounded retries for *transient* failures, resource usage metrics and explicit incomplete-run states. Avoid distributed scheduling until local recovery is proven.
-- Add an **independently host-controlled** action gateway only after all core safety and audit gates: capability-specific grants, approval identity, policy evaluation, idempotency keys, external effect audit, timeout reconciliation, and operator-controlled dry-run/simulation.
-- Recommendation/analysis/simulation modes must never write to any external action target; capability denial must be tested from malicious strategy, plugin and native worker entry points. No execution just because a textual flag says `execution`.
-
-**Exit:** scheduling survives process restarts without duplicate successful runs, simulations do not cause real external effects, and a separately approved action is auditable/reconcilable. Until fully tested, **disable execution rather than provide a partial live publishing interface**.
-
-## 4. Cross-cutting correctness requirements
-
-### Financial arithmetic, scenarios and evidence
-
-- EUR is in signed **integer cents** in the current MVP; no binary `f64` arithmetic for monetary storage/guardrails. Parsed room base+fees+taxes is gross whole-stay price; divide only after computing the specified Type-7 whole-stay quantile, then round half-up to nightly cents.
-- A room quote is a bookable offer for the **exact dates and guest conditions**. Do not compare dissimilar stay lengths, currencies, mandatory-fee scopes or conditions without explicit adjustment, contract and trace.
-- Maintain one cheapest feasible room bundle per independent property (unless a declared alternative distribution method intentionally changes sampling). Do not count many room types as multiple competitor properties.
-- `target_bps` and named profile rule versions are distinct choices. Shortcut: select P40 only when the intended-price minus P40 price is **strictly less** than `shortcut_cents`; equality does not trigger. Guardrails must apply after shortcut; empty floor/cap/movement intersection fails, not clamps to an invalid number.
-- Preserve current bounded design: 2,000,000 bytes/file, 512 offer rows, 10 admitted rooms/property, 4 selected rooms, 8 adults + 8 children, one million inspected subsets. New limits require contract/test/version discussion rather than changing constants silently.
-- No silent currency conversion, inferred future knowledge, sold-out price substitution, fabricated confidence, hidden outlier deletion or malformed-input recovery that changes financial meaning.
-
-### KernelBind and native code
-
-- MuLIB's `include/mulib-*.h` inventory is **not** a whitelist of callable safe imports. The inspected On1x compiler explicitly rejects unadmitted storage imports. Approved bounded numerical examples are documented separately and require operator-selected independent review.
-- A C shim may implement a narrow native boundary when justified, but application semantics and control stay in On1x. Do not embed arbitrary plugin code in the host process for convenience or add unreviewed `unsafe` imports to bypass the admission gate.
-- Every new native boundary must document ABI version, alignment, integer sizes, threading, lifetimes, ownership/cleanup, error status, resource limits, memory safety, one-TU implementation/linkage and independent review status. Add negative tests from a **compiled On1x** caller, not only C unit tests.
-- Do not add production credentials, privileged action tokens or untrusted tool/plugin instructions to an artifact snapshot or trace. External data and plugin outputs are untrusted inputs.
-
-### Versioning and reproducibility
-
-- Pin compiler, MuLIB, LibStone, SDK ABI, plugin code, schema and strategy policy versions for reproducibility. A source hash is not the same as a semantic policy identifier.
-- Read-only replay never updates an object, run, index (if externally visible), access-control state or original manifest. Data corruption is surfaced, never repaired silently.
-- A new engine must retain **legacy execution** for v1/v2 archived runs or supply a validated migration that preserves the ability to verify exact old meaning; do not regenerate old IDs using new algorithms.
-- Append new fixtures, run versions and schemas; do not overwrite golden samples to make tests green.
-
-## 5. Test strategy and acceptance matrix
-
-A change is complete only when it has **compiled On1x evidence** (where relevant), an independent oracle or conformance case, negative tests, and regression coverage.
-
-| Category | Required checks |
-|---|---|
-| Build and packaging | Clean On1x C11 build, correct `On1xfile.m` declarations, standalone package consumer, deterministic dependency lock/pins |
-| Contracts | Schema-valid and semantic-invalid inputs; missing/stale/redacted; incompatible kind/major; wrong currency/units; source times |
-| Financial math | Overflow/underflow, zero, half-up ties, percentiles 0/40/50/75/100, equal-price ties, shortcut equality, empty guardrail range |
-| StayMatch | Duplicate room inventory, occupancy feasibility, adult/child allocation, max room count, property dedup, exhausted search budget |
-| Automat/Ottomat | Type mismatch, missing port, cycle, unknown node, declaration-order reproducibility, forbidden effect, wrong plugin version, malformed source |
-| Storage | Bit flips, missing or extra object, wrong-role artifact, same/different-content conflicts, multiwriter races, symlink/special-file attacks, partial sync, power loss |
-| Plugins | Wrong ABI/schema/effect, fake capabilities, over-budget input, worker crash/timeouts, denied network/fs/action, correct cleanup |
-| Prediction | Chronological train/validate/test, unavailable future observation, late-ingested data, baseline comparison, source bias and uncertainty |
-| Replay | Old and new run formats, unchanged IDs/digests, identical trace, replay without source paths, no mutation, corrupt-source rejection |
-| Operator/UI | Run/explain/evidence/Poindexter commands, invalid IDs, independent worksheet copy semantics, denial of live publication |
-
-At each gate, run the narrow relevant tests **and** the shared regression suite. Use the existing scripts before creating redundant test frameworks:
-
-```sh
-python3 tests/check_fixtures.py
-python3 tests/validate_static.py
+# Build and full regressions, once coherent paths/toolchain are fixed
+make
+make test
+make dragnet-test
+make native-test
+
+# Selected focused tests
+python3 tests/check_engines_cli.py
+python3 tests/check_fixed_runner.py
+python3 tests/check_dag.py
+python3 tests/check_dag_replay.py
+python3 tests/check_scalar_manifest.py
+python3 tests/check_scalar_memo.py
+python3 tests/check_scalar_registry.py
+python3 tests/check_ottomat_scalar.py
+python3 tests/check_scalar_selection.py
+python3 tests/check_plugin_registry.py
+python3 tests/check_sdk_packages.py
 python3 tests/check_pricing_cli.py
 python3 tests/check_ingestion_cli.py
-python3 tests/check_fixed_runner.py
-python3 tests/check_ottomat_plan.py
-python3 tests/check_sdk.py
-python3 tests/check_sdk_packages.py
-python3 tests/check_yieldcraft_package.py
-python3 tests/check_dragnet_frozen_csv.py
-python3 tests/check_poindexter_package.py
+python3 tests/check_store.py
+python3 tests/check_store_publication_status.py
+python3 tests/check_yieldcraft_formats.py
+python3 tests/check_dragnet_public_feeds.py
+python3 tests/check_dragnet_dispatch.py
 python3 tests/check_poindexter_workbench.py
-./bin/build.sh
-./tests/run.sh
-ctest --test-dir build/native --output-on-failure
 ```
 
-Some tests require the built compiler/executable, a writable **executable** temporary filesystem, Linux-specific facilities, and Python `jsonschema`. Run relevant preconditions, capture failures and do not relabel a skip as pass.
+Note: some focused tests require a compiled executable and environment variables; use each script's README and known runner setup. A test's *existence* is not evidence of a pass. Failures must be recorded and not filtered away.
 
-## 6. Coordinating parallel agents
+| Requirement | Positive test | Required rejection/failure test |
+| --- | --- | --- |
+| Build paths and pins | Fresh project/out-of-tree compiler, correct binary executed | Missing compiler, mismatched SHA/PPX, stale `target/dev` binary |
+| Yieldcraft | EUR 171 and 160 fixtures, 5 policies, v1/v2 replay | Invalid CSV, duplicate inventory, impossible occupancy, guardrail conflicts |
+| Automat | Same typed financial graph through two frontends | Cycles, wrong ports/units, unknown handlers, budget limit, denied effects |
+| Ottomat | GrammarEmbed compile and source-to-IR parity | Invalid tokens/versions, type/effect escalation, unknown imports |
+| SDK | Two registered executable pure handlers | Forged descriptor, disabled package, wrong ABI, untrusted caller action request |
+| Dragnet | Offline source parity, loopback ECB/Eurostat, replay | Redirect, 429/503, XXE, invalid JSON, stale/late, source-byte tampering, interrupted worker |
+| Contracts | Verified versioned inputs + explicit transform | Wrong time/currency/unit/version/parent, late-as-of observation |
+| Storage | Reconstructed unmodified old archives, concurrent publication | Symlinks, partial writes/sync, interrupted manifest, power-cut/remount before durability claims |
+| Forecasting | Chronological baseline walk-forward | Data leakage, insufficient evidence, wrong horizon, future ingestion |
+| Operator/UI | Replay/explain/evidence/Poindexter projection | Missing run, corrupted artifact, denied publication, read-only store mutation |
 
-Work can be delegated, but do not let agents independently invent incompatible types or mutate the same persisted protocol:
+On every gate, measure and report **exact** fixture IDs/digests. Never delete or regenerate archived fixtures to turn a regression red-to-green. If an improvement requires a new serialization, add a new explicit format version with fixtures; keep historical readers.
 
-1. **Integration lead:** owns graph/SDK version registry, acceptance report and final reconciliation; reviews every cross-domain change.
-2. **Storage and FFI:** owns S1 and native review work; cannot grant its own production approval.
-3. **Automat:** owns P1 graph IR/planner/runtime and new node tests.
-4. **Ottomat:** owns P2 grammar and lowering; depends on a frozen typed Graph IR interface.
-5. **SDK / isolation:** owns P3 registry, ABI and process workers; coordinates with Automat.
-6. **Contracts / data:** owns P4 schemas, semantic types, provenance and index APIs.
-7. **Dragnet / ingest:** owns P5 with one lawful adapter; never gets action permissions.
-8. **Models / validation:** owns P6 algorithms and point-in-time backtests.
-9. **Poindexter / operations:** owns P7 after the corresponding core APIs are stable.
-10. **Verification / CI:** owns S0, golden compatibility, platform tests and regression monitoring.
+## 15. Parallel-agent protocol
 
-Freeze and publish interface proposals *before* parallel coding. Shared schema, graph and run-file changes require an integration-owned compatibility decision. Workers should not overwrite another worker's uncommitted changes, alter global pins casually, or mark an unmerged private test as integrated.
+Up to 12 workstreams can run concurrently **after** interfaces are agreed:
 
-## 7. How to implement a feature (mandatory agent procedure)
+1. **Integrator/release lead:** current branch, ABI/Graph IR version decisions, CI merges, final acceptance.
+2. **Build/CI:** P0, toolchain pins, local paths, hosted reproducibility.
+3. **Dragnet tests:** P0b, compiled fixture parity, evidence and network-negative tests.
+4. **Automat IR:** A1 core plan/ordering/effects/artifacts.
+5. **Automat financial adapters:** A1 Yieldcraft coexistence and semantic parity.
+6. **Ottomat:** A2 grammar/type/effects/lowering, waiting for Graph IR freeze.
+7. **SDK:** SDK1 registered invocations, ABI, default-deny policies.
+8. **Contracts:** DATA1 source kinds/units/as-of/migrations.
+9. **Native storage:** STORE1 safe C11 implementation and test harness; no self-admission.
+10. **KernelBind/FFI review:** independently reviews native profile; cannot approve its own test key.
+11. **Forecasting:** MODEL1 baselines/evaluation, after contract signatures are stable.
+12. **UI/operations & verification:** OPS1 presentation, integration regression, risk reporting.
 
-1. **Identify the gate and source files.** Read the relevant actual On1x and C code, tests and contracts. Inspect upstream API headers and compiler profiles where native calls are involved.
-2. **Write acceptance assertions first.** State positive/negative inputs, old golden outputs, version plan, permission conditions and resource ceilings. Add a fixture proving the intended behavior.
-3. **Implement the smallest genuinely callable slice.** Prefer actual execution over impressive scaffolding. Where a required primitive cannot be safely admitted, implement only review-safe adjacent work and surface the blocker.
-4. **Compile and run.** Include tests that exercise independent consumers, not only helpers from inside the same module. Never claim tested on the basis of inspecting source.
-5. **Review errors and effects.** Validate money overflow, ownership/cleanup, unknown inputs, as-of timestamps, replay immutability, bounded work, and denied action permissions.
-6. **Document results.** Update relevant `.md`, SDK interface docs, conformance/golden fixture documentation and `docs/IMPLEMENTATION.md`. List exact commands, hashes, host, toolchain, pass/fail/skip counts and remaining limitations.
-7. **Hand off a coherent change.** One commit/PR per reviewed gate; present specific work done, files touched, tests run, known caveats and next executable task. No unsupported `DONE` status or blanket claims of production readiness.
+No two agents may concurrently modify `source/sdk/registry.on1x`, central Graph IR, artifact format decoders or `.github/workflows/verify.yml` without an owner/merge protocol. Freeze interface records first, review changes through integration-owned tests, and retain independent client consumers. Never overwrite unrelated worktree changes.
 
-### Required handoff format
+### Mandatory per-change procedure
+
+1. Capture head and toolchain SHAs, read affected source and tests, and reproduce the baseline failure/success.
+2. State a narrow gate, exact files, expected interfaces, positive/negative tests and compatibility risk.
+3. Add a regression test demonstrating a real defect or an executable acceptance case for a new feature.
+4. Implement real code using current On1x constructs and approved native boundaries. Avoid unsupported syntax and invented MuLIB imports.
+5. Compile, run targeted and shared tests, and compare golden run IDs/bytes. Capture exact command, exit status, test count, SHA and platform.
+6. Reconcile documentation, manifest entries, SDK declarations and coverage. Report discrepancies, skipped checks and independent review blockers.
+7. Commit/PR one coherent gate and provide handoff evidence. Do **not** label code production-ready unless the promised security and deployment properties have been measured.
+
+### Required handoff (copy exactly, fill every field)
 
 ```text
-Gate/feature:
-Base FinPRED SHA; MuLIB SHA; LibStone SHA; compiler/ABI:
-Files changed and new public interfaces:
-Contract/schema/run/version changes (or "none"):
-Actual behavior (not just proposed behavior):
-Commands executed; observed exit statuses; test count/results:
-Golden run IDs / bytes unchanged? evidence:
-Native/KernelBind review status; permissions and isolation claims:
-Outstanding blockers or skipped tests:
-Next exact task with acceptance criteria:
+Gate / outcome:
+FinPRED SHA before and after:
+MuLIB SHA, LibStone SHA, on1xc hash, host:
+Changed source files and interfaces:
+Contracts / ABI / Graph IR / run format changes:
+Tests executed with exact exit code and evidence:
+Golden v1/v2 identities and EUR 171/160 results unchanged?:
+External effects / capability / KernelBind review status:
+Skipped or blocked checks (explicit):
+Remaining defects and next precise task:
 ```
 
-## 8. Definition of done
+## 16. Definition of done
 
-**Current Yieldcraft MVP:** local On1x C11 application that reads frozen validated contracts, computes accurate comparable whole-stay prices, issues a bounded and explainable EUR recommendation, stores immutable evidence, and replays v1/v2 without side effects. **This exists in the recorded repository and must be preserved.**
+- **P0** = repair the confirmed `ec958f21` CI build-path failure, then clean, reproducible, same-path build, correct pinned toolchain and latest CI green including Dragnet feed and dispatcher.
+- **Next platform milestone** = one **general typed Automat** can execute a financial contract DAG through both native On1x and Ottomat, with multiple independently registered pure algorithms, host-checked capabilities, content-addressed evidence and deterministic replay, while preserving legacy pricing archives.
+- **Storage milestone** = independently admitted native file/handle profile, compiled On1x invocation, crash-model tests and safe publication/replay; otherwise blocked.
+- **FinPRED platform completion** = generic contract registry, safe invocable plugin host, authorized reproducible sources, real forecast/uncertainty and walk-forward evaluation, durable operational state and explicitly audited action authorization. The present repository is not at this stage.
 
-**Next platform milestone:** a **generic, versioned, typed Automat** executes a strategy authored in both native On1x and Ottomat using at least **two independently registered pure algorithms**, with content-addressed intermediate artifacts, enforced host capabilities, deterministic replay, and legacy Yieldcraft compatibility. It must not require editing the fixed original Yieldcraft runner to register a new algorithm.
-
-**Security milestone:** the CLI uses an independently reviewed and admitted On1x/native durable storage interface; failure statuses and power-loss validation justify the stated filesystem guarantees. Until then the private-store deployment restriction remains in force.
-
-**General FinPRED completion:** additional contract kinds and models, a real plugin execution boundary, authorized acquisition adapters, reusable graph plans, explicit forecast uncertainty, durable operational state, and independently controlled/auditable action permissions. Do not call the full platform production-ready until these are implemented and tested with real, measured evidence.
-
-**Preferred immediate order:** (1) make clean CI reproducible; (2) finish the native storage admission path without bypassing review; **in parallel where independent**, (3) implement the general typed Automat graph IR/runner; (4) make Ottomat compile to it; (5) make the SDK invoke independently registered plugins. Keep shipping narrow vertical tests and preserving old run identities throughout.
+**Immediate execution order:** fix the confirmed P0 CI compiler-path failure (and remaining Makefile contradictions); establish P0b current-head Dragnet conformance; then A1 common financial Graph IR and SDK1 trusted invocable handler integration in coordinated slices; A2 Ottomat lowering; DATA1 contracts; STORE1 native admission independently; MODEL1 real forecasting. Do not add another disconnected runtime or rename historical data to mask compatibility work.
