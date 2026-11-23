@@ -34,10 +34,11 @@ frontend, not a second runtime. `source/sdk/` holds a closed-by-default
 manifest policy. `source/store/` handles BLAKE3 identity, file snapshots and
 run manifests. The CLI and store perform local file access.
 
-The SDK stub admits exactly the built-in pure Yieldcraft strategy. It does
-not load arbitrary plugins, map untrusted C pointers, or turn `unsafe` into
-an authorization capability. It is a restrictive preparation for a future
-SDK, *not* the cross-language plugin system described for phase 3.
+The On1x SDK admits exactly the built-in pure Yieldcraft strategy. The
+separately built [C11 descriptor ABI](../source/sdk/README.md) exposes its
+package metadata and compatibility checks to native consumers. An opaque
+descriptor handle is a reference to library-owned constants, not an On1x
+runtime pointer or a grant to invoke a plugin.
 
 ## Exactness and economic semantics
 
@@ -233,10 +234,19 @@ power-loss or hostile-filesystem certification.
 | P2 Yieldcraft | Bounded exact multiroom matching, property dedup, Type-7 quantile, curves, shortcut, guardrails, trace | Fixture prices and derived room-allocation witnesses verified; fixed-graph execution remains in the CLI rather than a separate graph runner |
 | P3 Automat | Typed checked fixed DAG, action/effect denial | Narrow source implementation |
 | P3 Ottmat | Typed exact v1 strategy descriptor | Narrow source implementation |
-| P3 SDK | Closed descriptor allowlist | Narrow source implementation; **not** plugin loading/ABI/isolation |
+| P3 SDK | On1x descriptor allowlist and C11 descriptor ABI v1 | Native consumer compiled and linked; plugin invocation and worker isolation remain open |
 | P4/P5 | durable scheduler, approvals, action reconciliation, Poindexter/FX/etc. | Not implemented |
 
 ## Next implementation gate
+
+**C11 SDK checkpoint:** On the pinned MuLIB revision listed above,
+`python3 tests/check_sdk.py` built and installed `libfinpred_sdk.so.1`,
+compiled a separate consumer against `<finpred/sdk.h>`, and exited 0:
+`c_sdk_ok=true abi=1 manifest=yieldcraft.percentile`. The consumer checked
+ABI/name lookup, package version, contracts, resource limits, allowed modes,
+and denial of execution and nonzero capability requests. `./bin/build.sh`,
+both Python fixture/static checks and `./tests/run.sh` also exited 0; the
+pricing results and archived replay IDs were unchanged.
 
 **Property evidence checkpoint:** The native `bin/finpred evidence RUN_ID`
 command verifies the run before printing its per-row eligibility, property
