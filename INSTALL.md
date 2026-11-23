@@ -17,7 +17,8 @@ ordinary CLI and terminal workbench do not require X11.
 
 Use Git, CMake (On1x requires 3.20 or newer), a CMake build tool such as Make, C11 and C++20 toolchains, Perl for LibStone’s generators, and Python 3 for the build driver and tests. The C11 driver expects `cc` on `PATH`. The recorded build used GCC 16.2.1, CMake 4.4.3 and Python 3.14.7. The compiled pricing CLI itself does not use Python.
 
-The integration suite uses `jsonschema` 4 with Draft 2020-12 support. The
+The integration suite, including `make forecast-score-test` for scoring and
+evaluation replay, uses `jsonschema` 4 with Draft 2020-12 support. The
 forecast graph test uses `pkg-config`, libxml2, and Jansson development headers
 for offline fixture decoding. `make test` also runs the offline Dragnet suite,
 which additionally needs libcurl ≥ 7.85. On Ubuntu 24.04 those headers are
@@ -108,6 +109,7 @@ The oracle should report `price_minor=17100` and `expected_minor=16000`; the sta
 | Symptom | What to check |
 | --- | --- |
 | `Missing MuLIB` / `Missing compiled On1x compiler` | Initialize the source checkout, then run `make mulib` to build `on1xc` and GrammarEmbed. `ON1XC` alone does not supply the source tree. |
+| `check_environ_argv.py` reports zero arguments for a nonempty vector | Rebuild `on1xc` with `make mulib` and check for a stale `ON1XC` override. The compiler must generate startup code that forwards the process argv. |
 | `Missing LibStone generators` | Check the nested submodule revision and `scripts/asdl.pl` and `scripts/aurocks.pl` under its root. Rerun step 2, then configure against that root. |
 | Temporary volume full during configure/build/test | Set `TMPDIR` to a writable executable filesystem with enough space. For an incompatible CMake cache, set the old `build/mulib/on1x` tree aside and rerun `make mulib`. |
 | `FinPRED On1x executable absent` / launcher accepts a command the executable rejects | Rebuild from the same source tree as `bin/finpred`. Check or unset `FINPRED_EXE` so you test the intended binary. |

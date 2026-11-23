@@ -87,3 +87,9 @@ evidence that the On1x source compiles.
 See [`docs/FORECAST_SCORING.md`](../../docs/FORECAST_SCORING.md) for the exact
 contract, the two-clock security boundary, rejection statuses and remaining
 gates.
+
+`forecast_baselines.evaluation` wraps one score in the separate
+`analysis.guest-nights-evaluation@1` manifest. It binds the host-selected
+inputs, both cutoffs, the model and scorer pins, and the exact score artifact.
+Replay needs the independently trusted run ID and frozen evidence. This API
+returns in-memory bytes; it does not add a CLI command or storage writer.

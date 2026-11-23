@@ -1,4 +1,4 @@
-# Point-in-time forecast scoring: one complete analysis-only vertical slice
+# Point-in-time forecast scoring and evaluation replay
 
 ## Scope and provenance
 
@@ -91,6 +91,39 @@ score is the BLAKE3 digest of its entire canonical serialized bytes. A
 future immutable run manifest must also bind its input roots, model pin and
 scoring policy; this module alone is not a durable store.
 
+## Evaluation manifest (`analysis.guest-nights-evaluation@1`)
+
+`forecast_baselines.evaluation.evaluate(linked, selection, roots, frozen)`
+assembles one in-memory evaluation. `linked` identifies the model and scoring
+code subjects from trusted runtime configuration; `selection` supplies the
+expected code pins, model, and the original training and scoring cutoffs.
+`roots` holds the four expected BLAKE3 IDs and `frozen` supplies the exact
+bytes: the two canonical Dragnet snapshots (not raw provider payloads), the
+request, and the issued forecast. The host selects these inputs independently
+of any archive. The code subject digests are host claims about the linked
+build, not self-measured executable identities or signatures.
+
+The evaluator checks bounds and hashes before invoking the scorer. Success
+returns the unchanged score artifact and a compact LF-terminated JSON
+manifest. The manifest binds all four root digests, both cutoffs, the model
+and scoring code and policy pins, and the score digest and state. The run ID is
+`blake3:<hex>` over the exact manifest bytes, including the final LF.
+See the [manifest schema](../plugins/forecast_baselines/contracts/analysis.guest-nights-evaluation@1.schema.json).
+
+`replay(linked, selection, roots, frozen, archive)` also takes the expected
+run ID from a trusted lookup and the archived manifest and score bytes. It
+checks the manifest against that ID, recomputes from the same frozen evidence,
+and accepts only if both archived outputs match byte-for-byte. It does not
+derive roots, code identities, or cutoffs from archive JSON. Replay does not
+fetch missing evidence or write or repair a store. A new actuals release or a
+different scoring cutoff requires a new evaluation.
+
+Evaluation status codes are `1` for an unsupported model or mismatched code
+identity, `2` for invalid root bytes or digests, `3` for scoring failure,
+`4` for a manifest mismatch, and `5` for a score mismatch. All failures
+return no ID, manifest, or score. Successful `unknown` results replay just
+like scored results.
+
 ## Verification
 
 ```sh
@@ -107,6 +140,11 @@ fractional-error case, and rejection of changed forecast bytes, invalid
 parents, wrong model, early scoring and late actuals. It asserts no file
 creation under an isolated `FINPRED_HOME`.
 
+The same consumer checks canonical manifests and exact replay in separate
+processes for six scored evaluations and one unknown. It rejects 20 invalid
+inputs, including rehashed manifests with wrong parents or policy and a
+forged score whose digest was substituted into a rehashed manifest.
+
 For schema/oracle-only checks (not a compiled claim):
 
 ```sh
@@ -115,8 +153,8 @@ python3 tests/check_forecast_scores.py --oracle-only
 
 ## Deliberately open gates
 
-- Integrate forecast scoring into a trusted, versioned *evaluation-run*
-  writer, with explicit scoring artifact lineage and read-only replay.
+- Integrate the in-memory manifest with a trusted host catalog and a
+  write-once evaluation store. No writer or CLI command exists for this format.
 - Aggregate per-origin scores into a backtest with scored/unknown counts,
   MAE, signed bias and optionally overflow-safe RMSE/MSE. Never select models
   on holdout accuracy and then report that same holdout as unbiased.
@@ -129,8 +167,24 @@ python3 tests/check_forecast_scores.py --oracle-only
 
 ## Validation record
 
-This patch was authored without a local MuLIB/LibStone checkout or compiled
-`on1xc` in the packaging environment. Python syntax and JSON Schema can be
-checked independently; **On1x compilation and compiled integration must pass
-in the pinned CI workflow before claiming this new feature is verified.**
-See `PATCH_VALIDATION.md` in the bundle for exact checks run.
+The original bundle's `PATCH_*` files record packaging-time checks and are
+archival. The compiled gate is `make forecast-score-test`, also called by
+`make test` and CI. Local success is not evidence of a hosted CI result,
+provider compatibility, or native storage admission.
+
+Local verification on the worktree based on `82ba6467a31ecfce15aaa8b1bb065743d750d378`
+(Linux x86-64) used MuLIB `574e487fbbb184281518250989061cff842daeac`,
+LibStone `4c35077601899944594737559534aafd9014f330`, and rebuilt `on1xc`
+(SHA-256 `cd80def82acc24ff6a96f71fd7dddf551f214e880e830123c3bf7985f1449d23`).
+`make mulib`, `env -u TMPDIR make test`, and `make native-test` exited 0.
+The forecast gate also passed with an explicit private `TMPDIR`. The March
+moving-average fixture produced:
+
+| Artifact | BLAKE3 |
+|---|---|
+| Evaluation manifest | `a82d4b998cb03f86214dbbdfcc61bbad9f7be2b078725e18682d8d431e9f7410` |
+| Score (unchanged) | `3c02c80c3c46fef5257b5a6a67c6c4719f73630243e3bcabe9642d10a2e48af9` |
+
+The full suite also passed the offline Dragnet feed and dispatcher gates,
+both v1 archive replays, and the pinned v2 recommendation and trace digests
+for EUR 171/night and EUR 160/night.

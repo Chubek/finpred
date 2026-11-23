@@ -31,7 +31,8 @@ dragnet-test:
 		python3 tests/check_dragnet_dispatch.py
 
 forecast-score-test:
-	python3 tests/check_forecast_scores.py
+	set -eu; . ./bin/build-env.sh; finpred_build_env "$(CURDIR)"; \
+		python3 tests/check_forecast_scores.py
 
 native-test:
 	$(CMAKE) -S native -B "$(NATIVE_BUILD_DIR)" -DBUILD_TESTING=ON -DCMAKE_C_FLAGS='-Wall -Wextra -Werror -pedantic'

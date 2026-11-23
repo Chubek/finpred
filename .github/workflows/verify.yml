@@ -53,9 +53,9 @@ jobs:
           python3 tests/check_poindexter_tty.py
           python3 tests/check_tui_kernel_admission.py --expect-dynlib-syntax
           make poindexter-tui-review
-      - name: Point-in-time forecast scoring and replay conformance
+      - name: Point-in-time forecast scoring and evaluation replay conformance
         id: forecast_scores
-        run: python3 tests/check_forecast_scores.py
+        run: make forecast-score-test
       - name: Public feed transport and replay conformance
         id: dragnet_feeds
         run: |

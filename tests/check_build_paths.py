@@ -56,6 +56,7 @@ test "$(./bin/finpred selftest)" = "$EXPECTED_EXE"
         ):
             write(root, f"tests/check_dragnet_{test}.py", "")
         write(root, "tests/check_crossref_replay.py", "")
+        write(root, "tests/check_forecast_scores.py", 'print("forecast-score-stub-ran")\n')
         # If make test invokes this regression itself, don't recurse.
         write(root, "tests/check_build_paths.py", "")
 
@@ -81,11 +82,13 @@ test "$(./bin/finpred selftest)" = "$EXPECTED_EXE"
         assert built.returncode == 0 and Path(default).is_file(), built.stdout
         tested = run("make", "test", EXPECTED_EXE=default)
         assert tested.returncode == 0, tested.stdout
+        assert "forecast-score-stub-ran" in tested.stdout, tested.stdout
 
         custom = str(root / "build/custom CLI/finpred")
         tested = run("make", "test", FINPRED_BUILD_DIR="build/custom CLI", EXPECTED_EXE=custom,
-                     FINPRED_EXE=str(root / "target/dev/finpred"))
+                      FINPRED_EXE=str(root / "target/dev/finpred"))
         assert tested.returncode == 0, tested.stdout
+        assert "forecast-score-stub-ran" in tested.stdout, tested.stdout
         outside = run(str(root / "bin/finpred"), "selftest", cwd=root / "tests",
                       FINPRED_BUILD_DIR="build/custom CLI")
         assert outside.returncode == 0 and outside.stdout.strip() == custom, outside
@@ -121,7 +124,7 @@ test "$(./bin/finpred selftest)" = "$EXPECTED_EXE"
         pin(root, "third_party/mulib", mulib_sha)
         nested = run("make", "mulib", "CMAKE=false")
         assert nested.returncode == 2 and f"Submodule pin mismatch at {libstone}:" in nested.stdout, nested
-    print("build_paths_ok=true default=1 custom=1 stale_target_rejected=1 missing_toolchain=2 pin_mismatches=2")
+    print("build_paths_ok=true default=1 custom=1 forecast_gate=2 stale_target_rejected=1 missing_toolchain=2 pin_mismatches=2")
 
 
 if __name__ == "__main__":

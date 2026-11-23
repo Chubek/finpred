@@ -2,7 +2,7 @@
 
 Based on `master` `34b2f89d9dae9b52bb47e453bbe01a44d36064bc`, 2026-11-23.
 
-## Implemented and supported by source plus current-head CI
+## Pre-patch source and CI checkpoint
 
 The immediate predecessor `fadcd470` has a green GitHub Actions workflow
 (run `45206909673`). The latest `34b2f89d` CI was in progress when assessed;
@@ -25,7 +25,7 @@ This is a functional local-first financial analysis MVP. The green base CI
 does not demonstrate production readiness, third-party isolation, or a
 fully admitted durable storage backend.
 
-## Implemented by this patch (pending compiled integration)
+## Forecast scoring and replay
 
 `forecast_baselines.score.evaluate` adds a **post-issuance score contract**
 with explicit original training and later scoring cutoffs. It re-executes
@@ -34,13 +34,21 @@ actuals source snapshot, and emits one typed score or explicit unknown.
 This fills a reproducible evaluation primitive missing from the pre-patch
 On1x runtime; existing Python accuracy checks remain independent oracles.
 
+The compiled `make forecast-score-test` gate now also exercises
+`analysis.guest-nights-evaluation@1`: an in-memory manifest binding the
+host-selected evidence, code and policy pins, and score bytes. Replay checks
+the expected ID and both outputs without touching a store. See
+[the contract and verification commands](FORECAST_SCORING.md). This does not
+report a new hosted CI result.
+
 ## Remaining highest-value implementation gates
 
-1. **P0—Certify scoring compilation** in the pinned CI; correct any exact
-   On1x compiler incompatibilities instead of skipping the step.
-2. **P1—Evaluation-run manifest**: host-authoritative parent IDs, write-once
-   score artifacts, read-only replay from frozen bytes and scoring-policy pin.
-   Do not add scoring to the existing pricing `finpred-run@1/@2` format.
+1. **P0—Confirm hosted CI** with the pinned compiler and mandatory scoring,
+   evaluation and Dragnet conformance steps.
+2. **P1—Evaluation-run publication**: connect the manifest to a trusted
+   catalog and write-once score artifact publication under reviewed storage
+   semantics. Do not add scoring to the existing pricing `finpred-run@1/@2`
+   format.
 3. **P1—Holdout aggregation**: scored/unknown coverage, exact MAE/bias and
    overflow-safe MSE/RMSE. Preserve train/validation/holdout separation and
    prevent selection on the final holdout.

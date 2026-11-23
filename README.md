@@ -39,8 +39,9 @@ make test            # application, package, source, model conformance suites
 make native-test     # isolated C store review target
 ```
 
-`make test` also runs the compiled Dragnet tests and the new
-[forecast-scoring](docs/FORECAST_SCORING.md) conformance suite. Refer to the
+`make test` also runs the compiled Dragnet tests and the
+[forecast scoring and evaluation replay](docs/FORECAST_SCORING.md) conformance
+suite. Refer to the
 [CI workflow](.github/workflows/verify.yml) and
 [test coverage index](tests/COVERAGE.md) for negative cases and actual
 verification outcomes. A successful standalone C test does **not** imply
@@ -55,7 +56,7 @@ that its native API has been independently admitted into On1x KernelBind.
 | **Ottomat** | [`source/ottomat/`](source/ottomat/) — versioned strategy grammar, typed financial lowering, no strategy-owned effects |
 | **SDK** | [`source/sdk/`](source/sdk/) — trusted, statically linked versioned handler descriptors, callable ports and capability checks |
 | **Dragnet** | [`plugins/dragnet/`](plugins/dragnet/) — frozen CSV, Crossref evidence, ECB/Eurostat snapshot acquisition and offline Source dispatch |
-| **Forecast baselines** | [`plugins/forecast_baselines/`](plugins/forecast_baselines/) — moving-average/seasonal-naive monthly guest-night research and post-issuance scores |
+| **Forecast baselines** | [`plugins/forecast_baselines/`](plugins/forecast_baselines/) — moving-average/seasonal-naive monthly guest-night research, post-issuance scores and in-memory evaluation manifests |
 | **Poindexter** | [`plugins/poindexter/`](plugins/poindexter/) — verified-run projection, terminal spreadsheet and optional ImmGTK X11 frontend |
 | **Artifact store** | [`source/store/`](source/store/) — versioned immutable object/run evidence in a private cooperative store |
 | **Native store candidate** | [`native/`](native/) — standalone security review target; **not** the CLI's admitted durable backend |

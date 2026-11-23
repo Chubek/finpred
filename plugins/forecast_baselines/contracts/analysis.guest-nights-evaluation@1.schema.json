@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "One frozen guest-night forecast evaluation (analysis only)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind", "version", "pricing_input", "model", "model_code_digest", "model_policy_digest",
+    "scoring_code_digest", "scoring_policy_digest", "training_cutoff", "scoring_cutoff",
+    "training_snapshot", "actuals_snapshot", "request", "forecast", "score", "state"
+  ],
+  "properties": {
+    "kind": {"const": "analysis.guest-nights-evaluation"},
+    "version": {"const": 1},
+    "pricing_input": {"const": false},
+    "model": {"enum": ["forecast.moving-average-3@1", "forecast.seasonal-naive-12@1"]},
+    "model_code_digest": {"$ref": "#/$defs/digest"},
+    "model_policy_digest": {"$ref": "#/$defs/digest"},
+    "scoring_code_digest": {"$ref": "#/$defs/digest"},
+    "scoring_policy_digest": {"$ref": "#/$defs/digest"},
+    "training_cutoff": {"$ref": "#/$defs/utc"},
+    "scoring_cutoff": {"$ref": "#/$defs/utc"},
+    "training_snapshot": {"$ref": "#/$defs/digest"},
+    "actuals_snapshot": {"$ref": "#/$defs/digest"},
+    "request": {"$ref": "#/$defs/digest"},
+    "forecast": {"$ref": "#/$defs/digest"},
+    "score": {"$ref": "#/$defs/digest"},
+    "state": {"enum": ["scored", "unknown"]}
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^blake3:[0-9a-f]{64}$"},
+    "utc": {
+      "type": "string", "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    }
+  }
+}

@@ -20,8 +20,13 @@ ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "plugins/forecast_baselines"
 MODEL_SOURCE = PACKAGE / "source/forecast_baselines/model.on1x"
 SCORE_SOURCE = PACKAGE / "source/forecast_baselines/score.on1x"
+EVALUATION_SOURCE = PACKAGE / "source/forecast_baselines/evaluation.on1x"
 CONSUMER = ROOT / "tests/forecast_score_consumer/main.on1x"
 SCHEMA = PACKAGE / "contracts/analysis.guest-nights-score@1.schema.json"
+EVALUATION_SCHEMA = PACKAGE / "contracts/analysis.guest-nights-evaluation@1.schema.json"
+SCORING_POLICY = ("guest-nights-score@1;replay-issued-forecast;actual-visible-at-scoring-cutoff;"
+                  "score-after-issuance-and-at-or-after-target-month-end;"
+                  "signed-estimate-minus-actual;missing-actual-before-insufficient-evidence")
 sys.dont_write_bytecode = True
 MOVING = "forecast.moving-average-3@1"
 SEASONAL = "forecast.seasonal-naive-12@1"
@@ -149,6 +154,60 @@ def rational(pair):
     return Fraction(pair["numerator"], pair["denominator"])
 
 
+def check_evaluation(exe, env, directory, digest, validator, inputs, forecast, score, *, negatives=False):
+    trusted = inputs | {"FROZEN_FORECAST": forecast, "FORECAST_PARENT": digest(forecast),
+                        "REQUEST_PARENT": digest(inputs["REQUEST"]),
+                        "MODEL_CODE": digest(env["CODE_BYTES"]),
+                        "SCORING_CODE": digest(env["SCORING_CODE_BYTES"])}
+    result = invoke(exe, env, directory, "evaluate", **trusted)
+    run_id, manifest, artifact = result.splitlines(keepends=True)
+    data = json.loads(score)
+    expected = {
+        "kind": "analysis.guest-nights-evaluation", "version": 1, "pricing_input": False,
+        "model": data["model"], "model_code_digest": data["code_digest"],
+        "model_policy_digest": data["policy_digest"], "scoring_code_digest": trusted["SCORING_CODE"],
+        "scoring_policy_digest": digest(SCORING_POLICY), "training_cutoff": inputs["TRAIN_CUTOFF"],
+        "scoring_cutoff": inputs["SCORE_CUTOFF"], "training_snapshot": inputs["TRAIN_PARENT"],
+        "actuals_snapshot": inputs["ACTUAL_PARENT"], "request": trusted["REQUEST_PARENT"],
+        "forecast": trusted["FORECAST_PARENT"], "score": digest(score), "state": data["state"],
+    }
+    validator.validate(json.loads(manifest))
+    assert manifest == serialized(expected) and run_id.strip() == digest(manifest)
+    assert artifact == score
+    replay = trusted | {"EVALUATION_ID": run_id.strip(), "MANIFEST": manifest, "SCORE": artifact}
+    assert invoke(exe, env, directory, "replay", **replay) == result
+    if negatives:
+        def reject(status, **changes):
+            invoke(exe, env, directory, "replay", failure=50 + status, **(replay | changes))
+
+        def rehashed(**changes):
+            forged = serialized(expected | changes)
+            return {"MANIFEST": forged, "EVALUATION_ID": digest(forged)}
+
+        reject(1, SCORING_CODE="untrusted")
+        reject(1, SCORING_CODE=digest("different scoring code"))
+        reject(3, MODEL=SEASONAL)
+        reject(1, CODE_BYTES="different model code")
+        reject(2, REQUEST=inputs["REQUEST"].replace('"horizon_months":1', '"horizon_months":2'))
+        reject(2, ACTUAL_RAW=inputs["ACTUAL_RAW"] + "\n")
+        reject(2, TRAIN_RAW=inputs["TRAIN_RAW"] + "\n")
+        reject(2, FROZEN_FORECAST=forecast + "\n")
+        reject(2, REQUEST_PARENT=digest("unrelated request"))
+        reject(2, TRAIN_RAW=" " * 4097, TRAIN_PARENT=digest(" " * 4097))
+        reject(3, SCORE_CUTOFF="2024-03-31T23:59:59Z")
+        reject(4, EVALUATION_ID=digest("wrong run"))
+        reject(4, MANIFEST=manifest + "\n")
+        reject(4, **rehashed(actuals_snapshot=inputs["TRAIN_PARENT"]))
+        reject(4, **rehashed(model_policy_digest=digest("different model policy")))
+        reject(4, **rehashed(scoring_policy_digest=digest("different scoring policy")))
+        reject(4, **rehashed(scoring_cutoff="2024-07-01T00:00:00Z"))
+        reject(4, **rehashed(version=2))
+        reject(5, SCORE=score + "\n")
+        forged_score = serialized(data | {"actual": data["actual"] + 1})
+        reject(5, SCORE=forged_score, **rehashed(score=digest(forged_score)))
+    return run_id.strip()
+
+
 def compiled(chronology, validator, expected):
     mulib = Path(os.environ.get("MULIB_ROOT", ROOT / "third_party/mulib")).resolve()
     compiler = Path(os.environ.get("ON1XC", ROOT / "build/mulib/on1x/on1xc")).resolve()
@@ -167,7 +226,17 @@ def compiled(chronology, validator, expected):
                        cwd=work, env=env, check=True, timeout=120)
         offline = work / "empty-store"
         offline.mkdir()
+        evaluation_validator = Draft202012Validator(json.loads(EVALUATION_SCHEMA.read_bytes()),
+                                                     format_checker=FormatChecker())
+        Draft202012Validator.check_schema(evaluation_validator.schema)
+        subjects = [SCORE_SOURCE, EVALUATION_SOURCE, *(ROOT / f"source/{name}.on1x" for name in (
+            "core/date", "core/feed_snapshot", "core/format", "core/guest_nights", "sdk/callable"))]
+        scoring_subject = "finpred.test-scoring-source-subject@1\n"
+        for path in subjects:
+            source = path.read_bytes().decode("ascii")
+            scoring_subject += f"{path.relative_to(ROOT)}\n{len(source)}:{source}"
         env |= {"CODE_BYTES": MODEL_SOURCE.read_text(),
+                "SCORING_CODE_BYTES": scoring_subject,
                 "FINPRED_HOME": str(offline / "absent")}
         def digest(payload):
             return invoke(exe,env,offline,"digest",BYTES=payload).strip()
@@ -180,6 +249,7 @@ def compiled(chronology, validator, expected):
         assert parent.startswith("blake3:") and len(parent) == 71
         hits = {MOVING:[], SEASONAL:[]}
         references = {}
+        evaluation_ids = []
         count = 0
         for model in (MOVING, SEASONAL):
             for point in current:
@@ -209,6 +279,9 @@ def compiled(chronology, validator, expected):
                     hits[model].append(rational(data["absolute_error"]))
                 references[(model,point["target"])] = digest(result)
                 count += 1
+                evaluation_ids.append(check_evaluation(
+                    exe, env, offline, digest, evaluation_validator, inputs, forecast, result,
+                    negatives=model == MOVING and point["target"] == "2024-03"))
 
                 if model == MOVING and point["target"] == "2024-03":
                     invoke(exe,env,offline,"score",failure=36,**inputs,
@@ -231,6 +304,9 @@ def compiled(chronology, validator, expected):
                            FROZEN_FORECAST=forecast)
 
         assert len(references) == 6 and len(set(references.values())) == 6
+        # The evaluation envelope must not change the canonical v1 score.
+        assert references[(MOVING, "2024-03")] == (
+            "blake3:3c02c80c3c46fef5257b5a6a67c6c4719f73630243e3bcabe9642d10a2e48af9")
         assert sum(hits[MOVING]) / 2 == 30
         assert sum(hits[SEASONAL]) / 2 == 105
 
@@ -251,11 +327,13 @@ def compiled(chronology, validator, expected):
 
         missing = releases["actuals"] | {"values": releases["actuals"]["values"] | {"2024-03":None}}
         raw_missing = snapshot(missing)
-        unscored = json.loads(invoke(exe,env,offline,"score",**normal,
-                                     FROZEN_FORECAST=frozen,ACTUAL_RAW=raw_missing,
-                                     ACTUAL_PARENT=digest(raw_missing)))
+        missing_actual = normal | {"ACTUAL_RAW": raw_missing, "ACTUAL_PARENT": digest(raw_missing)}
+        unknown_score = invoke(exe, env, offline, "score", FROZEN_FORECAST=frozen, **missing_actual)
+        unscored = json.loads(unknown_score)
         validator.validate(unscored)
         assert unscored["state"] == "unknown" and unscored["reason"] == "missing_actual"
+        evaluation_ids.append(check_evaluation(exe, env, offline, digest, evaluation_validator,
+                                               missing_actual, frozen, unknown_score))
 
         unavailable_training = training | {"values":training["values"] | {"2024-01":None}}
         raw_unknown = snapshot(unavailable_training)
@@ -278,8 +356,11 @@ def compiled(chronology, validator, expected):
         assert rational(fractional["estimate"]) == Fraction(541,3)
         assert rational(fractional["error"]) == Fraction(-89,3)
         assert rational(fractional["absolute_error"]) == Fraction(89,3)
+        assert len(set(evaluation_ids)) == 7
         assert not list(offline.iterdir())
         print(f"forecast_scores_ok=true scored={count} unknown=2 fractional=1 replay=exact store_writes=0")
+        print(f"forecast_evaluation_ok=true runs={len(evaluation_ids)} rejected=20 replay=exact "
+              f"fixture_run={evaluation_ids[1]} fixture_score={references[(MOVING, '2024-03')]}")
 
 
 def main():

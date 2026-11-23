@@ -1,0 +1,95 @@
+# One frozen, analysis-only evaluation. Returns bytes, never publishes them.
+import core.guest_nights as Guest;
+import forecast_baselines.model as Model;
+import forecast_baselines.score as Score;
+import sdk.callable as SDK;
+
+# Linked identifies the executable subjects chosen by the trusted host.
+# Selection and Roots are the host's expectations, not claims from the archive.
+record Linked { model_code:sexpr, scoring_code:sexpr }
+record Selection {
+  model:sexpr, model_code:sexpr, scoring_code:sexpr, training_cutoff:sexpr, scoring_cutoff:sexpr
+}
+record Roots { training_snapshot:sexpr, actuals_snapshot:sexpr, request:sexpr, forecast:sexpr }
+record Frozen { training_snapshot:sexpr, actuals_snapshot:sexpr, request:sexpr, forecast:sexpr }
+record Run { status:i64, id:sexpr, manifest:sexpr, score:sexpr }
+record Archive { id:sexpr, manifest:sexpr, score:sexpr }
+
+fn scoring_policy() -> string {
+  return "guest-nights-score@1;replay-issued-forecast;actual-visible-at-scoring-cutoff;score-after-issuance-and-at-or-after-target-month-end;signed-estimate-minus-actual;missing-actual-before-insufficient-evidence";
+}
+
+fn failure(status:i64) -> Run {
+  return record<Run>{status:status,id:sx_nil(),manifest:sx_nil(),score:sx_nil()};
+}
+
+fn bounded(bytes:sexpr, limit:i64) -> bool {
+  return SDK.atom(bytes,limit);
+}
+
+fn matches(bytes:sexpr, id:sexpr, limit:i64) -> bool {
+  return bounded(bytes,limit) && SDK.valid_digest(id)
+    && Model.digest(sx_text(bytes)) == sx_text(id);
+}
+
+# Status: 1 unsupported model or code pin mismatch, 2 mismatched or oversized
+# frozen roots, 3 scoring rejected, 4 wrong manifest, 5 wrong score artifact.
+fn evaluate(linked:Linked, selection:Selection, roots:Roots, frozen:Frozen) -> Run {
+  let model = sx_text(selection["model"]);
+  let model_code = sx_text(selection["model_code"]);
+  let scoring_code = sx_text(selection["scoring_code"]);
+  let desc = Model.descriptor(model,model_code);
+  if !desc["enabled"] || !SDK.atom(selection["model"],64)
+    || !SDK.valid_digest(selection["scoring_code"])
+    || !SDK.same(selection["model_code"],linked["model_code"])
+    || !SDK.same(selection["scoring_code"],linked["scoring_code"]) { return failure(1); }
+  let request_port = Model.request_port();
+  let forecast_port = Model.forecast_port();
+  if !matches(frozen["training_snapshot"],roots["training_snapshot"],Guest.max_bytes())
+    || !matches(frozen["actuals_snapshot"],roots["actuals_snapshot"],Guest.max_bytes())
+    || !matches(frozen["request"],roots["request"],request_port["max_bytes"])
+    || !matches(frozen["forecast"],roots["forecast"],forecast_port["max_bytes"]) { return failure(2); }
+
+  let training_cutoff = sx_text(selection["training_cutoff"]);
+  let scoring_cutoff = sx_text(selection["scoring_cutoff"]);
+  let training_snapshot = sx_text(roots["training_snapshot"]);
+  let actuals_snapshot = sx_text(roots["actuals_snapshot"]);
+  let request = sx_text(roots["request"]);
+  let forecast = sx_text(roots["forecast"]);
+  let outcome = Score.evaluate(model,sx_text(frozen["training_snapshot"]),training_snapshot,
+    sx_text(frozen["request"]),sx_text(frozen["forecast"]),sx_text(frozen["actuals_snapshot"]),
+    actuals_snapshot,training_cutoff,scoring_cutoff,model_code);
+  if outcome["status"] != 0 || !bounded(outcome["bytes"],2048) { return failure(3); }
+  var state = "scored";
+  if outcome["state"] == 4 { state = "unknown"; }
+  else { if outcome["state"] != 1 { return failure(3); } }
+  let model_policy = sx_text(desc["pin"]["policy_digest"]);
+  let scoring_policy_id = Model.digest(scoring_policy());
+  let score = Model.digest(sx_text(outcome["bytes"]));
+  if !Guest.digest(model_policy) || !Guest.digest(scoring_policy_id) || !Guest.digest(score)
+  { return failure(3); }
+
+  let out = buffer_new();
+  buffer_append(out,"{\"kind\":\"analysis.guest-nights-evaluation\",\"version\":1,\"pricing_input\":false");
+  buffer_append(out,",\"model\":\"$model\",\"model_code_digest\":\"$model_code\",\"model_policy_digest\":\"$model_policy\"");
+  buffer_append(out,",\"scoring_code_digest\":\"$scoring_code\",\"scoring_policy_digest\":\"$scoring_policy_id\"");
+  buffer_append(out,",\"training_cutoff\":\"$training_cutoff\",\"scoring_cutoff\":\"$scoring_cutoff\"");
+  buffer_append(out,",\"training_snapshot\":\"$training_snapshot\",\"actuals_snapshot\":\"$actuals_snapshot\",\"request\":\"$request\",\"forecast\":\"$forecast\"");
+  buffer_append(out,",\"score\":\"$score\",\"state\":\"$state\"}\n");
+  let manifest = buffer_text(out);
+  let id = Model.digest(manifest);
+  if !Guest.digest(id) { return failure(3); }
+  return record<Run>{status:0,id:sx_string(id),manifest:sx_string(manifest),score:outcome["bytes"]};
+}
+
+# The expected ID must come from trusted lookup, not from hashing a manifest
+# found alongside the archive. No parser of archive-controlled JSON is needed.
+fn replay(linked:Linked, selection:Selection, roots:Roots, frozen:Frozen, archive:Archive) -> Run {
+  if !matches(archive["manifest"],archive["id"],2048) { return failure(4); }
+  if !bounded(archive["score"],2048) { return failure(5); }
+  let computed = evaluate(linked,selection,roots,frozen);
+  if computed["status"] != 0 { return computed; }
+  if sx_text(computed["score"]) != sx_text(archive["score"]) { return failure(5); }
+  if sx_text(computed["manifest"]) != sx_text(archive["manifest"]) { return failure(4); }
+  return computed;
+}

@@ -1,5 +1,6 @@
 # Independent compiled consumer: neither the CLI nor the pricing store is linked.
 import core.guest_nights as Guest;
+import forecast_baselines.evaluation as Evaluation;
 import forecast_baselines.model as Model;
 import forecast_baselines.score as Score;
 import sdk.callable as SDK;
@@ -31,6 +32,32 @@ fn main() -> i64 {
     let result = SDK.invoke(descriptor["pin"],"analysis",request,lookup,Model.call);
     if result["status"] != 0 { return 13; }
     IO.basis_text_io_print(sx_text(result["bytes"]));
+    return 0;
+  }
+  if task == "evaluate" || task == "replay" {
+    let host = record<Evaluation.Linked>{model_code:sx_string(code()),
+      scoring_code:sx_string(Model.digest(env("SCORING_CODE_BYTES")))};
+    let selection = record<Evaluation.Selection>{model:sx_string(model),model_code:sx_string(env("MODEL_CODE")),
+      scoring_code:sx_string(env("SCORING_CODE")),training_cutoff:sx_string(training_cutoff),
+      scoring_cutoff:sx_string(env("SCORE_CUTOFF"))};
+    let roots = record<Evaluation.Roots>{training_snapshot:sx_string(parent),
+      actuals_snapshot:sx_string(env("ACTUAL_PARENT")),request:sx_string(env("REQUEST_PARENT")),
+      forecast:sx_string(env("FORECAST_PARENT"))};
+    let frozen = record<Evaluation.Frozen>{training_snapshot:sx_string(raw),
+      actuals_snapshot:sx_string(env("ACTUAL_RAW")),request:sx_string(env("REQUEST")),
+      forecast:sx_string(env("FROZEN_FORECAST"))};
+    let saved = record<Evaluation.Archive>{id:sx_string(env("EVALUATION_ID")),
+      manifest:sx_string(env("MANIFEST")),score:sx_string(env("SCORE"))};
+    var run = Evaluation.failure(1);
+    if task == "evaluate" { run = Evaluation.evaluate(host,selection,roots,frozen); }
+    else { run = Evaluation.replay(host,selection,roots,frozen,saved); }
+    if run["status"] != 0 {
+      if sx_kind(run["id"]) != 0 || sx_kind(run["manifest"]) != 0 || sx_kind(run["score"]) != 0 { return 49; }
+      return 50 + run["status"];
+    }
+    println(sx_text(run["id"]));
+    IO.basis_text_io_print(sx_text(run["manifest"]));
+    IO.basis_text_io_print(sx_text(run["score"]));
     return 0;
   }
   if task != "score" { return 10; }
