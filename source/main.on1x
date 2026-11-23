@@ -1,0 +1,5 @@
+import cli.app as Finpred;
+fn main() -> i64
+{
+  return Finpred.entry();
+}

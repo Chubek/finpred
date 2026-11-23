@@ -1,0 +1,173 @@
+{
+  "$id": "https://example.invalid/finpred/hospitality.offer@1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Schema complements the On1x semantic validators; not a substitute for temporal/monetary validation.",
+  "properties": {
+    "data": {
+      "additionalProperties": false,
+      "properties": {
+        "adult_capacity": {
+          "maximum": 1000000000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "arrival": {
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        },
+        "bookable": {
+          "type": "boolean"
+        },
+        "child_capacity": {
+          "maximum": 1000000000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "departure": {
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        },
+        "guest_payable_cents": {
+          "maximum": 1000000000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "total_capacity": {
+          "maximum": 1000000000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "valid_from": {
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        },
+        "valid_to": {
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "arrival",
+        "departure",
+        "valid_from",
+        "valid_to",
+        "adult_capacity",
+        "child_capacity",
+        "total_capacity",
+        "guest_payable_cents",
+        "bookable"
+      ],
+      "type": "object"
+    },
+    "id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "kind": {
+      "const": "hospitality.offer"
+    },
+    "metadata": {
+      "additionalProperties": false,
+      "properties": {
+        "provenance": {
+          "additionalProperties": false,
+          "properties": {
+            "source_artifacts": {
+              "items": {
+                "pattern": "^blake3:[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            }
+          },
+          "required": [
+            "source_artifacts"
+          ],
+          "type": "object"
+        },
+        "quality": {
+          "additionalProperties": false,
+          "properties": {
+            "evidence": {
+              "enum": [
+                "csv_import",
+                "scenario_comparables"
+              ]
+            },
+            "status": {
+              "const": "validated"
+            }
+          },
+          "required": [
+            "status",
+            "evidence"
+          ],
+          "type": "object"
+        },
+        "times": {
+          "additionalProperties": false,
+          "properties": {
+            "ingested_at": {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+              "type": "string"
+            },
+            "observed_at": {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "observed_at",
+            "ingested_at"
+          ],
+          "type": "object"
+        },
+        "units": {
+          "additionalProperties": false,
+          "properties": {
+            "currency": {
+              "const": "EUR",
+              "type": "string"
+            },
+            "price_basis": {
+              "enum": [
+                "whole_stay",
+                "room_night"
+              ]
+            }
+          },
+          "required": [
+            "currency",
+            "price_basis"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "provenance",
+        "times",
+        "units",
+        "quality"
+      ],
+      "type": "object"
+    },
+    "mulib": {
+      "const": "1.0"
+    },
+    "schema_version": {
+      "const": "1.0"
+    }
+  },
+  "required": [
+    "mulib",
+    "kind",
+    "schema_version",
+    "id",
+    "metadata",
+    "data"
+  ],
+  "title": "FinPRED hospitality.offer@1",
+  "type": "object"
+}

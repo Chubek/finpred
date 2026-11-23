@@ -1,0 +1,7 @@
+on1xfile 1
+library "contracts.on1x"
+library "csv.on1x"
+library "date.on1x"
+library "format.on1x"
+library "money.on1x"
+library "serialize.on1x"

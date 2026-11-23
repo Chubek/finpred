@@ -1,0 +1,192 @@
+{
+  "$id": "https://example.invalid/finpred/pricing.recommendation@1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Schema complements the On1x semantic validators; not a substitute for temporal/monetary validation.",
+  "properties": {
+    "data": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_minor": {
+          "maximum": 1000000000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "independent_properties": {
+          "maximum": 1000000000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "intended_minor": {
+          "maximum": 1000000000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "intended_percentile_bps": {
+          "maximum": 1000000000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "lower_minor": {
+          "maximum": 1000000000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "mode": {
+          "const": "recommendation"
+        },
+        "price_minor": {
+          "maximum": 1000000000000,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "published": {
+          "const": false
+        },
+        "reason": {
+          "enum": [
+            "target_percentile",
+            "lower_percentile_shortcut",
+            "guardrail_adjustment"
+          ]
+        },
+        "selected_percentile_bps": {
+          "maximum": 1000000000000,
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "price_minor",
+        "intended_percentile_bps",
+        "selected_percentile_bps",
+        "intended_minor",
+        "lower_minor",
+        "candidate_minor",
+        "independent_properties",
+        "reason",
+        "published",
+        "mode"
+      ],
+      "type": "object"
+    },
+    "id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "kind": {
+      "const": "pricing.recommendation"
+    },
+    "metadata": {
+      "additionalProperties": false,
+      "properties": {
+        "provenance": {
+          "additionalProperties": false,
+          "properties": {
+            "source_artifacts": {
+              "items": {
+                "pattern": "^blake3:[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "strategy": {
+              "const": "yieldcraft.percentile@1"
+            },
+            "strategy_digest": {
+              "pattern": "^blake3:[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "source_artifacts",
+            "strategy",
+            "strategy_digest"
+          ],
+          "type": "object"
+        },
+        "quality": {
+          "additionalProperties": false,
+          "properties": {
+            "evidence": {
+              "enum": [
+                "csv_import",
+                "scenario_comparables"
+              ]
+            },
+            "status": {
+              "const": "validated"
+            }
+          },
+          "required": [
+            "status",
+            "evidence"
+          ],
+          "type": "object"
+        },
+        "times": {
+          "additionalProperties": false,
+          "properties": {
+            "ingested_at": {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+              "type": "string"
+            },
+            "observed_at": {
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "observed_at",
+            "ingested_at"
+          ],
+          "type": "object"
+        },
+        "units": {
+          "additionalProperties": false,
+          "properties": {
+            "currency": {
+              "const": "EUR",
+              "type": "string"
+            },
+            "price_basis": {
+              "enum": [
+                "whole_stay",
+                "room_night"
+              ]
+            }
+          },
+          "required": [
+            "currency",
+            "price_basis"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "provenance",
+        "times",
+        "units",
+        "quality"
+      ],
+      "type": "object"
+    },
+    "mulib": {
+      "const": "1.0"
+    },
+    "schema_version": {
+      "const": "1.0"
+    }
+  },
+  "required": [
+    "mulib",
+    "kind",
+    "schema_version",
+    "id",
+    "metadata",
+    "data"
+  ],
+  "title": "FinPRED pricing.recommendation@1",
+  "type": "object"
+}

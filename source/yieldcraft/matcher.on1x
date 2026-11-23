@@ -1,0 +1,222 @@
+# Bounded exact whole-stay multi-room matching, implemented IN On1x.
+# Every row is one independently bookable room inventory unit (no inventory reuse).
+# Enumerate room subsets and solve adult/child occupancy by finite-state DP.
+import core.csv as CSV;
+import core.contracts as Contract;
+import std.collections.Array as A;
+
+record Pool
+{
+  properties: i64,
+  rooms: i64,
+  adults: i64,
+  children: i64,
+  capacity: i64,
+  gross: i64,
+  count: i64,
+  rejected: i64
+}
+
+fn ingest(csv: string, scenario: Contract.Scenario) -> Pool
+{
+  let lines = CSV.rows(csv);
+  if lines < 2 || lines > 513 { tool_fail("offers: expected 1..512 rows"); }
+  CSV.header(CSV.line(csv,0), "property_id,room_id,arrival,departure,adult_cap,child_cap,total_cap,total_cents,fees_cents,taxes_cents,currency,observed_at,ingested_at,valid_from,valid_to,bookable");
+  let property = A.basis_array_array(512,0);
+  let room = A.basis_array_array(512,0);
+  let adult = A.basis_array_array(512,0);
+  let child = A.basis_array_array(512,0);
+  let total = A.basis_array_array(512,0);
+  let gross = A.basis_array_array(512,0);
+  var n = 0;
+  var rejected = 0;
+  for i in 1 .. lines
+  {
+    let offer = Contract.offer_csv(CSV.line(csv,i));
+    if !Contract.eligible(offer, scenario)
+    {
+      rejected = rejected + 1;
+      continue;
+    }
+    for j in 0 .. n
+    {
+      if A.basis_array_sub(property,j) == offer["property_id"] && A.basis_array_sub(room,j) == offer["room_id"]
+      { tool_fail("offers: duplicate bookable room inventory unit"); }
+    }
+    A.basis_array_update(property,n,offer["property_id"]);
+    A.basis_array_update(room,n,offer["room_id"]);
+    A.basis_array_update(adult,n,offer["adult_cap"]);
+    A.basis_array_update(child,n,offer["child_cap"]);
+    A.basis_array_update(total,n,offer["total_cap"]);
+    A.basis_array_update(gross,n,offer["gross_cents"]);
+    n = n + 1;
+  }
+  return record<Pool>{properties:property, rooms:room, adults:adult, children:child,
+    capacity:total, gross:gross,count:n,rejected:rejected};
+}
+
+fn destroy(pool: Pool)
+{
+  A.basis_array_destroy(pool["properties"]);
+  A.basis_array_destroy(pool["rooms"]);
+  A.basis_array_destroy(pool["adults"]);
+  A.basis_array_destroy(pool["children"]);
+  A.basis_array_destroy(pool["capacity"]);
+  A.basis_array_destroy(pool["gross"]);
+}
+
+fn chosen(mask: i64, bit: i64) -> bool
+{
+  return mask / bit % 2 == 1;
+}
+
+# Each selected room must contain >=1 adult. Both room total capacity
+# and separate adult/child capacities are respected exactly.
+fn feasible(pool: Pool, indices: i64, count: i64, mask: i64, scenario: Contract.Scenario) -> bool
+{
+  let adults = scenario["adults"];
+  let children = scenario["children"];
+  let span = children + 1;
+  let states = (adults + 1) * span;
+  var current = A.basis_array_array(states,0);
+  A.basis_array_update(current,0,1);
+  var bit = 1;
+  for i in 0 .. count
+  {
+    if chosen(mask,bit)
+    {
+      let row = A.basis_array_sub(indices,i);
+      let amax = A.basis_array_sub(pool["adults"],row);
+      let cmax = A.basis_array_sub(pool["children"],row);
+      let total = A.basis_array_sub(pool["capacity"],row);
+      let next = A.basis_array_array(states,0);
+      for a in 0 ..= adults
+      {
+        for c in 0 ..= children
+        {
+          if A.basis_array_sub(current,a * span + c) == 1
+          {
+            for add_a in 1 ..= adults - a
+            {
+              for add_c in 0 ..= children - c
+              {
+                if add_a <= amax && add_c <= cmax && add_a + add_c <= total
+                {
+                  A.basis_array_update(next,(a + add_a) * span + c + add_c,1);
+                }
+              }
+            }
+          }
+        }
+      }
+      A.basis_array_destroy(current);
+      current = next;
+    }
+    bit = bit * 2;
+  }
+  let answer = A.basis_array_sub(current,adults * span + children) == 1;
+  A.basis_array_destroy(current);
+  return answer;
+}
+
+# Result price=-2 signals exhausted search budget, price=-1 unbookable.
+fn one_property(pool: Pool, property_id: i64, scenario: Contract.Scenario, remaining_budget: i64)
+  ->(i64,i64,i64)
+{
+  let indices = A.basis_array_array(10,0);
+  var n = 0;
+  for i in 0 .. pool["count"]
+  {
+    if A.basis_array_sub(pool["properties"],i) == property_id
+    {
+      if n >= 10 { tool_fail("matcher: more than 10 offered rooms per property"); }
+      A.basis_array_update(indices,n,i);
+      n = n + 1;
+    }
+  }
+  var limit = 1;
+  for i in 0 .. n { limit = limit * 2; }
+  var best = -1;
+  var best_rooms = 0;
+  var inspected = 0;
+  for mask in 1 .. limit
+  {
+    inspected = inspected + 1;
+    if inspected > remaining_budget
+    {
+      A.basis_array_destroy(indices);
+      return (-2,0,inspected);
+    }
+    var bit = 1;
+    var price = 0;
+    var rooms = 0;
+    for i in 0 .. n
+    {
+      if chosen(mask,bit)
+      {
+        let row = A.basis_array_sub(indices,i);
+        price = price + A.basis_array_sub(pool["gross"],row);
+        rooms = rooms + 1;
+      }
+      bit = bit * 2;
+    }
+    if rooms <= scenario["max_rooms"] && rooms <= scenario["adults"]
+      && (best < 0 || price < best || (price == best && rooms < best_rooms))
+    {
+      if feasible(pool,indices,n,mask,scenario)
+      {
+        best = price;
+        best_rooms = rooms;
+      }
+    }
+  }
+  A.basis_array_destroy(indices);
+  return (best,best_rooms,inspected);
+}
+
+record Distribution
+{
+  prices: i64,
+  count: i64,
+  rejected: i64,
+  infeasible: i64,
+  examined: i64
+}
+
+fn distribution(pool: Pool, scenario: Contract.Scenario) -> Distribution
+{
+  let result = A.basis_array_array(512,0);
+  var n = 0;
+  var infeasible = 0;
+  var examined = 0;
+  for i in 0 .. pool["count"]
+  {
+    let property = A.basis_array_sub(pool["properties"],i);
+    var already = false;
+    for j in 0 .. i
+    {
+      if A.basis_array_sub(pool["properties"],j) == property { already = true; }
+    }
+    if already { continue; }
+    let(price, rooms, steps) = one_property(pool,property,scenario,scenario["search_budget"] - examined);
+    examined = examined + steps;
+    if price == -2
+    {
+      A.basis_array_destroy(result);
+      tool_fail("matcher: finite node search budget exhausted");
+    }
+    if price < 0 { infeasible = infeasible + 1; }
+    else
+    {
+      A.basis_array_update(result,n,price);
+      n = n + 1;
+    }
+  }
+  return record<Distribution>{prices:result,count:n,rejected:pool["rejected"],
+    infeasible:infeasible,examined:examined};
+}
+
+fn destroy_distribution(d: Distribution)
+{
+  A.basis_array_destroy(d["prices"]);
+}

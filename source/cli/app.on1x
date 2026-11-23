@@ -1,0 +1,211 @@
+import std.os.CommandLine as Env;
+import std.io.TextIO as IO;
+import std.os.OS_FileSys as FS;
+import std.collections.Array as A;
+import core.csv as CSV;
+import core.date as Date;
+import core.money as Money;
+import core.format as F;
+import core.contracts as C;
+import core.serialize as JSON;
+import store.artifacts as Store;
+import automat.graph as Graph;
+import ottmat.ottmat as Ottmat;
+import sdk.sdk as SDK;
+import algorithms.quantile as Quantile;
+import yieldcraft.matcher as Match;
+import yieldcraft.strategy as Strategy;
+
+fn env_default(key: string, fallback: string) -> string
+{
+  let value = Env.basis_command_line_get_env(key);
+  if text_len(value) == 0 { return fallback; }
+  return value;
+}
+
+fn source(path: string) -> string
+{
+  if !FS.basis_fs_exists(path) { tool_fail(text_concat("input missing: ",path)); }
+  let size = FS.basis_fs_file_size(path);
+  if size < 1 || size > 2000000 { tool_fail("input: file size outside bounded CSV/text profile"); }
+  return IO.basis_text_io_input_all(path);
+}
+
+fn trace(s: C.Scenario, r: Strategy.Recommendation,
+  raw_s: string, raw_o: string, raw_v: string, raw_strategy: string) -> string
+{
+  let b = buffer_new();
+  buffer_append(b,"FinPRED decision trace v1\n");
+  buffer_append(b,"strategy=yieldcraft.percentile@1\n");
+  buffer_append(b,"graph="); buffer_append(b,Graph.version()); buffer_append(b,"\n");
+  buffer_append(b,"mode=recommendation\npublished=false\n");
+  buffer_append(b,"scenario_id="); buffer_append(b,F.num(s["id"])); buffer_append(b,"\n");
+  buffer_append(b,"decision_at="); buffer_append(b,s["decision_at"]); buffer_append(b,"\n");
+  buffer_append(b,"arrival="); buffer_append(b,s["arrival"]); buffer_append(b,"\n");
+  buffer_append(b,"departure="); buffer_append(b,s["departure"]); buffer_append(b,"\n");
+  buffer_append(b,"nights="); buffer_append(b,F.num(s["nights"])); buffer_append(b,"\n");
+  buffer_append(b,"currency=EUR\nprice_basis=room_night\nquantile=Hyndman-Fan-Type-7;half-up-cent\n");
+  buffer_append(b,"source_scenario_blake3="); buffer_append(b,raw_s); buffer_append(b,"\n");
+  buffer_append(b,"source_offers_blake3="); buffer_append(b,raw_o); buffer_append(b,"\n");
+  buffer_append(b,"source_valuation_blake3="); buffer_append(b,raw_v); buffer_append(b,"\n");
+  buffer_append(b,"strategy_blake3="); buffer_append(b,raw_strategy); buffer_append(b,"\n");
+  buffer_append(b,"independent_properties="); buffer_append(b,F.num(r["property_count"])); buffer_append(b,"\n");
+  buffer_append(b,"rejected_offers="); buffer_append(b,F.num(r["rejected"])); buffer_append(b,"\n");
+  buffer_append(b,"infeasible_properties="); buffer_append(b,F.num(r["infeasible"])); buffer_append(b,"\n");
+  buffer_append(b,"search_subsets="); buffer_append(b,F.num(r["search_nodes"])); buffer_append(b,"\n");
+  buffer_append(b,"intended_bps="); buffer_append(b,F.num(r["intended_bps"])); buffer_append(b,"\n");
+  buffer_append(b,"selected_bps="); buffer_append(b,F.num(r["selected_bps"])); buffer_append(b,"\n");
+  buffer_append(b,"intended_nightly_minor="); buffer_append(b,F.num(r["intended_cents"])); buffer_append(b,"\n");
+  buffer_append(b,"lower_nightly_minor="); buffer_append(b,F.num(r["lower_cents"])); buffer_append(b,"\n");
+  buffer_append(b,"candidate_nightly_minor="); buffer_append(b,F.num(r["candidate_cents"])); buffer_append(b,"\n");
+  buffer_append(b,"recommended_nightly_minor="); buffer_append(b,F.num(r["recommended_cents"])); buffer_append(b,"\n");
+  buffer_append(b,"reason="); buffer_append(b,r["reason"]); buffer_append(b,"\n");
+  return buffer_text(b);
+}
+
+fn make_manifest(s: string, o: string, v: string, strategy: string,
+  rec: string, tr: string) -> string
+{
+  let b = buffer_new();
+  buffer_append(b,"finpred-run@1,"); buffer_append(b,s);
+  buffer_append(b,","); buffer_append(b,o);
+  buffer_append(b,","); buffer_append(b,v);
+  buffer_append(b,","); buffer_append(b,strategy);
+  buffer_append(b,","); buffer_append(b,rec);
+  buffer_append(b,","); buffer_append(b,tr);
+  buffer_append(b,"\n");
+  return buffer_text(b);
+}
+
+fn run_key(s: string, o: string, v: string, strategy: string) -> string
+{
+  return Store.digest(text_concat("finpred-run@1\n",
+    text_concat(s,text_concat("\n",text_concat(o,text_concat("\n",
+      text_concat(v,text_concat("\n",strategy))))))));
+}
+
+fn execute(scenario_raw: string, offers_raw: string, valuation_raw: string,
+  strategy_raw: string, home: string, persist: bool, expected_rec: string,
+  expected_trace: string, expected_run_id: string) -> i64
+{
+  if !Graph.validate("recommendation") || !Ottmat.checked_strategy(strategy_raw)
+  { tool_fail("automat/ottmat: invalid graph or incompatible strategy"); }
+  let descriptor = record<SDK.Descriptor>{name:"yieldcraft.percentile",sdk_version:1,
+    kind:"Strategy",contract:"pricing.recommendation@1",effect:"pure"};
+  if !SDK.admit(descriptor,"recommendation") { tool_fail("sdk: capability denied"); }
+  let s = C.scenario_csv(scenario_raw);
+  let v = C.valuation_csv(valuation_raw,s);
+  let sd = Store.digest(scenario_raw);
+  let od = Store.digest(offers_raw);
+  let vd = Store.digest(valuation_raw);
+  let td = Store.digest(strategy_raw);
+  let id = run_key(sd,od,vd,td);
+  let pool = Match.ingest(offers_raw,s);
+  let dist = Match.distribution(pool,s);
+  let r = Strategy.recommend(s,v,dist);
+  Match.destroy_distribution(dist);
+  Match.destroy(pool);
+  let rec = JSON.recommendation(s,r,id,sd,od,vd,td);
+  let explanation = trace(s,r,sd,od,vd,td);
+  let rec_digest = Store.digest(rec);
+  let trace_digest = Store.digest(explanation);
+  if !persist
+  {
+    if expected_run_id != id || expected_rec != rec_digest || expected_trace != trace_digest
+    { tool_fail("replay: snapshot/plan/output divergence"); }
+    println("replay_ok=true");
+  }
+  else
+  {
+    Store.ensure(home);
+    # The raw input snapshots are independent immutable artifacts.
+    if Store.put(home,scenario_raw) != sd || Store.put(home,offers_raw) != od
+      || Store.put(home,valuation_raw) != vd || Store.put(home,strategy_raw) != td
+    { tool_fail("artifact: input snapshot changed during persistence"); }
+    let sj = JSON.scenario(s,sd);
+    let vj = JSON.valuation(v,vd);
+    Store.put(home,sj);
+    Store.put(home,vj);
+    # Record all schema-valid observations, including rejected competitors.
+    for i in 1 .. CSV.rows(offers_raw)
+    {
+      let offer = C.offer_csv(CSV.line(offers_raw,i));
+      Store.put(home,JSON.offer(offer,od));
+    }
+    if Store.put(home,rec) != rec_digest || Store.put(home,explanation) != trace_digest
+    { tool_fail("artifact: recommendation/trace persistence divergence"); }
+    Store.put_run(home,id,make_manifest(sd,od,vd,td,rec_digest,trace_digest));
+  }
+  println(text_concat("run_id=",id));
+  println(text_concat("recommendation_minor=",F.num(r["recommended_cents"])));
+  println(text_concat("currency=",s["currency"]));
+  println(text_concat("reason=",r["reason"]));
+  println(text_concat("recommendation_digest=",rec_digest));
+  println(text_concat("trace_digest=",trace_digest));
+  println("published=false");
+  return 0;
+}
+
+fn replay(home: string, id: string) -> i64
+{
+  let manifest = Store.read_run(home,id);
+  if CSV.rows(manifest) != 1 { tool_fail("replay: malformed run manifest"); }
+  let line = CSV.line(manifest,0);
+  CSV.require_width(line,7);
+  if CSV.field(line,0) != "finpred-run@1" { tool_fail("replay: unknown run format"); }
+  let s = CSV.field(line,1);
+  let o = CSV.field(line,2);
+  let v = CSV.field(line,3);
+  let strategy = CSV.field(line,4);
+  let rec = CSV.field(line,5);
+  let tr = CSV.field(line,6);
+  return execute(Store.fetch(home,s), Store.fetch(home,o),Store.fetch(home,v),
+    Store.fetch(home,strategy),home,false,rec,tr,id);
+}
+
+fn selftest() -> i64
+{
+  assert(Date.date_days("1970-01-01") == 0);
+  assert(Date.nights("2024-03-30","2024-04-02") == 3);
+  assert(Date.nights("2024-02-28","2024-03-01") == 2);
+  assert(Date.nights("2023-02-28","2023-03-01") == 1);
+  assert(Date.nights("2023-02-29","2023-03-01") == -1);
+  assert(Money.half_up(343,2) == 172);
+  assert(Money.shortcut(17500,17100,500) == 17100);
+  assert(Money.shortcut(17500,17000,500) == 17500);
+  assert(Quantile.target(0,"linear") == 4000);
+  assert(Quantile.target(90,"linear") == 7500);
+  assert(Quantile.target(90,"quadratic") == 7500);
+  let rates = A.basis_array_array(5,0);
+  A.basis_array_update(rates,0,30000);
+  A.basis_array_update(rates,1,33000);
+  A.basis_array_update(rates,2,35000);
+  A.basis_array_update(rates,3,38000);
+  A.basis_array_update(rates,4,40000);
+  assert(Quantile.type7(rates,5,5000) == 35000);
+  assert(Quantile.type7(rates,5,4000) == 34200);
+  A.basis_array_destroy(rates);
+  assert(Graph.validate("recommendation"));
+  assert(!Graph.validate("execution"));
+  println("selftest_ok=true");
+  return 0;
+}
+
+fn entry() -> i64
+{
+  let mode = env_default("FINPRED_MODE","run");
+  if mode == "selftest" { return selftest(); }
+  let home = env_default("FINPRED_HOME",".finpred");
+  if mode == "replay"
+  {
+    let id = Env.basis_command_line_get_env("FINPRED_RUN_ID");
+    if text_len(id) != 64 { tool_fail("replay: FINPRED_RUN_ID must be a digest"); }
+    return replay(home,id);
+  }
+  if mode != "run" { tool_fail("capability denied: execution mode and unknown modes unavailable"); }
+  return execute(source(env_default("FINPRED_SCENARIO","fixtures/scenario.csv")),
+    source(env_default("FINPRED_OFFERS","fixtures/offers.csv")),
+    source(env_default("FINPRED_VALUATION","fixtures/valuation.csv")),
+    source(env_default("FINPRED_STRATEGY","strategies/yieldcraft.ottmat")),
+    home,true,"","","");
+}

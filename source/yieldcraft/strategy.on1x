@@ -1,0 +1,60 @@
+import core.contracts as C;
+import core.date as Date;
+import core.money as Money;
+import algorithms.quantile as Q;
+import yieldcraft.matcher as Match;
+
+record Recommendation
+{
+  intended_bps: i64,
+  selected_bps: i64,
+  intended_cents: i64,
+  lower_cents: i64,
+  candidate_cents: i64,
+  recommended_cents: i64,
+  property_count: i64,
+  rejected: i64,
+  infeasible: i64,
+  search_nodes: i64,
+  reason: string
+}
+
+fn recommend(scenario: C.Scenario, valuation: C.Valuation, dist: Match.Distribution) -> Recommendation
+{
+  if dist["count"] < scenario["min_properties"]
+  { tool_fail("insufficient_evidence: too few independent, bookable properties"); }
+  let lead = Date.lead_days(scenario["decision_at"],scenario["arrival"]);
+  var percentile = scenario["target_bps"];
+  if percentile == 0 { percentile = Q.target(lead,scenario["curve"]); }
+  if percentile < 4000
+  { tool_fail("strategy: shortcut's lower percentile exceeds intended percentile"); }
+  let intended_total = Q.type7(dist["prices"],dist["count"],percentile);
+  let lower_total = Q.type7(dist["prices"],dist["count"],4000);
+  let intended = Money.half_up(intended_total,scenario["nights"]);
+  let lower = Money.half_up(lower_total,scenario["nights"]);
+  let candidate = Money.shortcut(intended,lower,valuation["shortcut_cents"]);
+  var selected = percentile;
+  var reason = "target_percentile";
+  if candidate == lower && candidate != intended
+  {
+    selected = 4000;
+    reason = "lower_percentile_shortcut";
+  }
+  var floor = valuation["floor_cents"];
+  var cap = valuation["cap_cents"];
+  let previous = valuation["current_cents"];
+  let movement = valuation["max_move_cents"];
+  var lower_movement = 0;
+  if previous > movement { lower_movement = previous - movement; }
+  if lower_movement > floor { floor = lower_movement; }
+  var upper_movement = previous + movement;
+  if upper_movement > 1000000000000 { upper_movement = 1000000000000; }
+  if upper_movement < cap { cap = upper_movement; }
+  if floor > cap { tool_fail("guardrails: empty floor/cap/movement intersection"); }
+  let approved = Money.capped(candidate,floor,cap);
+  if approved != candidate { reason = "guardrail_adjustment"; }
+  return record<Recommendation>{intended_bps:percentile,selected_bps:selected,
+    intended_cents:intended,lower_cents:lower,candidate_cents:candidate,
+    recommended_cents:approved,property_count:dist["count"],rejected:dist["rejected"],
+    infeasible:dist["infeasible"],search_nodes:dist["examined"],reason:reason};
+}

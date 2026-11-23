@@ -1,0 +1,12 @@
+{
+  "name": "yieldcraft.percentile",
+  "version": "1.0.0",
+  "sdk": 1,
+  "kind": "Strategy",
+  "contracts": ["hospitality.scenario@1", "hospitality.offer@1", "pricing.valuation@1", "pricing.recommendation@1"],
+  "execution": "built-in-on1x",
+  "mode": "recommendation",
+  "host_capabilities": [],
+  "effects": ["pure"],
+  "resource_limits": {"csv_rows":512,"rooms_per_property":10,"maximum_rooms":4,"adults":8,"children":8,"search_budget_max":1000000}
+}

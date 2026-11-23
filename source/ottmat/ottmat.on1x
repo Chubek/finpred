@@ -1,0 +1,17 @@
+# Deliberately narrow v1 Ottmat frontend: a line-oriented typed declaration.
+# It is NOT a general-purpose scripting interpreter.
+import core.csv as CSV;
+import automat.graph as Graph;
+fn checked_strategy(source: string) -> bool
+{
+  if CSV.rows(source) != 8 { return false; }
+  if CSV.line(source,0) != "ottmat 1" { return false; }
+  if CSV.line(source,1) != "input hospitality.scenario@1" { return false; }
+  if CSV.line(source,2) != "source hospitality.offer@1" { return false; }
+  if CSV.line(source,3) != "transform hospitality.offer@1" { return false; }
+  if CSV.line(source,4) != "algorithm pricing.distribution@1" { return false; }
+  if CSV.line(source,5) != "strategy pricing.recommendation@1" { return false; }
+  if CSV.line(source,6) != "gate pricing.recommendation@1" { return false; }
+  if CSV.line(source,7) != "output pricing.recommendation@1" { return false; }
+  return Graph.validate("recommendation");
+}

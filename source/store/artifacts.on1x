@@ -1,0 +1,79 @@
+# Local-first, content-addressed immutable text artifacts. No network or publication.
+import std.crypto.crypto as Crypto;
+import std.io.TextIO as IO;
+import std.os.OS_FileSys as FS;
+
+fn digest(content: string) -> string
+{
+  let hash = Crypto.crypto_blake3(content);
+  if text_len(hash) != 64 { tool_fail("artifact: digest provider failure"); }
+  return hash;
+}
+
+fn valid_hash(hash: string) -> bool
+{
+  if text_len(hash) != 64 { return false; }
+  for i in 0 .. 64
+  {
+    let c = text_byte(hash,i);
+    if !((c >= 48 && c <= 57) || (c >= 97 && c <= 102)) { return false; }
+  }
+  return true;
+}
+fn base(home: string) -> string { return text_concat(home, "/artifacts/"); }
+fn artifact_path(home: string, hash: string) -> string
+{
+  if !valid_hash(hash) { tool_fail("artifact: malformed BLAKE3 digest"); }
+  return text_concat(text_concat(base(home), "blake3-"), text_concat(hash, ".txt"));
+}
+fn run_path(home: string, id: string) -> string
+{
+  if !valid_hash(id) { tool_fail("run: malformed identity"); }
+  return text_concat(text_concat(home, "/runs/"), text_concat(id, ".txt"));
+}
+fn ensure(home: string)
+{
+  if !FS.basis_fs_exists(home) && !FS.basis_fs_mkdir(home)
+  { tool_fail("artifact: cannot create home directory"); }
+  let objects = text_concat(home, "/artifacts");
+  if !FS.basis_fs_exists(objects) && !FS.basis_fs_mkdir(objects)
+  { tool_fail("artifact: cannot create artifacts directory"); }
+  let runs = text_concat(home, "/runs");
+  if !FS.basis_fs_exists(runs) && !FS.basis_fs_mkdir(runs)
+  { tool_fail("artifact: cannot create runs directory"); }
+}
+fn put_at(path: string, content: string)
+{
+  # Never overwrite a published artifact. Corruption and collisions fail closed.
+  if FS.basis_fs_exists(path)
+  {
+    if IO.basis_text_io_input_all(path) != content { tool_fail("artifact: immutable path conflict"); }
+    return;
+  }
+  # Sole-writer local process v1. Do not claim concurrent atomic creation.
+  if !IO.basis_text_io_output(path, content) { tool_fail("artifact: write failed"); }
+}
+fn put(home: string, content: string) -> string
+{
+  let hash = digest(content);
+  put_at(artifact_path(home, hash), content);
+  return hash;
+}
+fn fetch(home: string, hash: string) -> string
+{
+  let path = artifact_path(home, hash);
+  if !FS.basis_fs_exists(path) { tool_fail("artifact: missing snapshot"); }
+  let value = IO.basis_text_io_input_all(path);
+  if digest(value) != hash { tool_fail("artifact: snapshot digest mismatch"); }
+  return value;
+}
+fn put_run(home: string, id: string, content: string)
+{
+  put_at(run_path(home, id), content);
+}
+fn read_run(home: string, id: string) -> string
+{
+  let path = run_path(home, id);
+  if !FS.basis_fs_exists(path) { tool_fail("run: unknown id"); }
+  return IO.basis_text_io_input_all(path);
+}

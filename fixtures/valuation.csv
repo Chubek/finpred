@@ -1,0 +1,2 @@
+valuation_id,observed_at,ingested_at,currency,current_cents,floor_cents,cap_cents,max_move_cents,shortcut_cents
+1,2026-11-19T18:00:00Z,2026-11-20T08:00:00Z,EUR,17500,16000,25000,5000,500

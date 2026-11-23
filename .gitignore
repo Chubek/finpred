@@ -1,0 +1,61 @@
+# FinPRED local state: immutable artifacts, run records, traces and snapshots.
+# These may contain proprietary input data or other sensitive information.
+.finpred/
+
+# On1x project outputs and generated/native build products.
+/target/
+/build/
+/dist/
+/release/
+*.o
+*.obj
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.exe
+*.o1vm
+*.d
+*.gcda
+*.gcno
+*.gcov
+*.profraw
+*.profdata
+
+# MuLIB is a separately obtained dependency at third_party/mulib.
+# Keep third_party/README.md and any future checked-in integration files.
+/third_party/mulib/
+
+# Python test/tool caches and coverage artifacts.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Local configuration and secrets (check in .env.example instead).
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Temporary files, logs and editor/OS metadata.
+*.log
+*.tmp
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Deliberately tracked: On1xfile, On1xfile.lock (when generated),
+# contracts/, fixtures/, strategies/, tests/, AGENTS.md and source/.

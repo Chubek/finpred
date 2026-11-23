@@ -1,0 +1,18 @@
+# Closed-by-default On1x extension descriptor policy (MVP).
+# No arbitrary native DLLs, Lua, filesystem, network, brokerage or publishing.
+record Descriptor
+{
+  name: string,
+  sdk_version: i64,
+  kind: string,
+  contract: string,
+  effect: string
+}
+fn admit(plugin: Descriptor, mode: string) -> bool
+{
+  if plugin["sdk_version"] != 1 { return false; }
+  if plugin["name"] != "yieldcraft.percentile" { return false; }
+  if plugin["kind"] != "Strategy" || plugin["contract"] != "pricing.recommendation@1" { return false; }
+  if plugin["effect"] != "pure" { return false; }
+  return mode == "recommendation" || mode == "analysis" || mode == "simulation";
+}

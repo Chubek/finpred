@@ -1,0 +1,173 @@
+import core.csv as CSV;
+import core.date as Date;
+import core.money as Money;
+import std.String as Str;
+
+record Scenario
+{
+  id: i64,
+  observed_at: string,
+  ingested_at: string,
+  decision_at: string,
+  arrival: string,
+  departure: string,
+  nights: i64,
+  adults: i64,
+  children: i64,
+  max_rooms: i64,
+  min_properties: i64,
+  target_bps: i64,
+  curve: string,
+  currency: string,
+  max_age_days: i64,
+  search_budget: i64
+}
+
+record Valuation
+{
+  id: i64,
+  observed_at: string,
+  ingested_at: string,
+  currency: string,
+  current_cents: i64,
+  floor_cents: i64,
+  cap_cents: i64,
+  max_move_cents: i64,
+  shortcut_cents: i64
+}
+
+record Offer
+{
+  property_id: i64,
+  room_id: i64,
+  arrival: string,
+  departure: string,
+  adult_cap: i64,
+  child_cap: i64,
+  total_cap: i64,
+  gross_cents: i64,
+  currency: string,
+  observed_at: string,
+  ingested_at: string,
+  valid_from: string,
+  valid_to: string,
+  bookable: bool
+}
+
+fn scenario_csv(text: string) -> Scenario
+{
+  if CSV.rows(text) != 2 { tool_fail("scenario: expected exactly one data row"); }
+  CSV.header(CSV.line(text, 0), "scenario_id,observed_at,ingested_at,decision_at,arrival,departure,adults,children,max_rooms,min_properties,target_bps,curve,currency,max_age_days,search_budget");
+  let row = CSV.line(text, 1);
+  CSV.require_width(row, 15);
+  let id = CSV.nat(CSV.field(row, 0));
+  let observed = CSV.field(row, 1);
+  let ingested = CSV.field(row, 2);
+  let at = CSV.field(row, 3);
+  let arrival = CSV.field(row, 4);
+  let departure = CSV.field(row, 5);
+  let adults = CSV.nat(CSV.field(row, 6));
+  let children = CSV.nat(CSV.field(row, 7));
+  let rooms = CSV.nat(CSV.field(row, 8));
+  let minimum = CSV.nat(CSV.field(row, 9));
+  let target = CSV.nat(CSV.field(row, 10));
+  let curve = CSV.field(row, 11);
+  let currency = CSV.field(row, 12);
+  let max_age = CSV.nat(CSV.field(row, 13));
+  let budget = CSV.nat(CSV.field(row, 14));
+  let nights = Date.nights(arrival, departure);
+  if id == 0 || !Date.utc_timestamp(observed) || !Date.utc_timestamp(ingested)
+    || !Date.utc_timestamp(at) || Str.compare(observed, ingested) > 0
+    || Str.compare(ingested, at) > 0 || nights < 1 || Date.lead_days(at, arrival) < 0
+  { tool_fail("scenario: invalid identity, UTC timestamps or civil stay dates"); }
+  if adults < 1 || adults > 8 || children > 8 || rooms < 1 || rooms > 4 || rooms > adults
+  { tool_fail("scenario: party or room limit outside verified bound"); }
+  if minimum < 3 || minimum > 32 || target > 10000 || max_age > 365 || budget < 1 || budget > 1000000
+  { tool_fail("scenario: statistical or execution bound invalid"); }
+  if curve != "linear" && curve != "quadratic" { tool_fail("scenario: unknown curve"); }
+  if currency != "EUR" { tool_fail("scenario: MVP only supports exact EUR minor units"); }
+  return record<Scenario>{id:id, observed_at:observed, ingested_at:ingested, decision_at:at, arrival:arrival, departure:departure,
+    nights:nights, adults:adults, children:children, max_rooms:rooms,
+    min_properties:minimum, target_bps:target, curve:curve,
+    currency:currency, max_age_days:max_age, search_budget:budget};
+}
+
+fn valuation_csv(text: string, scenario: Scenario) -> Valuation
+{
+  if CSV.rows(text) != 2 { tool_fail("valuation: expected exactly one data row"); }
+  CSV.header(CSV.line(text, 0), "valuation_id,observed_at,ingested_at,currency,current_cents,floor_cents,cap_cents,max_move_cents,shortcut_cents");
+  let row = CSV.line(text, 1);
+  CSV.require_width(row, 9);
+  let id = CSV.nat(CSV.field(row, 0));
+  let observed = CSV.field(row, 1);
+  let ingested = CSV.field(row, 2);
+  let currency = CSV.field(row, 3);
+  let current = CSV.nat(CSV.field(row, 4));
+  let floor = CSV.nat(CSV.field(row, 5));
+  let cap = CSV.nat(CSV.field(row, 6));
+  let movement = CSV.nat(CSV.field(row, 7));
+  let shortcut = CSV.nat(CSV.field(row, 8));
+  if id == 0 || !Date.utc_timestamp(observed) || !Date.utc_timestamp(ingested)
+    || Str.compare(observed, scenario["decision_at"]) > 0
+    || Str.compare(ingested, scenario["decision_at"]) > 0
+    || Str.compare(ingested, observed) < 0
+  { tool_fail("valuation: invalid or future-dated provenance"); }
+  if currency != scenario["currency"] || !Money.safe_nonnegative(current)
+    || !Money.safe_nonnegative(floor) || !Money.safe_nonnegative(cap)
+    || !Money.safe_nonnegative(movement) || !Money.safe_nonnegative(shortcut) || floor > cap
+  { tool_fail("valuation: invalid money limits or incompatible currency"); }
+  return record<Valuation>{id:id,observed_at:observed,ingested_at:ingested,currency:currency,
+    current_cents:current,floor_cents:floor,cap_cents:cap,max_move_cents:movement,shortcut_cents:shortcut};
+}
+
+fn offer_csv(row: string) -> Offer
+{
+  CSV.require_width(row, 16);
+  let p = CSV.nat(CSV.field(row, 0));
+  let r = CSV.nat(CSV.field(row, 1));
+  let arrival = CSV.field(row, 2);
+  let departure = CSV.field(row, 3);
+  let adult = CSV.nat(CSV.field(row, 4));
+  let child = CSV.nat(CSV.field(row, 5));
+  let total = CSV.nat(CSV.field(row, 6));
+  let base = CSV.nat(CSV.field(row, 7));
+  let fee = CSV.nat(CSV.field(row, 8));
+  let tax = CSV.nat(CSV.field(row, 9));
+  let currency = CSV.field(row, 10);
+  let observed = CSV.field(row, 11);
+  let ingested = CSV.field(row, 12);
+  let valid_from = CSV.field(row, 13);
+  let valid_to = CSV.field(row, 14);
+  let bookable = CSV.bit(CSV.field(row, 15));
+  if p == 0 || r == 0 || Date.nights(arrival, departure) < 1
+    || adult < 1 || adult > 8 || child > 8 || total < 1 || total > 16
+    || !Money.safe_nonnegative(base) || !Money.safe_nonnegative(fee) || !Money.safe_nonnegative(tax)
+    || base > 1000000000000 - fee - tax
+  { tool_fail("offer: invalid room, dates, capacities or gross price"); }
+  if !Date.utc_timestamp(observed) || !Date.utc_timestamp(ingested)
+    || Str.compare(ingested, observed) < 0
+    || Date.date_days(valid_from) < 0 || Date.date_days(valid_to) < Date.date_days(valid_from)
+  { tool_fail("offer: invalid observed/ingested/economic validity times"); }
+  if currency != "EUR" { tool_fail("offer: unsupported currency, no implicit FX"); }
+  return record<Offer>{property_id:p,room_id:r,arrival:arrival,departure:departure,
+    adult_cap:adult,child_cap:child,total_cap:total,gross_cents:base + fee + tax,
+    currency:currency,observed_at:observed,ingested_at:ingested,
+    valid_from:valid_from,valid_to:valid_to,bookable:bookable};
+}
+
+# Eligibility may reject a VALID source observation; rejection is not schema failure.
+fn eligible(offer: Offer, scenario: Scenario) -> bool
+{
+  if !offer["bookable"] || offer["arrival"] != scenario["arrival"]
+    || offer["departure"] != scenario["departure"] || offer["currency"] != scenario["currency"]
+  { return false; }
+  if Str.compare(offer["observed_at"], scenario["decision_at"]) > 0
+    || Str.compare(offer["ingested_at"], scenario["decision_at"]) > 0
+  { return false; }
+  if Str.compare(offer["valid_from"], scenario["arrival"]) > 0
+    || Str.compare(offer["valid_to"], scenario["departure"]) < 0
+  { return false; }
+  let elapsed = Date.date_days(text_slice(scenario["decision_at"], 0, 10))
+    - Date.date_days(text_slice(offer["observed_at"], 0, 10));
+  return elapsed >= 0 && elapsed <= scenario["max_age_days"];
+}

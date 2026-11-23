@@ -1,0 +1,40 @@
+# On1x typed execution plan. MVP has one bounded acyclic graph.
+# Effects are checked independently of any strategy configuration setting.
+record Node
+{
+  id: i64,
+  family: string,
+  accepts: string,
+  produces: string,
+  effect: string
+}
+
+fn node(id: i64) -> Node
+{
+  if id == 0 { return record<Node>{id:0,family:"Input",accepts:"none",produces:"hospitality.scenario@1",effect:"read"}; }
+  if id == 1 { return record<Node>{id:1,family:"Source",accepts:"hospitality.scenario@1",produces:"hospitality.offer@1",effect:"read"}; }
+  if id == 2 { return record<Node>{id:2,family:"Transform",accepts:"hospitality.offer@1",produces:"hospitality.offer@1",effect:"pure"}; }
+  if id == 3 { return record<Node>{id:3,family:"Algorithm",accepts:"hospitality.offer@1",produces:"pricing.distribution@1",effect:"pure"}; }
+  if id == 4 { return record<Node>{id:4,family:"Strategy",accepts:"pricing.distribution@1",produces:"pricing.recommendation@1",effect:"pure"}; }
+  if id == 5 { return record<Node>{id:5,family:"Gate",accepts:"pricing.recommendation@1",produces:"pricing.recommendation@1",effect:"pure"}; }
+  if id == 6 { return record<Node>{id:6,family:"Output",accepts:"pricing.recommendation@1",produces:"pricing.recommendation@1",effect:"record"}; }
+  tool_fail("automat: unknown node id");
+  return record<Node>{id:0,family:"Error",accepts:"none",produces:"none",effect:"none"};
+}
+
+fn validate(mode: string) -> bool
+{
+  if mode != "analysis" && mode != "recommendation" && mode != "simulation"
+  { return false; }
+  # A single monotonic topological order and exact edge schema equality.
+  for id in 0 .. 6
+  {
+    let a = node(id);
+    let b = node(id + 1);
+    if a["produces"] != b["accepts"] || b["id"] <= a["id"] { return false; }
+    if a["effect"] == "external_action" || b["effect"] == "external_action" { return false; }
+  }
+  return true;
+}
+
+fn version() -> string { return "yieldcraft.fixed-graph@1"; }

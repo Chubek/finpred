@@ -1,0 +1,79 @@
+# Proleptic Gregorian civil days, independent of local timezone/DST.
+# Supported years: 1970..2399. Invalid input returns -1.
+fn digit(s: string, i: i64) -> i64
+{
+  let c = text_byte(s, i);
+  if c < 48 || c > 57 { return -1; }
+  return c - 48;
+}
+
+fn date_days(s: string) -> i64
+{
+  if text_len(s) != 10 { return -1; }
+  if text_byte(s, 4) != 45 || text_byte(s, 7) != 45 { return -1; }
+  var y = 0;
+  for i in 0 .. 4
+  {
+    let d = digit(s, i);
+    if d < 0 { return -1; }
+    y = y * 10 + d;
+  }
+  let m1 = digit(s, 5);
+  let m2 = digit(s, 6);
+  let d1 = digit(s, 8);
+  let d2 = digit(s, 9);
+  if m1 < 0 || m2 < 0 || d1 < 0 || d2 < 0 { return -1; }
+  let m = m1 * 10 + m2;
+  let d = d1 * 10 + d2;
+  if y < 1970 || y > 2399 || m < 1 || m > 12 || d < 1 { return -1; }
+  var days = 31;
+  if m == 4 || m == 6 || m == 9 || m == 11 { days = 30; }
+  if m == 2
+  {
+    days = 28;
+    if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) { days = 29; }
+  }
+  if d > days { return -1; }
+  # March-based algorithm: all intermediate divisions are nonnegative.
+  var year = y;
+  if m <= 2 { year = year - 1; }
+  let era = year / 400;
+  let yoe = year - era * 400;
+  var mp = m - 3;
+  if m <= 2 { mp = m + 9; }
+  let doy = (153 * mp + 2) / 5 + d - 1;
+  let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+  return era * 146097 + doe - 719468;
+}
+
+fn utc_timestamp(s: string) -> bool
+{
+  if text_len(s) != 20 { return false; }
+  if text_byte(s, 10) != 84 || text_byte(s, 13) != 58 || text_byte(s, 16) != 58 || text_byte(s, 19) != 90 { return false; }
+  if date_days(text_slice(s, 0, 10)) < 0 { return false; }
+  for i in 11 .. 19
+  {
+    if i != 13 && i != 16 && digit(s, i) < 0 { return false; }
+  }
+  let hour = digit(s, 11) * 10 + digit(s, 12);
+  let minute = digit(s, 14) * 10 + digit(s, 15);
+  let second = digit(s, 17) * 10 + digit(s, 18);
+  return hour < 24 && minute < 60 && second < 60;
+}
+
+fn nights(arrival: string, departure: string) -> i64
+{
+  let start = date_days(arrival);
+  let end = date_days(departure);
+  if start < 0 || end <= start || end - start > 365 { return -1; }
+  return end - start;
+}
+
+fn lead_days(decision_at: string, arrival: string) -> i64
+{
+  if !utc_timestamp(decision_at) { return -1; }
+  let d = date_days(text_slice(decision_at, 0, 10));
+  let a = date_days(arrival);
+  if a < d { return -1; }
+  return a - d;
+}
