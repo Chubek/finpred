@@ -1,0 +1,78 @@
+# Local publication protocol
+
+The store runs on a local POSIX filesystem under an operator-controlled
+`FINPRED_HOME`. Use a private directory and protect its ancestors. All writers
+must use the same reservation protocol. Replay reads only published paths.
+
+`put_at` publishes each artifact or manifest at its existing v1-compatible
+name. A byte-identical existing file is reused without changing its inode or
+creating a reservation. A different file at that name is an immutable conflict.
+
+1. Reserve a missing destination by creating the sibling directory
+   `<destination>.pending` with `mkdir`. Only its creator may write inside it.
+2. Recheck the destination: another writer may have completed before this
+   process acquired the reservation. Otherwise write `payload` inside the new
+   empty directory and check the result (including `fclose`).
+3. Rename the closed file into place on the same filesystem, then remove the
+   empty reservation. The CLI publishes the run manifest last.
+
+Readers see either no entry or a complete file across a writer process exit.
+A competing writer can reuse the completed file or fail with `publication
+reservation unavailable`. Failure also covers an inaccessible reservation:
+the stdlib returns a boolean, not `errno`. There is no automatic retry.
+
+If a staged write (including close) or rename **returns failure**, the
+writer removes its own `payload` and empty reservation before reporting
+the error. No final file is removed. A cleanup error is explicit; if the
+rename succeeded but removing the reservation failed, the diagnostic says
+`file published`. Abrupt process exit can still leave a reservation.
+
+**Recovery:** stop all writers first. Inspect the store. A `.pending`
+directory left by a stopped process may contain an incomplete `payload`, or
+it may be empty if the rename already succeeded. Remove only the known
+abandoned payload and its directory; never promote a staged file. Rerun
+with the original inputs and verify with replay. Completed, unreferenced
+artifacts left before a manifest commit can be reused. A conflict at a
+published name is an integrity failure, not an invitation to overwrite it.
+
+## Boundaries of this protocol
+
+At MuLIB `49de89acbc97efbee493d6b28d02c8f64ed4f725`,
+`on1x/stdlib/os/OS_FileSys.on1x`, `io/TextIO.on1x` and their
+`runtime/basis_native.c` bridge expose `stat`, `mkdir`, `fwrite`/`fclose`,
+`rename` and `remove`. These are the existing trusted SDK bridges used by
+the project, not independently admitted storage kernels.
+
+- POSIX rename gives **atomic visibility**, not power-loss durability:
+  there is no file or directory `fsync` in these interfaces.
+- Exclusive `mkdir` serializes **cooperating** publishers per name. The
+  rename itself is not no-replace. This protocol cannot exclude a legacy
+  writer or another program that modifies final names directly.
+- Store keys are checked lowercase hex, but `stat` and reads follow
+  symlinks. The interfaces have no `lstat` or trusted directory descriptors
+  with which to reject symlink traversal and path swaps. Never use this
+  store in a directory writable by an untrusted party. Neither the reservation
+  nor the content digest establishes filesystem confinement.
+- Full P1 needs a reviewed, bounded directory-relative interface for regular
+  files, no-follow opens, no-replace publication, and file/directory sync.
+  See the [admission decision and required interface](../../native/STORE_ADMISSION.md)
+  for compiler evidence, error outcomes, publication ordering and acceptance
+  tests. No new native adapter or build dependency is used here.
+
+## Short-write regression (Linux)
+
+From the project root, build with `bin/build.sh` and run
+`python3 tests/check_write_failure.py`. It forces a real 404-byte
+manifest write to hit a 128-byte `RLIMIT_FSIZE`, with `SIGXFSZ` ignored so the
+writer can handle the error. The CLI must fail without a committed manifest
+or stale reservation; a normal retry must reproduce the original bytes and
+replay successfully.
+
+Verification (2026-11-23): in a scratch copy of the P1 tree with `MULIB_ROOT`
+pointing to the pinned checkout and `TMPDIR` on the scratch volume,
+`bin/build.sh`, `python3 tests/check_fixtures.py`, `python3 tests/validate_static.py`,
+the short-write regression and `tests/run.sh` all exited 0. The same focused
+regression failed on the pre-fix binary (write error reported, `.pending`
+still present). Both archived v1 runs replayed, and the v2 fixtures remained
+17,100 and 16,000 cents/night with `published=false`. These were process-level
+checks on Linux x86-64, not hostile-directory or power-loss tests.

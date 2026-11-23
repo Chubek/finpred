@@ -3,22 +3,24 @@ import core.date as Date;
 import core.money as Money;
 import std.String as Str;
 
+# On1x nominal records admit shared immutable sexpr atoms, not string fields.
+# Store validated text with sx_string; project its bytes with sx_text.
 record Scenario
 {
   id: i64,
-  observed_at: string,
-  ingested_at: string,
-  decision_at: string,
-  arrival: string,
-  departure: string,
+  observed_at: sexpr,
+  ingested_at: sexpr,
+  decision_at: sexpr,
+  arrival: sexpr,
+  departure: sexpr,
   nights: i64,
   adults: i64,
   children: i64,
   max_rooms: i64,
   min_properties: i64,
   target_bps: i64,
-  curve: string,
-  currency: string,
+  curve: sexpr,
+  currency: sexpr,
   max_age_days: i64,
   search_budget: i64
 }
@@ -26,9 +28,9 @@ record Scenario
 record Valuation
 {
   id: i64,
-  observed_at: string,
-  ingested_at: string,
-  currency: string,
+  observed_at: sexpr,
+  ingested_at: sexpr,
+  currency: sexpr,
   current_cents: i64,
   floor_cents: i64,
   cap_cents: i64,
@@ -40,17 +42,17 @@ record Offer
 {
   property_id: i64,
   room_id: i64,
-  arrival: string,
-  departure: string,
+  arrival: sexpr,
+  departure: sexpr,
   adult_cap: i64,
   child_cap: i64,
   total_cap: i64,
   gross_cents: i64,
-  currency: string,
-  observed_at: string,
-  ingested_at: string,
-  valid_from: string,
-  valid_to: string,
+  currency: sexpr,
+  observed_at: sexpr,
+  ingested_at: sexpr,
+  valid_from: sexpr,
+  valid_to: sexpr,
   bookable: bool
 }
 
@@ -86,10 +88,11 @@ fn scenario_csv(text: string) -> Scenario
   { tool_fail("scenario: statistical or execution bound invalid"); }
   if curve != "linear" && curve != "quadratic" { tool_fail("scenario: unknown curve"); }
   if currency != "EUR" { tool_fail("scenario: MVP only supports exact EUR minor units"); }
-  return record<Scenario>{id:id, observed_at:observed, ingested_at:ingested, decision_at:at, arrival:arrival, departure:departure,
+  return record<Scenario>{id:id, observed_at:sx_string(observed), ingested_at:sx_string(ingested), decision_at:sx_string(at),
+    arrival:sx_string(arrival), departure:sx_string(departure),
     nights:nights, adults:adults, children:children, max_rooms:rooms,
-    min_properties:minimum, target_bps:target, curve:curve,
-    currency:currency, max_age_days:max_age, search_budget:budget};
+    min_properties:minimum, target_bps:target, curve:sx_string(curve),
+    currency:sx_string(currency), max_age_days:max_age, search_budget:budget};
 }
 
 fn valuation_csv(text: string, scenario: Scenario) -> Valuation
@@ -108,15 +111,15 @@ fn valuation_csv(text: string, scenario: Scenario) -> Valuation
   let movement = CSV.nat(CSV.field(row, 7));
   let shortcut = CSV.nat(CSV.field(row, 8));
   if id == 0 || !Date.utc_timestamp(observed) || !Date.utc_timestamp(ingested)
-    || Str.compare(observed, scenario["decision_at"]) > 0
-    || Str.compare(ingested, scenario["decision_at"]) > 0
+    || Str.compare(observed, sx_text(scenario["decision_at"])) > 0
+    || Str.compare(ingested, sx_text(scenario["decision_at"])) > 0
     || Str.compare(ingested, observed) < 0
   { tool_fail("valuation: invalid or future-dated provenance"); }
-  if currency != scenario["currency"] || !Money.safe_nonnegative(current)
+  if currency != sx_text(scenario["currency"]) || !Money.safe_nonnegative(current)
     || !Money.safe_nonnegative(floor) || !Money.safe_nonnegative(cap)
     || !Money.safe_nonnegative(movement) || !Money.safe_nonnegative(shortcut) || floor > cap
   { tool_fail("valuation: invalid money limits or incompatible currency"); }
-  return record<Valuation>{id:id,observed_at:observed,ingested_at:ingested,currency:currency,
+  return record<Valuation>{id:id,observed_at:sx_string(observed),ingested_at:sx_string(ingested),currency:sx_string(currency),
     current_cents:current,floor_cents:floor,cap_cents:cap,max_move_cents:movement,shortcut_cents:shortcut};
 }
 
@@ -149,25 +152,34 @@ fn offer_csv(row: string) -> Offer
     || Date.date_days(valid_from) < 0 || Date.date_days(valid_to) < Date.date_days(valid_from)
   { tool_fail("offer: invalid observed/ingested/economic validity times"); }
   if currency != "EUR" { tool_fail("offer: unsupported currency, no implicit FX"); }
-  return record<Offer>{property_id:p,room_id:r,arrival:arrival,departure:departure,
+  return record<Offer>{property_id:p,room_id:r,arrival:sx_string(arrival),departure:sx_string(departure),
     adult_cap:adult,child_cap:child,total_cap:total,gross_cents:base + fee + tax,
-    currency:currency,observed_at:observed,ingested_at:ingested,
-    valid_from:valid_from,valid_to:valid_to,bookable:bookable};
+    currency:sx_string(currency),observed_at:sx_string(observed),ingested_at:sx_string(ingested),
+    valid_from:sx_string(valid_from),valid_to:sx_string(valid_to),bookable:bookable};
 }
 
 # Eligibility may reject a VALID source observation; rejection is not schema failure.
+fn eligibility_reason(offer: Offer, scenario: Scenario) -> string
+{
+  if !offer["bookable"] { return "not_bookable"; }
+  if sx_text(offer["arrival"]) != sx_text(scenario["arrival"])
+    || sx_text(offer["departure"]) != sx_text(scenario["departure"])
+  { return "stay_mismatch"; }
+  if sx_text(offer["currency"]) != sx_text(scenario["currency"]) { return "currency_mismatch"; }
+  if Str.compare(sx_text(offer["observed_at"]), sx_text(scenario["decision_at"])) > 0
+  { return "future_observed"; }
+  if Str.compare(sx_text(offer["ingested_at"]), sx_text(scenario["decision_at"])) > 0
+  { return "future_ingested"; }
+  if Str.compare(sx_text(offer["valid_from"]), sx_text(scenario["arrival"])) > 0
+    || Str.compare(sx_text(offer["valid_to"]), sx_text(scenario["departure"])) < 0
+  { return "validity_mismatch"; }
+  let elapsed = Date.date_days(text_slice(sx_text(scenario["decision_at"]), 0, 10))
+    - Date.date_days(text_slice(sx_text(offer["observed_at"]), 0, 10));
+  if elapsed < 0 || elapsed > scenario["max_age_days"] { return "stale"; }
+  return "eligible";
+}
+
 fn eligible(offer: Offer, scenario: Scenario) -> bool
 {
-  if !offer["bookable"] || offer["arrival"] != scenario["arrival"]
-    || offer["departure"] != scenario["departure"] || offer["currency"] != scenario["currency"]
-  { return false; }
-  if Str.compare(offer["observed_at"], scenario["decision_at"]) > 0
-    || Str.compare(offer["ingested_at"], scenario["decision_at"]) > 0
-  { return false; }
-  if Str.compare(offer["valid_from"], scenario["arrival"]) > 0
-    || Str.compare(offer["valid_to"], scenario["departure"]) < 0
-  { return false; }
-  let elapsed = Date.date_days(text_slice(scenario["decision_at"], 0, 10))
-    - Date.date_days(text_slice(offer["observed_at"], 0, 10));
-  return elapsed >= 0 && elapsed <= scenario["max_age_days"];
+  return eligibility_reason(offer,scenario) == "eligible";
 }

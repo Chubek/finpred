@@ -8,8 +8,8 @@
       "additionalProperties": false,
       "properties": {
         "adult_capacity": {
-          "maximum": 1000000000000,
-          "minimum": 0,
+          "maximum": 8,
+          "minimum": 1,
           "type": "integer"
         },
         "arrival": {
@@ -20,7 +20,7 @@
           "type": "boolean"
         },
         "child_capacity": {
-          "maximum": 1000000000000,
+          "maximum": 8,
           "minimum": 0,
           "type": "integer"
         },
@@ -34,8 +34,8 @@
           "type": "integer"
         },
         "total_capacity": {
-          "maximum": 1000000000000,
-          "minimum": 0,
+          "maximum": 16,
+          "minimum": 1,
           "type": "integer"
         },
         "valid_from": {
@@ -78,6 +78,7 @@
                 "pattern": "^blake3:[0-9a-f]{64}$",
                 "type": "string"
               },
+              "maxItems": 1,
               "minItems": 1,
               "type": "array"
             }
@@ -91,10 +92,7 @@
           "additionalProperties": false,
           "properties": {
             "evidence": {
-              "enum": [
-                "csv_import",
-                "scenario_comparables"
-              ]
+              "const": "csv_import"
             },
             "status": {
               "const": "validated"
@@ -132,10 +130,7 @@
               "type": "string"
             },
             "price_basis": {
-              "enum": [
-                "whole_stay",
-                "room_night"
-              ]
+              "const": "whole_stay"
             }
           },
           "required": [

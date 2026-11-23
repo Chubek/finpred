@@ -1,31 +1,167 @@
 #!/bin/sh
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-python3 "$ROOT/tests/check_fixtures.py"
 cd "$ROOT"
-"$ROOT/bin/finpred" selftest
-OUT=$("$ROOT/bin/finpred" run)
-printf '%s\n' "$OUT"
-printf '%s\n' "$OUT" | grep -Fx 'recommendation_minor=17100'
-printf '%s\n' "$OUT" | grep -Fx 'reason=lower_percentile_shortcut'
-printf '%s\n' "$OUT" | grep -Fx 'published=false'
-RUN_ID=$(printf '%s\n' "$OUT" | sed -n 's/^run_id=//p')
-[ "${#RUN_ID}" -eq 64 ]
-"$ROOT/bin/finpred" replay "$RUN_ID" | grep -Fx 'replay_ok=true'
-MULTI=$(FINPRED_SCENARIO="$ROOT/fixtures/scenario_multiroom.csv" \
-  FINPRED_OFFERS="$ROOT/fixtures/offers_multiroom.csv" "$ROOT/bin/finpred" run)
-printf '%s\n' "$MULTI" | grep -Fx 'recommendation_minor=16000'
-printf '%s\n' "$MULTI" | grep -Fx 'reason=guardrail_adjustment' 
-# Run is an immutable/idempotent local operation on exactly the same inputs.
-OUT2=$("$ROOT/bin/finpred" run)
-[ "$OUT" = "$OUT2" ]
-# Reject invalid scenario and unauthorized execution mode.
-if FINPRED_SCENARIO="$ROOT/fixtures/invalid_scenario.csv" "$ROOT/bin/finpred" run >/dev/null 2>&1; then
-  echo 'invalid scenario unexpectedly accepted' >&2
-  exit 1
-fi
-if FINPRED_MODE=execution "$ROOT/target/dev/finpred" >/dev/null 2>&1; then
-  echo 'execution mode unexpectedly accepted' >&2
-  exit 1
-fi
+python3 tests/check_fixtures.py
+work=$(mktemp -d "${TMPDIR:-/tmp}/finpred-test.XXXXXXXX")
+trap 'rm -rf -- "$work"' EXIT
+trap 'exit 1' HUP INT TERM
+exe=${FINPRED_EXE:-"$ROOT/target/dev/finpred"}
+unset FINPRED_MODE FINPRED_RUN_ID
+FINPRED_HOME="$work/main"
+FINPRED_VALUATION="$ROOT/fixtures/valuation.csv"
+FINPRED_STRATEGY="$ROOT/strategies/yieldcraft.ottmat"
+export FINPRED_HOME FINPRED_VALUATION FINPRED_STRATEGY FINPRED_SCENARIO FINPRED_OFFERS
+
+# Ignore access times: reading the files may legitimately update those.
+# Inodes and ctime/mtime catch same-byte rewrites and replacement as well.
+snapshot() {
+  python3 - "$FINPRED_HOME" <<'PY'
+import hashlib, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+for p in [root, *sorted(root.rglob("*"))]:
+    st = p.lstat()
+    print(p.relative_to(root), st.st_ino, st.st_mode, st.st_mtime_ns, st.st_ctime_ns,
+          hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() else "-")
+PY
+}
+
+expect_failure() {
+  diagnostic=$1
+  shift
+  if "$@" >"$work/failure" 2>&1; then
+    echo "unexpected success: $*" >&2
+    exit 1
+  fi
+  if ! grep -Fq "$diagnostic" "$work/failure"; then
+    cat "$work/failure" >&2
+    echo "missing diagnostic: $diagnostic" >&2
+    exit 1
+  fi
+}
+
+check_fixture() {
+  FINPRED_SCENARIO="$ROOT/fixtures/scenario$1.csv"
+  FINPRED_OFFERS="$ROOT/fixtures/offers$1.csv"
+  bin/finpred run >"$work/run"
+  cat "$work/run"
+  grep -Fxq "recommendation_minor=$2" "$work/run"
+  grep -Fxq "reason=$3" "$work/run"
+  grep -Fxq 'currency=EUR' "$work/run"
+  grep -Fxq 'published=false' "$work/run"
+  id=$(sed -n 's/^run_id=//p' "$work/run")
+  printf '%s\n' "$id" | grep -Exq '[0-9a-f]{64}'
+  trace_hash=$(sed -n 's/^trace_digest=//p' "$work/run")
+  trace_file="$FINPRED_HOME/artifacts/blake3-$trace_hash.txt"
+  grep -Fxq "recommended_nightly_minor=$2" "$trace_file"
+  grep -Fxq "reason=$3" "$trace_file"
+  grep -Fxq "independent_properties=$4" "$trace_file"
+  grep -Fxq "rejected_offers=$5" "$trace_file"
+  grep -Fxq "infeasible_properties=$6" "$trace_file"
+  IFS=, read -r version sd od vd td rd tr <"$FINPRED_HOME/runs/$id.txt"
+  [ "$version" = 'finpred-run@2' ]
+  cmp "$FINPRED_SCENARIO" "$FINPRED_HOME/artifacts/blake3-$sd.txt"
+  cmp "$FINPRED_OFFERS" "$FINPRED_HOME/artifacts/blake3-$od.txt"
+  cmp "$FINPRED_VALUATION" "$FINPRED_HOME/artifacts/blake3-$vd.txt"
+  cmp "$FINPRED_STRATEGY" "$FINPRED_HOME/artifacts/blake3-$td.txt"
+  grep -Fxq "recommendation_digest=$rd" "$work/run"
+  [ "$tr" = "$trace_hash" ]
+  snapshot >"$work/before"
+  FINPRED_SCENARIO="$work/absent" FINPRED_OFFERS="$work/absent" \
+    FINPRED_VALUATION="$work/absent" FINPRED_STRATEGY="$work/absent" \
+    bin/finpred replay "$id" >"$work/replay"
+  grep -Fxq 'replay_ok=true' "$work/replay"
+  sed '/^replay_ok=true$/d' "$work/replay" >"$work/summary"
+  cmp "$work/run" "$work/summary"
+  snapshot >"$work/after"
+  cmp "$work/before" "$work/after"
+  bin/finpred run >"$work/repeat"
+  cmp "$work/run" "$work/repeat"
+  snapshot >"$work/after"
+  cmp "$work/before" "$work/after"
+}
+
+bin/finpred selftest >"$work/selftest"
+grep -Fx 'selftest_ok=true' "$work/selftest"
+check_fixture '' 17100 lower_percentile_shortcut 5 2 0
+main_id=$id
+cp "$work/run" "$work/main-summary"
+check_fixture '_multiroom' 16000 guardrail_adjustment 3 0 1
+multi_id=$id
+[ "$multi_id" != "$main_id" ]
+python3 "$ROOT/tests/validate_runtime_json.py" "$FINPRED_HOME"
+python3 "$ROOT/tests/check_explain_cli.py" "$FINPRED_HOME" "$main_id"
+python3 "$ROOT/tests/check_evidence_cli.py" "$FINPRED_HOME" "$main_id" "$multi_id"
+python3 "$ROOT/tests/check_store.py" "$FINPRED_HOME" "$work/main-summary" "$work/run"
+id=$main_id
+FINPRED_SCENARIO="$ROOT/fixtures/scenario.csv"
+FINPRED_OFFERS="$ROOT/fixtures/offers.csv"
+manifest="$FINPRED_HOME/runs/$id.txt"
+IFS=, read -r version scenario offers valuation strategy rec trace <"$manifest"
+[ "$version" = 'finpred-run@2' ]
+# Independently computed BLAKE3-256 of the frozen scenario.csv bytes.
+[ "$scenario" = d29ce68748eef1b786027c59072d93e6606a39405b3af549c674c56c1899d735 ]
+# Also corrupt a normalized observation the matcher rejected as stale.
+rejected_offer=$(grep -Fl '"id":"property:106:room:1"' "$FINPRED_HOME"/artifacts/*.txt)
+for object in "$FINPRED_HOME/artifacts/blake3-$scenario.txt" \
+              "$FINPRED_HOME/artifacts/blake3-$offers.txt" \
+              "$FINPRED_HOME/artifacts/blake3-$valuation.txt" \
+              "$FINPRED_HOME/artifacts/blake3-$strategy.txt" \
+              "$FINPRED_HOME/artifacts/blake3-$rec.txt" \
+               "$FINPRED_HOME/artifacts/blake3-$trace.txt" \
+               "$FINPRED_HOME/artifacts/blake3-$id.txt" "$rejected_offer"; do
+  cp "$object" "$work/saved"
+  printf '!' | dd of="$object" bs=1 conv=notrunc 2>/dev/null
+  snapshot >"$work/before"
+  expect_failure 'snapshot digest mismatch' bin/finpred replay "$id"
+  if [ "$object" = "$FINPRED_HOME/artifacts/blake3-$scenario.txt" ]; then
+    expect_failure 'immutable path conflict' bin/finpred run
+  fi
+  snapshot >"$work/after"
+  cmp "$work/before" "$work/after"
+  mv "$work/saved" "$object"
+done
+mv "$FINPRED_HOME/artifacts/blake3-$rec.txt" "$work/missing"
+expect_failure 'missing snapshot' bin/finpred replay "$id"
+[ ! -e "$FINPRED_HOME/artifacts/blake3-$rec.txt" ]
+mv "$work/missing" "$FINPRED_HOME/artifacts/blake3-$rec.txt"
+cp "$FINPRED_HOME/artifacts/blake3-$rec.txt" "$work/saved"
+printf '\000suffix' >>"$FINPRED_HOME/artifacts/blake3-$rec.txt"
+expect_failure 'NUL-free text ABI' bin/finpred replay "$id"
+cp "$work/saved" "$FINPRED_HOME/artifacts/blake3-$rec.txt"
+truncate -s 2097153 "$FINPRED_HOME/artifacts/blake3-$rec.txt"
+expect_failure 'snapshot size outside digest profile' bin/finpred replay "$id"
+mv "$work/saved" "$FINPRED_HOME/artifacts/blake3-$rec.txt"
+
+# Checked-in valid artifacts under the wrong roles must not be accepted.
+cp "$manifest" "$work/original-manifest"
+printf '%s,%s,%s,%s,%s,%s,%s\n' "$version" "$scenario" "$offers" "$valuation" \
+  "$strategy" "$trace" "$rec" >"$manifest"
+expect_failure 'divergence' bin/finpred replay "$id"
+sed 's/^finpred-run@2/finpred-run@9/' "$work/original-manifest" >"$manifest"
+expect_failure 'unknown run format' bin/finpred replay "$id"
+mv "$work/original-manifest" "$manifest"
+bin/finpred replay "$id" >"$work/recovered"
+sed '/^replay_ok=true$/d' "$work/recovered" >"$work/summary"
+cmp "$work/main-summary" "$work/summary"
+
+id=$multi_id
+# An authentic manifest copied under the wrong identity must still fail.
+cp "$FINPRED_HOME/runs/$id.txt" "$FINPRED_HOME/runs/$main_id.txt"
+expect_failure 'divergence' bin/finpred replay "$main_id"
+# Removing LF changes the stored bytes even though a CSV parser sees the same fields.
+tr -d '\n' <"$FINPRED_HOME/runs/$id.txt" >"$work/edited"
+mv "$work/edited" "$FINPRED_HOME/runs/$id.txt"
+expect_failure 'malformed run manifest' bin/finpred replay "$id"
+
+FINPRED_HOME="$work/denied"
+expect_failure 'malformed identity' bin/finpred replay "$(printf '%064d' 0 | tr 0 /)"
+expect_failure 'scenario: invalid' env FINPRED_SCENARIO="$ROOT/fixtures/invalid_scenario.csv" bin/finpred run
+expect_failure 'capability denied' env FINPRED_MODE=execution bin/finpred run
+expect_failure 'capability denied' env FINPRED_MODE=execution "$exe"
+[ ! -e "$FINPRED_HOME" ]
+python3 "$ROOT/tests/check_pricing_cli.py"
+python3 "$ROOT/tests/check_ingestion_cli.py"
+python3 "$ROOT/tests/check_write_failure.py"
 echo 'on1x_integration_ok=true'

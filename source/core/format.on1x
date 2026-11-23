@@ -1,13 +1,8 @@
 import std.Int as Int;
 fn num(n: i64) -> string { return Int.to_string(n); }
-fn join2(a: string, b: string) -> string { return text_concat(a, b); }
-fn kv(key: string, value: string) -> string
-{
-  return text_concat(text_concat("\"", key), text_concat("\":", value));
-}
 fn q(value: string) -> string
 {
-  # Callers only pass validated digits, fixed vocabulary or UTC ISO timestamps.
+  # IDs, digest references, dates and enum values use only unescaped printable ASCII.
   for i in 0 .. text_len(value)
   {
     let c = text_byte(value, i);

@@ -3,23 +3,29 @@
 record Node
 {
   id: i64,
-  family: string,
-  accepts: string,
-  produces: string,
-  effect: string
+  family: sexpr,
+  accepts: sexpr,
+  produces: sexpr,
+  effect: sexpr
+}
+
+fn make_node(id: i64, family: string, accepts: string, produces: string, effect: string) -> Node
+{
+  return record<Node>{id:id, family:sx_string(family), accepts:sx_string(accepts),
+    produces:sx_string(produces), effect:sx_string(effect)};
 }
 
 fn node(id: i64) -> Node
 {
-  if id == 0 { return record<Node>{id:0,family:"Input",accepts:"none",produces:"hospitality.scenario@1",effect:"read"}; }
-  if id == 1 { return record<Node>{id:1,family:"Source",accepts:"hospitality.scenario@1",produces:"hospitality.offer@1",effect:"read"}; }
-  if id == 2 { return record<Node>{id:2,family:"Transform",accepts:"hospitality.offer@1",produces:"hospitality.offer@1",effect:"pure"}; }
-  if id == 3 { return record<Node>{id:3,family:"Algorithm",accepts:"hospitality.offer@1",produces:"pricing.distribution@1",effect:"pure"}; }
-  if id == 4 { return record<Node>{id:4,family:"Strategy",accepts:"pricing.distribution@1",produces:"pricing.recommendation@1",effect:"pure"}; }
-  if id == 5 { return record<Node>{id:5,family:"Gate",accepts:"pricing.recommendation@1",produces:"pricing.recommendation@1",effect:"pure"}; }
-  if id == 6 { return record<Node>{id:6,family:"Output",accepts:"pricing.recommendation@1",produces:"pricing.recommendation@1",effect:"record"}; }
+  if id == 0 { return make_node(id,"input","none","hospitality.scenario@1","read"); }
+  if id == 1 { return make_node(id,"source","hospitality.scenario@1","hospitality.offer@1","read"); }
+  if id == 2 { return make_node(id,"transform","hospitality.offer@1","hospitality.offer@1","pure"); }
+  if id == 3 { return make_node(id,"algorithm","hospitality.offer@1","pricing.distribution@1","pure"); }
+  if id == 4 { return make_node(id,"strategy","pricing.distribution@1","pricing.recommendation@1","pure"); }
+  if id == 5 { return make_node(id,"gate","pricing.recommendation@1","pricing.recommendation@1","pure"); }
+  if id == 6 { return make_node(id,"output","pricing.recommendation@1","pricing.recommendation@1","record"); }
   tool_fail("automat: unknown node id");
-  return record<Node>{id:0,family:"Error",accepts:"none",produces:"none",effect:"none"};
+  return make_node(id,"error","none","none","none");
 }
 
 fn validate(mode: string) -> bool
@@ -31,8 +37,8 @@ fn validate(mode: string) -> bool
   {
     let a = node(id);
     let b = node(id + 1);
-    if a["produces"] != b["accepts"] || b["id"] <= a["id"] { return false; }
-    if a["effect"] == "external_action" || b["effect"] == "external_action" { return false; }
+    if sx_text(a["produces"]) != sx_text(b["accepts"]) || b["id"] <= a["id"] { return false; }
+    if sx_text(a["effect"]) == "external_action" || sx_text(b["effect"]) == "external_action" { return false; }
   }
   return true;
 }

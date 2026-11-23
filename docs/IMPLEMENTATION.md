@@ -8,9 +8,9 @@
 - Reviewed paths through GitHub connector: `on1x/README.md`,
   `on1x/KERNEL_DIRECT_USAGE.md`, On1x sample programs, On1xfile guide,
   `on1x/stdlib/{io,os,crypto,collections,text}`.
-- On1x compile/link status: **not verified** (no checkout or compiler in the
-  current environment). This document never treats source inspection as an
-  independent signed ABI review.
+- On1x compile/link status: **built and executed** with the pinned compiler
+  and the On1xfile C11 driver; see the [acceptance record](#acceptance-record).
+  This build does not establish independent signed ABI review.
 
 ## Architecture and isolation
 
@@ -32,7 +32,7 @@ whole-stay matcher and recommendation strategy. `source/automat/` checks the
 first fixed typed DAG. `source/ottmat/` is a version 1 exact descriptor
 frontend, not a second runtime. `source/sdk/` holds a closed-by-default
 manifest policy. `source/store/` handles BLAKE3 identity, file snapshots and
-run manifests. `source/cli/` performs the only allowed local file access.
+run manifests. The CLI and store perform local file access.
 
 The SDK stub admits exactly the built-in pure Yieldcraft strategy. It does
 not load arbitrary plugins, map untrusted C pointers, or turn `unsafe` into
@@ -85,10 +85,12 @@ object name, preventing IDs that escape the artifact directory.
 The local store uses `artifacts/blake3-{hex}.txt` and
 `runs/{hex}.txt`. Existing paths are never deliberately overwritten with
 different content; replay independently rehashes all fetched snapshots and
-recomputes the output and trace from immutable inputs. However, file writes
-are **not atomic**, storage is not locked against racing processes, directory
-symlink safety is not enforced, and no authenticated audit ledger is claimed.
-These must be upgraded before operational production usage.
+recomputes the output and trace from immutable inputs. The current writer
+reserves each unpublished name using `mkdir` and publishes complete files by
+same-filesystem rename. Busy reservations fail explicitly. The
+[store protocol](../source/store/README.md) explains how to handle an
+abandoned stage. Atomic visibility for cooperating writers does not imply
+power-loss durability, directory symlink confinement, or authenticated audit.
 
 ## Module and kernel decision
 
@@ -105,27 +107,151 @@ invented.
 
 ## Acceptance record
 
+### Local verification environment (2026-11-23)
+
+FinPRED starting revision `b484951`; EndeavourOS, Linux
+`6.18.52-1-lts` x86_64, GCC `16.2.1`, GNU libc `2.44`, CMake `4.4.3`,
+Python `3.14.7`, `jsonschema` `4.26.0`. The Python oracle and native
+runtime are separate checks:
+
+- `python3 tests/check_fixtures.py` (exit 0): 17,100 cents with five
+  independent properties and two rejected rows; 16,000 cents with three
+  feasible properties and one infeasible property. For the multi-room
+  fixture the oracle enumerates assignments of guests, derives whole-stay
+  prices of 23,000, 30,000 and 35,000 cents, and verifies the guardrail
+  adjustment from 15,000 to 16,000 cents/night.
+- `python3 tests/validate_static.py` (exit 0): 15 On1x modules,
+  four schemas. This checks packaging and source structure only.
+
+MuLIB was checked out at `49de89acbc97efbee493d6b28d02c8f64ed4f725`,
+LibStone at `b5c962721a32df18b2fb22de136c1f2ef8b6390d`. Compiler:
+`third_party/mulib/build/on1x/on1xc`, SHA-256
+`0d63fc81d978f1588df8700cf4222ceb0b4425af26a97a591395b751d331a9af`.
+The compiler does not support `--version` (exit 2). Host ABI:
+`x86_64-pc-linux-gnu`, SysV. Initial configure failed (exit 1) with the
+default temporary volume full. These commands succeeded (exit 0), with no
+`warning:` diagnostics in the compiler build log:
+
+```sh
+git -C third_party/mulib submodule update --init on1x/third_party/libstone
+mkdir -p third_party/mulib/build/tmp
+export TMPDIR="$PWD/third_party/mulib/build/tmp"
+cmake --fresh -S third_party/mulib/on1x -B third_party/mulib/build/on1x -DBUILD_TESTING=ON
+cmake --build third_party/mulib/build/on1x --parallel 4 --target on1xc
+./bin/build.sh
+```
+
+The reference compiler accepts immutable textual **atoms** in nominal records.
+Typed inputs, reasons, plan labels, and descriptor fields use `sx_string`
+at construction and `sx_text` when passed to string functions. This is an
+internal representation change; persisted fields are ordinary JSON strings.
+The original project descriptors worked with the pinned loader.
+The `@1` schemas now encode the existing per-kind units, exact raw-parent
+counts, and runtime bounds (up to 4×10¹² cents for pre-guardrail quantities).
+This ratifies the initial envelopes without changing the v1 manifest layout
+or rewriting existing artifacts.
+
+### P0 CLI results (v1 writer)
+
+`./bin/finpred run` and `./bin/finpred replay RUN_ID` exited 0 for each
+fixture. Replay printed `replay_ok=true` followed by the original output.
+Both recommendations printed `published=false`.
+
+| Input | Run ID | Trace evidence |
+|---|---|---|
+| Default CSVs | `2e9001180390d28e4ed18a299d12e0913d6b85e75af5d022921169e8513f1b46` | 5 feasible properties, 2 rejected offers, 5 subsets; P50 17,500, P40 17,100; `lower_percentile_shortcut` |
+| `scenario_multiroom.csv`, `offers_multiroom.csv`, same valuation | `b45c4c20ade0ab1a8b01e3d6eb0fc0381eed9fb7c2cc480314c024364ded93b6` | 3 feasible properties, 1 infeasible property, 6 subsets; P50 15,000, floor 16,000; `guardrail_adjustment` |
+
+Across the two runs, `python3 tests/validate_runtime_json.py "$FINPRED_HOME"`
+exited 0: **2 scenarios, 12 offers, 1 shared valuation, 2 recommendations**.
+This validates the actual persisted JSON against all four Draft 2020-12
+schemas, in addition to the application's own CSV semantic checks.
+
+Final canonical `./bin/build.sh` exited 0 and produced `target/dev/finpred`
+(SHA-256 `2d7d669aeb16b7444ea774b67583c7911576eda4cc08e14f37fe20bbd28fb073`).
+`./tests/run.sh` exited 0 (`on1x_integration_ok=true`). It checks native
+selftest, both fixtures and their trace counters, replay with source paths
+unavailable, identical repeat runs, and an unchanged store tree. Negative
+checks cover snapshot corruption (including a normalized stale offer),
+missing/oversized outputs, NUL-suffixed snapshots, changed
+manifests, invalid scenario and execution denial. The suite also runs
+`tests/check_pricing_cli.py` (8 cases) and `tests/check_ingestion_cli.py`
+(14 cases), including exact shortcut equality, both intermediate lead-time
+curves, exhausted search budget, late evidence, decimal overflow and
+embedded NUL. The expanded suite's first intermediate run exited 2 on an
+obsolete validator filename; the final suite uses the validator above.
+
+### Legacy replay fixture
+
+`fixtures/replay_v1.json` is a byte-preserving capture of the two successful
+v1 runs above, made **before** introducing a new writer. Its `files` map
+holds the 27 original ASCII store files under their relative names; its
+`runs` map holds stdout keyed by run ID. The embedded producer SHA-256
+identifies the P0 executable. These are synthetic pricing fixtures. To test
+an upgraded reader, restore these bytes to an empty home and replay the
+original IDs, rather than creating fresh manifests with the upgraded code.
+
+### Versioned run lineage (v2 writer)
+
+The [v2 format](RUN_FORMAT.md) binds normalized scenario, valuation and
+offer digests (including rejected offers, in original order), raw digests,
+the seven graph nodes, and versioned pricing policies into a BLAKE3 run
+ID. This is the digest of a stored replay recipe, not an executable
+signature or proof of authorship. The four contract kinds stay at `@1`.
+
+After `./bin/build.sh`, the default and multi-room runs produced
+`28b145fb8f902a239e76502a40c138bd60c7ae6af98ca70e21faf0e0f06e85db`
+and `7b1f694eab8645b0a09ed431a1268619328da4833a417a22cacf66c68df4612b`,
+respectively. Prices and reasons matched the v1 table. Restoring v1 then
+writing v2 to the same store, `python3 tests/check_explain_cli.py HOME ID`
+passed on each ID: full trace bytes matched the verified replay summary
+and stored trace; removing that trace prevented a successful explanation.
+
+`python3 tests/check_pricing_cli.py` (32 cases) and
+`python3 tests/check_ingestion_cli.py` (65 cases) both exited 0 against
+the v2 executable. The checks distinguish many rooms from many independent
+properties, exercise the maximum four-room price, ties and two-stage
+rounding, exact as-of and freshness boundaries, 512 versus 513 offer
+rows, and failure on inadequate evidence.
+
+Final shared `./bin/build.sh`, `python3 tests/validate_static.py`, and
+`./tests/run.sh` all exited 0 (16 On1x modules, four schemas; executable
+SHA-256 `78abb88093e582c4fc5481a4683ca2b7fe4a665c10948f1922edb7f257d1388c`).
+The integration run validated 17 envelopes and matched all normalized
+payloads, units and timestamps to their raw CSV parents. In a separate
+negative check, a schema-valid one-cent change to a rejected offer failed
+this comparison. Eight of eight concurrent writers completed on the
+observed run; an occupied reservation is also a permitted explicit failure.
+Checks covered recovery after cleanup, two reservation boundaries and three
+invalid directory placements. These are process-level tests, not a
+power-loss or hostile-filesystem certification.
+
 | Gate | Artifact | Status |
 |---|---|---|
-| P0 units/dates/contracts | Strict On1x CSV semantic validation and four versioned JSON Schemas | Source implemented; not compiled |
-| P1 local store/CLI | Immutable BLAKE3 snapshots, as-of input filtering, deterministic run manifests and replay | Source implemented; not executed |
-| P2 Yieldcraft | Bounded exact multiroom matching, property dedup, Type-7 quantile, curves, shortcut, guardrails, trace | Source implemented; Python fixture oracle passed |
+| P0 units/dates/contracts | Strict On1x CSV semantic validation and four versioned JSON Schemas | Compiled; all four fixture envelope kinds validated |
+| P1 local store/CLI | BLAKE3 snapshots, v2 policy and parent lineage, atomic file visibility, read-only v1/v2 replay | Both fixture generations replayed; power-loss durability and symlink confinement outstanding |
+| P2 Yieldcraft | Bounded exact multiroom matching, property dedup, Type-7 quantile, curves, shortcut, guardrails, trace | Fixture prices and derived room-allocation witnesses verified; fixed-graph execution remains in the CLI rather than a separate graph runner |
 | P3 Automat | Typed checked fixed DAG, action/effect denial | Narrow source implementation |
 | P3 Ottmat | Typed exact v1 strategy descriptor | Narrow source implementation |
 | P3 SDK | Closed descriptor allowlist | Narrow source implementation; **not** plugin loading/ABI/isolation |
 | P4/P5 | durable scheduler, approvals, action reconciliation, Poindexter/FX/etc. | Not implemented |
 
-## Next build verification
+## Next implementation gate
 
-1. Populate `third_party/mulib` with the recorded commit, including required
-   LibStone submodule; build the On1x compiler with CMake.
-2. Run `bin/build.sh` and fix compile/signature issues against that exact
-   compiler version. There has been no opportunity to perform this step.
-3. Run `tests/run.sh`; inspect output artifact JSON against all four schemas,
-   verify replay, and record exact compiler, C ABI and compiler warnings.
-4. Add malformed, overbudget, tie, integer-overflow, DST, inventory and
-   plugin-denial tests against the actual On1x runtime. The selftest, fixture
-   oracle and shell integration script are a **starting set**, not the full
-   mandatory acceptance matrix in the design.
-5. Introduce a durable transactional store and host-controlled permission
-   gateway before adding any external source, plugin or action.
+**Property evidence checkpoint:** The native `bin/finpred evidence RUN_ID`
+command verifies the run before printing its per-row eligibility, property
+outcome, cheapest bundle and adult/child room allocations. These are derived
+from frozen inputs, not newly persisted observations. `./bin/build.sh`,
+`python3 tests/check_fixtures.py`, `python3 tests/validate_static.py` and
+`./tests/run.sh` exited 0 on the pinned toolchain (16 On1x modules, four
+schemas; `evidence_cli_ok=true v1_runs=2 v2_runs=3`). The original v1/v2
+fixture IDs and prices remained stable. See [report grammar](../source/yieldcraft/README.md).
+Store publication now removes its own staging file after a reported short
+write; `tests/check_write_failure.py` verifies retry without manual cleanup.
+
+Finish P1 storage with a reviewed directory-relative filesystem interface
+for no-follow opens, no-replace publication, and file and directory sync.
+The [admission specification](../native/STORE_ADMISSION.md) records the
+missing prerequisites and the pinned compiler's rejection of the storage import.
+The current names and replay formats do not require an in-place migration
+for this work. The full P1–P4 exit gates in `AGENTS.md` remain open.

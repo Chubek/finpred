@@ -2,6 +2,10 @@
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 EXE=${FINPRED_EXE:-"$ROOT/target/dev/finpred"}
+if [ "${FINPRED_MODE:-}" = execution ]; then
+  echo "capability denied: execution is forbidden" >&2
+  exit 2
+fi
 if [ ! -x "$EXE" ]; then
   echo "FinPRED On1x executable absent: build with bin/build.sh first" >&2
   exit 2
@@ -9,10 +13,10 @@ fi
 MODE=${1:-run}
 case "$MODE" in
   run|selftest)
-    [ "$#" -le 1 ] || { echo "usage: bin/finpred [run|selftest|replay RUN_ID]" >&2; exit 2; }
+    [ "$#" -le 1 ] || { echo "usage: bin/finpred [run|selftest|replay RUN_ID|explain RUN_ID|evidence RUN_ID]" >&2; exit 2; }
     ;;
-  replay)
-    [ "$#" -eq 2 ] || { echo "usage: bin/finpred replay RUN_ID" >&2; exit 2; }
+  replay|explain|evidence)
+    [ "$#" -eq 2 ] || { echo "usage: bin/finpred $MODE RUN_ID" >&2; exit 2; }
     FINPRED_RUN_ID=$2
     export FINPRED_RUN_ID
     ;;

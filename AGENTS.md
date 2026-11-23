@@ -4,6 +4,18 @@ This file is the operating brief for any coding agent working in this repository
 Read it **before changing code**. Treat this project as a partially implemented
 On1x application, not as a finished or production-ready FinPRED system.
 
+**Current checkpoint (2026-11-23):** The P0 On1xfile C11 build and
+`tests/run.sh` now pass on the pinned revision. Both fixture recommendations
+replay without store changes and all four emitted JSON kinds validate. For
+commands and evidence see [`docs/IMPLEMENTATION.md`](docs/IMPLEMENTATION.md#acceptance-record).
+The writer now emits v2 lineage; v1 replay remains supported, and `explain`
+prints a verified trace. Cooperating writers publish staged files by rename;
+see [`docs/RUN_FORMAT.md`](docs/RUN_FORMAT.md) and
+[`source/store/README.md`](source/store/README.md). The original handoff
+inventory and bootstrap instructions below are retained for clean checkouts.
+The remaining **P1 storage gate** needs reviewed no-follow, no-replace and
+sync primitives for hostile directories and power-loss durability.
+
 ## 1. Mission and non-negotiable scope
 
 Finish FinPRED as specified in `docs/USER_SPECIFICATION.md`, using **MuLIB's
@@ -178,8 +190,8 @@ expansion, not a silent change to canonical input semantics.
 
 ## 6. Ordered work queue
 
-Work in small, independently testable changes. The **next agent starts at P0**;
-do not jump to speculative features before it passes.
+Work in small, independently testable changes. Reproduce P0 on a new
+toolchain before progressing; do not jump to speculative features.
 
 ### P0 — compile and verify the existing first release (blocking)
 

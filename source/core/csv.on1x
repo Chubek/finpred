@@ -4,14 +4,21 @@ import std.Int as Int;
 
 fn rows(input: string) -> i64
 {
-  if text_len(input) == 0 { return 0; }
+  let size = text_len(input);
+  if size == 0 { return 0; }
   var n = 0;
-  for i in 0 .. text_len(input)
+  for i in 0 .. size
   {
-    if text_byte(input, i) == 10 { n = n + 1; }
-    if text_byte(input, i) == 0 || text_byte(input, i) == 34 { tool_fail("CSV: NUL or quoted fields unsupported"); }
+    let c = text_byte(input, i);
+    if c == 10 { n = n + 1; }
+    if c == 13
+    {
+      if i + 1 >= size || text_byte(input, i + 1) != 10 { tool_fail("CSV: expected CRLF"); }
+    }
+    if (c < 32 && c != 10 && c != 13) || c > 126 || c == 34
+    { tool_fail("CSV: expected printable unquoted ASCII"); }
   }
-  if text_byte(input, text_len(input) - 1) != 10 { n = n + 1; }
+  if text_byte(input, size - 1) != 10 { n = n + 1; }
   return n;
 }
 
@@ -47,9 +54,9 @@ fn columns(row: string) -> i64
   var n = 1;
   for i in 0 .. text_len(row)
   {
-    if text_byte(row, i) == 34 || text_byte(row, i) == 0 || text_byte(row, i) == 10
-    { tool_fail("CSV: quotes, NUL, and multiline fields are unsupported"); }
-    if text_byte(row, i) == 44 { n = n + 1; }
+    let c = text_byte(row, i);
+    if c < 32 || c > 126 || c == 34 { tool_fail("CSV: expected printable unquoted ASCII fields"); }
+    if c == 44 { n = n + 1; }
   }
   return n;
 }
@@ -73,19 +80,15 @@ fn field(row: string, index: i64) -> string
   return "";
 }
 
-fn exact_int(s: string) -> i64
+fn nat(s: string) -> i64
 {
   if text_len(s) == 0 { tool_fail("CSV: missing integer"); }
+  # Int.scan accepts leading whitespace and a sign, neither is a decimal digit.
+  let first = text_byte(s, 0);
+  if first < 48 || first > 57 { tool_fail("CSV: expected unsigned decimal digits"); }
   let(ok, value, end) = Int.scan(s, 0);
   if !ok || end != text_len(s) { tool_fail("CSV: invalid or overflowing integer"); }
   return value;
-}
-
-fn nat(s: string) -> i64
-{
-  let n = exact_int(s);
-  if n < 0 { tool_fail("CSV: negative quantity"); }
-  return n;
 }
 
 fn bit(s: string) -> bool

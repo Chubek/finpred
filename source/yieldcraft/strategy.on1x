@@ -16,16 +16,16 @@ record Recommendation
   rejected: i64,
   infeasible: i64,
   search_nodes: i64,
-  reason: string
+  reason: sexpr
 }
 
 fn recommend(scenario: C.Scenario, valuation: C.Valuation, dist: Match.Distribution) -> Recommendation
 {
   if dist["count"] < scenario["min_properties"]
   { tool_fail("insufficient_evidence: too few independent, bookable properties"); }
-  let lead = Date.lead_days(scenario["decision_at"],scenario["arrival"]);
+  let lead = Date.lead_days(sx_text(scenario["decision_at"]),sx_text(scenario["arrival"]));
   var percentile = scenario["target_bps"];
-  if percentile == 0 { percentile = Q.target(lead,scenario["curve"]); }
+  if percentile == 0 { percentile = Q.target(lead,sx_text(scenario["curve"])); }
   if percentile < 4000
   { tool_fail("strategy: shortcut's lower percentile exceeds intended percentile"); }
   let intended_total = Q.type7(dist["prices"],dist["count"],percentile);
@@ -56,5 +56,5 @@ fn recommend(scenario: C.Scenario, valuation: C.Valuation, dist: Match.Distribut
   return record<Recommendation>{intended_bps:percentile,selected_bps:selected,
     intended_cents:intended,lower_cents:lower,candidate_cents:candidate,
     recommended_cents:approved,property_count:dist["count"],rejected:dist["rejected"],
-    infeasible:dist["infeasible"],search_nodes:dist["examined"],reason:reason};
+    infeasible:dist["infeasible"],search_nodes:dist["examined"],reason:sx_string(reason)};
 }

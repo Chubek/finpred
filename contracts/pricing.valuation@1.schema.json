@@ -60,6 +60,7 @@
                 "pattern": "^blake3:[0-9a-f]{64}$",
                 "type": "string"
               },
+              "maxItems": 1,
               "minItems": 1,
               "type": "array"
             }
@@ -73,10 +74,7 @@
           "additionalProperties": false,
           "properties": {
             "evidence": {
-              "enum": [
-                "csv_import",
-                "scenario_comparables"
-              ]
+              "const": "csv_import"
             },
             "status": {
               "const": "validated"
@@ -114,10 +112,7 @@
               "type": "string"
             },
             "price_basis": {
-              "enum": [
-                "whole_stay",
-                "room_night"
-              ]
+              "const": "room_night"
             }
           },
           "required": [

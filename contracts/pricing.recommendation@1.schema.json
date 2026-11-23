@@ -8,27 +8,27 @@
       "additionalProperties": false,
       "properties": {
         "candidate_minor": {
-          "maximum": 1000000000000,
+          "maximum": 4000000000000,
           "minimum": 0,
           "type": "integer"
         },
         "independent_properties": {
-          "maximum": 1000000000000,
-          "minimum": 0,
+          "maximum": 512,
+          "minimum": 3,
           "type": "integer"
         },
         "intended_minor": {
-          "maximum": 1000000000000,
+          "maximum": 4000000000000,
           "minimum": 0,
           "type": "integer"
         },
         "intended_percentile_bps": {
-          "maximum": 1000000000000,
-          "minimum": 0,
+          "maximum": 10000,
+          "minimum": 4000,
           "type": "integer"
         },
         "lower_minor": {
-          "maximum": 1000000000000,
+          "maximum": 4000000000000,
           "minimum": 0,
           "type": "integer"
         },
@@ -51,8 +51,8 @@
           ]
         },
         "selected_percentile_bps": {
-          "maximum": 1000000000000,
-          "minimum": 0,
+          "maximum": 10000,
+          "minimum": 4000,
           "type": "integer"
         }
       },
@@ -88,7 +88,8 @@
                 "pattern": "^blake3:[0-9a-f]{64}$",
                 "type": "string"
               },
-              "minItems": 1,
+              "maxItems": 3,
+              "minItems": 3,
               "type": "array"
             },
             "strategy": {
@@ -110,10 +111,7 @@
           "additionalProperties": false,
           "properties": {
             "evidence": {
-              "enum": [
-                "csv_import",
-                "scenario_comparables"
-              ]
+              "const": "scenario_comparables"
             },
             "status": {
               "const": "validated"
@@ -151,10 +149,7 @@
               "type": "string"
             },
             "price_basis": {
-              "enum": [
-                "whole_stay",
-                "room_night"
-              ]
+              "const": "room_night"
             }
           },
           "required": [

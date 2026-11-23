@@ -3,13 +3,6 @@ import std.crypto.crypto as Crypto;
 import std.io.TextIO as IO;
 import std.os.OS_FileSys as FS;
 
-fn digest(content: string) -> string
-{
-  let hash = Crypto.crypto_blake3(content);
-  if text_len(hash) != 64 { tool_fail("artifact: digest provider failure"); }
-  return hash;
-}
-
 fn valid_hash(hash: string) -> bool
 {
   if text_len(hash) != 64 { return false; }
@@ -19,6 +12,12 @@ fn valid_hash(hash: string) -> bool
     if !((c >= 48 && c <= 57) || (c >= 97 && c <= 102)) { return false; }
   }
   return true;
+}
+fn digest(content: string) -> string
+{
+  let (status, hash) = Crypto.basis_crypto_blake3(content);
+  if status != 0 || !valid_hash(hash) { tool_fail("artifact: digest provider failure"); }
+  return hash;
 }
 fn base(home: string) -> string { return text_concat(home, "/artifacts/"); }
 fn artifact_path(home: string, hash: string) -> string
@@ -31,27 +30,65 @@ fn run_path(home: string, id: string) -> string
   if !valid_hash(id) { tool_fail("run: malformed identity"); }
   return text_concat(text_concat(home, "/runs/"), text_concat(id, ".txt"));
 }
+fn ensure_directory(path: string)
+{
+  # A second writer may have created the directory since our first check.
+  if FS.basis_fs_is_dir(path) || FS.basis_fs_mkdir(path) || FS.basis_fs_is_dir(path) { return; }
+  tool_fail("artifact: store directory unavailable");
+}
 fn ensure(home: string)
 {
-  if !FS.basis_fs_exists(home) && !FS.basis_fs_mkdir(home)
-  { tool_fail("artifact: cannot create home directory"); }
-  let objects = text_concat(home, "/artifacts");
-  if !FS.basis_fs_exists(objects) && !FS.basis_fs_mkdir(objects)
-  { tool_fail("artifact: cannot create artifacts directory"); }
-  let runs = text_concat(home, "/runs");
-  if !FS.basis_fs_exists(runs) && !FS.basis_fs_mkdir(runs)
-  { tool_fail("artifact: cannot create runs directory"); }
+  ensure_directory(home);
+  ensure_directory(text_concat(home, "/artifacts"));
+  ensure_directory(text_concat(home, "/runs"));
+}
+fn already_published(path: string, content: string) -> bool
+{
+  if !FS.basis_fs_exists(path) { return false; }
+  if FS.basis_fs_is_dir(path) || FS.basis_fs_file_size(path) != text_len(content)
+    || IO.basis_text_io_input_all(path) != content
+  { tool_fail("artifact: immutable path conflict"); }
+  return true;
+}
+fn abort_stage(reservation: string, staged: string, diagnostic: string)
+{
+  # Only after our own mkdir, in the private cooperating-writer store. A write
+  # failure can leave a partial file or no file. Successful removal of the
+  # directory proves it was empty; do not recurse or remove a final name.
+  FS.basis_fs_remove(staged);
+  if !FS.basis_fs_remove(reservation)
+  { tool_fail(text_concat(diagnostic, "; owned stage cleanup failed")); }
+  tool_fail(diagnostic);
 }
 fn put_at(path: string, content: string)
 {
-  # Never overwrite a published artifact. Corruption and collisions fail closed.
+  if already_published(path, content) { return; }
+  # mkdir is exclusive even when the name is already a dangling link. Never
+  # open or clean another process's stage. A dead owner requires offline cleanup.
+  let reservation = text_concat(path, ".pending");
+  if !FS.basis_fs_mkdir(reservation)
+  {
+    if already_published(path, content) { return; }
+    tool_fail("artifact: publication reservation unavailable");
+  }
+  # A writer could have completed and released between the first check and mkdir.
   if FS.basis_fs_exists(path)
   {
-    if IO.basis_text_io_input_all(path) != content { tool_fail("artifact: immutable path conflict"); }
-    return;
+    # Published names are immutable under this protocol. Release our empty
+    # stage before checking bytes: even a conflict must not strand a reservation.
+    if !FS.basis_fs_remove(reservation) { tool_fail("artifact: publication reservation cleanup failed"); }
+    if already_published(path, content) { return; }
+    tool_fail("artifact: published entry disappeared");
   }
-  # Sole-writer local process v1. Do not claim concurrent atomic creation.
-  if !IO.basis_text_io_output(path, content) { tool_fail("artifact: write failed"); }
+  let staged = text_concat(reservation, "/payload");
+  if !IO.basis_text_io_output(staged, content)
+  { abort_stage(reservation, staged, "artifact: staged write failed"); }
+  # The stdlib checks fwrite and fclose. Same-filesystem POSIX rename gives
+  # atomic visibility; the reservation excludes other cooperating publishers.
+  if !FS.basis_fs_rename(staged, path)
+  { abort_stage(reservation, staged, "artifact: publication rename failed"); }
+  if !FS.basis_fs_remove(reservation)
+  { tool_fail("artifact: file published; reservation cleanup failed"); }
 }
 fn put(home: string, content: string) -> string
 {
@@ -63,7 +100,11 @@ fn fetch(home: string, hash: string) -> string
 {
   let path = artifact_path(home, hash);
   if !FS.basis_fs_exists(path) { tool_fail("artifact: missing snapshot"); }
+  # A published snapshot cannot exceed the BLAKE3 bridge's 2 MiB input limit.
+  let size = FS.basis_fs_file_size(path);
+  if size < 0 || size > 2097152 { tool_fail("artifact: snapshot size outside digest profile"); }
   let value = IO.basis_text_io_input_all(path);
+  if text_len(value) != size { tool_fail("artifact: incomplete snapshot read"); }
   if digest(value) != hash { tool_fail("artifact: snapshot digest mismatch"); }
   return value;
 }
@@ -75,5 +116,10 @@ fn read_run(home: string, id: string) -> string
 {
   let path = run_path(home, id);
   if !FS.basis_fs_exists(path) { tool_fail("run: unknown id"); }
-  return IO.basis_text_io_input_all(path);
+  # Both v1 and v2 are exactly 404 bytes (docs/RUN_FORMAT.md). The CLI
+  # dispatches on the version and verifies canonical bytes and references.
+  if FS.basis_fs_file_size(path) != 404 { tool_fail("replay: malformed run manifest"); }
+  let manifest = IO.basis_text_io_input_all(path);
+  if text_len(manifest) != 404 { tool_fail("replay: malformed run manifest"); }
+  return manifest;
 }
