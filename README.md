@@ -13,6 +13,7 @@ FinPRED’s Yieldcraft CLI recommends a nightly EUR price for a specific stay an
 2. **[Run the fixtures](GUIDE.md)** — select a private store, replay a recommendation by ID, and inspect the verified price trace and room-by-room evidence.
 3. **[Inspect the acceptance record](docs/IMPLEMENTATION.md#acceptance-record)** — see the native results, independent Python oracle, four JSON envelope schemas and replay checks.
 4. **[Use the C11 SDK](source/sdk/README.md)** — inspect the built-in strategy's contracts and resource limits and check compatibility from native code.
+5. **[Build the native store review target](native/README.md)** — exercise directory-relative reads, no-replace publication and sync failures independently of the CLI.
 
 ## What runs today
 

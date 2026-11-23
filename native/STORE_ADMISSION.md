@@ -2,7 +2,9 @@
 
 **Status:** blocked on an upstream callable filesystem profile and independent
 review. This is the contract to submit for review, not an ABI or a supported
-build option. The existing [private-store protocol](../source/store/README.md)
+build option. The standalone [native review target](README.md) implements
+the host-side operations below; its C tests do not confer KernelBind admission.
+The existing [private-store protocol](../source/store/README.md)
 provides atomic visibility among cooperating publishers, not durable commits.
 
 ## Evidence at the pin

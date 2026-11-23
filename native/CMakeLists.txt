@@ -1,0 +1,20 @@
+cmake_minimum_required(VERSION 3.20)
+project(finpred_native_review LANGUAGES C)
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  message(FATAL_ERROR "The FinPRED store review candidate requires Linux openat2 and O_TMPFILE")
+endif()
+add_library(finpred_native_store STATIC store.c)
+set_target_properties(finpred_native_store PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
+target_include_directories(finpred_native_store PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+include(CTest)
+if(BUILD_TESTING)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  add_executable(store_contract_test tests/store_contract.c)
+  target_link_libraries(store_contract_test PRIVATE finpred_native_store)
+  target_link_options(store_contract_test PRIVATE -Wl,--wrap=fsync -Wl,--wrap=write)
+  add_test(NAME native_store_contract COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/run.py $<TARGET_FILE:store_contract_test>)
+  add_test(NAME native_store_v1_bytes COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/run.py $<TARGET_FILE:store_contract_test> copy-v1)
+endif()

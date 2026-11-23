@@ -261,6 +261,17 @@ write; `tests/check_write_failure.py` verifies retry without manual cleanup.
 
 Finish P1 storage with a reviewed directory-relative filesystem interface
 for no-follow opens, no-replace publication, and file and directory sync.
+The standalone [Linux C11 store candidate](../native/README.md) now implements
+those host operations. On local Btrfs, `cmake -S native -B build/native
+-DCMAKE_C_FLAGS='-Wall -Wextra -Werror -pedantic'`, `cmake --build build/native
+--parallel 4` and `ctest --test-dir build/native --output-on-failure` exited 0
+(2/2 tests). The checks include six real contending processes, scoped reader
+and writer behaviour, partial-write and sync failure outcomes, and all 27
+archived v1 store files copied byte-for-byte through the C API. On the recorded
+MuLIB pin, `./bin/build.sh`, the fixture oracle, static checks and
+`./tests/run.sh` also exited 0; the CLI still uses its existing backend.
+Power-cut/remount validation and compiled On1x-to-native store calls have
+not been performed.
 The [admission specification](../native/STORE_ADMISSION.md) records the
 missing prerequisites and the pinned compiler's rejection of the storage import.
 The current names and replay formats do not require an in-place migration
