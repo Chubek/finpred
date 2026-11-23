@@ -20,6 +20,27 @@ The registry is not a sandbox for arbitrary On1x programs. An independent
 host linking a library directly controls its own calls. The stand-alone
 Crossref tools and worksheet frontends are not engine-dispatched plugins.
 
+### Internal typed calls
+
+[`sdk.callable`](callable.on1x) defines the additive On1x-only typed call
+protocol. It owns no registration table: the trusted, statically linked host
+supplies `lookup` and `call`. `resolve` is the planning gate; `invoke` resolves
+again and checks the exact `Pin` (package and handler versions, protocol ABI,
+and BLAKE3 code and policy identities). A pin identifies code relative to
+trusted build inputs; it does not authenticate an external author. Neither
+the C ABI nor the legacy `sdk.registry` entry points change.
+
+Ports are named, with exact contract kind/major, unit, and currency (`none`
+when unset). `connects` requires the producer's state mask and byte maximum
+to fit the consumer's. Pass ordered immutable payloads, a UTC cutoff, and an
+explicit work allowance; no paths or effect handles are passed. The host
+verifies contract semantics, bytes/digests and lineage. The protocol admits
+pure analysis and recommendation only. A work allowance is not hard resource
+metering, cancellation, or process isolation. `python3 tests/check_sdk_data1.py`
+compiles independent consumers and exercises both positive calls and denials.
+
+### Legacy package profiles
+
 | Manifest (SDK 1, package 1.0.0) | Invocation mode | Ordered input schema/format IDs → output | Required host dependency IDs |
 |---|---|---|---|
 | [`dragnet.frozen_csv`](../../plugins/dragnet/plugin.json) (`Source`) | `analysis` | `hospitality.scenario@1`, `finpred.offers.csv@1` → `hospitality.offer@1` | `finpred.core@1`, `yieldcraft.asof-whole-stay-property-min@1` |

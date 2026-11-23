@@ -13,6 +13,7 @@ python3 tests/check_on1x_features.py
 python3 tests/check_fixtures.py
 python3 tests/check_sdk.py
 python3 tests/check_sdk_packages.py
+python3 tests/check_sdk_data1.py
 python3 tests/check_plugin_registry.py
 python3 tests/check_fixed_runner.py
 python3 tests/check_dag.py

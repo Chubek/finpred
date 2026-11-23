@@ -26,14 +26,19 @@ for module in sources:
     manifest = module.parent / 'On1xfile.m'
     assert manifest.exists() and f'"{module.name}"' in manifest.read_text(), module
     assert not re.search(r'"[^"\n]*"\s*\+\s*[A-Za-z_]', stripped), module
-for path in (root/'contracts').glob('*.json'):
+schemas = sorted((root/'contracts').glob('*.json'))
+historical = {
+    'hospitality.offer@1.schema.json', 'hospitality.scenario@1.schema.json',
+    'pricing.recommendation@1.schema.json', 'pricing.valuation@1.schema.json',
+}
+assert historical <= {path.name for path in schemas}
+for path in schemas:
     doc = json.loads(path.read_text())
     assert doc['$schema'].endswith('2020-12/schema'), path
     assert doc['properties']['kind']['const'] in path.name, path
-assert len(list((root/'contracts').glob('*.json'))) == 4
 for name in ('scenario.csv','valuation.csv','offers.csv','scenario_multiroom.csv','offers_multiroom.csv'):
     with (root/'fixtures'/name).open(newline='') as f:
         rows = list(csv.reader(f))
     assert len(rows)>1 and all(len(row)==len(rows[0]) for row in rows), name
 assert (root/'On1xfile').read_text().startswith('on1xfile 1\n')
-print(f'static_ok=true on1x_modules={len(sources)} schemas=4')
+print(f'static_ok=true on1x_modules={len(sources)} schemas={len(schemas)}')
