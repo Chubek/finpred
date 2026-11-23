@@ -1,0 +1,22 @@
+# Run with --run RUN_ID. Row 2 is a working copy of the verified prices.
+ASSERT H2-G2 = I2
+TEXT A4 Night
+TEXT B4 Scenario cents (illustrative)
+FILL A5:A11 = ROW()-4
+FILL B5:B11 = H2+(ROW()-5)*100
+TEXT A12 Total
+FORMULA B12 = SUM(B5:B11)
+TEXT A13 Average
+FORMULA B13 = AVG(B5:B11)
+# Keep a snapshot of three compounded 1% increases, truncated to cents.
+LET X = H2
+REPEAT 3
+  LET X = $X*101/100
+END
+SET B14 = $X
+TEXT A14 Scenario after three increases
+IF I2 < 0
+  TEXT A15 Recommendation below current price
+ELSE
+  TEXT A15 Recommendation at or above current price
+END

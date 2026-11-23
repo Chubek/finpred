@@ -1,0 +1,45 @@
+# Local, presentation-only projection of one replayed pricing decision.
+# The caller owns verification. This module has no store or file reader.
+import std.Int as Int;
+
+fn hex_digest(value: string) -> bool
+{
+  if text_len(value) != 64 { return false; }
+  for i in 0 .. 64
+  {
+    let c = text_byte(value,i);
+    if !((c >= 48 && c <= 57) || (c >= 97 && c <= 102)) { return false; }
+  }
+  return true;
+}
+
+fn render(run_id: string, recommendation_digest: string, valuation_digest: string,
+  currency: string, basis: string, current_minor: i64, recommended_minor: i64,
+  reason: string, published: bool) -> (bool,string)
+{
+  if !hex_digest(run_id) || !hex_digest(recommendation_digest) || !hex_digest(valuation_digest)
+  { return (false,"poindexter: malformed source reference"); }
+  if currency != "EUR" || basis != "room_night"
+  { return (false,"poindexter: incompatible units"); }
+  if published { return (false,"poindexter: expected unpublished recommendation"); }
+  if current_minor < 0 || current_minor > 1000000000000
+    || recommended_minor < 0 || recommended_minor > 1000000000000
+  { return (false,"poindexter: nightly minor units outside contract bounds"); }
+  if reason != "target_percentile" && reason != "lower_percentile_shortcut"
+    && reason != "guardrail_adjustment"
+  { return (false,"poindexter: unknown pricing reason"); }
+
+  # Both operands are now in [0,10^12], so the signed difference fits i64.
+  # No free text enters a cell. Prefix digest cells to preserve text identity
+  # even when a spreadsheet would convert a digit-only digest to a number.
+  let b = buffer_new();
+  buffer_append(b,"view,source_run,source_recommendation,source_valuation,currency,price_basis,current_minor,recommended_minor,change_minor,reason,published\n");
+  buffer_append(b,"poindexter.pricing-sheet@1,run:"); buffer_append(b,run_id);
+  buffer_append(b,",blake3:"); buffer_append(b,recommendation_digest);
+  buffer_append(b,",blake3:"); buffer_append(b,valuation_digest);
+  buffer_append(b,",EUR,room_night,"); buffer_append(b,Int.to_string(current_minor));
+  buffer_append(b,","); buffer_append(b,Int.to_string(recommended_minor));
+  buffer_append(b,","); buffer_append(b,Int.to_string(recommended_minor - current_minor));
+  buffer_append(b,","); buffer_append(b,reason); buffer_append(b,",false\n");
+  return (true,buffer_text(b));
+}

@@ -1,0 +1,21 @@
+{
+  "name": "poindexter.pricing-sheet",
+  "version": "1.0.0",
+  "sdk": 1,
+  "kind": "View",
+  "execution": "built-in-on1x",
+  "mode": "analysis",
+  "dependencies": ["yieldcraft.percentile@1"],
+  "contracts": ["pricing.recommendation@1", "pricing.valuation@1"],
+  "output": "poindexter.pricing-sheet@1",
+  "media_type": "text/csv",
+  "entrypoint": "poindexter.sheet.render",
+  "host_capabilities": [],
+  "effects": ["pure"],
+  "resource_limits": {
+    "runs_per_call": 1,
+    "data_rows": 1,
+    "columns": 11,
+    "output_bytes_max": 512
+  }
+}

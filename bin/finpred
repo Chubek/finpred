@@ -13,9 +13,9 @@ fi
 MODE=${1:-run}
 case "$MODE" in
   run|selftest)
-    [ "$#" -le 1 ] || { echo "usage: bin/finpred [run|selftest|replay RUN_ID|explain RUN_ID|evidence RUN_ID]" >&2; exit 2; }
+    [ "$#" -le 1 ] || { echo "usage: bin/finpred [run|selftest|replay RUN_ID|explain RUN_ID|evidence RUN_ID|poindexter RUN_ID]" >&2; exit 2; }
     ;;
-  replay|explain|evidence)
+  replay|explain|evidence|poindexter)
     [ "$#" -eq 2 ] || { echo "usage: bin/finpred $MODE RUN_ID" >&2; exit 2; }
     FINPRED_RUN_ID=$2
     export FINPRED_RUN_ID

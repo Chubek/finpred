@@ -5,6 +5,7 @@
   "kind": "Strategy",
   "contracts": ["hospitality.scenario@1", "hospitality.offer@1", "pricing.valuation@1", "pricing.recommendation@1"],
   "execution": "built-in-on1x",
+  "entry_point": "plugins.yieldcraft.entry.recommend",
   "mode": "recommendation",
   "host_capabilities": [],
   "effects": ["pure"],

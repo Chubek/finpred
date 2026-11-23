@@ -16,6 +16,7 @@ import sdk.sdk as SDK;
 import algorithms.quantile as Quantile;
 import yieldcraft.matcher as Match;
 import yieldcraft.strategy as Strategy;
+import poindexter.sheet as Sheet;
 
 fn env_default(key: string, fallback: string) -> string
 {
@@ -191,6 +192,14 @@ fn execute(scenario_raw: string, offers_raw: string, valuation_raw: string,
     { tool_fail("replay: snapshot/plan/output divergence"); }
     if Store.fetch(home,expected_rec) != rec || Store.fetch(home,expected_trace) != explanation
     { tool_fail("replay: stored output differs from recomputation"); }
+    if mode == "poindexter"
+    {
+      let (ok,csv) = Sheet.render(id,rec_digest,nv,sx_text(s["currency"]),"room_night",
+        v["current_cents"],r["recommended_cents"],sx_text(r["reason"]),false);
+      if !ok { tool_fail(csv); }
+      IO.basis_text_io_print(csv);
+      return 0;
+    }
     println("replay_ok=true");
   }
   println(text_concat("run_id=",id));
@@ -277,7 +286,7 @@ fn entry() -> i64
   let mode = env_default("FINPRED_MODE","run");
   if mode == "selftest" { return selftest(); }
   let home = env_default("FINPRED_HOME",".finpred");
-  if mode == "replay" || mode == "explain" || mode == "evidence"
+  if mode == "replay" || mode == "explain" || mode == "evidence" || mode == "poindexter"
   {
     let id = Env.basis_command_line_get_env("FINPRED_RUN_ID");
     if text_len(id) != 64 { tool_fail("replay: FINPRED_RUN_ID must be a digest"); }

@@ -38,6 +38,23 @@ published=false
 
 Use the **run ID**, not either output digest. IDs are 64 lowercase hex characters. `replay` reads the manifest and snapshots from the same `FINPRED_HOME`, checks their integrity and recomputes the decision without reading today’s input files or writing to the store. Success prints `replay_ok=true` and the original summary. `explain` performs the same checks, then prints the stored decision trace between `trace_begin` and `trace_end`. Look for `decision_at`, `independent_properties`, `rejected_offers`, `intended_nightly_minor`, `candidate_nightly_minor` and `recommended_nightly_minor`. A missing or altered object is an error, not a partial explanation.
 
+To export this verified comparison for a spreadsheet, run:
+
+```sh
+./bin/finpred poindexter "$id" > pricing-sheet.csv
+```
+
+The CSV contains a header and one row. For the default fixture, the current
+valuation is `17500`, the recommendation is `17100`, and the signed change
+is `-400` EUR cents/night. The sheet references the exact recommendation and
+valuation artifacts. See the [Poindexter column definitions](plugins/poindexter/README.md).
+
+To work with the result interactively, build the worksheet once with
+`./bin/poindexter --build`, then run `./bin/poindexter --run "$id" --book analysis.pxw`
+using a new workbook path. Press `e` to enter a formula, `@` to run a
+worksheet script, and `s` to save your working copy. The [workbench guide](plugins/poindexter/workbench/README.md)
+includes a runnable seven-night pricing example.
+
 ## Try the multi-room fixture
 
 ```sh

@@ -2,5 +2,6 @@ on1xfile 1
 kind executable
 name "finpred"
 directory "source"
+dependency "poindexter" local "plugins/poindexter"
 target "finpred" "source/main.on1x"
 backend c11

@@ -1,0 +1,7 @@
+on1xfile 1
+kind executable
+name "poindexter-consumer"
+directory "src"
+dependency "poindexter" local "vendor/poindexter"
+target "consumer" "src/main.on1x"
+backend c11

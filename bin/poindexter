@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# Terminal and file host. All cell, formula and script semantics are in On1x.
+set -euo pipefail
+root=$(cd -- "$(dirname -- "$0")/.." && pwd)
+exe=${POINDEXTER_EXE:-"$root/target/poindexter/poindexter-grid"}
+usage() {
+  cat <<'EOF'
+Usage: bin/poindexter --build
+       bin/poindexter [--book FILE] [--run RUN_ID | --import-csv FILE]
+       bin/poindexter [--book FILE] [--run RUN_ID | --import-csv FILE] [--script FILE] [--get CELL | --csv]
+With no batch option, open the terminal grid. --run seeds a new working copy
+from verified pricing output. --script executes a worksheet program; on
+success a script or import saves the named book (if supplied). Batch output
+defaults to CSV. Imported CSV fields are values, never executable formulas.
+EOF
+}
+die() { printf 'Poindexter: %s\n' "$*" >&2; exit 2; }
+if [[ ${1:-} == --build && $# == 1 ]]; then
+  mulib=${MULIB_ROOT:-"$root/third_party/mulib"}
+  exec python3 "$mulib/on1x/tools/on1x-project.py" build "$root/plugins/poindexter/workbench" \
+    --on1xc "${ON1XC:-$mulib/build/on1x/on1xc}" --mulib-root "$mulib" --offline --output-dir "$root/target/poindexter"
+fi
+book= run= import_csv= script= output= cell=A1
+while (($#)); do
+  case $1 in
+    --help|-h) usage; exit 0 ;;
+    --book|--run|--import-csv|--script|--get)
+      [[ $# -ge 2 && -n $2 ]] || die "$1 requires a value"
+      case $1 in
+        --book) book=$2 ;; --run) run=$2 ;; --import-csv) import_csv=$2 ;; --script) script=$2 ;;
+        --get) [[ -z $output ]] || die 'choose one output'; cell=$2; output=get ;;
+      esac; shift 2 ;;
+    --csv) [[ -z $output ]] || die 'choose one output'; output=csv; shift ;;
+    *) die "unknown option: $1" ;;
+  esac
+done
+[[ -x $exe ]] || die 'build the worksheet engine with bin/poindexter --build'
+[[ -z $run || -z $import_csv ]] || die 'choose one import source'
+umask 077
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/poindexter-grid.XXXXXXXX")
+tui=0 stage=
+cleanup() {
+  if ((tui)); then printf '\033[?25h\033[?1049l'; fi
+  [[ -z $stage ]] || rm -f -- "$stage"
+  rm -rf -- "$tmp"
+}
+trap cleanup EXIT
+trap 'exit 130' INT HUP TERM
+export PX_BOOK="$tmp/book" PX_CELL="$cell" PX_DATA= PX_VALUE=
+worker() { PX_OP=$1 "$exe"; }
+printf 'poindexter-workbook@1\n' >"$PX_BOOK"
+if [[ -n $book && ( -e $book || -L $book ) ]]; then
+  [[ -f $book && ! -L $book ]] || die 'expected a regular workbook file'
+  [[ -z $run && -z $import_csv ]] || die 'import seeds a new book; existing workbook not overwritten'
+  PX_BOOK="$book" worker check >"$tmp/loaded"; mv -- "$tmp/loaded" "$PX_BOOK"
+fi
+dirty=0
+if [[ -n $run ]]; then
+  "$root/bin/finpred" poindexter "$run" >"$tmp/import"
+  PX_DATA="$tmp/import" worker import >"$tmp/seed"; mv -- "$tmp/seed" "$PX_BOOK"; dirty=1
+fi
+if [[ -n $import_csv ]]; then
+  [[ -f $import_csv ]] || die 'CSV input must be a regular file'
+  PX_DATA="$import_csv" worker importcsv >"$tmp/seed"; mv -- "$tmp/seed" "$PX_BOOK"; dirty=1
+fi
+save_book() {
+  [[ -n $book && ! -L $book ]] || return 1
+  stage=$(mktemp -- "$book.tmp.XXXXXXXX") || return 1
+  if ! cp -- "$PX_BOOK" "$stage" || ! mv -fT -- "$stage" "$book"; then
+    rm -f -- "$stage"; stage=; return 1
+  fi
+  stage=; dirty=0
+}
+if [[ -n $script || -n $output ]]; then
+  if [[ -n $script ]]; then
+    [[ -f $script ]] || die 'script must be a regular file'
+    PX_DATA="$script" worker script >"$tmp/next"; mv -- "$tmp/next" "$PX_BOOK"
+  fi
+  worker "${output:-csv}" >"$tmp/result"
+  if [[ -n $book && ( -n $script || $dirty == 1 ) ]]; then save_book || die 'could not save workbook'; fi
+  cat -- "$tmp/result"; exit 0
+fi
+[[ -t 0 && -t 1 ]] || die 'interactive grid requires a terminal; use --get CELL or --csv for batch output'
+
+row=0 col=0 letters=ABCDEFGHIJKLMNOP clipboard= copied= status='Press ? for formulas, scripts and keys.'
+prompt() {
+  printf '\033[?25h\n%s' "$1"
+  IFS= read -er -i "${2:-}" answer || answer=
+  printf '\033[?25l'
+}
+change() {
+  if worker "$1" >"$tmp/next" 2>"$tmp/error"; then
+    mv -- "$PX_BOOK" "$tmp/undo"; mv -- "$tmp/next" "$PX_BOOK"
+    rm -f -- "$tmp/redo"; dirty=1; status='Updated.'
+  else status=$(<"$tmp/error"); fi
+}
+tui=1
+printf '\033[?1049h\033[?25l'
+while :; do
+  PX_CELL=${letters:col:1}$((row+1))
+  read -r lines columns < <(stty size) || { lines=24; columns=80; }
+  export PX_ROWS=$((lines>12 ? lines-11 : 1)) PX_COLS=$((columns>20 ? (columns-5)/14 : 1))
+  marker=''; if ((dirty)); then marker=' *'; fi
+  printf '\033[H\033[2J\033[1;36mPOINDEXTER\033[0m   Worksheet%s   |   %s\n\n' "$marker" "$PX_CELL"
+  if ! worker frame 2>"$tmp/error"; then printf '%s\n' "$(<"$tmp/error")"; fi
+  printf '\nArrows move  e edit  g goto  x code  @ script  s save  ? help  q quit\n%s\n' "$status"
+  IFS= read -rsn1 key || break
+  if [[ $key == $'\e' ]]; then
+    seq=; IFS= read -rsn2 -t 0.15 seq || :
+    case $seq in '[A') key=k ;; '[B') key=j ;; '[C') key=l ;; '[D') key=h ;; *) key= ;; esac
+  fi
+  case $key in
+    h) col=$((col>0 ? col-1 : 0)) ;; l) col=$((col<15 ? col+1 : 15)) ;;
+    k) row=$((row>0 ? row-1 : 0)) ;; j) row=$((row<63 ? row+1 : 63)) ;;
+    e|'') previous=$(worker raw); prompt "Edit $PX_CELL: " "$previous"; PX_VALUE="$answer" change edit ;;
+    d) PX_VALUE='' change edit ;;
+    y) clipboard=$(worker raw); copied=$PX_CELL; status="Copied $PX_CELL." ;;
+    p) if [[ -n $copied ]]; then PX_VALUE="$clipboard" PX_FROM="$copied" change paste; else status='Copy a cell with y first.'; fi ;;
+    g) prompt 'Go to address: '; loc=${answer^^}
+       if [[ $loc =~ ^([A-P])([1-9]|[1-5][0-9]|6[0-4])$ ]]; then
+         row=$((${BASH_REMATCH[2]}-1)); prefix=${letters%%"${loc:0:1}"*}; col=${#prefix}
+       else status='Address must be A1:P64.'; fi ;;
+    x) prompt 'Worksheet statement: '; printf '%s\n' "$answer" >"$tmp/code"; PX_DATA="$tmp/code" change script ;;
+    @) prompt 'Run worksheet script file: '
+       if [[ -f $answer ]]; then PX_DATA="$answer" change script; else status='Script file not found.'; fi ;;
+    u) if [[ -f $tmp/undo ]]; then mv -- "$PX_BOOK" "$tmp/redo"; mv -- "$tmp/undo" "$PX_BOOK"; dirty=1; status='Undone.'; fi ;;
+    r) if [[ -f $tmp/redo ]]; then mv -- "$PX_BOOK" "$tmp/undo"; mv -- "$tmp/redo" "$PX_BOOK"; dirty=1; status='Redone.'; fi ;;
+    s) if [[ -z $book ]]; then
+         prompt 'New workbook path: '
+         if [[ -z $answer || -e $answer || -L $answer ]]; then status='Choose a new workbook path.'; continue; fi
+         book=$answer
+       fi
+       if save_book; then status='Workbook saved.'; else status='Save failed.'; fi ;;
+    '?') printf '\033[H\033[2J%s\n' \
+      'POINDEXTER / Quick reference' 'Arrows or hjkl: move     g: go to A1:P64' \
+      'Enter/e: edit   d: clear   y/p: copy/paste   u/r: undo/redo last change' \
+      's: save workbook         q: quit      x: statement     @: run script file' \
+      'Cells: text, integer, or =formula. Prefix numeric text with a single quote.' \
+      'Examples: =B2*3   =SUM(A1:A5)   =IF(B2>0,B2,0)   =AVG(A2:C5)' \
+      'Scripts: SET B2 = expr | FORMULA B2 = expr | FILL A1:A8 = ROW()*100' \
+      'LET X = expr | REPEAT expr ... END | IF expr ... ELSE ... END | ASSERT expr' \
+      'Use $X for a script variable. Prices imported from a run are nightly cents.' \
+      'Press any key to return.'; IFS= read -rsn1 discard || : ;;
+    q) if ((dirty)); then prompt 'Discard unsaved changes? [y/N] '; [[ $answer == [yY] ]] || continue; fi; break ;;
+  esac
+done

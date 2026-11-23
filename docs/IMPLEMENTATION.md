@@ -239,6 +239,40 @@ power-loss or hostile-filesystem certification.
 
 ## Next implementation gate
 
+**Poindexter workbench:** `./bin/poindexter --build` builds a separate On1xfile
+C11 executable with workbook, formula and scripting modules. The Bash terminal
+host opens an empty book, CSV values or a verified replay projection.
+`python3 tests/check_poindexter_workbench.py` passed arithmetic, memoized
+dependencies and cycles, lazy IF, anchored copies, quoted CSV, bounded scripts
+and rollback. A real pseudo-terminal test moved the cursor, edited a formula,
+ran a statement, undid/redid a change, saved and reopened the book. A seven-night
+working scenario derived from the default run totaled `121800` cents and left
+the original store unchanged. The pinned application build, Python oracle,
+static checks and `./tests/run.sh` also passed. The spreadsheet uses its own
+`poindexter-workbook@1` format; persisted pricing contracts and v1/v2 run IDs
+are unchanged. See the [worksheet language and limits](../plugins/poindexter/workbench/README.md).
+
+**Yieldcraft package:** `plugins.yieldcraft.entry.recommend` is a compile-time
+On1x entry point over the existing matcher and strategy. A standalone C11
+consumer build (`python3 tests/check_yieldcraft_package.py`, exit 0)
+reproduced the two fixture recommendation envelopes with both v1 and v2
+identities, rejected five unsupported modes and five invalid inputs, and
+performed no store writes. The CLI remains the owner of run and replay.
+
+**Dragnet package:** `python3 tests/check_dragnet_frozen_csv.py` built the
+offline C11 host and exited 0 (`eligible_fixture_rows=5`). Its Source
+entry point accepts frozen offer bytes and a validated scenario and emits
+as-of eligible `hospitality.offer@1` JSON Lines, preserving the digest of
+the complete raw offers snapshot. Only the host reads the selected files.
+
+**Poindexter package:** the root On1xfile links `poindexter.sheet` as a
+local library. `bin/finpred poindexter RUN_ID` emits only CSV, after normal
+replay verifies every input, normalized object and output. The package test
+passed nine negative cases. `./bin/build.sh` and `./tests/run.sh` exited 0
+with the shared host: `poindexter_cli_ok=true v1=2 v2=2 rejected=2`. The
+sheets retained the recommendation and normalized valuation digests and
+showed differences of −400 and −1500 EUR cents/night. No run format changed.
+
 **C11 SDK checkpoint:** On the pinned MuLIB revision listed above,
 `python3 tests/check_sdk.py` built and installed `libfinpred_sdk.so.1`,
 compiled a separate consumer against `<finpred/sdk.h>`, and exited 0:

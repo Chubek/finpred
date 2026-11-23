@@ -14,6 +14,12 @@ FinPRED’s Yieldcraft CLI recommends a nightly EUR price for a specific stay an
 3. **[Inspect the acceptance record](docs/IMPLEMENTATION.md#acceptance-record)** — see the native results, independent Python oracle, four JSON envelope schemas and replay checks.
 4. **[Use the C11 SDK](source/sdk/README.md)** — inspect the built-in strategy's contracts and resource limits and check compatibility from native code.
 5. **[Build the native store review target](native/README.md)** — exercise directory-relative reads, no-replace publication and sync failures independently of the CLI.
+6. **[Call the Yieldcraft package from On1x](plugins/yieldcraft/README.md)** — pass scenario, offers and valuation snapshots directly to the strategy and receive a recommendation in nightly cents.
+7. **[Import frozen offers with Dragnet](plugins/dragnet/README.md)** — select two local snapshots and emit eligible, normalized whole-stay offers as JSON Lines.
+8. **[Export a Poindexter pricing sheet](plugins/poindexter/README.md)** — run `./bin/finpred poindexter RUN_ID` to compare the verified recommendation to its frozen valuation in CSV.
+9. **[Open the Poindexter spreadsheet](plugins/poindexter/workbench/README.md)** — build with `./bin/poindexter --build`, then edit cells, recalculate formulas and run worksheet scripts with `./bin/poindexter --book prices.pxw`.
+
+For package entry points, permissions and test commands, see [the plugin developer guide](PLUGIN.md).
 
 ## What runs today
 

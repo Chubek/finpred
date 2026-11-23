@@ -1,0 +1,6 @@
+on1xfile 1
+kind executable
+name "poindexter-grid"
+directory "src"
+target "poindexter-grid" "src/main.on1x"
+backend c11

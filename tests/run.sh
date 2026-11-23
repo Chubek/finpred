@@ -164,5 +164,6 @@ expect_failure 'capability denied' env FINPRED_MODE=execution "$exe"
 [ ! -e "$FINPRED_HOME" ]
 python3 "$ROOT/tests/check_pricing_cli.py"
 python3 "$ROOT/tests/check_ingestion_cli.py"
+python3 "$ROOT/tests/check_poindexter_cli.py"
 python3 "$ROOT/tests/check_write_failure.py"
 echo 'on1x_integration_ok=true'
