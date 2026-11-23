@@ -52,6 +52,12 @@ offer_count=<N>
 normalized_offer=<H>
 ```
 
+The `strategy=` line shown above is for the default scenario policy. For an
+explicit [Ottmat 2 profile](../strategies/README.md) its value is
+`yieldcraft.<profile-name>@1`, also recorded in the trace. `raw_strategy`
+still hashes the exact declaration bytes. Named profiles are supported only
+in v2 runs; the recommendation envelope retains the SDK family identity.
+
 The last line repeats `N` times (`1..512`, canonical decimal). It lists the
 normalized JSON for **every** data row in raw offers CSV order, including
 rows rejected as evidence. The scenario, valuation and every offer envelope

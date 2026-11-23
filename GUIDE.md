@@ -92,7 +92,7 @@ Set paths on the `run` command as above. The [launcher](bin/finpred) changes to 
 | `FINPRED_SCENARIO` | [`fixtures/scenario.csv`](fixtures/scenario.csv) | One stay, decision timestamp, party, target and matching limits. |
 | `FINPRED_OFFERS` | [`fixtures/offers.csv`](fixtures/offers.csv) | One inventory unit per row, with capacities, validity, fees and taxes. |
 | `FINPRED_VALUATION` | [`fixtures/valuation.csv`](fixtures/valuation.csv) | One row: current nightly price, floor, cap, maximum movement and shortcut threshold. |
-| `FINPRED_STRATEGY` | [`strategies/yieldcraft.ottmat`](strategies/yieldcraft.ottmat) | The supported built-in strategy declaration. |
+| `FINPRED_STRATEGY` | [`strategies/yieldcraft.ottmat`](strategies/yieldcraft.ottmat) | The default follows the scenario target. Choose a [named profile](strategies/README.md) to override target selection while retaining the same evidence checks and guardrails. |
 | `FINPRED_HOME` | `.finpred/` | Private local state; the parent directory must exist. Use the same home when replaying. |
 
 Use the launcher arguments for the command and run ID; it sets `FINPRED_MODE` and `FINPRED_RUN_ID` for the executable. `FINPRED_MODE=execution` is explicitly denied. No mode books rooms or changes a listed price.

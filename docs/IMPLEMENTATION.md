@@ -239,6 +239,12 @@ power-loss or hostile-filesystem certification.
 
 ## Next implementation gate
 
+**Named target policies:** five [Ottmat 2 strategy files](../strategies/README.md)
+select fixed P40/P55/P75 or linear/quadratic lead-time targets. The pinned
+shared build and `TMPDIR="$PWD/target" ./tests/run.sh` passed
+(`strategy_profiles_ok=true profiles=5`). Named policies have distinct v2
+run identities; the existing v1/v2 fixture prices and digests remained stable.
+
 **Poindexter workbench:** `./bin/poindexter --build` builds a separate On1xfile
 C11 executable with workbook, formula and scripting modules. The Bash terminal
 host opens an empty book, CSV values or a verified replay projection.

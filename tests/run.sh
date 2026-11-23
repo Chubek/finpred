@@ -87,9 +87,13 @@ bin/finpred selftest >"$work/selftest"
 grep -Fx 'selftest_ok=true' "$work/selftest"
 check_fixture '' 17100 lower_percentile_shortcut 5 2 0
 main_id=$id
+# Pin pre-profile v2 identities as well as economic outcomes: the run ID
+# covers all input lineage; the manifest output hashes cover JSON and trace.
+[ "$id:$rd:$tr" = '28b145fb8f902a239e76502a40c138bd60c7ae6af98ca70e21faf0e0f06e85db:5099f766659506292edb848dc8e8376cce99dfae60b9bc8d495d03792d6461ee:4503a57102a1ea380b9e94ac5b3fe5f9c17e3ac44c12c1ab049e60a4d4a75822' ]
 cp "$work/run" "$work/main-summary"
 check_fixture '_multiroom' 16000 guardrail_adjustment 3 0 1
 multi_id=$id
+[ "$id:$rd:$tr" = '7b1f694eab8645b0a09ed431a1268619328da4833a417a22cacf66c68df4612b:1f10e792e433fc59fc6ec49cf100922b7ce543c0c440b01551b4e2e32806f2ea:67f5051fb3613d4011c431a5ab343022ada824a428ad8ca3f1cc8358035dba86' ]
 [ "$multi_id" != "$main_id" ]
 python3 "$ROOT/tests/validate_runtime_json.py" "$FINPRED_HOME"
 python3 "$ROOT/tests/check_explain_cli.py" "$FINPRED_HOME" "$main_id"
@@ -163,6 +167,7 @@ expect_failure 'capability denied' env FINPRED_MODE=execution bin/finpred run
 expect_failure 'capability denied' env FINPRED_MODE=execution "$exe"
 [ ! -e "$FINPRED_HOME" ]
 python3 "$ROOT/tests/check_pricing_cli.py"
+python3 "$ROOT/tests/check_profiles_cli.py"
 python3 "$ROOT/tests/check_ingestion_cli.py"
 python3 "$ROOT/tests/check_poindexter_cli.py"
 python3 "$ROOT/tests/check_write_failure.py"

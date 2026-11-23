@@ -19,13 +19,28 @@ record Recommendation
   reason: sexpr
 }
 
-fn recommend(scenario: C.Scenario, valuation: C.Valuation, dist: Match.Distribution) -> Recommendation
+fn target_bps(scenario: C.Scenario, profile: string) -> i64
+{
+  let lead = Date.lead_days(sx_text(scenario["decision_at"]),sx_text(scenario["arrival"]));
+  if profile == "scenario"
+  {
+    if scenario["target_bps"] == 0 { return Q.target(lead,sx_text(scenario["curve"])); }
+    return scenario["target_bps"];
+  }
+  if profile == "value-p40" { return 4000; }
+  if profile == "balanced-p55" { return 5500; }
+  if profile == "premium-p75" { return 7500; }
+  if profile == "lead-linear" { return Q.target(lead,"linear"); }
+  if profile == "lead-quadratic" { return Q.target(lead,"quadratic"); }
+  tool_fail("strategy: unknown Yieldcraft profile");
+  return 0;
+}
+
+fn recommend_profile(scenario: C.Scenario, valuation: C.Valuation, dist: Match.Distribution, profile: string) -> Recommendation
 {
   if dist["count"] < scenario["min_properties"]
   { tool_fail("insufficient_evidence: too few independent, bookable properties"); }
-  let lead = Date.lead_days(sx_text(scenario["decision_at"]),sx_text(scenario["arrival"]));
-  var percentile = scenario["target_bps"];
-  if percentile == 0 { percentile = Q.target(lead,sx_text(scenario["curve"])); }
+  let percentile = target_bps(scenario,profile);
   if percentile < 4000
   { tool_fail("strategy: shortcut's lower percentile exceeds intended percentile"); }
   let intended_total = Q.type7(dist["prices"],dist["count"],percentile);
@@ -57,4 +72,9 @@ fn recommend(scenario: C.Scenario, valuation: C.Valuation, dist: Match.Distribut
     intended_cents:intended,lower_cents:lower,candidate_cents:candidate,
     recommended_cents:approved,property_count:dist["count"],rejected:dist["rejected"],
     infeasible:dist["infeasible"],search_nodes:dist["examined"],reason:sx_string(reason)};
+}
+
+fn recommend(scenario: C.Scenario, valuation: C.Valuation, dist: Match.Distribution) -> Recommendation
+{
+  return recommend_profile(scenario,valuation,dist,"scenario");
 }

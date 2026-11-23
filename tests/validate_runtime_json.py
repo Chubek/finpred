@@ -24,10 +24,11 @@ ROOT = Path(__file__).resolve().parents[1]
 SCENARIO, OFFER, VALUATION, REC = (
     "hospitality.scenario", "hospitality.offer", "pricing.valuation", "pricing.recommendation"
 )
+PROFILES = ("value-p40", "balanced-p55", "premium-p75", "lead-linear", "lead-quadratic")
 LINEAGE_POLICY = """finpred-run-lineage@2
 engine=finpred.yieldcraft-engine@1
 mode=recommendation
-strategy=yieldcraft.percentile@1
+strategy={strategy_version}
 graph=yieldcraft.fixed-graph@1
 node=0,input,none,hospitality.scenario@1,read
 node=1,source,hospitality.scenario@1,hospitality.offer@1,read
@@ -60,6 +61,11 @@ def reject_number(token):
 
 
 def validate(home):
+    strategies = {}
+    for name in ("yieldcraft", *PROFILES):
+        lines = (ROOT / "strategies" / f"{name}.ottmat").read_text(encoding="ascii").splitlines()
+        version = "percentile" if name == "yieldcraft" else name
+        strategies[tuple(lines)] = f"yieldcraft.{version}@1"
     validators = {}
     for kind in (SCENARIO, OFFER, VALUATION, REC):
         schema = json.loads((ROOT / "contracts" / f"{kind}@1.schema.json").read_text())
@@ -103,10 +109,14 @@ def validate(home):
         ident = f"recommendation:{manifest.stem}"
         expected.add((REC, ident, tuple(f"blake3:{d}" for d in (sd, od, vd)), None))
         recommendations[ident] = (paths[4], f"blake3:{strategy}")
+        raw_policy = paths[3].read_bytes().decode("ascii").replace("\r\n", "\n").removesuffix("\n")
+        strategy_version = strategies.get(tuple(raw_policy.split("\n")))
+        if not strategy_version or (version == "finpred-run@1" and strategy_version != "yieldcraft.percentile@1"):
+            raise ValueError(f"{manifest}: incompatible strategy declaration")
         if version == "finpred-run@2":
             lineage = artifacts / f"blake3-{manifest.stem}.txt"
             excluded.add(lineage)
-            lineages[lineage] = (sd, od, vd, strategy, rows)
+            lineages[lineage] = (sd, od, vd, strategy, strategy_version, rows)
             suffix = f"lineage_blake3={manifest.stem}\n".encode("ascii")
             if not paths[5].read_bytes().endswith(suffix):
                 raise ValueError(f"{manifest}: trace does not link to lineage")
@@ -142,14 +152,15 @@ def validate(home):
             raise ValueError(f"{path}: {e}") from e
     if missing := expected - seen.keys():
         raise ValueError(f"missing {len(missing)} envelope(s), first: {min(missing)}")
-    for path, (sd, od, vd, strategy, rows) in lineages.items():
+    for path, (sd, od, vd, strategy, strategy_version, rows) in lineages.items():
         s, = rows[SCENARIO]
         v, = rows[VALUATION]
         parents = (f"raw_scenario={sd}\nraw_offers={od}\nraw_valuation={vd}\nraw_strategy={strategy}\n"
                    f"normalized_scenario={seen[s]}\nnormalized_valuation={seen[v]}\n"
                    f"offer_count={len(rows[OFFER])}\n")
         offers = "".join(f"normalized_offer={seen[key]}\n" for key in rows[OFFER])
-        if path.read_bytes() != (LINEAGE_POLICY + parents + offers).encode("ascii"):
+        policy = LINEAGE_POLICY.format(strategy_version=strategy_version)
+        if path.read_bytes() != (policy + parents + offers).encode("ascii"):
             raise ValueError(f"{path}: lineage differs from policy and ordered source/contract IDs")
     for kind in validators:
         if not counts[kind]:

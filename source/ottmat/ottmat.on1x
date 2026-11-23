@@ -1,16 +1,39 @@
-# Deliberately narrow v1 Ottmat frontend: a line-oriented typed declaration.
-# It is NOT a general-purpose scripting interpreter.
+# Both versions declare the fixed recommendation graph. V2 adds exactly one
+# allowlisted target policy; profile IDs are content declarations, not filenames.
 import core.csv as CSV;
 import automat.graph as Graph;
-fn checked_strategy(source: string) -> bool
+
+fn profile(source: string) -> string
 {
-  if CSV.rows(source) != 8 { return false; }
-  if CSV.line(source,0) != "ottmat 1" { return false; }
+  let size = text_len(source);
+  if size < 1 || size > 512 { return ""; }
+  # Count lines without CSV.rows' exceptions: malformed input returns "".
+  # CSV.line accepts LF, CRLF and an optional final line ending.
+  var rows = 0;
+  for i in 0 .. size { if text_byte(source,i) == 10 { rows = rows + 1; } }
+  if text_byte(source,size - 1) != 10 { rows = rows + 1; }
+  if rows != 8 && rows != 9 { return ""; }
+  let header = CSV.line(source,0);
+  if rows == 8 && header != "ottmat 1" { return ""; }
+  if rows == 9 && header != "ottmat 2" { return ""; }
   for id in 0 .. 7
   {
     let n = Graph.node(id);
     let declaration = text_concat(sx_text(n["family"]),text_concat(" ",sx_text(n["produces"])));
-    if CSV.line(source,id+1) != declaration { return false; }
+    if CSV.line(source,id+1) != declaration { return ""; }
   }
-  return Graph.validate("recommendation");
+  if !Graph.validate("recommendation") { return ""; }
+  if rows == 8 { return "scenario"; }
+  let policy = CSV.line(source,8);
+  if policy == "profile value-p40@1 target_bps 4000" { return "value-p40"; }
+  if policy == "profile balanced-p55@1 target_bps 5500" { return "balanced-p55"; }
+  if policy == "profile premium-p75@1 target_bps 7500" { return "premium-p75"; }
+  if policy == "profile lead-linear@1 curve linear" { return "lead-linear"; }
+  if policy == "profile lead-quadratic@1 curve quadratic" { return "lead-quadratic"; }
+  return "";
+}
+
+fn checked_strategy(source: string) -> bool
+{
+  return profile(source) != "";
 }

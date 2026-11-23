@@ -35,12 +35,12 @@ fn source(path: string) -> string
   return value;
 }
 
-fn trace(s: C.Scenario, r: Strategy.Recommendation,
+fn trace(s: C.Scenario, r: Strategy.Recommendation, profile: string,
   raw_s: string, raw_o: string, raw_v: string, raw_strategy: string) -> string
 {
   let b = buffer_new();
   buffer_append(b,"FinPRED decision trace v1\n");
-  buffer_append(b,"strategy=yieldcraft.percentile@1\n");
+  Lineage.field(b,"strategy",Lineage.strategy_version(profile));
   buffer_append(b,"graph="); buffer_append(b,Graph.version()); buffer_append(b,"\n");
   buffer_append(b,"mode=recommendation\npublished=false\n");
   buffer_append(b,"scenario_id="); buffer_append(b,F.num(s["id"])); buffer_append(b,"\n");
@@ -117,8 +117,11 @@ fn execute(scenario_raw: string, offers_raw: string, valuation_raw: string,
   expected_trace: string, expected_run_id: string) -> i64
 {
   let persist = mode == "run";
-  if !Ottmat.checked_strategy(strategy_raw)
+  let profile = Ottmat.profile(strategy_raw);
+  if profile == ""
   { tool_fail("automat/ottmat: invalid graph or incompatible strategy"); }
+  if version == "finpred-run@1" && profile != "scenario"
+  { tool_fail("replay: v1 requires the legacy scenario strategy"); }
   let descriptor = SDK.yieldcraft_descriptor();
   if !SDK.admit(descriptor,"recommendation") { tool_fail("sdk: capability denied"); }
   let s = C.scenario_csv(scenario_raw);
@@ -129,7 +132,7 @@ fn execute(scenario_raw: string, offers_raw: string, valuation_raw: string,
   let td = Store.digest(strategy_raw);
   let evidence = buffer_new();
   let dist = matched_distribution(offers_raw,s,mode == "evidence",evidence);
-  let r = Strategy.recommend(s,v,dist);
+  let r = Strategy.recommend_profile(s,v,dist,profile);
   Match.destroy_distribution(dist);
   if persist
   {
@@ -146,7 +149,7 @@ fn execute(scenario_raw: string, offers_raw: string, valuation_raw: string,
   let rows = CSV.rows(offers_raw);
   if v2
   {
-    Lineage.start(lineage,sd,od,vd,td);
+    Lineage.start(lineage,sd,od,vd,td,profile);
     Lineage.field(lineage,"normalized_scenario",ns);
     Lineage.field(lineage,"normalized_valuation",nv);
     Lineage.field(lineage,"offer_count",F.num(rows - 1));
@@ -175,7 +178,7 @@ fn execute(scenario_raw: string, offers_raw: string, valuation_raw: string,
   }
   else { id = legacy_run_key(sd,od,vd,td); }
   let rec = JSON.recommendation(s,r,id,sd,od,vd,td);
-  var explanation = trace(s,r,sd,od,vd,td);
+  var explanation = trace(s,r,profile,sd,od,vd,td);
   if v2
   { explanation = text_concat(explanation,text_concat("lineage_blake3=",text_concat(id,"\n"))); }
   let rec_digest = Store.digest(rec);
