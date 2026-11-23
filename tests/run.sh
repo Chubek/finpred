@@ -10,6 +10,7 @@ FINPRED_EXE=$(finpred_cli_executable "$ROOT")
 export FINPRED_EXE
 python3 tests/validate_static.py
 python3 tests/check_on1x_features.py
+python3 tests/check_environ_argv.py
 python3 tests/check_fixtures.py
 python3 tests/check_sdk.py
 python3 tests/check_sdk_packages.py
