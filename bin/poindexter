@@ -2,7 +2,7 @@
 # Terminal and file host. All cell, formula and script semantics are in On1x.
 set -euo pipefail
 root=$(cd -- "$(dirname -- "$0")/.." && pwd)
-exe=${POINDEXTER_EXE:-"$root/target/poindexter/poindexter-grid"}
+exe=${POINDEXTER_EXE:-"$root/build/poindexter/poindexter-grid"}
 usage() {
   cat <<'EOF'
 Usage: bin/poindexter --build
@@ -17,8 +17,10 @@ EOF
 die() { printf 'Poindexter: %s\n' "$*" >&2; exit 2; }
 if [[ ${1:-} == --build && $# == 1 ]]; then
   mulib=${MULIB_ROOT:-"$root/third_party/mulib"}
+  . "$root/bin/build-env.sh"
+  finpred_build_env "$root"
   exec python3 "$mulib/on1x/tools/on1x-project.py" build "$root/plugins/poindexter/workbench" \
-    --on1xc "${ON1XC:-$mulib/build/on1x/on1xc}" --mulib-root "$mulib" --offline --output-dir "$root/target/poindexter"
+    --on1xc "${ON1XC:-$root/build/mulib/on1x/on1xc}" --mulib-root "$mulib" --offline --output-dir "$root/build/poindexter"
 fi
 book= run= import_csv= script= output= cell=A1
 while (($#)); do

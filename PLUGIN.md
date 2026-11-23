@@ -18,8 +18,8 @@ All three packages declare SDK 1, version `1.0.0`, `effects: ["pure"]` and `host
 From the repository root, with the [pinned On1x toolchain](INSTALL.md) available:
 
 ```sh
-plugins/dragnet/build.sh "$PWD/target/dragnet"
-target/dragnet/dragnet-frozen-csv 3<fixtures/scenario.csv 4<fixtures/offers.csv
+plugins/dragnet/build.sh
+build/dragnet/dragnet-frozen-csv 3<fixtures/scenario.csv 4<fixtures/offers.csv
 ```
 
 The shell opens two caller-selected regular files. The Linux host reads `/proc/self/fd/3` (scenario) and `/proc/self/fd/4` (offers); it has no default source. Use frozen files in a trusted directory. Inputs use the exact unquoted CSV headers in [the fixtures](fixtures/), at most 2,000,000 bytes per file and 1–512 offer rows. The [build script](plugins/dragnet/build.sh) stages the shared FinPRED modules and builds a standalone executable.

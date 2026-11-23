@@ -25,7 +25,7 @@ def execute(args, work, *, env=None, failure=None):
 
 def main():
     sdk = Path(os.environ.get("MULIB_ROOT", ROOT / "third_party/mulib")).resolve()
-    compiler = Path(os.environ.get("ON1XC", sdk / "build/on1x/on1xc")).resolve()
+    compiler = Path(os.environ.get("ON1XC", ROOT / "build/mulib/on1x/on1xc")).resolve()
     env = {"MULIB_ROOT": str(sdk), "ON1XC": str(compiler)}
     with tempfile.TemporaryDirectory(prefix="finpred-plugin-registry-") as tmp:
         work = Path(tmp)

@@ -4,7 +4,7 @@ set -eu
 umask 077
 export LC_ALL=C
 pkg=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-tools=${DRAGNET_FEEDS_BIN:-"$pkg/../../target/dragnet-feeds"}
+tools=${DRAGNET_FEEDS_BIN:-"$pkg/../../build/dragnet-feeds"}
 stage=
 child=
 

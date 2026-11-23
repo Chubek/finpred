@@ -39,8 +39,7 @@ On Linux with the existing release On1x toolchain, GNU coreutils, util-linux
 `flock`, and development packages for libxml2, Jansson, and libcurl ≥ 7.85:
 
 ```sh
-export DRAGNET_FEEDS_BIN="$PWD/target/dragnet-feeds"
-plugins/dragnet/build-feeds.sh "$DRAGNET_FEEDS_BIN"
+plugins/dragnet/build-feeds.sh
 
 # Use a separate trusted directory, never FINPRED_HOME or its subdirectories.
 mkdir -m 700 "$HOME/dragnet-evidence"

@@ -12,6 +12,7 @@ jobs:
       MULIB_ROOT: ${{ github.workspace }}/third_party/mulib
       MULIB_SHA: 49de89acbc97efbee493d6b28d02c8f64ed4f725
       LIBSTONE_SHA: b5c962721a32df18b2fb22de136c1f2ef8b6390d
+      PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -26,17 +27,14 @@ jobs:
           test "$(git -C "$MULIB_ROOT/on1x/third_party/libstone" rev-parse HEAD)" = "$LIBSTONE_SHA"
       - name: Build pinned compiler
         run: |
-          cmake -S "$MULIB_ROOT/on1x" -B "$MULIB_ROOT/build/on1x" \
-            -DBUILD_TESTING=ON -DON1X_REQUIRE_LIBSTONE=ON \
-            -DON1X_BUILD_NATIVE_PPX=ON -DON1X_BUILD_GRAMMAREMBED=ON \
-            -DON1X_LIBSTONE_ROOT="$MULIB_ROOT/on1x/third_party/libstone"
-          cmake --build "$MULIB_ROOT/build/on1x" --parallel 4 --target on1xc on1x_ppx_GrammarEmbed
-          sha256sum "$MULIB_ROOT/build/on1x/on1xc"
+          make mulib
+          sha256sum build/mulib/on1x/on1xc
+          echo "TMPDIR=$PWD/build/tmp" >> "$GITHUB_ENV"
       - name: Install schema validator
         run: |
-          python3 -m venv "$RUNNER_TEMP/validation"
-          "$RUNNER_TEMP/validation/bin/pip" install 'jsonschema==4.26.0'
-          echo "$RUNNER_TEMP/validation/bin" >> "$GITHUB_PATH"
+          python3 -m venv build/test-venv
+          build/test-venv/bin/pip install 'jsonschema==4.26.0'
+          echo "$PWD/build/test-venv/bin" >> "$GITHUB_PATH"
       - name: Build C11 CLI
         run: ./bin/build.sh
       - name: Fixture oracles, static checks and full integration

@@ -65,7 +65,7 @@ def cases(manifest):
 
 def main():
     mulib = Path(os.environ.get("MULIB_ROOT", ROOT / "third_party/mulib")).resolve()
-    compiler = Path(os.environ.get("ON1XC", mulib / "build/on1x/on1xc")).resolve()
+    compiler = Path(os.environ.get("ON1XC", ROOT / "build/mulib/on1x/on1xc")).resolve()
     count = 0
     with tempfile.TemporaryDirectory(prefix="finpred-sdk-packages-") as tmp:
         work = Path(tmp)

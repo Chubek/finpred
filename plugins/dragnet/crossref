@@ -17,7 +17,7 @@ case "$#:${1-}" in
 esac
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd -P)
-bin=${DRAGNET_CROSSREF_BIN:-"$root/target/dragnet-crossref"}
+bin=${DRAGNET_CROSSREF_BIN:-"$root/build/dragnet-crossref"}
 capture=$bin/dragnet-crossref-capture
 importer=$bin/dragnet-crossref-import
 for tool in "$capture" "$importer"; do

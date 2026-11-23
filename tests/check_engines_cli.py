@@ -14,7 +14,7 @@ SPREAD_DIGEST = b"f3f59aede2d460f6e4c25363919556d703726661ec3d0acf6be7a3af427679
 
 
 def main():
-    exe = Path(os.environ.get("FINPRED_EXE", ROOT / "target/dev/finpred")).resolve()
+    exe = Path(os.environ.get("FINPRED_EXE", ROOT / "build/dev/finpred")).resolve()
     launcher = ROOT / "bin/finpred"
     clean = {key: value for key, value in os.environ.items() if not key.startswith("FINPRED_")}
 

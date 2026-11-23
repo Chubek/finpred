@@ -11,8 +11,8 @@ envelope per eligible observation, in source order. Run the standalone Linux
 host from the repository root:
 
 ```sh
-plugins/dragnet/build.sh "$PWD/target/dragnet"
-target/dragnet/dragnet-frozen-csv 3<fixtures/scenario.csv 4<fixtures/offers.csv
+plugins/dragnet/build.sh
+build/dragnet/dragnet-frozen-csv 3<fixtures/scenario.csv 4<fixtures/offers.csv
 ```
 
 The shell selects the frozen scenario (fd 3) and offers (fd 4). Supply
@@ -74,7 +74,7 @@ FinPRED executable all exited 0. The existing CLI still replayed 17100 and
 For normal offline use, build once and run the replayable launcher:
 
 ```sh
-plugins/dragnet/build-crossref.sh "$PWD/target/dragnet-crossref"
+plugins/dragnet/build-crossref.sh
 fixtures=tests/dragnet_elvi_consumer
 plugins/dragnet/crossref import 'hotel & rates' \
   "$fixtures/request.csv" "$fixtures/search.json" "$fixtures/work.json" > evidence.json

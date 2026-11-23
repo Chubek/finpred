@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main():
     sdk = Path(os.environ.get("MULIB_ROOT", ROOT / "third_party/mulib")).resolve()
-    compiler = Path(os.environ.get("ON1XC", sdk / "build/on1x/on1xc")).resolve()
+    compiler = Path(os.environ.get("ON1XC", ROOT / "build/mulib/on1x/on1xc")).resolve()
     names = ("yieldcraft", "value-p40", "balanced-p55", "premium-p75", "lead-linear", "lead-quadratic")
     policies = {name: (ROOT / "strategies" / f"{name}.ottomat").read_text("ascii") for name in names}
     v1 = policies["yieldcraft"]

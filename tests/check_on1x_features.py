@@ -13,7 +13,7 @@ EXPECTED = b"present=some:0\nmissing=none\npayload=$label ${label}\n{} {\n"
 
 def main():
     sdk = Path(os.environ.get("MULIB_ROOT", ROOT / "third_party/mulib")).resolve()
-    compiler = Path(os.environ.get("ON1XC", sdk / "build/on1x/on1xc")).resolve()
+    compiler = Path(os.environ.get("ON1XC", ROOT / "build/mulib/on1x/on1xc")).resolve()
     with tempfile.TemporaryDirectory(prefix="finpred-on1x-features-") as tmp:
         def build(source, exe):
             return subprocess.run([

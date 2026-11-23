@@ -16,14 +16,15 @@ PACKAGE = ROOT / "plugins/poindexter"
 def main():
     descriptor = json.loads((PACKAGE / "plugin.json").read_bytes())
     sdk = Path(os.environ.get("MULIB_ROOT", ROOT / "third_party/mulib")).resolve()
-    compiler = Path(os.environ.get("ON1XC", sdk / "build/on1x/on1xc")).resolve()
+    compiler = Path(os.environ.get("ON1XC", ROOT / "build/mulib/on1x/on1xc")).resolve()
     with tempfile.TemporaryDirectory(prefix="finpred-poindexter-") as tmp:
         project = Path(tmp) / "project"
         shutil.copytree(ROOT / "tests/poindexter_consumer", project)
-        shutil.copytree(PACKAGE, project / "vendor/poindexter", ignore=shutil.ignore_patterns("target"))
+        shutil.copytree(PACKAGE, project / "vendor/poindexter", ignore=shutil.ignore_patterns("target", "build"))
+        out = Path(tmp) / "build"
         subprocess.run([sys.executable, sdk / "on1x/tools/on1x-project.py", "build", project,
-                        "--on1xc", compiler, "--mulib-root", sdk], check=True, timeout=90)
-        output = subprocess.check_output([project / "target/dev/consumer"], timeout=10)
+                         "--on1xc", compiler, "--mulib-root", sdk, "--output-dir", out], check=True, timeout=90)
+        output = subprocess.check_output([out / "consumer"], timeout=10)
     fixture = json.loads((ROOT / "fixtures/replay_v1.json").read_bytes())
     id_, = (key for key, summary in fixture["runs"].items() if "recommendation_minor=17100\n" in summary)
     files = fixture["files"]

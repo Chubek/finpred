@@ -19,7 +19,7 @@ CASES = (
 
 def main():
     sdk = Path(os.environ.get("MULIB_ROOT", ROOT / "third_party/mulib")).resolve()
-    compiler = Path(os.environ.get("ON1XC", sdk / "build/on1x/on1xc")).resolve()
+    compiler = Path(os.environ.get("ON1XC", ROOT / "build/mulib/on1x/on1xc")).resolve()
     archive = json.loads((FIX / "replay_v1.json").read_bytes())["files"]
     manifest = json.loads((ROOT / "plugins/yieldcraft/plugin.json").read_bytes())
     if (manifest["entry_point"], manifest["mode"], manifest["host_capabilities"]) != (

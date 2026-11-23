@@ -8,7 +8,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sdk = Path(os.environ.get("MULIB_ROOT", ROOT / "third_party/mulib"))
-compiler = os.environ.get("ON1XC", sdk / "build/on1x/on1xc")
+compiler = os.environ.get("ON1XC", ROOT / "build/mulib/on1x/on1xc")
 with tempfile.TemporaryDirectory(prefix="finpred-dag-") as tmp:
     exe = Path(tmp) / "consumer"
     subprocess.run([sys.executable, sdk / "on1x/tools/on1x-build.py",

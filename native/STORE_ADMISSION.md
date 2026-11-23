@@ -23,7 +23,7 @@ the other candidates). In a scratch directory with `MULIB_ROOT` set:
 
 ```sh
 printf 'import kernel mulib.fs as Candidate;\nfn main() {}\n' >candidate.on1x
-"$MULIB_ROOT/build/on1x/on1xc" --emit-c --kernel-c11 --kernel-stage candidate.on1x
+"${ON1XC:-$PWD/build/mulib/on1x/on1xc}" --emit-c --kernel-c11 --kernel-stage candidate.on1x
 ```
 
 Each exited **1**, `ON1X-KERNEL-NOT-ADMITTED`. Staging itself isn't approval.

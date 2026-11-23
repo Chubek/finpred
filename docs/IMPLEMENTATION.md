@@ -99,10 +99,24 @@ The memo consumer also verified a cached zero. Scalar golden bytes and
 historical Yieldcraft v1/v2 replay remained unchanged.
 
 Use `make test` to build the CLI and run the integration suite with the
-selected `MULIB_ROOT` and `ON1XC`. The Makefile also wraps the Poindexter
-build and the standalone native CTests; it does not download a toolchain
-or grant storage admission. `make native-test` passed both CTests, and
-`make poindexter` built the terminal executable.
+selected `MULIB_ROOT` and `ON1XC`. `make mulib` builds the compiler and
+GrammarEmbed out of tree in `build/mulib/on1x/`. The CLI, plugins and default
+build scratch also live under `build/`; see [the output layout](../INSTALL.md#3-build-the-compiler-then-the-application).
+The Makefile also wraps the Poindexter build and standalone native CTests;
+it does not download a toolchain or grant storage admission.
+
+Build-layout verification at FinPRED `6d3994a2c9caeda157592b5a556b002113ff5edf`
+used Linux x86-64, GCC 16.2.1, MuLIB
+`5040412bf7fcce0e1e925fe63c613ddcc9681ea0` and LibStone
+`4c35077601899944594737559534aafd9014f330`, the existing checkout pins.
+`make mulib`, `make test`, `make native-test` (2 cases), and
+`make poindexter-tui-review` (3 cases) passed. The CLI kept its 17100/16000
+fixture results and matching run IDs and digests; both archived v1 runs
+and all five pricing profiles passed. The Dragnet builds and two-provider
+loopback/offline test passed. The Poindexter package, workbench and GUI
+checks passed, with the live X11 check skipped because the private Xvfb
+tools were unavailable. Hosted CI was not run for this check. No contract,
+run format, ABI, or native admission changed.
 
 ### Ottomat v3 scalar lowering
 

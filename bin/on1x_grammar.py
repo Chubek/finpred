@@ -14,7 +14,8 @@ def processor_directory(compiler):
             or not (directory / "category.schema.json").is_file()):
         raise SystemExit(
             f"Missing GrammarEmbed at {processor}; build the matching "
-            "on1x_ppx_GrammarEmbed target or set FINPRED_STDPPX_DIR"
+            "on1x_ppx_GrammarEmbed target ('make mulib' for the default "
+            "toolchain) or set FINPRED_STDPPX_DIR"
         )
     return directory
 

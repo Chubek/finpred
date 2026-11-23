@@ -9,7 +9,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sdk = Path(os.environ.get("MULIB_ROOT", ROOT / "third_party/mulib")).resolve()
-compiler = os.environ.get("ON1XC", sdk / "build/on1x/on1xc")
+compiler = os.environ.get("ON1XC", ROOT / "build/mulib/on1x/on1xc")
 
 
 def check(case, raw):

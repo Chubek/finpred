@@ -78,7 +78,7 @@ def replace(raw, old, new):
 
 def main():
     sdk = Path(os.environ.get("MULIB_ROOT", ROOT / "third_party/mulib")).resolve()
-    compiler = Path(os.environ.get("ON1XC", sdk / "build/on1x/on1xc")).resolve()
+    compiler = Path(os.environ.get("ON1XC", ROOT / "build/mulib/on1x/on1xc")).resolve()
     source = (ROOT / "strategies/scalar-select.ottomat").read_bytes()
     with tempfile.TemporaryDirectory(prefix="finpred-scalar-selection-") as tmp:
         work = Path(tmp)

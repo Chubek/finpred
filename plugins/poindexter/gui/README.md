@@ -18,7 +18,7 @@ export TMPDIR="$PWD/build"
 mkdir -p "$TMPDIR"
 ./bin/poindexter --build
 bash plugins/poindexter/gui/build.sh
-./target/poindexter/poindexter-gui --book ./prices.pxw
+./build/poindexter/poindexter-gui --book ./prices.pxw
 ```
 
 `POINDEXTER_GUI_EXE` sets the build output path; `CC` selects the C compiler.

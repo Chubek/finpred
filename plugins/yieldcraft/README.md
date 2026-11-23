@@ -42,10 +42,12 @@ at the existing FinPRED modules and the package:
 
 ```sh
 export MULIB_ROOT="${MULIB_ROOT:-$PWD/third_party/mulib}"
-export ON1XC="${ON1XC:-$MULIB_ROOT/build/on1x/on1xc}"
+export ON1XC="${ON1XC:-$PWD/build/mulib/on1x/on1xc}"
+export TMPDIR="${TMPDIR:-$PWD/build/tmp}" PYTHONDONTWRITEBYTECODE=1
+mkdir -p "$TMPDIR" build
 python3 "$MULIB_ROOT/on1x/tools/on1x-build.py" host.on1x --backend c11 \
   --on1xc "$ON1XC" --mulib-root "$MULIB_ROOT" \
-  -I "$PWD/source" -I "$PWD" -o ./host
+  -I "$PWD/source" -I "$PWD" -o build/yieldcraft-host
 ```
 
 To build and exercise the supplied independent consumer:
@@ -76,7 +78,7 @@ exited 0:
 
 ```sh
 mkdir -p target
-work=$(mktemp -d "$PWD/target/yieldcraft-host.XXXXXXXX")
+work=$(mktemp -d "$PWD/build/yieldcraft-host.XXXXXXXX")
 export TMPDIR="$work" PYTHONDONTWRITEBYTECODE=1
 FINPRED_BUILD_DIR="$work/app" ./bin/build.sh
 FINPRED_EXE="$work/app/finpred" ./tests/run.sh

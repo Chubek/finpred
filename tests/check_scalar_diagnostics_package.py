@@ -8,7 +8,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sdk = Path(os.environ.get("MULIB_ROOT", ROOT / "third_party/mulib")).resolve()
-compiler = Path(os.environ.get("ON1XC", sdk / "build/on1x/on1xc")).resolve()
+compiler = Path(os.environ.get("ON1XC", ROOT / "build/mulib/on1x/on1xc")).resolve()
 
 with tempfile.TemporaryDirectory(prefix="finpred-diagnostics-package-") as tmp:
     exe = Path(tmp) / "consumer"

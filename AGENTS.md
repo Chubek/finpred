@@ -127,11 +127,7 @@ Expected Linux x86-64 bootstrap, assuming the pinned MuLIB source exists:
 export MULIB_ROOT="${MULIB_ROOT:-$PWD/third_party/mulib}"
 git -C "$MULIB_ROOT" rev-parse HEAD
 git -C "$MULIB_ROOT/on1x/third_party/libstone" rev-parse HEAD
-cmake -S "$MULIB_ROOT/on1x" -B "$MULIB_ROOT/build/on1x" \
-  -DBUILD_TESTING=ON -DON1X_REQUIRE_LIBSTONE=ON \
-  -DON1X_BUILD_NATIVE_PPX=ON -DON1X_BUILD_GRAMMAREMBED=ON \
-  -DON1X_LIBSTONE_ROOT="$MULIB_ROOT/on1x/third_party/libstone"
-cmake --build "$MULIB_ROOT/build/on1x" --parallel 4 --target on1xc on1x_ppx_GrammarEmbed
+make mulib
 ./bin/build.sh
 ./bin/finpred selftest
 python3 tests/check_fixtures.py

@@ -62,7 +62,7 @@ def read_pty(master):
 
 def main():
     sdk = Path(os.environ.get("MULIB_ROOT", ROOT / "third_party/mulib")).resolve()
-    compiler = Path(os.environ.get("ON1XC", sdk / "build/on1x/on1xc")).resolve()
+    compiler = Path(os.environ.get("ON1XC", ROOT / "build/mulib/on1x/on1xc")).resolve()
     env = {
         k: v for k, v in os.environ.items()
         if not k.startswith(("PX_", "FINPRED_"))

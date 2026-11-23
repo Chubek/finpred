@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Release-toolchain conformance: MuLIB TUI headers do not grant safe imports.
 
-Use the release MULIB_ROOT and its ON1XC (defaults to build/on1x/on1xc).
+Use the release MULIB_ROOT and its ON1XC (defaults to build/mulib/on1x/on1xc).
 With a newer matched toolchain, pass --expect-dynlib-syntax to check the
 same denial after the compiler recognizes the dynamic linkage request.
 Catalog registration and --kernel-imports do not grant safe admission.
@@ -105,7 +105,7 @@ def main():
     )
     args = parser.parse_args()
     sdk = Path(os.environ.get("MULIB_ROOT", ROOT / "third_party/mulib")).resolve()
-    compiler = Path(os.environ.get("ON1XC", sdk / "build/on1x/on1xc")).resolve()
+    compiler = Path(os.environ.get("ON1XC", ROOT / "build/mulib/on1x/on1xc")).resolve()
     if not compiler.is_file() or not os.access(compiler, os.X_OK):
         raise ValueError(f"missing executable on1xc at {compiler}; set MULIB_ROOT or ON1XC")
     catalog_path = sdk / "on1x/contracts-exotract/kernel-auto.json"
