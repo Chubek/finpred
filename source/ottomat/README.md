@@ -16,8 +16,9 @@ space, `EOL` for LF or CRLF (chosen per line), and `[]` for optional syntax.
 EOF must follow the declaration.
 
 ```text
-v1       = "ottomat" SP "1" EOL nodes [EOL] EOF
-v2       = "ottomat" SP "2" EOL nodes EOL policy [EOL] EOF
+v1       = header SP "1" EOL nodes [EOL] EOF
+v2       = header SP "2" EOL nodes EOL policy [EOL] EOF
+header   = "ottmat" | "ottomat"
 nodes    = node EOL node EOL node EOL node EOL node EOL node EOL node
 node     = word SP contract
 contract = word "." word "@" number

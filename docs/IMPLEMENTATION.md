@@ -14,6 +14,28 @@
 
 ## Architecture and isolation
 
+### S0 verification workflow
+
+The [Ubuntu 24.04 workflow](../.github/workflows/verify.yml) has separate
+application and native-store jobs. The [coverage index](../tests/COVERAGE.md)
+names the compiled positive and negative cases for each release feature.
+The application job emits fixture identities and output digests via `tests/run.sh`;
+both jobs log JSON test outcomes, including skipped steps.
+
+Local rehearsal used a fresh copy of the working sources based on `24c6f3d`
+and clean dependency checkouts from local Git objects: MuLIB
+`49de89acbc97efbee493d6b28d02c8f64ed4f725`, LibStone
+`b5c962721a32df18b2fb22de136c1f2ef8b6390d`. On x86-64 Linux
+`6.18.52-1-lts` with GCC `16.2.1`, the rebuilt `on1xc` SHA-256 was
+`88428528934039ca7d0eb4064ec10e156235984aeafc3138b43ee19ee18cff20`.
+`./bin/build.sh && ./tests/run.sh` exited 0, including the two historical v2
+IDs, both archived v1 replays, five policies, 32 pricing cases and 65 ingestion
+cases. The three package consumers and Poindexter workbench passed, and strict
+C11 native-store CTest passed 2/2. Hosted runner provisioning and execution
+remain to be verified on GitHub.
+
+### Data and control flow
+
 ```text
 CSV/fixtures (local-only) -> On1x CSV/schema contract validation
                         -> As-of eligibility filter
@@ -27,7 +49,7 @@ replay(manifest ID) -----^ (no artifact mutations or external actions)
 ```
 
 `source/core/` owns validated scenario/offer/valuation values, date checks,
-minor-unit money, serialization, CSV. `source/yieldcraft/` owns the bounded
+minor-unit money, serialization, CSV and the recommendation record. `plugins/yieldcraft/` owns the bounded
 whole-stay matcher and recommendation strategy. `source/automat/` checks the
 first fixed typed DAG. `source/ottomat/` is a version 1 exact descriptor
 frontend, not a second runtime. `source/sdk/` holds a closed-by-default
@@ -41,6 +63,27 @@ descriptor handle is a reference to library-owned constants, not an On1x
 runtime pointer or a grant to invoke a plugin.
 
 ## Exactness and economic semantics
+
+**Yieldcraft relocation check (base `24c6f3d`, Linux x86-64, C11):**
+`./bin/build.sh`, `tests/check_yieldcraft_package.py`,
+`tests/check_dragnet_frozen_csv.py` and `tests/validate_static.py` passed.
+The local MuLIB source was `87cbf7c361667c62f82759bd0c02834b2b07315c`,
+LibStone `b5c962721a32df18b2fb22de136c1f2ef8b6390d`, and the `on1xc`
+binary SHA-256 `0d63fc81d978f1588df8700cf4222ceb0b4425af26a97a591395b751d331a9af`.
+Fresh default and multi-room stores compared byte-for-byte equal before and
+after relocation (`diff -qr`), at 17100 and 16000 cents/night respectively.
+`./tests/run.sh` exited 1 in both builds: the default strategy produced v2 ID
+`289b11b9e247740d5616e835132197a62703a315ebdf6dac64a0a45cc598119f`,
+where the historical assertion expects `28b145fb…`. Later suite checks did
+not run; the archived fixtures and assertions were not regenerated.
+
+**Replay compatibility repair:** The subsequent fix restored the v1 archive
+and six shipped strategy payloads byte-for-byte from `b1d6f02`. Both header
+spellings now lower to the same plan; the raw snapshot still determines
+identity. On the toolchain above, `./bin/build.sh && ./tests/run.sh` exited
+0, including both archived v1 replays, the pinned v2 IDs and output digests
+for both fixtures, all five policies, and read-only replay of a declaration
+using the newer header spelling.
 
 - Every monetary input is a signed 64-bit **minor-unit integer**. Parsed
   prices, fees and taxes are bounded at 10^12 cents each; the gross sum must
@@ -305,7 +348,7 @@ from frozen inputs, not newly persisted observations. `./bin/build.sh`,
 `python3 tests/check_fixtures.py`, `python3 tests/validate_static.py` and
 `./tests/run.sh` exited 0 on the pinned toolchain (16 On1x modules, four
 schemas; `evidence_cli_ok=true v1_runs=2 v2_runs=3`). The original v1/v2
-fixture IDs and prices remained stable. See [report grammar](../source/yieldcraft/README.md).
+fixture IDs and prices remained stable. See [report grammar](../plugins/yieldcraft/EVIDENCE.md).
 Store publication now removes its own staging file after a reported short
 write; `tests/check_write_failure.py` verifies retry without manual cleanup.
 

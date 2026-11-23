@@ -74,9 +74,13 @@ def main():
         # Same validated declaration under a different name, different bytes.
         # Pricing follows contents; run identity includes the exact bytes.
         alias = root / "value-p40.ottomat"
-        alias.write_bytes((ROOT / "strategies/premium-p75.ottomat").read_bytes().replace(b"\n", b"\r\n"))
-        if check(home, "premium-p75", CASES["premium-p75"], policy=alias) in ids:
-            raise ValueError("strategy byte change reused an existing run ID")
+        premium = (ROOT / "strategies/premium-p75.ottomat").read_bytes()
+        for content in (premium.replace(b"\n", b"\r\n"), premium.replace(b"ottmat ", b"ottomat ", 1)):
+            alias.write_bytes(content)
+            identity = check(home, "premium-p75", CASES["premium-p75"], policy=alias)
+            if identity in ids:
+                raise ValueError("strategy byte change reused an existing run ID")
+            ids.add(identity)
         # Tighten the movement limit around the 17500 previous rate. The lead
         # shortcut still selects P40 (17100) before the movement floor (17300).
         valuation = root / "tight.csv"

@@ -66,6 +66,7 @@ def validate(home):
         lines = (ROOT / "strategies" / f"{name}.ottomat").read_text(encoding="ascii").splitlines()
         version = "percentile" if name == "yieldcraft" else name
         strategies[tuple(lines)] = f"yieldcraft.{version}@1"
+        strategies[(lines[0].replace("ottmat ", "ottomat ", 1), *lines[1:])] = f"yieldcraft.{version}@1"
     validators = {}
     for kind in (SCENARIO, OFFER, VALUATION, REC):
         schema = json.loads((ROOT / "contracts" / f"{kind}@1.schema.json").read_text())

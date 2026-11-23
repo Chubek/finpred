@@ -2,6 +2,10 @@
 
 Build from the **FinPRED repository root**. The verified platform is x86-64 GNU/Linux. MuLIB, its On1x compiler and the nested LibStone sources are separate dependencies; `bin/build.sh` does not download them. The [acceptance record](docs/IMPLEMENTATION.md#acceptance-record) gives the tested host, versions and commands. For what the program does, see the [overview](README.md).
 
+The build wrapper assembles the host and `plugins/yieldcraft` in a temporary
+project because On1xfile discovers one source tree. Use `./bin/build.sh`
+for the CLI; set `FINPRED_BUILD_DIR` to choose a different output directory.
+
 ## 1. Prepare the host
 
 Use Git, CMake (On1x requires 3.20 or newer), a CMake build tool such as Make, C11 and C++20 toolchains, Perl for LibStone’s generators, and Python 3 for the build driver and tests. The C11 driver expects `cc` on `PATH`. The recorded build used GCC 16.2.1, CMake 4.4.3 and Python 3.14.7. The compiled pricing CLI itself does not use Python.
@@ -50,6 +54,11 @@ cmake --build "$MULIB_ROOT/build/on1x" --parallel 4 --target on1xc
 Expect `On1x scanner: LibStone ASDL+Aurocks generated frontend` during configuration and `selftest_ok=true` from the last command. The [build wrapper](bin/build.sh) runs MuLIB’s `on1x/tools/on1x-project.py` against FinPRED’s [On1xfile](On1xfile). By default it uses `$MULIB_ROOT/build/on1x/on1xc` and produces `target/dev/finpred`. To reuse another build of the **same** compiler, export `ON1XC` as its absolute executable path. To select another built **FinPRED** executable for the launcher and suite, export `FINPRED_EXE` as its absolute path.
 
 ## 4. Check the build
+
+The [CI workflow](.github/workflows/verify.yml) runs these checks on Ubuntu
+24.04 x86-64. It also builds the independent package consumers, the Poindexter
+workbench and the standalone native store tests. The [coverage index](tests/COVERAGE.md)
+links the positive and negative cases.
 
 ```sh
 python3 tests/check_fixtures.py

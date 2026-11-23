@@ -1,7 +1,7 @@
 # Exact-stay match evidence
 
 ```on1x
-import yieldcraft.matcher as Match;
+import plugins.yieldcraft.matcher as Match;
 let report = Match.audit_report(scenario, offers_raw);
 ```
 

@@ -1,4 +1,4 @@
-ottomat 1
+ottmat 1
 input hospitality.scenario@1
 source hospitality.offer@1
 transform hospitality.offer@1

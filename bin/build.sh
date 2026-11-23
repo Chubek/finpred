@@ -12,5 +12,18 @@ if [ ! -x "$ON1XC" ]; then
   exit 2
 fi
 cd "$ROOT"
-exec python3 "$MULIB_ROOT/on1x/tools/on1x-project.py" build "$ROOT" \
-  --on1xc "$ON1XC" --mulib-root "$MULIB_ROOT"
+# On1xfile discovers a single source tree. Compose host and built-in modules
+# in a disposable project: Yieldcraft imports host contracts, which isolated
+# On1x library dependencies cannot resolve.
+out=$(realpath -m -- "${FINPRED_BUILD_DIR:-$ROOT/target/dev}")
+mkdir -p "$(dirname -- "$out")"
+work=$(mktemp -d "${TMPDIR:-/tmp}/finpred-project.XXXXXXXX")
+trap 'rm -rf -- "$work"' EXIT
+trap 'exit 1' HUP INT TERM
+cp "$ROOT/On1xfile" "$work/"
+cp -R "$ROOT/source" "$work/source"
+mkdir -p "$work/source/plugins" "$work/plugins/poindexter"
+cp -R "$ROOT/plugins/yieldcraft" "$work/source/plugins/"
+cp -R "$ROOT/plugins/poindexter/On1xfile" "$ROOT/plugins/poindexter/src" "$work/plugins/poindexter/"
+python3 "$MULIB_ROOT/on1x/tools/on1x-project.py" build "$work" \
+  --on1xc "$ON1XC" --mulib-root "$MULIB_ROOT" --output-dir "$out"

@@ -2,6 +2,7 @@
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
+python3 tests/validate_static.py
 python3 tests/check_fixtures.py
 python3 tests/check_sdk.py
 python3 tests/check_sdk_packages.py

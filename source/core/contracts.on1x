@@ -38,6 +38,21 @@ record Valuation
   shortcut_cents: i64
 }
 
+record Recommendation
+{
+  intended_bps: i64,
+  selected_bps: i64,
+  intended_cents: i64,
+  lower_cents: i64,
+  candidate_cents: i64,
+  recommended_cents: i64,
+  property_count: i64,
+  rejected: i64,
+  infeasible: i64,
+  search_nodes: i64,
+  reason: sexpr
+}
+
 record Offer
 {
   property_id: i64,

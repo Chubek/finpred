@@ -6,6 +6,9 @@ import re
 from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 sources = sorted((root/'source').rglob('*.on1x'))
+for package in (root/'plugins').glob('*/plugin.json'):
+    assert not (root/'source'/package.parent.name).exists(), package.parent.name
+assert not (root/'source/plugins').exists()
 assert len(sources) >= 12, len(sources)
 for module in sources:
     text = module.read_text()

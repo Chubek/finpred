@@ -33,7 +33,7 @@ observe -> normalize -> analyze -> predict/optimize -> decide -> act -> evaluate
 ```
 
 - **On1x is FinPRED's primary implementation language.** Keep application semantics, validators, domain algorithms, strategy logic, and the Automat in On1x. Use MuLIB C11 kernels for carefully scoped lower-level facilities and high-performance computations; use Python only for tests, tooling and independent reference oracles. Do not quietly replace the application with Python, C++ or Rust.
-- **Maintain a domain-neutral core.** Keep hospitality rules under `source/yieldcraft/` and `plugins/yieldcraft/`, not inside a universal store, scheduler, SDK or contract envelope.
+- **Keep plugin implementations under `plugins/` only.** The host can link packages and own their shared contract types. Keep Yieldcraft's matcher and pricing policy in `plugins/yieldcraft/`.
 - **Contracts before computation.** Every decision input must identify its kind/version, units, source, observed/ingested/valid times, and immutable evidence. The program must separate an observation, forecast, recommendation, intent and executed action.
 - **Recommendation is NEVER authorization.** All current built-in packages are pure/read-only except host-controlled local recording; `execution` remains denied. No live trade, price publication, booking, or outbound write is allowed by changing a strategy file or plugin descriptor.
 - **Do not sacrifice replay for new features.** Existing v1 and v2 run IDs, bytes, digests, schema semantics and historical pricing results must remain readable without rewriting them.
@@ -58,7 +58,7 @@ The inspected repository has much more than its earliest scaffold. **The histori
 | `On1xfile`, `source/*/On1xfile.m`, `bin/build.sh` | On1xfile C11 application build; Poindexter local library dependency | Fully portable, routinely CI-verified toolchains |
 | `source/core/{csv,date,money,contracts,serialize}.on1x` | Strict bounded CSV, civil dates, EUR integer cents, as-of checks, four envelope serialization paths | General financial units, multi-currency/FX, universal schema registry |
 | `contracts/{hospitality.scenario,hospitality.offer,pricing.valuation,pricing.recommendation}@1.schema.json` | Four versioned JSON Schema 2020-12 envelopes checked against fixture outputs | Complete runtime general-purpose schema validation/migration |
-| `source/yieldcraft/{matcher,strategy}.on1x` | Exact bounded room-subset/occupancy matching, one cheapest eligible bundle/property, curve, shortcut, guardrails and evidence | Full hospitality policy semantics; probabilistic demand forecasting |
+| `plugins/yieldcraft/{matcher,strategy}.on1x` | Exact bounded room-subset/occupancy matching, one cheapest eligible bundle/property, curve, shortcut, guardrails and evidence | Full hospitality policy semantics; probabilistic demand forecasting |
 | `source/algorithms/quantile.on1x` | Integer-cent Type-7 quantile, linear/quadratic lead-time policy | General weighted distributions/statistical algorithm registry |
 | `source/automat/{graph,runner}.on1x` | Validates/executes **one fixed seven-node** plan with effect and output checks | Arbitrary typed DAGs, node plugins, job scheduler, retry state |
 | `source/ottomat/{tokens,ottomat}.on1x`; `strategies/*.ottomat` | Bounded `ottomat 1/2` fixed-graph parser/checker; default plus five named price profiles | Real general-purpose strategy grammar and graph lowering |

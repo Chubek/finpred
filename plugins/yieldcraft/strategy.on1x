@@ -2,22 +2,7 @@ import core.contracts as C;
 import core.date as Date;
 import core.money as Money;
 import algorithms.quantile as Q;
-import yieldcraft.matcher as Match;
-
-record Recommendation
-{
-  intended_bps: i64,
-  selected_bps: i64,
-  intended_cents: i64,
-  lower_cents: i64,
-  candidate_cents: i64,
-  recommended_cents: i64,
-  property_count: i64,
-  rejected: i64,
-  infeasible: i64,
-  search_nodes: i64,
-  reason: sexpr
-}
+import plugins.yieldcraft.matcher as Match;
 
 fn target_bps(scenario: C.Scenario, profile: string) -> i64
 {
@@ -36,7 +21,7 @@ fn target_bps(scenario: C.Scenario, profile: string) -> i64
   return 0;
 }
 
-fn recommend_profile(scenario: C.Scenario, valuation: C.Valuation, dist: Match.Distribution, profile: string) -> Recommendation
+fn recommend_profile(scenario: C.Scenario, valuation: C.Valuation, dist: Match.Distribution, profile: string) -> C.Recommendation
 {
   if dist["count"] < scenario["min_properties"]
   { tool_fail("insufficient_evidence: too few independent, bookable properties"); }
@@ -68,13 +53,13 @@ fn recommend_profile(scenario: C.Scenario, valuation: C.Valuation, dist: Match.D
   if floor > cap { tool_fail("guardrails: empty floor/cap/movement intersection"); }
   let approved = Money.capped(candidate,floor,cap);
   if approved != candidate { reason = "guardrail_adjustment"; }
-  return record<Recommendation>{intended_bps:percentile,selected_bps:selected,
+  return record<C.Recommendation>{intended_bps:percentile,selected_bps:selected,
     intended_cents:intended,lower_cents:lower,candidate_cents:candidate,
     recommended_cents:approved,property_count:dist["count"],rejected:dist["rejected"],
     infeasible:dist["infeasible"],search_nodes:dist["examined"],reason:sx_string(reason)};
 }
 
-fn recommend(scenario: C.Scenario, valuation: C.Valuation, dist: Match.Distribution) -> Recommendation
+fn recommend(scenario: C.Scenario, valuation: C.Valuation, dist: Match.Distribution) -> C.Recommendation
 {
   return recommend_profile(scenario,valuation,dist,"scenario");
 }

@@ -65,7 +65,7 @@ fn lower(s: string) -> Plan
   let size = text_len(s);
   if size < 1 || size > 512 { return invalid(); }
   let(header, space) = T.word(s,0);
-  if header != "ottomat" { return invalid(); }
+  if header != "ottmat" && header != "ottomat" { return invalid(); }
   let(version, eol) = T.number(s,T.at(s,space,32));
   if version != 1 && version != 2 { return invalid(); }
   var pos = T.line_end(s,eol);

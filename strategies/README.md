@@ -42,7 +42,10 @@ digest. `replay` and `explain` use the stored declaration, so they work
 even if the live policy file is unavailable.
 
 Selection follows the file contents, not the filename. Each named file has
-an `ottomat 2` header, the seven fixed graph declarations, and one versioned
+an `ottmat 2` header, the seven fixed graph declarations, and one versioned
 `profile` line. An unknown name, a mismatched target for a known name, or
 an incompatible graph is rejected before creating a run. Changing LF to
 CRLF retains the declared policy but changes the raw digest and run ID.
+The parser also accepts `ottomat` for both header versions. The packaged
+files keep the original `ottmat` bytes so their historical runs retain
+their identities; changing the header spelling creates a distinct run.

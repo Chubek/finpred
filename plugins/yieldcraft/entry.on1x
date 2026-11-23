@@ -1,11 +1,11 @@
 # Statically linked strategy boundary. The host supplies snapshot contents.
 import core.contracts as C;
 import sdk.static_host as Host;
-import yieldcraft.matcher as Match;
-import yieldcraft.strategy as Strategy;
+import plugins.yieldcraft.matcher as Match;
+import plugins.yieldcraft.strategy as Strategy;
 
 fn recommend(mode: string, scenario_csv: string, offers_csv: string, valuation_csv: string)
-  -> Strategy.Recommendation
+  -> C.Recommendation
 {
   if !Host.yieldcraft(mode)
   { tool_fail("yieldcraft: capability denied"); }

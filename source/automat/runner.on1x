@@ -4,18 +4,18 @@
 import automat.graph as Graph;
 import core.contracts as C;
 import sdk.static_host as Host;
-import yieldcraft.matcher as Match;
-import yieldcraft.strategy as Strategy;
+import plugins.yieldcraft.matcher as Match;
+import plugins.yieldcraft.strategy as Strategy;
 
 record Output
 {
   scenario: C.Scenario,
   valuation: C.Valuation,
-  recommendation: Strategy.Recommendation
+  recommendation: C.Recommendation
 }
 
 # Gate the strategy's output without recomputing or changing its price.
-fn within_limits(r: Strategy.Recommendation, s: C.Scenario, v: C.Valuation) -> bool
+fn within_limits(r: C.Recommendation, s: C.Scenario, v: C.Valuation) -> bool
 {
   let price = r["recommended_cents"];
   if price < v["floor_cents"] || price > v["cap_cents"] { return false; }

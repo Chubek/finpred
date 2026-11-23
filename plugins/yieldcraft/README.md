@@ -2,7 +2,7 @@
 
 Call `plugins.yieldcraft.entry.recommend` with **snapshot contents**, in the
 order scenario, offers, valuation. It accepts the same unquoted CSV profile as
-FinPRED and returns the existing `yieldcraft.strategy.Recommendation` record.
+FinPRED and returns the shared `core.contracts.Recommendation` record.
 For example, inside an On1x host:
 
 ```on1x
@@ -74,7 +74,6 @@ exited 0:
 mkdir -p target
 work=$(mktemp -d "$PWD/target/yieldcraft-host.XXXXXXXX")
 export TMPDIR="$work" PYTHONDONTWRITEBYTECODE=1
-python3 "$MULIB_ROOT/on1x/tools/on1x-project.py" build . \
-  --on1xc "$ON1XC" --mulib-root "$MULIB_ROOT" --output-dir "$work/app"
+FINPRED_BUILD_DIR="$work/app" ./bin/build.sh
 FINPRED_EXE="$work/app/finpred" ./tests/run.sh
 ```

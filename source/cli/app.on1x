@@ -16,7 +16,6 @@ import ottomat.ottomat as Ottomat;
 import sdk.sdk as SDK;
 import sdk.static_host as Host;
 import algorithms.quantile as Quantile;
-import yieldcraft.strategy as Strategy;
 import poindexter.sheet as Sheet;
 
 fn env_default(key: string, fallback: string) -> string
@@ -36,7 +35,7 @@ fn source(path: string) -> string
   return value;
 }
 
-fn trace(s: C.Scenario, r: Strategy.Recommendation, profile: string,
+fn trace(s: C.Scenario, r: C.Recommendation, profile: string,
   raw_s: string, raw_o: string, raw_v: string, raw_strategy: string) -> string
 {
   let b = buffer_new();

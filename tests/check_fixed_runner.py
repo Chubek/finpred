@@ -17,7 +17,7 @@ def main():
         exe = Path(tmp) / "consumer"
         subprocess.run([sys.executable, sdk / "on1x/tools/on1x-build.py",
                         ROOT / "tests/fixed_runner_consumer/main.on1x", "--backend", "c11",
-                        "--on1xc", compiler, "--mulib-root", sdk, "-I", ROOT / "source", "-o", exe],
+                        "--on1xc", compiler, "--mulib-root", sdk, "-I", ROOT / "source", "-I", ROOT, "-o", exe],
                        cwd=tmp, check=True)
         empty = Path(tmp) / "empty"
         empty.mkdir()

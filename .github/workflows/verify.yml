@@ -1,0 +1,73 @@
+name: Verify FinPRED
+on: [push, pull_request, workflow_dispatch]
+
+permissions:
+  contents: read
+
+jobs:
+  application:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      MULIB_ROOT: ${{ github.workspace }}/third_party/mulib
+      MULIB_SHA: 49de89acbc97efbee493d6b28d02c8f64ed4f725
+      LIBSTONE_SHA: b5c962721a32df18b2fb22de136c1f2ef8b6390d
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Fetch public compiler sources
+        run: |
+          git init "$MULIB_ROOT"
+          git -C "$MULIB_ROOT" fetch --depth=1 https://github.com/Chubek/mulib.git "$MULIB_SHA"
+          git -C "$MULIB_ROOT" checkout --detach FETCH_HEAD
+          git -C "$MULIB_ROOT" submodule update --init --depth=1 on1x/third_party/libstone
+          test "$(git -C "$MULIB_ROOT" rev-parse HEAD)" = "$MULIB_SHA"
+          test "$(git -C "$MULIB_ROOT/on1x/third_party/libstone" rev-parse HEAD)" = "$LIBSTONE_SHA"
+      - name: Build pinned compiler
+        run: |
+          cmake -S "$MULIB_ROOT/on1x" -B "$MULIB_ROOT/build/on1x" \
+            -DBUILD_TESTING=ON -DON1X_REQUIRE_LIBSTONE=ON \
+            -DON1X_LIBSTONE_ROOT="$MULIB_ROOT/on1x/third_party/libstone"
+          cmake --build "$MULIB_ROOT/build/on1x" --parallel 4 --target on1xc
+          sha256sum "$MULIB_ROOT/build/on1x/on1xc"
+      - name: Install schema validator
+        run: |
+          python3 -m venv "$RUNNER_TEMP/validation"
+          "$RUNNER_TEMP/validation/bin/pip" install 'jsonschema==4.26.0'
+          echo "$RUNNER_TEMP/validation/bin" >> "$GITHUB_PATH"
+      - name: Build C11 CLI
+        run: ./bin/build.sh
+      - name: Fixture oracles, static checks and full integration
+        id: integration
+        run: ./tests/run.sh
+      - name: Independent compiled package consumers
+        id: packages
+        run: |
+          python3 tests/check_yieldcraft_package.py
+          python3 tests/check_dragnet_frozen_csv.py
+          python3 tests/check_poindexter_package.py
+          ./bin/poindexter --build
+          python3 tests/check_poindexter_workbench.py
+      - name: Test outcomes
+        if: always()
+        run: |
+          echo '{"platform":"linux-x86_64","integration":"${{ steps.integration.outcome }}","packages":"${{ steps.packages.outcome }}","other_platforms":"untested"}'
+
+  native-store:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Build standalone review candidate
+        run: |
+          cmake -S native -B build/native -DBUILD_TESTING=ON -DCMAKE_C_FLAGS='-Wall -Wextra -Werror -pedantic'
+          cmake --build build/native --parallel 4
+      - name: Native contract and archived bytes
+        id: native
+        run: ctest --test-dir build/native --output-on-failure --no-tests=error
+      - if: always()
+        run: |
+          echo '{"platform":"linux-x86_64","native_store_ctest":"${{ steps.native.outcome }}","kernelbind_admission":"not_tested","power_loss":"not_tested"}'

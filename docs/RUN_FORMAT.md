@@ -102,7 +102,7 @@ source_run_id=<run_id>
 evidence_end
 ```
 
-Each line ends in LF. See the [evidence grammar](../source/yieldcraft/README.md)
+Each line ends in LF. See the [evidence grammar](../plugins/yieldcraft/EVIDENCE.md)
 for row eligibility, property status, whole-stay bundle prices, room
 occupancy and sample counts. The version identifies the evidence report, not
 a new run format. Neither v1 nor v2 stored these allocation witnesses. The

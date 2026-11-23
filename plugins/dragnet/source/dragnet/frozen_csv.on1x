@@ -2,7 +2,7 @@
 import core.contracts as C;
 import core.csv as CSV;
 import core.serialize as JSON;
-import yieldcraft.matcher as Match;
+import plugins.yieldcraft.matcher as Match;
 import std.crypto.crypto as Crypto;
 
 fn offers_as_of(csv: string, scenario: C.Scenario) -> string

@@ -2,7 +2,6 @@
 # validated by the typed CSV reader or by the canonical hex digest function.
 import core.contracts as C;
 import core.format as F;
-import yieldcraft.strategy as Y;
 
 fn opening(kind: string, id: string, observed: string, ingested: string,
   currency: string, basis: string, source_digest: string) -> string
@@ -80,7 +79,7 @@ fn offer(o: C.Offer, source_digest: string) -> string
   return buffer_text(b);
 }
 
-fn recommendation(s: C.Scenario, r: Y.Recommendation, run_id: string,
+fn recommendation(s: C.Scenario, r: C.Recommendation, run_id: string,
   scenario_digest: string, offers_digest: string, valuation_digest: string,
   strategy_digest: string) -> string
 {

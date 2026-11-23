@@ -81,7 +81,7 @@ allocation=201,1,1,1,0,11000
 allocation=201,2,2,1,1,12000
 ```
 
-Room 1 houses one adult for 11,000 cents; room 2 houses the other adult and the child for 12,000 cents. `sample=3,3,adequate` counts three feasible properties for a required three. The [report grammar](source/yieldcraft/README.md) defines every field, including rejected rows and properties with no feasible bundle. Unlike the stored decision trace, this report is **derived on demand from verified frozen inputs** on both v1 and v2 runs. It does not add an artifact or change the run ID.
+Room 1 houses one adult for 11,000 cents; room 2 houses the other adult and the child for 12,000 cents. `sample=3,3,adequate` counts three feasible properties for a required three. The [report grammar](plugins/yieldcraft/EVIDENCE.md) defines every field, including rejected rows and properties with no feasible bundle. Unlike the stored decision trace, this report is **derived on demand from verified frozen inputs** on both v1 and v2 runs. It does not add an artifact or change the run ID.
 
 ## Supply your own local inputs
 

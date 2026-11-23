@@ -19,8 +19,9 @@ def main():
     rows = v2.splitlines()
     invalid = {
         "", v2 + " " * (512 - len(v2)), v2 + " " * (513 - len(v2)),
-        v2.replace("ottomat 2", "ottomat 1"), v1.replace("ottomat 1", "ottomat 2"),
-        v2.replace("ottomat 2", "ottomat 02"), v2.replace("ottomat 2", "ottomat 3"),
+        v2.replace("ottmat 2", "ottmat 1"), v1.replace("ottmat 1", "ottmat 2"),
+        v2.replace("ottmat 2", "ottmat 02"), v2.replace("ottmat 2", "ottmat 3"),
+        v1.replace("ottmat 1", "otomat 1"), v1.replace("ottmat 1", "ottomat 0"),
         v2.replace("hospitality.", "hospitality.."), v2.replace("hospitality.", "hospitality/"),
         v2.replace("scenario@1", "scenario@01"), v2.replace("scenario@1", "scenario@2"),
         v2.replace("scenario@1", "offer@1"), v2.replace("gate pricing", "action pricing"),
@@ -59,8 +60,10 @@ def main():
         build(ROOT / "source")
         for name, decl in policies.items():
             expected = "1:scenario" if name == "yieldcraft" else f"2:{name}"
-            for text in (decl, decl.rstrip("\n"), decl.replace("\n", "\r\n"), decl.replace("\n", "\r\n", 1)):
-                check(text, expected)
+            assert decl.startswith("ottmat ")
+            for spelling in (decl, decl.replace("ottmat ", "ottomat ", 1)):
+                for text in (spelling, spelling.rstrip("\n"), spelling.replace("\n", "\r\n"), spelling.replace("\n", "\r\n", 1)):
+                    check(text, expected)
         for text in sorted(invalid):
             check(text, "invalid")
 
@@ -76,7 +79,7 @@ def main():
         check(v1, "1:scenario")
         for change in ("root", "record", "network", "denied"):
             check(v1, "invalid", change)
-    print(f"ottomat_plan_ok=true valid={4 * len(policies)} invalid={len(invalid)} incompatible_graphs=4")
+    print(f"ottomat_plan_ok=true valid={8 * len(policies)} invalid={len(invalid)} incompatible_graphs=4")
 
 
 if __name__ == "__main__":
