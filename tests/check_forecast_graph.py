@@ -72,7 +72,7 @@ def main():
     # training window. It is supplied only to the host's negative fixture.
     late = revision | {"values": feb["values"] | revision["values"]}
     code_inputs = [MODEL_FILE, *(ROOT / f"source/{p}.on1x" for p in (
-        "core/date", "core/format", "core/guest_nights", "sdk/callable"))]
+        "core/date", "core/feed_snapshot", "core/format", "core/guest_nights", "sdk/callable"))]
     compiler_sha = sha256(compiler.read_bytes()).hexdigest()
     code_subject = frame("finpred.model-graph-source-subject@1") + frame(compiler_sha)
     for path in code_inputs:
