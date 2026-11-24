@@ -36,6 +36,15 @@ SHA-256 `4f5f4b7201e09434603e077d4a02ca8ac5c6ece3ef907fae4dd6303eae68c8ea`).
 Each still exited **1** with the same diagnostic. Staging itself isn't
 approval. Supplying a review key cannot add an absent lowering.
 
+The same four staged checks returned exit **1** and
+`ON1X-KERNEL-NOT-ADMITTED` with MuLIB `91d459e29a4ee1fc433b3ca7a9868dd1f47bb641`,
+LibStone `a307d550936a10b6c58b752e56d7e475c794926e` and Linux x86-64 `on1xc`
+SHA-256 `3ee60dccee4b3c1414071ceba683a3ecfe28be193d14f5c6c24cda99f7923e2a`.
+The native contract, v1 bytes and process-death CTests passed on an existing
+Btrfs mount; that shows live-mount behavior, not power-loss recovery. No
+remount, faulting block device, or power cut was performed. Crash persistence
+remains unverified on Btrfs, ext-family and XFS.
+
 ## Required operations (semantic signatures, not On1x syntax)
 
 The host delegates one pinned store root, read-only for `replay`/`explain`,
