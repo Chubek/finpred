@@ -1,12 +1,13 @@
 # FinPRED immutable run formats
 
-`finpred-run@2` is the only format the Yieldcraft CLI writes. There is no
-`finpred-run@1` writer or option to select it. Archived v1 runs are supported
-read-only by `replay`, `explain`, `evidence`, and `poindexter`.
+Yieldcraft writes `finpred-run@3` for expected contribution and
+`finpred-run@2` for secondary market positioning. There is no `finpred-run@1`
+writer. Archived v1 market-positioning runs are supported read-only by
+`replay`, `explain`, `evidence`, and `poindexter`.
 
 `runs/<run_id>.txt` is the commit record for a successful recommendation.
-All referenced bytes must be present before publishing it. Both Yieldcraft
-formats use the same canonical, **404-byte** manifest: seven comma-separated
+All referenced bytes must be present before committing it locally. All three
+formats use a canonical, **404-byte** manifest: seven comma-separated
 ASCII fields, no spaces, and exactly one final LF. No CRLF or optional
 fields. Each `H` below is 64 lowercase hexadecimal characters (BLAKE3-256).
 
@@ -19,7 +20,44 @@ exact bytes, including any terminating LF. The run ID is **not** the digest
 of this manifest: the recommendation contains the run ID itself. Replay
 checks the output fields against independently recomputed bytes and hashes.
 
-## V2 writer and verifier
+## V3: expected contribution
+
+V3 assigns the third manifest field to raw own-demand evidence instead of
+raw competitor offers. It does not reinterpret previous formats.
+
+```text
+finpred-run@3,Hraw_scenario,Hraw_demand,Hraw_valuation,Hraw_strategy,Hrecommendation,Htrace
+```
+
+The run ID is the BLAKE3 digest of the exact lineage artifact below. Each
+line ends in LF; the four digests name the original input snapshots.
+
+```text
+finpred-run-lineage@3
+strategy=yieldcraft.contribution@1
+graph=yieldcraft.contribution-graph@1
+mode=recommendation
+raw_scenario=<H>
+raw_demand=<H>
+raw_valuation=<H>
+raw_strategy=<H>
+```
+
+`replay`, `explain`, and `evidence` recompute the recommendation and trace from
+the frozen inputs, check all stored digests and bytes, and do not write.
+No live model or inputs are required. The output contract is
+[`pricing.contribution-recommendation@1`](../contracts/pricing.contribution-recommendation@1.schema.json);
+its `source_artifacts` order is scenario, demand, valuation. An external
+evidence digest in the demand snapshot identifies an upstream response model
+or experiment, not another artifact required for replay. The `evidence`
+report (`yieldcraft.demand-evidence@1`) lists model provenance, feasible price
+bounds, marginal cost, and the recomputed candidate rows
+`candidate=<price>,<expected_milli_room_nights>,<score_in_milli_minor_units>,<status>`.
+The Poindexter market-positioning sheet does not consume this contract. See
+the [strategy documentation](../strategies/README.md) for the input rules
+and objective.
+
+## V2 market-positioning writer and verifier
 
 The v2 run ID is the BLAKE3 digest of the **lineage artifact**, which lives
 at `artifacts/blake3-<run_id>.txt`. The first line is a domain separator.
@@ -56,7 +94,7 @@ offer_count=<N>
 normalized_offer=<H>
 ```
 
-The `strategy=` line shown above is for the default scenario policy. Its
+The `strategy=` line shown above is for the scenario market policy. Its
 packaged declaration keeps the exact `ottmat 1` bytes that the pinned v2
 run IDs depend on. Named [Ottomat profiles](../strategies/README.md) use
 `ottmat 2`; for those profiles, `strategy=` is `yieldcraft.<profile-name>@1`,
@@ -128,7 +166,7 @@ derived from the raw snapshots. Its original trace and recommendation
 contain no v2 lineage extension. The verifier selects v1 by the manifest
 version and checks the original identity, normalized objects, output hashes
 and bytes without writing anything. It accepts only the scenario policy
-for archived v1 runs. Both formats can coexist in one store.
+for archived v1 runs. All three pricing formats can coexist in one store.
 
 Migration means creating a **new `finpred-run@2` identity**, not upgrading
 the archive in place. Verify the v1 run first, then pass its four frozen raw

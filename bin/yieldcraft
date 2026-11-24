@@ -6,11 +6,16 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 usage() {
   cat <<'EOF'
 Usage: bin/yieldcraft [--scenario FILE] [--valuation FILE] [--strategy FILE]
-                      [--capture FILE | --dragnet CONFIG [--save-capture FILE]
-                         [--allow-host HOST]... [--allow-offer-host HOST]...]
+                      --demand FILE
+       bin/yieldcraft --market-positioning [--scenario FILE] [--valuation FILE]
+       bin/yieldcraft [--scenario FILE] [--valuation FILE] [--strategy FILE]
+                      {--capture FILE | --dragnet CONFIG [--save-capture FILE]
+                         [--allow-host HOST]... [--allow-offer-host HOST]...}
 
-Without a source option, use FinPRED's existing CSV inputs. With --dragnet,
-capture once using offer-csv-v1; with --capture, use a trusted saved batch offline.
+The default strategy maximizes expected contribution using an own-demand snapshot
+(--demand or FINPRED_DEMAND). It never uses competitor offers as demand.
+Market positioning is secondary. Select it with --market-positioning, a market
+strategy file, or a competitor capture (--capture offline or --dragnet fresh).
 The scenario's decision_at sets the data cutoff. No booking or price publication.
 EOF
 }
@@ -26,15 +31,19 @@ capture=
 save=
 hosts=
 offer_hosts=
+market=
+strategy_arg=
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --help) usage; exit 0 ;;
-    --scenario|--valuation|--strategy|--dragnet|--capture|--save-capture|--allow-host|--allow-offer-host)
+    --market-positioning) market=1; shift ;;
+    --scenario|--valuation|--strategy|--demand|--dragnet|--capture|--save-capture|--allow-host|--allow-offer-host)
       [ "$#" -ge 2 ] && [ -n "$2" ] || die "$1 requires a value"
       case "$1" in
         --scenario) FINPRED_SCENARIO=$(absolute "$2"); export FINPRED_SCENARIO ;;
         --valuation) FINPRED_VALUATION=$(absolute "$2"); export FINPRED_VALUATION ;;
-        --strategy) FINPRED_STRATEGY=$(absolute "$2"); export FINPRED_STRATEGY ;;
+        --strategy) strategy_arg=1; FINPRED_STRATEGY=$(absolute "$2") ;;
+        --demand) FINPRED_DEMAND=$(absolute "$2"); export FINPRED_DEMAND ;;
         --dragnet)
           [ -z "$config$capture" ] || die "choose one of --dragnet and --capture"
           config=$(absolute "$2") ;;
@@ -56,6 +65,17 @@ done
 if [ -z "$config" ] && [ -n "$save$hosts$offer_hosts" ]; then
   die "host grants and --save-capture require --dragnet"
 fi
+if [ -n "$market" ] && [ -n "$strategy_arg" ]; then
+  die "choose --market-positioning or --strategy"
+fi
+if [ -n "$market$config$capture" ]; then
+  [ -z "${FINPRED_DEMAND:-}" ] || die "demand snapshots and market positioning are separate strategies"
+  if [ -n "$market" ]; then FINPRED_STRATEGY="$ROOT/strategies/yieldcraft.ottomat"; fi
+  FINPRED_STRATEGY=${FINPRED_STRATEGY:-"$ROOT/strategies/yieldcraft.ottomat"}
+else
+  FINPRED_STRATEGY=${FINPRED_STRATEGY:-"$ROOT/strategies/contribution.ottomat"}
+fi
+export FINPRED_STRATEGY
 if [ -z "$config$capture" ]; then
   exec "$ROOT/bin/finpred" run --engine legacy
 fi

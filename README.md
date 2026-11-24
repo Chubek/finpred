@@ -8,23 +8,43 @@ usable pricing application is **Yieldcraft**, which recommends nightly EUR
 prices for frozen accommodation scenarios. The CLI also runs read-only scalar
 analysis. The codebase provides separate compiled interfaces for typed
 financial graphs, reproducible data sources and point-in-time guest-night
-forecasting, plus Poindexter views of verified pricing runs.
+forecasting, plus Poindexter views of verified market-positioning runs.
 
 **A recommendation is not an authorization to trade, book, publish or modify
 a third-party price.** There is no enabled live action gateway.
 
-## Expected synthetic pricing outcomes
+## Yieldcraft: demand-based pricing and market positioning
+
+Yieldcraft's primary objective is to choose the feasible nightly price `p`
+that maximizes expected contribution, `(p - c) × D(p | x)`, where `c` is the
+marginal cost and `D(p | x)` is expected demand at that price under the
+relevant market conditions `x`. Competitor quotes can describe the market
+or inform a demand model, but they cannot by themselves identify willingness
+to pay or the contribution-maximizing price.
+
+```sh
+./bin/yieldcraft --demand fixtures/demand_contribution.csv  # synthetic example
+./bin/yieldcraft --market-positioning                       # secondary strategy
+```
+
+The primary strategy requires a point-in-time demand snapshot and marginal
+cost. It evaluates only prices with demand estimates that also satisfy
+the guardrails, and never falls back to competitor positioning. See
+[strategy selection](strategies/README.md) for the input format and replay.
+
+The secondary market-positioning strategy still matches independent
+properties and applies percentiles and guardrails. Its frozen fixture
+outcomes are:
 
 | Scenario | Recommendation | CLI reason |
 |---|---:|---|
-| Default, five feasible independent properties | **EUR 171/night** | `lower_percentile_shortcut` |
+| Five feasible independent properties | **EUR 171/night** | `lower_percentile_shortcut` |
 | Multi-room, three feasible independent properties | **EUR 160/night** | `guardrail_adjustment` |
 
-These are deterministic decisions based on frozen comparables, **not**
-trained demand forecasts or guarantees of financial performance. Both report
-`published=false`. Historical `finpred-run@1` archives are read-only; new
-Yieldcraft runs use `finpred-run@2`. Preserve the recorded bytes and identities
-of both formats.
+These are deterministic positioning decisions, **not** demand predictions
+or guarantees of financial performance. Both report `published=false`.
+Contribution runs use `finpred-run@3`; existing `finpred-run@1` and
+`finpred-run@2` archives keep their recorded bytes and identities.
 
 ## Build and verify
 
@@ -38,12 +58,15 @@ git -C third_party/mulib submodule update --init on1x/third_party/libstone
 make mulib           # builds the local On1x compiler + GrammarEmbed
 make                 # builds build/dev/finpred
 ./bin/finpred selftest
-make test            # application, package, source, model conformance suites
+make test            # full suite; see legacy Dragnet caveat below
+make dragnet-search-test  # current offline Dragnet search and handoff
 make native-test     # isolated C store review target
 ```
 
-`make test` exercises the CLI it builds, including compiled Dragnet and
-[forecast scoring and evaluation replay](docs/FORECAST_SCORING.md) checks.
+The full suite retains legacy Dragnet checks whose sources are no longer
+present. See the [coverage notes](tests/COVERAGE.md) for the blocker and
+`make forecast-score-test` for a separate
+[forecast scoring and evaluation replay](docs/FORECAST_SCORING.md) check.
 [Verify FinPRED](.github/workflows/verify.yml) is the sole Actions workflow:
 it checks the application and standalone native store on Ubuntu 24.04. It
 does not publish releases or deploy anything. The badge reflects hosted
@@ -53,20 +76,26 @@ workflow status on `master`, not verification of a local checkout.
 
 | Component | Source and purpose |
 |---|---|
-| **Yieldcraft** | [`plugins/yieldcraft/`](plugins/yieldcraft/) — exact multiroom matching, percentile decision, guardrails |
+| **Yieldcraft** | [`strategies/`](strategies/) and [`plugins/yieldcraft/`](plugins/yieldcraft/) — expected-contribution pricing and secondary market positioning |
 | **Automat** | [`source/automat/`](source/automat/) — fixed legacy recommendation runner, scalar DAG, general bounded typed financial DAG and immutable in-memory artifacts |
 | **Ottomat** | [`source/ottomat/`](source/ottomat/) — legacy and scalar strategy grammars; v6 lowers to the typed financial graph, with no strategy-owned authority |
 | **SDK** | [`source/sdk/`](source/sdk/) — trusted, statically linked versioned handler descriptors, callable ports and capability checks |
+| **Core price prediction** | [`source/core/price_prediction.c`](source/core/price_prediction.c) — MuLIB-backed forecasts from frozen price histories via [`finpred price-predict`](GUIDE.md#predict-prices-from-a-history) |
 | **Dragnet** | [`plugins/dragnet/`](plugins/dragnet/) — Elvi web acquisition, optional GPT analysis, and offline capture handoff to plugins and core consumers |
 | **Forecast baselines** | [`plugins/forecast_baselines/`](plugins/forecast_baselines/) — moving-average and seasonal-naive monthly guest-night models; later actuals are used only to score issued forecasts |
 | **Poindexter** | [`plugins/poindexter/`](plugins/poindexter/) — verified-run projection, terminal spreadsheet and optional ImmGTK X11 frontend |
 | **Artifact store** | [`source/store/`](source/store/) — versioned immutable object/run evidence in a private cooperative store |
 | **Native store candidate** | [`native/`](native/) — standalone security review target; **not** the CLI's admitted durable backend |
 
-The pricing CLI uses the legacy runner. Scalar analysis prints a result
-without saving a run. The typed financial graph is a library interface.
-[`bin/yieldcraft`](plugins/yieldcraft/README.md#run-binyieldcraft) can use the
-CSV inputs, run Dragnet once, or price from a verified frozen capture.
+Core engines own validation, evaluation, and artifact semantics. Applications
+bind optional packages through explicit host interfaces; strategy files cannot
+load packages or grant capabilities.
+
+The legacy runner supports archived market-positioning runs. Scalar analysis
+prints a result without saving a run, and the typed financial graph is a
+library interface. See [strategy selection](strategies/README.md) for pricing
+inputs. The secondary competitor-based path can use CSV inputs, run Dragnet
+once, or use a verified frozen capture.
 For exact party-specific quote matching across multiple frozen stays and
 strategies, see the separate [competitor pricing cube](docs/COMPETITOR_CUBE.md).
 The `finpred forecast` commands issue, score, aggregate and replay guest-night
@@ -109,5 +138,5 @@ See the [forecast workflow](GUIDE.md#run-point-in-time-forecasts).
   standalone native store is a review candidate, not an admitted On1x
   backend. Neither its C tests nor the CI badge establish power-loss
   durability or hostile-filesystem confinement for the CLI.
-- Do not rewrite stored v1/v2 run identities, mutate old fixtures, or enable
+- Do not rewrite stored run identities, mutate old fixtures, or enable
   external actions when adding a strategy, model or plugin.

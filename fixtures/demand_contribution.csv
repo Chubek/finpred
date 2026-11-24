@@ -1,0 +1,10 @@
+pricing.demand@1
+scenario_blake3,observed_at,ingested_at,currency,price_basis,method,evidence_blake3,marginal_cost_minor
+d29ce68748eef1b786027c59072d93e6606a39405b3af549c674c56c1899d735,2026-11-20T08:30:00Z,2026-11-20T09:30:00Z,EUR,room_night,calibrated_booking_model,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,8000
+price_minor,expected_room_nights_milli
+15000,250000
+16000,125000
+17500,115000
+19000,105000
+21000,65000
+23000,50000

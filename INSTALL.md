@@ -6,8 +6,8 @@ build the On1x compiler. The [acceptance record](docs/IMPLEMENTATION.md#acceptan
 lists historical hosts, versions and commands; it does not verify your
 checkout. See the [overview](README.md) for application scope.
 
-The build wrapper assembles the host and its linked `plugins/` modules in a
-temporary project because On1xfile discovers one source tree. Use `./bin/build.sh`
+The build wrapper assembles the host and its linked modules in a temporary
+source tree. Use `./bin/build.sh`
 for the CLI; set `FINPRED_BUILD_DIR` to choose a different output directory.
 After `make mulib` builds `on1xc` and GrammarEmbed, `make` is equivalent to
 `./bin/build.sh`.
@@ -74,7 +74,11 @@ make
 ./bin/finpred selftest
 ```
 
-Expect `On1x scanner: LibStone ASDL+Aurocks generated frontend` during configuration and `selftest_ok=true` from the last command. The [build wrapper](bin/build.sh) runs MuLIB’s `on1x/tools/on1x-project.py` against FinPRED’s [On1xfile](On1xfile), explicitly selecting the host C driver (`CC`, or `cc`) rather than depending on MuLIB's current native-tool defaults.
+Expect `On1x scanner: LibStone ASDL+Aurocks generated frontend` during
+configuration and `selftest_ok=true` from the last command. The [build wrapper](bin/build.sh)
+uses MuLIB’s `on1x-build.py` to link the main FinPRED host and its trusted
+price-prediction companion. It explicitly selects the host C driver (`CC`,
+or `cc`) rather than depending on MuLIB's native-tool defaults.
 
 Build output defaults are relative to the **FinPRED root**, even if `MULIB_ROOT`
 points elsewhere:
@@ -83,6 +87,7 @@ points elsewhere:
 | --- | --- |
 | On1x compiler, GrammarEmbed, and MuLIB/LibStone intermediates | `build/mulib/on1x/` |
 | FinPRED CLI (normally invoked as `./bin/finpred`) | `build/dev/finpred` |
+| Competitor cube host (invoked as `./bin/finpred cube`) | `build/dev/finpred-cube` |
 | Forecast host (invoked as `./bin/finpred forecast`) | `build/dev-forecast/finpred-forecast` |
 | Poindexter grid and optional GUI | `build/poindexter/` |
 | Dragnet CSV, Crossref, public-feed and dispatcher tools | `build/dragnet/`, `build/dragnet-crossref/`, `build/dragnet-feeds/`, `build/dragnet-dispatch/` (explicit dispatcher output) |
@@ -98,6 +103,8 @@ overrides the launcher and a direct `./tests/run.sh` invocation only.
 `make test` ignores that override so it verifies the executable it just built.
 The forecast host builds in a sibling directory with the suffix `-forecast`,
 using the same `FINPRED_BUILD_DIR` base. Its launcher ignores `FINPRED_EXE`.
+The competitor cube host builds as `finpred-cube` next to `finpred` and
+also ignores `FINPRED_EXE`.
 
 Ottomat uses the native GrammarEmbed PPX at build time. The wrapper selects
 it explicitly for C emission; it does not enable PPX directives from strategy

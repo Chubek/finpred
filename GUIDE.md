@@ -6,9 +6,15 @@ share one local `FINPRED_HOME`; scalar analysis does not use it.
 
 ## Choose an engine
 
+For Yieldcraft's demand-based strategy and the secondary market-positioning
+profiles, see [Yieldcraft strategy selection](strategies/README.md). The
+legacy walkthrough below uses competitor quotes to position a property in
+its market; it does not estimate demand or maximize expected contribution.
+
 | Command | Inputs | Result |
 | --- | --- | --- |
-| `./bin/finpred run --engine legacy` (default) | Frozen hospitality CSVs and Ottomat v1/v2 | EUR recommendation recorded as `finpred-run@2` |
+| `./bin/yieldcraft --demand FILE` | Frozen demand estimates with marginal cost, scenario, and valuation | Expected-contribution recommendation recorded as `finpred-run@3` |
+| `./bin/yieldcraft --market-positioning` or `./bin/finpred run --engine legacy` (FinPRED's default) | Frozen hospitality CSVs and Ottomat v1/v2 | Market-positioning recommendation recorded as `finpred-run@2` |
 | `./bin/finpred run --engine scalar` | Two unitless integers and Ottomat v3/v4/v5 | Typed value, output digest, and node trace on stdout; no store access |
 
 The launcher accepts `run [--engine legacy|scalar]`, `selftest`, or one of
@@ -38,6 +44,21 @@ from `0` through `1000000000000`. `FINPRED_SCALAR_BUDGET` accepts `1` through
 `16`. No signs, spaces, or leading zeros are allowed. The scalar engine
 does not read the pricing CSVs or create a saved run. Its output digest
 identifies the selected node and its inputs, not a run ID or recommendation.
+
+## Predict prices from a history
+
+Run `./bin/finpred price-predict MODEL HORIZON HISTORY.csv [SEASON]` for a
+read-only forecast of the historical price series. The CSV has a
+`period,price_minor` header and up to 256 contiguous, equally spaced
+observations numbered from zero. Prices use integer minor units in a
+single currency. The caller must freeze the history at the appropriate
+cutoff and choose a consistent period length.
+
+Models are `naive`, `ema`, `drift`, `seasonal`, `holt`, and `ensemble`.
+`seasonal` requires a season length in periods. The horizon is 1–365
+periods. The ensemble reports dispersion between its member forecasts,
+not a prediction interval. This forecasts prices, not quantities sold at
+alternative prices; it does not provide Yieldcraft's demand evidence.
 
 ## Run point-in-time forecasts
 
@@ -113,16 +134,16 @@ The forecast host uses the same cooperative writer protocol as the pricing
 store. See [forecast scoring](docs/FORECAST_SCORING.md) for archive and
 holdout semantics.
 
-## Run the default fixture
+## Run the market-positioning fixture
 
-Use an empty private directory for this walkthrough. If `mktemp` fails, choose a writable `TMPDIR` with enough space before continuing. Keep the printed path if you want to come back to the run. `run` writes only `finpred-run@2`; there is no v1 writer or format-selection option.
+Use an empty private directory for this walkthrough. If `mktemp` fails, choose a writable `TMPDIR` with enough space before continuing. Keep the printed path if you want to come back to the run. This strategy writes `finpred-run@2`; there is no v1 writer or format-selection option.
 
 ```sh
 umask 077
 FINPRED_HOME=$(mktemp -d "${TMPDIR:-/tmp}/finpred-guide.XXXXXXXX")
 export FINPRED_HOME
 printf 'Store: %s\n' "$FINPRED_HOME"
-unset FINPRED_MODE FINPRED_RUN_ID FINPRED_ENGINE FINPRED_SCENARIO FINPRED_OFFERS FINPRED_VALUATION FINPRED_STRATEGY
+unset FINPRED_MODE FINPRED_RUN_ID FINPRED_ENGINE FINPRED_SCENARIO FINPRED_OFFERS FINPRED_DEMAND FINPRED_VALUATION FINPRED_STRATEGY
 ./bin/finpred selftest
 summary=$(./bin/finpred run)
 printf '%s\n' "$summary"
@@ -207,14 +228,15 @@ The [fixture catalog](fixtures/README.md) includes runnable examples for decisio
 | Environment variable | Default | Meaning |
 | --- | --- | --- |
 | `FINPRED_SCENARIO` | [`fixtures/scenario.csv`](fixtures/scenario.csv) | One stay, decision timestamp, party, target and matching limits. |
-| `FINPRED_OFFERS` | [`fixtures/offers.csv`](fixtures/offers.csv) | One inventory unit per row, with capacities, validity, fees and taxes. |
+| `FINPRED_OFFERS` | [`fixtures/offers.csv`](fixtures/offers.csv) | Market positioning only: one inventory unit per row, with capacities, validity, fees and taxes. |
+| `FINPRED_DEMAND` | None | Contribution only: [point-in-time expected demand and marginal cost](strategies/README.md#demand-snapshot-pricingdemand1). Required with `contribution.ottomat` if not passed as `bin/yieldcraft --demand FILE`. |
 | `FINPRED_VALUATION` | [`fixtures/valuation.csv`](fixtures/valuation.csv) | One row: current nightly price, floor, cap, maximum movement and shortcut threshold. |
-| `FINPRED_STRATEGY` | [`strategies/yieldcraft.ottomat`](strategies/yieldcraft.ottomat) | The default follows the scenario target. [Named profiles](strategies/README.md) override target selection while retaining the same evidence checks and guardrails. These shipped Ottomat v1/v2 files keep the legacy `ottmat` header spelling to preserve their exact digests and run IDs. New sources can use `ottomat`; do not rewrite archived bytes. |
+| `FINPRED_STRATEGY` | `contribution.ottomat` for `bin/yieldcraft`; `yieldcraft.ottomat` for `bin/finpred run` | [Select a strategy](strategies/README.md). Historical Ottomat files keep the `ottmat` header spelling to preserve their exact digests and run IDs. Do not rewrite archived bytes. |
 | `FINPRED_HOME` | `.finpred/` | Private local state; the parent directory must exist. Use the same home when replaying. |
 
 Use the launcher arguments for the command and run ID; it sets `FINPRED_MODE` and `FINPRED_RUN_ID` for the executable. `FINPRED_MODE=execution` is explicitly denied, even if you invoke the executable directly. Saving a local recommendation is not external publication.
 
-**Format and timing.** Copy the exact headers and column order from the fixtures. CSV is unquoted printable ASCII, with LF or CRLF rows, unsigned decimal integer fields, and `0`/`1` for `bookable`. No quoted commas, missing values, BOM, or extra columns. Civil dates use `YYYY-MM-DD` (1970–2399); UTC timestamps use `YYYY-MM-DDTHH:MM:SSZ`. Qualifying offers match both stay dates, were observed **and** ingested by `decision_at`, cover the stay with `valid_from`/`valid_to`, and meet `max_age_days` in calendar days. A well-formed but ineligible observation is excluded; malformed data or unsupported currency fails the run.
+**Market-positioning format and timing.** Copy the exact headers and column order from the fixtures. CSV is unquoted printable ASCII, with LF or CRLF rows, unsigned decimal integer fields, and `0`/`1` for `bookable`. No quoted commas, missing values, BOM, or extra columns. Civil dates use `YYYY-MM-DD` (1970–2399); UTC timestamps use `YYYY-MM-DDTHH:MM:SSZ`. Qualifying offers match both stay dates, were observed **and** ingested by `decision_at`, cover the stay with `valid_from`/`valid_to`, and meet `max_age_days` in calendar days. A well-formed but ineligible observation is excluded; malformed data or unsupported currency fails the run.
 
 **Money and selection.** All monetary fields are nonnegative EUR cents. The offer’s `total_cents` is the base **whole-stay** amount: add `fees_cents` and `taxes_cents` once. Each independent property contributes its cheapest feasible bundle; rooms are not reused. The strategy interpolates the Type-7 quantile in whole-stay cents, rounds half-up, then divides by **civil nights** and rounds half-up again. Valuation limits and the recommendation are **nightly**, even when a comparable needs several rooms. `target_bps=5000` requests P50; `0` selects a linear or quadratic lead-time curve from P40 at day 0 to P75 at day 90 or later. Explicit targets below P40 are unsupported. A saving equal to the shortcut threshold does **not** trigger P40. The final price must satisfy both floor/cap and the movement limit from `current_cents`.
 

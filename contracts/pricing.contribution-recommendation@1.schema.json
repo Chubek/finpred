@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Yieldcraft expected contribution recommendation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["mulib", "kind", "schema_version", "id", "metadata", "data"],
+  "properties": {
+    "mulib": {"const": "1.0"},
+    "kind": {"const": "pricing.contribution-recommendation"},
+    "schema_version": {"const": "1.0"},
+    "id": {"type": "string", "pattern": "^recommendation:[0-9a-f]{64}$"},
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provenance", "times", "units", "quality"],
+      "properties": {
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source_artifacts", "strategy", "strategy_digest", "demand_evidence"],
+          "properties": {
+            "source_artifacts": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"$ref": "#/$defs/digest"}},
+            "strategy": {"const": "yieldcraft.contribution@1"},
+            "strategy_digest": {"$ref": "#/$defs/digest"},
+            "demand_evidence": {"$ref": "#/$defs/digest"}
+          }
+        },
+        "times": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["observed_at", "ingested_at"],
+          "properties": {
+            "observed_at": {"$ref": "#/$defs/utc"},
+            "ingested_at": {"$ref": "#/$defs/utc"}
+          }
+        },
+        "units": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["currency", "price_basis"],
+          "properties": {
+            "currency": {"const": "EUR"},
+            "price_basis": {"const": "room_night"}
+          }
+        },
+        "quality": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "evidence"],
+          "properties": {
+            "status": {"const": "validated"},
+            "evidence": {"enum": ["first_party_price_experiment", "calibrated_booking_model"]}
+          }
+        }
+      }
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "price_minor", "marginal_cost_minor", "expected_room_nights_milli",
+        "expected_contribution_minor_milli", "scale", "reason", "published", "mode"
+      ],
+      "properties": {
+        "price_minor": {"$ref": "#/$defs/minor"},
+        "marginal_cost_minor": {"$ref": "#/$defs/minor"},
+        "expected_room_nights_milli": {"type": "integer", "minimum": 1, "maximum": 1000000},
+        "expected_contribution_minor_milli": {"type": "integer", "minimum": 1, "maximum": 1000000000000000000},
+        "scale": {"const": 1000},
+        "reason": {"const": "max_expected_contribution"},
+        "published": {"const": false},
+        "mode": {"const": "recommendation"}
+      }
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^blake3:[0-9a-f]{64}$"},
+    "minor": {"type": "integer", "minimum": 0, "maximum": 1000000000000},
+    "utc": {"type": "string", "format": "date-time", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"}
+  }
+}

@@ -9,6 +9,7 @@ fi
 MODE=${1:-run}
 usage() {
   echo "usage: bin/finpred [run [--engine legacy|scalar]|selftest|replay RUN_ID|explain RUN_ID|evidence RUN_ID|poindexter RUN_ID]" >&2
+  echo "       bin/finpred price-predict MODEL HORIZON HISTORY [SEASON]" >&2
   echo "       bin/finpred forecast {import SNAPSHOT|catalog ID_LIST|issue CATALOG MODEL CUTOFF REQUEST|score ISSUE CATALOG CUTOFF|holdout PLAN|audit SORTED_ID_LIST|replay ID}" >&2
   echo "       bin/finpred cube {evaluate SNAPSHOTS CELLS POLICIES|replay ID}" >&2
   echo "       bin/finpred {dragnet-inspect|dragnet-offers} CAPTURE UTC_CUTOFF" >&2
@@ -24,6 +25,19 @@ case "$MODE" in
     ;;
   selftest)
     [ "$#" -eq 1 ] || usage
+    ;;
+  price-predict)
+    case "${2:-}" in
+      seasonal) [ "$#" -eq 5 ] && [ -n "$5" ] || usage ;;
+      *) [ "$#" -eq 4 ] || usage ;;
+    esac
+    [ -n "$4" ] || usage
+    FINPRED_PRICE_MODEL=$2 FINPRED_PRICE_HORIZON=$3 FINPRED_PRICE_SEASON=${5:-}
+    case "$4" in
+      /*) FINPRED_PRICE_HISTORY=$4 ;;
+      *) FINPRED_PRICE_HISTORY=$PWD/$4 ;;
+    esac
+    export FINPRED_PRICE_MODEL FINPRED_PRICE_HORIZON FINPRED_PRICE_HISTORY FINPRED_PRICE_SEASON
     ;;
   replay|explain|evidence|poindexter)
     [ "$#" -eq 2 ] || usage
@@ -82,6 +96,13 @@ case "$MODE" in
 esac
 case "$MODE" in
   forecast-*) EXE="$(finpred_cli_output_dir "$ROOT")-forecast/finpred-forecast" ;;
+  cube-evaluate|cube-replay)
+    EXE="$(finpred_cli_output_dir "$ROOT")/finpred-cube"
+    if [ ! -x "$EXE" ]; then
+      echo "FinPRED competitor cube host absent: run 'make' first" >&2
+      exit 2
+    fi
+    ;;
   dragnet-inspect|dragnet-offers)
     EXE="$(finpred_dragnet_output_dir "$ROOT")/finpred-dragnet"
     if [ ! -x "$EXE" ]; then

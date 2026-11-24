@@ -30,8 +30,9 @@ different stay, and work budget exhaustion.
 `evaluate` and `replay` both print `{"cube_id":...,"cube":...}`.
 The inner result conforms to
 [`pricing.competitor-cube@1`](../contracts/pricing.competitor-cube@1.schema.json).
-For programmatic callers, `automat.competitor_cube.evaluate(snapshots, cells,
-policy_rows)` is a pure On1x entry point returning the inner JSON. The CLI
+For programmatic callers, `plugins.yieldcraft.competitor_cube.evaluate(snapshots, cells,
+policy_rows)` is a pure On1x entry point returning the inner JSON. The
+launcher dispatches cube commands to the separate `finpred-cube` host and
 resolves relative paths from the repository root. The archive defaults to
 `.finpred-cube/`, independently of `FINPRED_HOME` and `FINPRED_FORECAST_HOME`.
 Only use trusted local regular input files and a private cooperating-writer

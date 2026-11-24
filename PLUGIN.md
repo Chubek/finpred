@@ -10,7 +10,7 @@ host-registered call sites. It does not dynamically load packages from disk.
 
 | Package and descriptor | What the caller supplies | What the caller gets |
 | --- | --- | --- |
-| [Dragnet capture reader](source/core/dragnet_batch.on1x) | Frozen `dragnet.batch@1` bytes and consumer cutoff | Validated batch metadata and ordered page records; no network handles |
+| [Dragnet capture reader](plugins/dragnet/dragnet_batch.on1x) | Frozen `dragnet.batch@1` bytes and consumer cutoff | Validated batch metadata and ordered page records; no network handles |
 | [Yieldcraft `Strategy`](plugins/yieldcraft/plugin.json) | Mode and three CSV snapshots: scenario, offers, valuation | An On1x `Recommendation` record, including the nightly price in EUR cents |
 | [Poindexter `View`](plugins/poindexter/plugin.json) | Verified identities and scalar fields from one replayed run | `(true, csv)` for a one-row pricing sheet, or `(false, diagnostic)` |
 
@@ -30,7 +30,7 @@ make dragnet
 ```
 
 For your own On1x consumer, compile with `-I "$PWD/source"` and import
-`core.dragnet_batch as Dragnet`. Pass **bytes**, not a path, to
+`plugins.dragnet.dragnet_batch as Dragnet`. Pass **bytes**, not a path, to
 `Dragnet.read(bytes, cutoff)`, then use `Dragnet.page()` to access records.
 The [compiled example](tests/dragnet_batch_consumer.on1x) links no acquisition
 or pricing code. The [wire contract](plugins/dragnet/README.md#consumer-contract)
@@ -50,7 +50,7 @@ fn nightly_minor(scenario: string, offers: string, valuation: string) -> i64
 }
 ```
 
-Compile the host with `-I "$PWD/source" -I "$PWD"` from the FinPRED root. The [package build example](plugins/yieldcraft/README.md) shows the C11 driver invocation; the [independent consumer](tests/yieldcraft_package_consumer/main.on1x) also shows serialization. `recommendation` is the only invocation mode. The [return record](source/core/contracts.on1x) carries the reason, selected percentile and evidence counts. It contains no store handle or run ID. To emit `pricing.recommendation@1`, the host supplies verified run and parent IDs to `core.serialize.recommendation`; to persist and replay a run, use the [CLI](GUIDE.md).
+Compile the host with `-I "$PWD/source" -I "$PWD"` from the FinPRED root. The [package build example](plugins/yieldcraft/README.md) shows the C11 driver invocation; the [independent consumer](tests/yieldcraft_package_consumer/main.on1x) also shows serialization. `recommendation` is the only invocation mode. The [return record](source/core/contracts.on1x) carries the reason, selected percentile and evidence counts. It contains no store handle or run ID. To emit `pricing.recommendation@1`, the host supplies verified run and parent IDs and the strategy identity to `core.serialize.recommendation`; to persist and replay a run, use the [CLI](GUIDE.md).
 
 Each feasible property contributes one cheapest room bundle. Limits include 512 offer rows, 10 eligible rooms per property, 4 selected rooms, 8 adults, 8 children and a search budget of at most 1,000,000. Fewer than the required independent properties yields `insufficient_evidence` via `tool_fail`, not a fallback price. The frozen fixtures return `17100` (`lower_percentile_shortcut`) and `16000` (`guardrail_adjustment`) cents per night. The CLI shares the matcher and strategy implementations and owns its own evidence, lineage and replay path.
 
