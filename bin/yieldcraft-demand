@@ -12,8 +12,11 @@ Usage: bin/yieldcraft-demand build
        bin/yieldcraft-demand estimate SCENARIO.csv EXPOSURES.csv
        bin/yieldcraft-demand evidence SCENARIO.csv EXPOSURES.csv
        bin/yieldcraft-demand replay SCENARIO.csv EXPOSURES.csv DEMAND.csv EVIDENCE.json blake3:ID
+       bin/yieldcraft-demand panel SCENARIO.csv PANEL.csv
+       bin/yieldcraft-demand panel-replay SCENARIO.csv PANEL.csv REPORT.json blake3:ID
 
 Estimate writes pricing.demand@1 CSV to stdout; evidence writes the JSON report.
+Panel writes observational pricing.demand-estimation@2 JSON, not an optimizer snapshot.
 Provide only trusted, stable, local files. No network or price publication.
 EOF
 }
@@ -34,15 +37,20 @@ case "$command" in
     trap 'exit 1' HUP INT TERM
     python3 "$MULIB_ROOT/on1x/tools/on1x-build.py" "$ROOT/plugins/yieldcraft/demand_main.on1x" \
       --backend c11 --cc "${CC:-cc}" --on1xc "$ON1XC" --mulib-root "$MULIB_ROOT" \
+      --extra-c "$ROOT/plugins/yieldcraft/demand_panel_math.c" --cflag="-I$MULIB_ROOT/include" --cflag=-lm \
       -I "$ROOT/source" -I "$ROOT" -o "$stage"
     mv -fT -- "$stage" "$out"
     exit 0 ;;
   scenario-digest)
     [ "$#" -eq 2 ] || die "scenario-digest requires a scenario file" ;;
-  estimate|evidence)
+  estimate|evidence|panel)
     [ "$#" -eq 3 ] || die "$command requires a scenario and exposure file"
     file "$3"
     export YIELDCRAFT_DEMAND_EXPOSURE="$3" ;;
+  panel-replay)
+    [ "$#" -eq 5 ] || die "panel-replay requires a scenario, panel, frozen report and expected report ID"
+    file "$3"; file "$4"
+    export YIELDCRAFT_DEMAND_EXPOSURE="$3" YIELDCRAFT_DEMAND_FROZEN_EVIDENCE="$4" YIELDCRAFT_DEMAND_EXPECTED_ID="$5" ;;
   replay)
     [ "$#" -eq 6 ] || die "replay requires four files and an expected evidence ID"
     file "$3"; file "$4"; file "$5"

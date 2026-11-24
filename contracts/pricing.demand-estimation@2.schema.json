@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Yieldcraft observational demand model and temporal holdout",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind", "version", "id", "model_id", "policy", "scenario", "exposure", "training",
+    "identification", "decision_eligible", "property", "product", "currency", "price_basis",
+    "exposure_basis", "outcome", "train_as_of", "as_of", "reference_price_minor", "target_exposures",
+    "model", "price_feature", "slope_micros", "window_cluster_slope_se_micros",
+    "slope_penalty_micros", "pooling_pseudo_exposures", "training_assigned", "training_windows",
+    "training_latest_ingested_at", "within_window_feature_variance_micros", "holdout", "groups"
+  ],
+  "properties": {
+    "kind": {"const": "pricing.demand-estimation"},
+    "version": {"const": 2},
+    "id": {"$ref": "#/$defs/digest"},
+    "model_id": {"$ref": "#/$defs/digest"},
+    "policy": {"const": "yieldcraft.observational-panel@1"},
+    "scenario": {"$ref": "#/$defs/digest"},
+    "exposure": {"$ref": "#/$defs/digest"},
+    "training": {"$ref": "#/$defs/digest"},
+    "identification": {"const": "observational_association"},
+    "decision_eligible": {"const": false},
+    "property": {"$ref": "#/$defs/label"},
+    "product": {"$ref": "#/$defs/label"},
+    "currency": {"const": "EUR"},
+    "price_basis": {"const": "room_night"},
+    "exposure_basis": {"const": "bookable_finalized_assignments"},
+    "outcome": {"const": "kept_room_night"},
+    "train_as_of": {"$ref": "#/$defs/time"},
+    "as_of": {"$ref": "#/$defs/time"},
+    "reference_price_minor": {"$ref": "#/$defs/price"},
+    "target_exposures": {"type": "integer", "minimum": 1, "maximum": 1000},
+    "model": {"enum": ["constant_elasticity", "log_linear", "ridge_log_linear", "partially_pooled_elasticity"]},
+    "price_feature": {"enum": ["log_price_over_reference", "price_over_reference_minus_one"]},
+    "slope_micros": {"type": "integer"},
+    "window_cluster_slope_se_micros": {"type": ["integer", "null"], "minimum": 0},
+    "slope_penalty_micros": {"enum": [0, 2500]},
+    "pooling_pseudo_exposures": {"enum": [0, 1000]},
+    "training_assigned": {"$ref": "#/$defs/assigned"},
+    "training_windows": {"type": "integer", "minimum": 3, "maximum": 127},
+    "training_latest_ingested_at": {"$ref": "#/$defs/time"},
+    "within_window_feature_variance_micros": {"type": "integer", "minimum": 1},
+    "holdout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assigned", "windows", "first_started_at", "latest_ingested_at", "brier_micros", "group_rate_baseline_brier_micros"],
+      "properties": {
+        "assigned": {"$ref": "#/$defs/assigned"},
+        "windows": {"type": "integer", "minimum": 1, "maximum": 125},
+        "first_started_at": {"$ref": "#/$defs/time"},
+        "latest_ingested_at": {"$ref": "#/$defs/time"},
+        "brier_micros": {"$ref": "#/$defs/rate"},
+        "group_rate_baseline_brier_micros": {"$ref": "#/$defs/rate"}
+      }
+    },
+    "groups": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"$ref": "#/$defs/group"}}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"model": {"enum": ["constant_elasticity", "partially_pooled_elasticity"]}}},
+      "then": {"properties": {"price_feature": {"const": "log_price_over_reference"}}},
+      "else": {"properties": {"price_feature": {"const": "price_over_reference_minus_one"}}}
+    },
+    {
+      "if": {"properties": {"model": {"const": "partially_pooled_elasticity"}}},
+      "then": {"properties": {"pooling_pseudo_exposures": {"const": 1000}, "groups": {"minItems": 2}}},
+      "else": {"properties": {"pooling_pseudo_exposures": {"const": 0}}}
+    },
+    {
+      "if": {"properties": {"model": {"enum": ["partially_pooled_elasticity", "ridge_log_linear"]}}},
+      "then": {"properties": {"slope_penalty_micros": {"const": 2500}, "window_cluster_slope_se_micros": {"const": null}}},
+      "else": {"properties": {"slope_penalty_micros": {"const": 0}}}
+    },
+    {
+      "if": {"properties": {
+        "training_windows": {"minimum": 8},
+        "slope_penalty_micros": {"const": 0}
+      }},
+      "then": {"properties": {"window_cluster_slope_se_micros": {"type": "integer"}}},
+      "else": {"properties": {"window_cluster_slope_se_micros": {"const": null}}}
+    }
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^blake3:[0-9a-f]{64}$"},
+    "label": {"type": "string", "pattern": "^[a-z0-9_-]{1,64}$"},
+    "time": {"type": "string", "format": "date-time", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+    "price": {"type": "integer", "minimum": 1, "maximum": 1000000000000},
+    "assigned": {"type": "integer", "minimum": 20, "maximum": 256000000},
+    "rate": {"type": "integer", "minimum": 0, "maximum": 1000000},
+    "group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["group", "training_assigned", "training_windows", "min_price_minor", "max_price_minor", "log_intercept_micros", "predictions"],
+      "properties": {
+        "group": {"$ref": "#/$defs/label"},
+        "training_assigned": {"$ref": "#/$defs/assigned"},
+        "training_windows": {"type": "integer", "minimum": 2, "maximum": 127},
+        "min_price_minor": {"$ref": "#/$defs/price"},
+        "max_price_minor": {"$ref": "#/$defs/price"},
+        "log_intercept_micros": {"type": "integer"},
+        "predictions": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 254,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["price_minor", "kept_rate_micros", "expected_room_nights_milli"],
+            "properties": {
+              "price_minor": {"$ref": "#/$defs/price"},
+              "kept_rate_micros": {"$ref": "#/$defs/rate"},
+              "expected_room_nights_milli": {"$ref": "#/$defs/rate"}
+            }
+          }
+        }
+      }
+    }
+  }
+}
