@@ -1,5 +1,50 @@
 # `yieldcraft.percentile` — built-in On1x strategy
 
+## Run `bin/yieldcraft`
+
+From the repository root:
+
+```sh
+make
+./bin/yieldcraft
+```
+
+This uses the existing FinPRED CSV inputs and writes a local, replayable
+recommendation. It does not start Dragnet unless requested. To acquire one
+Dragnet batch and price from its structured offers:
+
+```sh
+make dragnet
+./bin/yieldcraft --scenario scenario.csv --valuation valuation.csv \
+  --dragnet Dragnet.json --save-capture captured-offers.jsonl
+```
+
+Use an [`offer-csv-v1` Dragnet config](../dragnet/README.md#optional-yieldcraft-adapter).
+Basic and GPT extraction are not pricing inputs. For live acquisition, also
+pass `--allow-host HOST` for each search/result host and `--allow-offer-host HOST`
+for each trusted offer provider. The decision time in the scenario must not
+precede the capture cutoff or live observations. No network access is granted
+automatically.
+
+To reuse saved evidence without invoking Dragnet:
+
+```sh
+./bin/yieldcraft --scenario scenario.csv --valuation valuation.csv \
+  --capture captured-offers.jsonl
+```
+
+Select only a trusted capture. The launcher validates against the scenario's
+`decision_at`, then supplies the verified offers to the existing pricing
+engine. Empty, invalid, or late captures never fall back to `FINPRED_OFFERS`.
+Optional `--strategy FILE` selects an existing strategy. Path flags are
+relative to the caller; existing `FINPRED_*` inputs keep their normal
+conventions. `--save-capture` keeps a separate, private verified capture
+without overwriting an existing file, even if pricing subsequently fails.
+The unchanged pricing archive stores the projected CSV, not the raw capture.
+Nothing publishes a price or books a room.
+
+## Call the On1x strategy
+
 Call `plugins.yieldcraft.entry.recommend` with **snapshot contents**, in the
 order scenario, offers, valuation. It accepts the same unquoted CSV profile as
 FinPRED and returns the shared `core.contracts.Recommendation` record.

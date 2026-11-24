@@ -17,6 +17,11 @@ standalone C store candidate, and `make poindexter` to build the workbench.
 It requires the X11 development library and `pkg-config`, not GTK. The
 ordinary CLI and terminal workbench do not require X11.
 
+`make dragnet` builds the On1x Elvi search host and a separate offline consumer;
+`make dragnet-search-test` verifies the pipeline and consumer-neutral handoff
+after `make`. See [Dragnet](plugins/dragnet/README.md) for credentials, daemon
+operation, and the known blocker in the retained legacy Dragnet tests.
+
 ## 1. Prepare the host
 
 Use Git, GNU Make, CMake (On1x requires 3.20 or newer), C11 and C++20

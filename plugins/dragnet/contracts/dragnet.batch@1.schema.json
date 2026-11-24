@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:finpred:dragnet:batch-framing:1",
+  "title": "Dragnet JSONL batch framing records",
+  "description": "A frame is one header, zero to 80 dragnet.page@1 lines and one trailer. The trailer digest covers exact header and page bytes, including their LF delimiters. This schema validates individual framing lines only.",
+  "oneOf": [{
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["format", "provider", "extraction", "handler", "transport", "requested_as_of"],
+    "properties": {
+      "format": {"const": "dragnet.batch@1"},
+      "provider": {"enum": ["google", "bing"]},
+      "extraction": {"enum": ["basic", "gpt", "offer-csv-v1"]},
+      "handler": {"type": "string", "pattern": "^dragnet.search@1:sha256:[0-9a-f]{64}$"},
+      "transport": {"enum": ["offline", "https"]},
+      "requested_as_of": {"oneOf": [
+        {"const": "now"},
+        {"type": "string", "format": "date-time", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"}
+      ]}
+    }
+  }, {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["format", "pages", "batch_digest"],
+    "properties": {
+      "format": {"const": "dragnet.batch-end@1"},
+      "pages": {"type": "integer", "minimum": 0, "maximum": 80},
+      "batch_digest": {"type": "string", "pattern": "^blake3:[0-9a-f]{64}$"}
+    }
+  }]
+}

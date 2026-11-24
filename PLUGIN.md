@@ -1,37 +1,42 @@
 # Developing a FinPRED plugin
 
-FinPRED integrates **trusted On1x code at build time**. Choose the package by the data you have: Dragnet normalizes frozen offers, Yieldcraft computes a price from snapshots, and Poindexter presents a verified run. Each has a different calling convention. Copying a `plugin.json` into `plugins/` does not register code or add a CLI command.
+FinPRED integrates **trusted On1x code at build time**. Dragnet produces web
+captures, Yieldcraft computes a price from snapshots, and Poindexter presents
+a verified run. Copying a `plugin.json` into `plugins/` does not register code
+or add a CLI command.
 
 The [engine registry](source/sdk/README.md#engine-registry) admits only
 host-registered call sites. It does not dynamically load packages from disk.
 
 | Package and descriptor | What the caller supplies | What the caller gets |
 | --- | --- | --- |
-| [Dragnet `Source`](plugins/dragnet/plugin.json) | Offers CSV contents and a validated scenario | Zero or more `hospitality.offer@1` JSON envelopes, one per line |
+| [Dragnet capture reader](source/core/dragnet_batch.on1x) | Frozen `dragnet.batch@1` bytes and consumer cutoff | Validated batch metadata and ordered page records; no network handles |
 | [Yieldcraft `Strategy`](plugins/yieldcraft/plugin.json) | Mode and three CSV snapshots: scenario, offers, valuation | An On1x `Recommendation` record, including the nightly price in EUR cents |
 | [Poindexter `View`](plugins/poindexter/plugin.json) | Verified identities and scalar fields from one replayed run | `(true, csv)` for a one-row pricing sheet, or `(false, diagnostic)` |
 
-All three packages declare SDK 1, version `1.0.0`, `effects: ["pure"]` and `host_capabilities: []`. The host selects inputs, opens files, verifies provenance and decides where output goes. The declarations document the reviewed code; they do not sandbox arbitrary code in the host process. A mode string, a descriptor match and a recommendation each grant **no authority to publish a price**.
+The host selects inputs, opens files, verifies provenance and decides where
+output goes. Declarations document the reviewed code; they do not sandbox
+arbitrary code in the host process. A mode string, a descriptor match and a
+recommendation each grant **no authority to publish a price**.
 
-## Dragnet: import an offline snapshot
+## Dragnet: consume a capture from any module
 
 From the repository root, with the [pinned On1x toolchain](INSTALL.md) available:
 
 ```sh
-plugins/dragnet/build.sh
-build/dragnet/dragnet-frozen-csv 3<fixtures/scenario.csv 4<fixtures/offers.csv
+make dragnet
+./bin/dragnet --handoff --config plugins/dragnet/examples/Dragnet.json > capture.jsonl
+./bin/finpred dragnet-inspect capture.jsonl 2026-11-24T00:00:00Z
 ```
 
-The shell opens two caller-selected regular files. The Linux host reads `/proc/self/fd/3` (scenario) and `/proc/self/fd/4` (offers); it has no default source. Use frozen files in a trusted directory. Inputs use the exact unquoted CSV headers in [the fixtures](fixtures/), at most 2,000,000 bytes per file and 1–512 offer rows. The [build script](plugins/dragnet/build.sh) stages the shared FinPRED modules and builds a standalone executable.
-
-To embed [the adapter](plugins/dragnet/source/dragnet/frozen_csv.on1x), add `source/` and `plugins/dragnet/source/` to your host's module search paths. Import `core.contracts as C` and `dragnet.frozen_csv as Dragnet`, then call `Dragnet.offers_as_of(offers_csv,C.scenario_csv(scenario_csv))`. Pass **contents**, not paths.
-
-The default fixture emits five eligible offers in source order. Prices include taxes and fees for the **whole stay**. Each envelope names the BLAKE3 digest of the complete original offers CSV as its parent. A valid dataset with no eligible rows succeeds with empty output; malformed input fails before the host prints any envelopes. Retain both snapshots to reproduce the as-of selection. The NDJSON is for consumers of the [offer schema](contracts/hospitality.offer@1.schema.json); Yieldcraft's entry point below expects the original CSV, not this stream.
-
-The [offline Elvi tools](plugins/dragnet/README.md#frozen-crossref-search-and-work-evidence)
-are separate: they extract bibliographic evidence from saved Crossref
-responses. They do not fetch live pages or feed unvalidated metadata
-into the pricing engine.
+For your own On1x consumer, compile with `-I "$PWD/source"` and import
+`core.dragnet_batch as Dragnet`. Pass **bytes**, not a path, to
+`Dragnet.read(bytes, cutoff)`, then use `Dragnet.page()` to access records.
+The [compiled example](tests/dragnet_batch_consumer.on1x) links no acquisition
+or pricing code. The [wire contract](plugins/dragnet/README.md#consumer-contract)
+also works for readers outside On1x. Digests bind bytes, not publisher
+identity; consumers validate data for their own domain and choose their own
+destinations. The reader is not a dynamically registered SDK Source.
 
 ## Yieldcraft: call the strategy from On1x
 
@@ -88,7 +93,7 @@ Pass three bare 64-character lowercase hex IDs. Use the digest of the **normaliz
 ## Native callers: inspect the descriptor
 
 The [C11 SDK](source/sdk/README.md) is independently linkable without MuLIB.
-For any of the three packages, use `<finpred/sdk_v2.h>`: look up the package,
+For built-in SDK v2 descriptors, use `<finpred/sdk_v2.h>`: look up the package,
 then check its requested use against the host's linked dependencies, resource
 ceilings and grants. The [built-in On1x hosts](source/sdk/static_host.on1x)
 perform this check before dispatch and grant no external capabilities.
@@ -104,14 +109,15 @@ Both the C check and the [On1x allowlist](source/sdk/sdk.on1x) recognize `analys
 ## Integrate and test a new trusted module
 
 1. **Choose a narrow entry point.** Pass validated values or frozen contents. Keep file selection, output and run verification in the host. Specify units, time cutoffs, failure behavior and bounds. Reuse the [versioned contracts](contracts/) when your data has those semantics.
-2. **Make the build explicit.** For a reusable local library, copy the layout of [Poindexter](plugins/poindexter/): `On1xfile` declares `kind library`, `On1xfile.m` lists the implementation, and `On1xfile.i` lists the `.on1xi` interface. Declare the dependency in your host project and import it by name; the [standalone consumer project](tests/poindexter_consumer/On1xfile) stages the dependency under `vendor/poindexter`. For a source with host-specific I/O, use [Dragnet's host](plugins/dragnet/source/host.on1x) as the example.
+2. **Make the build explicit.** For a reusable local library, copy the layout of [Poindexter](plugins/poindexter/): `On1xfile` declares `kind library`, `On1xfile.m` lists the implementation, and `On1xfile.i` lists the `.on1xi` interface. Declare the dependency in your host project and import it by name; the [standalone consumer project](tests/poindexter_consumer/On1xfile) stages the dependency under `vendor/poindexter`. For a source with host-specific I/O, see [Dragnet's acquisition host](plugins/dragnet/source/main.on1x).
 3. **Document and wire the exact call.** Record the name, package and SDK versions, kind, contracts, entry point, effects, capabilities and bounds in `plugin.json`. These are package descriptions, not a universal manifest parser. An additional CLI feature needs an explicit host call and rebuild. The existing fixed graph and Ottomat declaration do not schedule new packages. Preserve old run identities and replay behavior if changing persisted semantics.
 4. **Test across the host boundary.** Compile a separate consumer; compare fixture bytes and units, test malformed inputs and denied modes, and check for unintended writes. For replay views, include missing and corrupted runs as well as valid runs. Trusted linkage does not provide isolation for untrusted native code, network access or an action gateway.
 
 Run from the root on Linux; [INSTALL.md](INSTALL.md) covers `MULIB_ROOT`, `ON1XC` and the Python `jsonschema` test dependency. Set `TMPDIR` to a writable executable filesystem with space for disposable builds.
 
 ```sh
-python3 tests/check_dragnet_frozen_csv.py   # FD selection, cutoff, provenance, schema
+make                                # build the pricing CLI used by the Dragnet test
+make dragnet-search-test            # capture framing, cutoff, provenance, independent consumers
 python3 tests/check_yieldcraft_package.py   # fixture envelopes, denied modes, invalid inputs
 python3 tests/check_poindexter_package.py   # independent consumer, CSV bounds and rejections
 python3 tests/check_sdk.py                  # build/install C SDK, link consumer, compare metadata

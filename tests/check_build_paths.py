@@ -23,7 +23,7 @@ def main():
     env = os.environ.copy()
     for name in (
         "MULIB_ROOT", "ON1XC", "FINPRED_STDPPX_DIR", "FINPRED_BUILD_DIR",
-        "FINPRED_EXE", "FINPRED_MODE", "MAKEFLAGS", "MFLAGS", "MAKEOVERRIDES",
+        "FINPRED_EXE", "FINPRED_DRAGNET_BUILD_DIR", "FINPRED_MODE", "MAKEFLAGS", "MFLAGS", "MAKEOVERRIDES",
     ):
         env.pop(name, None)
 
@@ -104,6 +104,15 @@ test "$(./bin/finpred selftest)" = "$EXPECTED_EXE"
         forecast = run("./bin/finpred", "forecast", "replay", "fixture",
                        FINPRED_BUILD_DIR="build/custom CLI", FINPRED_EXE="target/dev/finpred")
         assert forecast.returncode == 0 and forecast.stdout.strip() == str(Path(custom).parent) + "-forecast/finpred-forecast", forecast
+        dragnet_missing = run("./bin/finpred", "dragnet-inspect", "frame", "2026-11-24T00:00:00Z")
+        assert dragnet_missing.returncode == 2 and "consumer absent" in dragnet_missing.stdout
+        write(root, "build/custom Dragnet/finpred-dragnet",
+              '#!/bin/sh\nprintf "%s\\n" "$0" "$FINPRED_DRAGNET_INPUT"\n', executable=True)
+        dragnet = run(str(root / "bin/finpred"), "dragnet-inspect", "frame", "2026-11-24T00:00:00Z",
+                      cwd=root / "tests", FINPRED_DRAGNET_BUILD_DIR="build/custom Dragnet",
+                      FINPRED_EXE="target/dev/finpred")
+        assert dragnet.returncode == 0 and dragnet.stdout.splitlines() == [
+            str(root / "build/custom Dragnet/finpred-dragnet"), str(root / "tests/frame")], dragnet
         explicit = run("./bin/finpred", "selftest", FINPRED_EXE="target/dev/finpred")
         assert explicit.returncode == 99, explicit
 
@@ -136,7 +145,8 @@ test "$(./bin/finpred selftest)" = "$EXPECTED_EXE"
         pin(root, "third_party/mulib", mulib_sha)
         nested = run("make", "mulib", "CMAKE=false")
         assert nested.returncode == 2 and f"Submodule pin mismatch at {libstone}:" in nested.stdout, nested
-    print("build_paths_ok=true default=1 custom=1 forecast_gate=2 stale_target_rejected=1 missing_toolchain=2 pin_mismatches=2")
+    print("build_paths_ok=true default=1 custom=1 forecast_gate=2 dragnet_gate=2 "
+          "stale_target_rejected=1 missing_toolchain=2 pin_mismatches=2")
 
 
 if __name__ == "__main__":

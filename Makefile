@@ -6,7 +6,7 @@ MULIB_JOBS ?= 4
 NATIVE_BUILD_DIR ?= build/native
 TUI_REVIEW_BUILD_DIR ?= build/poindexter-tui-review
 
-.PHONY: all build mulib test dragnet-test forecast-score-test native-test poindexter poindexter-gui poindexter-gui-test poindexter-tui-review
+.PHONY: all build mulib test dragnet dragnet-test dragnet-search-test forecast-score-test native-test poindexter poindexter-gui poindexter-gui-test poindexter-tui-review
 
 all: build
 
@@ -29,6 +29,13 @@ dragnet-test:
 		python3 tests/check_crossref_replay.py; \
 		python3 tests/check_dragnet_public_feeds.py; \
 		python3 tests/check_dragnet_dispatch.py
+
+dragnet-search-test:
+	set -eu; . ./bin/build-env.sh; finpred_build_env "$(CURDIR)"; \
+		python3 tests/check_dragnet_search.py
+
+dragnet:
+	sh ./plugins/dragnet/build.sh
 
 forecast-score-test:
 	set -eu; . ./bin/build-env.sh; finpred_build_env "$(CURDIR)"; \

@@ -5,6 +5,27 @@ The [CI workflow](../.github/workflows/verify.yml) builds `on1xc` from the
 compiled CLI and disposable stores. `check_fixtures.py` and `validate_static.py`
 are supplementary checks; neither executes On1x.
 
+**Dragnet replacement at `b84e928`:** the old package sources were removed
+before the new Elvi search implementation. Historical CSV/Crossref/feed/dispatch
+rows below describe retained tests, **not passing current coverage**.
+`make dragnet-test` and the full suite are blocked on those missing sources.
+The replacement has its own [compiled search conformance](check_dragnet_search.py)
+(`make dragnet-search-test`): real Google/Bing Elvi extraction, independent
+JSON schemas, page keyword matching, readable text, frozen Responses decoding,
+credential precedence, LLM data-egress denial, malformed/late structured
+offers, missing/oversized/NUL snapshots, denied live hosts, socket-address
+policy, foreground-daemon cancellation and offline network tracing when
+`strace` is available. The same versioned capture is read by the core inspector,
+an independent On1x consumer (with original fixtures removed), and the
+Yieldcraft adapter. Checks reject truncated framing, late or mixed evidence,
+and changed raw parents even with a recomputed batch digest.
+`bin/yieldcraft` is exercised with CSV inputs, fresh acquisition, saved
+captures, and denied/empty/late input paths that must not write a pricing run.
+Exported offers reproduce exact default/multiroom fixture
+CSV bytes and the golden Yieldcraft v2 run IDs (EUR 171/160). Live provider,
+OpenAI endpoint and OAuth login/refresh are not covered. See
+[current Dragnet scope](../plugins/dragnet/README.md).
+
 | Source / feature | Positive execution | Rejection or failure execution |
 | --- | --- | --- |
 | `source/core/`: CSV, contracts, as-of times, units and serialization | [Integration](run.sh) validates emitted JSON against schemas and the normalized input oracle | [Ingestion](check_ingestion_cli.py) feeds invalid records to the CLI |

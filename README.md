@@ -57,7 +57,7 @@ workflow status on `master`, not verification of a local checkout.
 | **Automat** | [`source/automat/`](source/automat/) — fixed legacy recommendation runner, scalar DAG, general bounded typed financial DAG and immutable in-memory artifacts |
 | **Ottomat** | [`source/ottomat/`](source/ottomat/) — legacy and scalar strategy grammars; v6 lowers to the typed financial graph, with no strategy-owned authority |
 | **SDK** | [`source/sdk/`](source/sdk/) — trusted, statically linked versioned handler descriptors, callable ports and capability checks |
-| **Dragnet** | [`plugins/dragnet/`](plugins/dragnet/) — frozen CSV, Crossref evidence, ECB/Eurostat snapshot acquisition and offline Source dispatch |
+| **Dragnet** | [`plugins/dragnet/`](plugins/dragnet/) — Elvi web acquisition, optional GPT analysis, and offline capture handoff to plugins and core consumers |
 | **Forecast baselines** | [`plugins/forecast_baselines/`](plugins/forecast_baselines/) — moving-average and seasonal-naive monthly guest-night models; later actuals are used only to score issued forecasts |
 | **Poindexter** | [`plugins/poindexter/`](plugins/poindexter/) — verified-run projection, terminal spreadsheet and optional ImmGTK X11 frontend |
 | **Artifact store** | [`source/store/`](source/store/) — versioned immutable object/run evidence in a private cooperative store |
@@ -65,6 +65,8 @@ workflow status on `master`, not verification of a local checkout.
 
 The pricing CLI uses the legacy runner. Scalar analysis prints a result
 without saving a run. The typed financial graph is a library interface.
+[`bin/yieldcraft`](plugins/yieldcraft/README.md#run-binyieldcraft) can use the
+CSV inputs, run Dragnet once, or price from a verified frozen capture.
 For exact party-specific quote matching across multiple frozen stays and
 strategies, see the separate [competitor pricing cube](docs/COMPETITOR_CUBE.md).
 The `finpred forecast` commands issue, score, aggregate and replay guest-night
@@ -82,7 +84,7 @@ See the [forecast workflow](GUIDE.md#run-point-in-time-forecasts).
 4. [Algorithm Automat](source/automat/README.md) and
    [Ottomat](source/ottomat/README.md) — typed graph semantics, frontend and replay.
 5. [Plugin developer guide](PLUGIN.md) and
-   [Dragnet Source dispatch](plugins/dragnet/SOURCE_DISPATCH.md).
+   [Dragnet's shared capture contract](plugins/dragnet/README.md#shared-handoff-to-plugins-and-core-code).
 6. [Point-in-time forecasting](plugins/forecast_baselines/README.md) and
    [forecast scoring](docs/FORECAST_SCORING.md).
 7. [Poindexter workbench](plugins/poindexter/workbench/README.md) or

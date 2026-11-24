@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:finpred:dragnet:page:1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "handler", "query", "url", "as_of", "readable", "llm_text", "pricing_input", "offer_csv", "evidence"],
+  "properties": {
+    "format": {"const": "dragnet.page@1"},
+    "handler": {"type": "string", "pattern": "^dragnet.search@1:sha256:[0-9a-f]{64}$"},
+    "query": {"type": "string", "minLength": 1, "maxLength": 256},
+    "url": {"type": "string", "pattern": "^https://", "maxLength": 8191},
+    "as_of": {"$ref": "#/$defs/utc"},
+    "readable": {"type": "string"},
+    "llm_text": {"type": "string", "maxLength": 16384},
+    "pricing_input": {"type": "boolean"},
+    "offer_csv": {"type": "string", "maxLength": 2048},
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request_url", "search_html", "search_digest", "page_html", "page_digest", "transport", "received_at"],
+      "properties": {
+        "request_url": {"type": "string", "pattern": "^https://", "maxLength": 8191},
+        "search_html": {"type": "string"},
+        "search_digest": {"$ref": "#/$defs/digest"},
+        "page_html": {"type": "string"},
+        "page_digest": {"$ref": "#/$defs/digest"},
+        "transport": {"enum": ["offline", "https"]},
+        "received_at": {"oneOf": [{"const": ""}, {"$ref": "#/$defs/utc"}]},
+        "llm_received_at": {"oneOf": [{"const": ""}, {"$ref": "#/$defs/utc"}]},
+        "llm_endpoint": {"type": "string", "pattern": "^https://"},
+        "llm_model": {"type": "string", "minLength": 1, "maxLength": 128},
+        "llm_request": {"type": "string"},
+        "llm_response": {"type": "string"},
+        "llm_digest": {"$ref": "#/$defs/digest"}
+      }
+    }
+  },
+  "allOf": [{
+    "if": {"properties": {"pricing_input": {"const": true}}},
+    "then": {"properties": {"offer_csv": {"minLength": 1}}},
+    "else": {"properties": {"offer_csv": {"const": ""}}}
+  }],
+  "$defs": {
+    "utc": {"type": "string", "format": "date-time", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+    "digest": {"type": "string", "pattern": "^blake3:[0-9a-f]{64}$"}
+  }
+}

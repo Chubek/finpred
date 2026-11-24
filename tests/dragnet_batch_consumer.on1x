@@ -1,0 +1,24 @@
+# Test-only independent consumer: links no acquisition or Yieldcraft source.
+import core.dragnet_batch as Dragnet;
+import std.environ as Env;
+
+fn main() -> i64 {
+  let (found,path) = Env.getenv("CAPTURE");
+  if !found { tool_fail("missing CAPTURE"); }
+  let bytes = tool_read_file(path);
+  let (rehash,mode) = Env.getenv("CAPTURE_TEST_MODE");
+  if rehash && mode == "digest" {
+    println(Dragnet.digest(bytes));
+    return 0;
+  }
+  let batch = Dragnet.read(bytes,"2026-11-24T00:00:00Z");
+  var rest = batch["pages"];
+  while sx_kind(rest) == 3 {
+    let page = Dragnet.page(sx_text(sx_head(rest)));
+    println(sx_text(page["url"]));
+    println(sx_text(page["readable"]));
+    println(sx_text(page["llm_text"]));
+    rest = sx_tail(rest);
+  }
+  return 0;
+}

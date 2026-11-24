@@ -35,6 +35,9 @@ jobs:
           pkg-config --modversion libcurl libxml-2.0 jansson
       - name: Build C11 CLI
         run: make
+      - name: Dragnet Elvi search and Yieldcraft handoff (offline)
+        id: dragnet_search
+        run: make dragnet-search-test
       - name: Build, launcher, and suite path regression
         run: python3 tests/check_build_paths.py
       - name: Fixture oracles, static checks and full integration
@@ -75,7 +78,7 @@ jobs:
       - name: Test outcomes
         if: always()
         run: |
-          echo '{"platform":"linux-x86_64","integration":"${{ steps.integration.outcome }}","packages":"${{ steps.packages.outcome }}","forecast_scores":"${{ steps.forecast_scores.outcome }}","dragnet_feeds":"${{ steps.dragnet_feeds.outcome }}","dragnet_dispatch":"${{ steps.dragnet_dispatch.outcome }}","gui_step":"${{ steps.gui.outcome }}","other_platforms":"untested"}'
+          echo '{"platform":"linux-x86_64","integration":"${{ steps.integration.outcome }}","packages":"${{ steps.packages.outcome }}","forecast_scores":"${{ steps.forecast_scores.outcome }}","dragnet_search":"${{ steps.dragnet_search.outcome }}","dragnet_feeds":"${{ steps.dragnet_feeds.outcome }}","dragnet_dispatch":"${{ steps.dragnet_dispatch.outcome }}","gui_step":"${{ steps.gui.outcome }}","other_platforms":"untested"}'
 
   native-store:
     runs-on: ubuntu-24.04

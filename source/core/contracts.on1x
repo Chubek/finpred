@@ -138,6 +138,10 @@ fn valuation_csv(text: string, scenario: Scenario) -> Valuation
     current_cents:current,floor_cents:floor,cap_cents:cap,max_move_cents:movement,shortcut_cents:shortcut};
 }
 
+fn offer_header() -> string {
+  return "property_id,room_id,arrival,departure,adult_cap,child_cap,total_cap,total_cents,fees_cents,taxes_cents,currency,observed_at,ingested_at,valid_from,valid_to,bookable\n";
+}
+
 fn offer_csv(row: string) -> Offer
 {
   CSV.require_width(row, 16);

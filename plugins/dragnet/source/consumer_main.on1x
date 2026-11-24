@@ -1,0 +1,23 @@
+# Compile the read-only consumer separately from the network host and the
+# legacy CLI's GrammarEmbed pipeline.
+import cli.dragnet_capture as Capture;
+import plugins.yieldcraft.dragnet_import as Yieldcraft;
+import std.environ as Env;
+
+fn env(key:string) -> string {
+  let (found,value) = Env.getenv(key);
+  if !found { return ""; }
+  return value;
+}
+fn main() -> i64 {
+  let mode = env("FINPRED_MODE");
+  if mode == "yieldcraft-scenario-cutoff" {
+    println(Capture.scenario_cutoff(env("FINPRED_SCENARIO")));
+    return 0;
+  }
+  if mode != "dragnet-inspect" && mode != "dragnet-offers" { tool_fail("dragnet handoff: unsupported mode"); }
+  let path = env("FINPRED_DRAGNET_INPUT");
+  let cutoff = env("FINPRED_DRAGNET_CUTOFF");
+  if mode == "dragnet-offers" { return Capture.consume(path,cutoff,Yieldcraft.project); }
+  return Capture.consume(path,cutoff,Capture.inspect);
+}
