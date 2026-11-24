@@ -20,16 +20,31 @@ def processor_directory(compiler):
     return directory
 
 
-def rewrite(processor, stdppx):
+def relative_spans(node, stage_prefix, atom):
+    """Use project-relative locations without altering On1x string literals."""
+    if not isinstance(node, list):
+        return
+    if (len(node) == 5 and isinstance(node[0], atom) and node[0] == "Loc"
+            and type(node[1]) is str and node[1].startswith(stage_prefix)):
+        node[1] = node[1][len(stage_prefix):]
+        return
+    for child in node:
+        relative_spans(child, stage_prefix, atom)
+
+
+def rewrite(processor, stdppx, stage):
     # Native GrammarEmbed's name collision scan is quadratic over the whole
     # merged unit. Only pass the trusted empty grammar markers to it; retain
     # every other declaration verbatim in the AST and check merge collisions.
     sys.path.insert(0, str(stdppx))
-    from _support.sexpr import MAX_BYTES, dumps, loads
+    from _support.sexpr import Atom, MAX_BYTES, dumps, loads
 
     tree = loads(sys.stdin.buffer.read(MAX_BYTES + 1))
     if len(tree) != 3 or tree[:2] != ["Unit", "1"]:
         raise ValueError("expected an On1x PPX v1 unit")
+    # The loader canonicalizes even relative inputs. Its stage path repeats
+    # in thousands of locations; the expanded unit must still fit in 4 MiB.
+    relative_spans(tree, os.fsencode(stage).decode("latin1") + "/", Atom)
     marked, preserved = [], []
     for decl in tree[2]:
         if decl[0] == "Function" and any(a[1] == "GrammarEmbed" for a in decl[5]):
@@ -66,7 +81,7 @@ def flags(compiler, sdk, work):
         f"sys.path.insert(0, {str(Path(__file__).resolve().parent)!r})\n"
         "from on1x_grammar import rewrite\n"
         f"rewrite(Path({str(directory / 'on1x-ppx-GrammarEmbed')!r}),"
-        f" Path({str(sdk.resolve() / 'on1x/stdppx')!r}))\n",
+        f" Path({str(sdk.resolve() / 'on1x/stdppx')!r}), Path(__file__).resolve().parent)\n",
         encoding="utf-8",
     )
     adapter.chmod(0o700)

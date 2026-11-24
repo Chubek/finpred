@@ -13,8 +13,15 @@ if [ ! -x "$ON1XC" ]; then
   echo "Missing compiled On1x compiler at $ON1XC (run 'make mulib' or set ON1XC)" >&2
   exit 2
 fi
+MULIB_ROOT=$(realpath -- "$MULIB_ROOT")
+ON1XC=$(realpath -- "$ON1XC")
 finpred_build_env "$ROOT"
 cd "$ROOT"
+cc=${CC:-cc}
+case "$cc" in
+  /*) ;;
+  */*) cc="$ROOT/$cc" ;;
+esac
 # Compose the host and selected built-in packages in a disposable project;
 # canonical plugin sources stay under plugins/.
 out=$(finpred_cli_output_dir "$ROOT")
@@ -33,13 +40,18 @@ cp -R "$ROOT/plugins/poindexter/On1xfile" "$ROOT/plugins/poindexter/src" "$work/
 python3 "$ROOT/bin/on1x_grammar.py" "$work/on1xc" "$ON1XC" "$MULIB_ROOT"
 # The direct builder supports a trusted, statically linked C11 companion and
 # resolves the MuLIB implementation closure from the pinned manifest.
-python3 "$MULIB_ROOT/on1x/tools/on1x-build.py" "$work/source/main.on1x" \
-  --backend c11 --cc "${CC:-cc}" --on1xc "$work/on1xc" --mulib-root "$MULIB_ROOT" \
-  -I "$work/source" -I "$work/plugins/poindexter" \
-  --extra-c "$work/source/core/price_prediction.c" \
-  --extra-c "$work/source/core/price_prediction_on1x.c" \
-  --mulib price-forecast --mulib price-ensemble --mulib histprice \
-  --cflag=-lm --cflag=-g --debug-build-root "$work" -o "$out/finpred"
+# The GrammarEmbed adapter normalizes staged source spans to be relative
+# to this cwd, which also lets the C driver remap its compilation directory.
+(
+  cd "$work"
+  python3 "$MULIB_ROOT/on1x/tools/on1x-build.py" source/main.on1x \
+    --backend c11 --cc "$cc" --on1xc "$work/on1xc" --mulib-root "$MULIB_ROOT" \
+    -I source -I plugins/poindexter \
+    --extra-c source/core/price_prediction.c \
+    --extra-c source/core/price_prediction_on1x.c \
+    --mulib price-forecast --mulib price-ensemble --mulib histprice \
+    --cflag=-lm --cflag=-g --debug-build-root "$work" -o "$out/finpred"
+)
 
 # The cube host uses its own package and shared helpers, with no Ottomat PPX.
 python3 "$MULIB_ROOT/on1x/tools/on1x-build.py" "$work/source/plugins/yieldcraft/cube_main.on1x" \
