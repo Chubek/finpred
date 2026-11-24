@@ -174,9 +174,13 @@ fn env(key:string) -> string {
   if !found { return ""; }
   return value;
 }
+fn forecast_home() -> string {
+  let configured = env("FINPRED_FORECAST_HOME");
+  if configured == "" { return ".finpred-forecast"; }
+  return configured;
+}
 fn entry(mode:string) -> i64 {
-  var home = env("FINPRED_FORECAST_HOME");
-  if home == "" { home = ".finpred-forecast"; }
+  let home = forecast_home();
   let input = env("FINPRED_FORECAST_INPUT");
   let catalog = env("FINPRED_FORECAST_CATALOG");
   let cutoff = env("FINPRED_FORECAST_CUTOFF");

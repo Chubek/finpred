@@ -21,5 +21,5 @@ for dep in core algorithms sdk; do
   mkdir "$work/source/$dep"
   cp "$root/source/$dep/On1xfile.m" "$root/source/$dep/"*.on1x "$work/source/$dep/"
 done
-python3 "$mulib/on1x/tools/on1x-project.py" build "$work" --offline \
+python3 "$mulib/on1x/tools/on1x-project.py" build "$work" --offline --cc "${CC:-cc}" \
   --on1xc "$compiler" --mulib-root "$mulib" --output-dir "$out"

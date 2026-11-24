@@ -66,8 +66,8 @@ def oracle(model, origin, values):
     return None if None in selected else Fraction(sum(selected), len(selected))
 
 
-def schema(name):
-    doc = json.loads((PACKAGE / f"contracts/{name}@1.schema.json").read_bytes())
+def schema(name, directory=PACKAGE / "contracts"):
+    doc = json.loads((directory / f"{name}@1.schema.json").read_bytes())
     Draft202012Validator.check_schema(doc)
     return Draft202012Validator(doc, format_checker=FormatChecker())
 

@@ -47,6 +47,7 @@ def main():
         write(root, "third_party/mulib/on1x/tools/on1x-project.py", """
 from pathlib import Path
 import sys
+assert '--cc' in sys.argv, 'FinPRED must explicitly select the host C toolchain'
 out = Path(sys.argv[sys.argv.index('--output-dir') + 1])
 out.mkdir(parents=True, exist_ok=True)
 target = sys.argv[sys.argv.index('--target') + 1] if '--target' in sys.argv else 'finpred'

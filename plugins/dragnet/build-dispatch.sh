@@ -42,5 +42,5 @@ library "public_feeds.on1x"
 library "source_registry.on1x"
 library "source_identity.on1x"
 MANIFEST
-python3 "$mulib/on1x/tools/on1x-project.py" build "$work" --offline \
+python3 "$mulib/on1x/tools/on1x-project.py" build "$work" --offline --cc "${CC:-cc}" \
   --on1xc "$compiler" --mulib-root "$mulib" --output-dir "$out"

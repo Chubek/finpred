@@ -69,7 +69,7 @@ make
 ./bin/finpred selftest
 ```
 
-Expect `On1x scanner: LibStone ASDL+Aurocks generated frontend` during configuration and `selftest_ok=true` from the last command. The [build wrapper](bin/build.sh) runs MuLIB’s `on1x/tools/on1x-project.py` against FinPRED’s [On1xfile](On1xfile).
+Expect `On1x scanner: LibStone ASDL+Aurocks generated frontend` during configuration and `selftest_ok=true` from the last command. The [build wrapper](bin/build.sh) runs MuLIB’s `on1x/tools/on1x-project.py` against FinPRED’s [On1xfile](On1xfile), explicitly selecting the host C driver (`CC`, or `cc`) rather than depending on MuLIB's current native-tool defaults.
 
 Build output defaults are relative to the **FinPRED root**, even if `MULIB_ROOT`
 points elsewhere:

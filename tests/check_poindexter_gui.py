@@ -27,6 +27,7 @@ def main():
             subprocess.run([
                 "python3", mulib / "on1x/tools/on1x-project.py", "build",
                 ROOT / "plugins/poindexter/workbench",
+                "--cc", env.get("CC") or "cc",
                 "--on1xc", env.get("ON1XC", ROOT / "build/mulib/on1x/on1xc"),
                 "--mulib-root", mulib, "--offline", "--output-dir", worker.parent,
             ], cwd=ROOT, env=env, check=True, timeout=120)

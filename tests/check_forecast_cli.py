@@ -141,7 +141,7 @@ def main():
         audit = run("audit", audit_path)
         assert tree() == before
         result = json.loads(audit)
-        schema("analysis.forecast-audit").validate(result)
+        schema("analysis.forecast-audit", ROOT / "contracts").validate(result)
         assert result["verified"] == len(audit_ids)
         assert result["pricing_input"] is False and result["read_only"] is True
         assert audit == json.dumps(result, separators=(",", ":")) + "\n"

@@ -74,6 +74,7 @@ def main():
         out = d / "out"
         subprocess.run([
             sys.executable, sdk / "on1x/tools/on1x-project.py", "build", WORKBENCH,
+            "--cc", os.environ.get("CC") or "cc",
             "--on1xc", compiler, "--mulib-root", sdk, "--offline", "--output-dir", out,
         ], check=True, cwd=d, timeout=180)
         exe = out / "poindexter-grid"

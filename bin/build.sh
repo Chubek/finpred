@@ -29,7 +29,7 @@ cp -R "$ROOT/plugins/yieldcraft" "$ROOT/plugins/scalar_diagnostics" "$work/sourc
 cp -R "$ROOT/plugins/poindexter/On1xfile" "$ROOT/plugins/poindexter/src" "$work/plugins/poindexter/"
 python3 "$ROOT/bin/on1x_grammar.py" "$work/on1xc" "$ON1XC" "$MULIB_ROOT"
 python3 "$MULIB_ROOT/on1x/tools/on1x-project.py" build "$work" \
-  --on1xc "$work/on1xc" --mulib-root "$MULIB_ROOT" --output-dir "$out"
+  --cc "${CC:-cc}" --on1xc "$work/on1xc" --mulib-root "$MULIB_ROOT" --output-dir "$out"
 
 cp -R "$ROOT/plugins/forecast_baselines/source/forecast_baselines" "$work/source/"
 cat >"$work/source/forecast_baselines/On1xfile.m" <<'EOF'
@@ -62,4 +62,4 @@ target "finpred-forecast" "source/forecast_main.on1x"
 backend c11
 EOF_FORECAST
 python3 "$MULIB_ROOT/on1x/tools/on1x-project.py" build "$work" \
-  --target finpred-forecast --on1xc "$ON1XC" --mulib-root "$MULIB_ROOT" --output-dir "${out}-forecast"
+  --cc "${CC:-cc}" --target finpred-forecast --on1xc "$ON1XC" --mulib-root "$MULIB_ROOT" --output-dir "${out}-forecast"

@@ -23,6 +23,7 @@ def main():
         shutil.copytree(PACKAGE, project / "vendor/poindexter", ignore=shutil.ignore_patterns("target", "build"))
         out = Path(tmp) / "build"
         subprocess.run([sys.executable, sdk / "on1x/tools/on1x-project.py", "build", project,
+                         "--cc", os.environ.get("CC") or "cc",
                          "--on1xc", compiler, "--mulib-root", sdk, "--output-dir", out], check=True, timeout=90)
         output = subprocess.check_output([out / "consumer"], timeout=10)
     fixture = json.loads((ROOT / "fixtures/replay_v1.json").read_bytes())
