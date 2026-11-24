@@ -48,8 +48,14 @@ Contribution runs use `finpred-run@3`; existing `finpred-run@1` and
 The optional [`bin/yieldcraft-demand`](docs/YIELDCRAFT_DEMAND.md) estimator
 can build a demand grid from frozen first-party price experiments. It does
 not infer demand from competitor offers or claim empirical uplift.
+Its separate [observational panel](docs/YIELDCRAFT_DEMAND_PANEL.md) fits four
+models and reports temporal holdout errors; those reports are not decision
+inputs. The [contribution stress tool](docs/YIELDCRAFT_CONTRIBUTION_STRESS.md)
+consumes the original experimental snapshot and digest-bound user assumptions.
 The [finite-inventory planner](docs/YIELDCRAFT_INVENTORY.md) is a separate
 On1x API for explicitly supplied net-sale probabilities over multiple periods.
+The [coupled planner](docs/YIELDCRAFT_COUPLED_INVENTORY.md) adds shared capacity
+over two service nights and modeled policy comparisons for Poindexter.
 
 ## Build and verify
 
@@ -76,6 +82,8 @@ and `make forecast-score-test` for a separate
 it has independent compiler, pricing, forecasting, plugins, storage and security
 jobs on Ubuntu 24.04. It does not publish or deploy. The badge reflects
 hosted workflow status on `master`, not verification of a local checkout.
+See [CLI release packaging](docs/CLI_RELEASE.md) for same-toolchain,
+deterministic bundles and relocation checks.
 
 ## Architecture and entry points
 
@@ -106,10 +114,13 @@ strategies, see the separate [competitor pricing cube](docs/COMPETITOR_CUBE.md).
 The `finpred forecast` commands issue, score, aggregate and replay guest-night
 forecasts from an immutable release catalog in a separate local store.
 See the [forecast workflow](GUIDE.md#run-point-in-time-forecasts).
+A separate [vintage-aware On1x library](docs/FORECAST_VINTAGE.md) selects
+releases per month and verifies exact forecast and evaluation replay.
 Use [`finpred price-backtest`](docs/PRICE_BACKTEST.md) for a separate
 horizon-specific diagnostic on ordered price series, not revision-aware evidence.
-The [ECB FX exercise](research/ecb-fx/README.md) is empirical but single-vintage;
-it is not a hospitality demand or pricing validation.
+The [ECB FX](research/ecb-fx/README.md) and [German long-term yield](research/ecb-de-yield/README.md)
+exercises are empirical but single-vintage. Neither validates hospitality demand
+or pricing.
 
 ## Start here
 
@@ -118,7 +129,8 @@ it is not a hospitality demand or pricing validation.
 3. [Implementation and acceptance record](docs/IMPLEMENTATION.md#acceptance-record)
    and [test coverage](tests/COVERAGE.md) — historical results and the checks
    that produced them. See the [engineering audit](docs/ENGINEERING_AUDIT.md)
-   for the pre-change baseline and acceptance boundaries.
+   for the historical baseline, and the [integration requirements](docs/INTEGRATION_REQUIREMENTS.md)
+   for the six-workstream contract and verification boundaries.
 4. [Algorithm Automat](source/automat/README.md) and
    [Ottomat](source/ottomat/README.md) — typed graph semantics, frontend and replay.
 5. [Plugin developer guide](PLUGIN.md) and

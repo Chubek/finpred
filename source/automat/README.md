@@ -33,6 +33,20 @@ The hospitality adapters reuse legacy validators; some invalid legacy
 inputs still terminate the host rather than return a structured error.
 The work ceiling is a bound on admitted work, not hard CPU metering.
 
+`financial_graph.compose` joins two bounded typed fragments by linking right
+inputs to named outputs of the left fragment. The fragments and composed
+graph are each validated; unresolved ports and colliding names fail before
+invocation. This is an On1x builder, not new Ottomat source syntax.
+
+`financial_archive.capture` emits an `automat.financial-replay@1` bundle
+with the graph digest, mode, cutoff and strategy context, sorted input
+values and ordered artifact evidence. `financial_archive.replay` requires
+the original typed graph and a separately trusted digest for the bundle.
+It recomputes with the host's current approved bindings and bounded resources;
+archive bytes do not supply code, authority, or an independent guarantee of
+compiler identity. These in-memory bundles do not change existing graph,
+artifact, scalar or pricing archive formats.
+
 With a matched On1x compiler and GrammarEmbed installed, run
 `python3 tests/check_hospitality_adapters.py`,
 `python3 tests/check_financial_graph.py`, and

@@ -39,6 +39,11 @@ with its own inputs, context, budget, resolver and invoker. The bridge
 rechecks the canonical graph digest before dispatch and rejects a changed
 valid binding as `graph_mismatch`. The digest is not an authorization token;
 the host still controls the linked handlers.
+`ottomat.financial_run.capture` additionally binds the exact strategy
+source and host-supplied compiler identity to an `ottomat.financial-replay@1`
+bundle. Replay requires the trusted bundle digest and independently approved
+compiler identity, re-lowers the frozen source, and then replays the native
+evidence. The bundle cannot choose or load a compiler or grant execution.
 Run `python3 tests/check_ottomat_financial.py` for compiled native parity and
 negative syntax, type, import, and effect cases.
 

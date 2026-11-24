@@ -264,7 +264,8 @@ case "$suite" in
     require_tools strace
     checks fixtures price_prediction price_backtest price_properties ecb_yield_study \
       yieldcraft_contribution yieldcraft_demand yieldcraft_demand_panel \
-      yieldcraft_inventory contribution_dag competitor_cube fixed_runner hospitality_adapters \
+      yieldcraft_inventory yieldcraft_coupled_inventory yieldcraft_risk_contribution \
+      contribution_dag competitor_cube fixed_runner hospitality_adapters \
       financial_graph ottomat_financial pricing_cli profiles_cli
     fixture_home
     bin/finpred selftest >"$work/selftest"
