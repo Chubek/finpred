@@ -146,6 +146,10 @@ per repeat, 4,096 executed statements and 250,000 evaluation/work ticks.
 ./bin/poindexter --import-csv other.csv --book imported.pxw
 ```
 
+The [coupled inventory planner](../../../docs/YIELDCRAFT_COUPLED_INVENTORY.md)
+exports an offline policy comparison directly to this CSV importer. These
+are editable modeled scenarios, not verified pricing runs or realized uplift.
+
 CSV import accepts printable ASCII, quoted fields with doubled quotes,
 commas, and LF/CRLF record endings. It imports **values**, never executable
 formulas. Noncanonical numbers such as `0042` stay text. Multiline fields

@@ -11,6 +11,8 @@ record Decision
   price:i64, cost:i64, demand:i64, score:i64, method:sexpr, source:sexpr,
   observed:sexpr, ingested:sexpr, floor:i64, cap:i64, candidates:sexpr
 }
+record Snapshot { cost:i64, method:sexpr, source:sexpr, observed:sexpr, ingested:sexpr }
+record Bounds { floor:i64, cap:i64 }
 
 fn bytes_limit() -> i64 { return 8192; }
 fn version() -> string { return "yieldcraft.contribution@1"; }
@@ -35,7 +37,7 @@ fn digest(value:string) -> bool
   return true;
 }
 
-fn decide(s:C.Scenario, v:C.Valuation, scenario_digest:string, raw:string) -> Decision
+fn snapshot(s:C.Scenario, scenario_digest:string, raw:string) -> Snapshot
 {
   if text_len(raw) > bytes_limit() { tool_fail("yieldcraft demand: snapshot exceeds byte limit"); }
   let rows = CSV.rows(raw);
@@ -63,7 +65,11 @@ fn decide(s:C.Scenario, v:C.Valuation, scenario_digest:string, raw:string) -> De
   let age = Date.date_days(text_slice(cutoff,0,10)) - Date.date_days(text_slice(observed,0,10));
   if age > s["max_age_days"] { tool_fail("yieldcraft: insufficient_demand_evidence; snapshot is stale"); }
   CSV.header(CSV.line(raw,3),"price_minor,expected_room_nights_milli");
-
+  return record<Snapshot>{cost:cost,method:sx_string(method),source:sx_string(source),
+    observed:sx_string(observed),ingested:sx_string(ingested)};
+}
+fn bounds(v:C.Valuation) -> Bounds
+{
   let current = v["current_cents"];
   let movement = v["max_move_cents"];
   var floor = v["floor_cents"];
@@ -71,6 +77,18 @@ fn decide(s:C.Scenario, v:C.Valuation, scenario_digest:string, raw:string) -> De
   if current - movement > floor { floor = current - movement; }
   if current + movement < cap { cap = current + movement; }
   if floor > cap { tool_fail("yieldcraft: guardrail_conflict; floor, cap and movement do not intersect"); }
+  return record<Bounds>{floor:floor,cap:cap};
+}
+
+fn decide(s:C.Scenario, v:C.Valuation, scenario_digest:string, raw:string) -> Decision
+{
+  let evidence = snapshot(s,scenario_digest,raw);
+  let rows = CSV.rows(raw);
+  let cost = evidence["cost"];
+  let limits = bounds(v);
+  let floor = limits["floor"];
+  let cap = limits["cap"];
+  let current = v["current_cents"];
 
   var best_price = 0;
   var best_demand = 0;
@@ -118,6 +136,6 @@ fn decide(s:C.Scenario, v:C.Valuation, scenario_digest:string, raw:string) -> De
   if best_score <= 0
   { tool_fail("yieldcraft: no_positive_expected_contribution; no price recommended"); }
   return record<Decision>{price:best_price,cost:cost,demand:best_demand,score:best_score,
-    method:sx_string(method),source:sx_string(source),observed:sx_string(observed),
-    ingested:sx_string(ingested),floor:floor,cap:cap,candidates:sx_string(buffer_text(candidates))};
+    method:evidence["method"],source:evidence["source"],observed:evidence["observed"],
+    ingested:evidence["ingested"],floor:floor,cap:cap,candidates:sx_string(buffer_text(candidates))};
 }

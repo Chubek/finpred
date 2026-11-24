@@ -2,6 +2,8 @@
 
 `plugins.yieldcraft.inventory_pricing.solve(input)` is a pure On1x planner for one kind of stock over a finite horizon. It consumes an explicit candidate-price grid with externally supplied Bernoulli **net-sale** probabilities. It returns a contingent policy, not a price publication, a demand estimate, or an extension to a FinPRED run format.
 
+For two dates with competing one- and two-night bookings, see the separate [robust coupled-inventory planner](YIELDCRAFT_COUPLED_INVENTORY.md).
+
 ## Input and output
 
 Supply `pricing.inventory-input@1` as bounded, unquoted ASCII CSV (LF or CRLF, up to 8192 bytes). Use canonical nonnegative integers:

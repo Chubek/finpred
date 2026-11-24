@@ -1,0 +1,57 @@
+#!/bin/sh
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$ROOT/bin/build-env.sh"
+. "$ROOT/bin/paths.sh"
+out=$(finpred_cli_output_dir "$ROOT")/finpred-yieldcraft-inventory
+
+usage() {
+  cat <<'EOF'
+Usage: bin/yieldcraft-inventory build
+       bin/yieldcraft-inventory evaluate GRID.csv
+       bin/yieldcraft-inventory compare-csv GRID.csv
+       bin/yieldcraft-inventory stress-contribution SCENARIO.csv VALUATION.csv DEMAND.csv STRESS.csv
+
+Reads a stable trusted local pricing.coupled-inventory-input@1 grid.
+The stress-contribution command consumes a frozen pricing.demand@1 and matching
+explicit stress bounds. Writes JSON or editable comparison CSV. No publication.
+EOF
+}
+die() { echo "yieldcraft-inventory: $*" >&2; exit 2; }
+isfile() { [ -f "$1" ] || die "expected a local regular file"; }
+run() {
+  [ -x "$out" ] || die "missing planner; run bin/yieldcraft-inventory build"
+  export YIELDCRAFT_INVENTORY_PLAN_MODE="$command"
+  exec "$out"
+}
+command=${1:-}
+case "$command" in
+  -h|--help) usage; exit 0 ;;
+  build)
+    [ "$#" -eq 1 ] || die "build takes no arguments"
+    MULIB_ROOT=${MULIB_ROOT:-"$ROOT/third_party/mulib"}
+    ON1XC=${ON1XC:-"$(finpred_mulib_build_dir "$ROOT")/on1xc"}
+    [ -x "$ON1XC" ] || die "missing On1x compiler; run make mulib or set ON1XC"
+    finpred_build_env "$ROOT"
+    mkdir -p -- "$(dirname -- "$out")"
+    stage=$(mktemp -- "${out}.XXXXXXXX")
+    trap 'rm -f -- "$stage"' EXIT
+    trap 'exit 1' HUP INT TERM
+    python3 "$MULIB_ROOT/on1x/tools/on1x-build.py" "$ROOT/plugins/yieldcraft/coupled_inventory_main.on1x" \
+      --backend c11 --cc "${CC:-cc}" --on1xc "$ON1XC" --mulib-root "$MULIB_ROOT" \
+      -I "$ROOT/source" -I "$ROOT/strategies" -I "$ROOT" -o "$stage"
+    mv -fT -- "$stage" "$out"
+    exit 0 ;;
+  evaluate|compare-csv)
+    [ "$#" -eq 2 ] || die "$command requires one grid file"
+    isfile "$2"
+    export YIELDCRAFT_INVENTORY_PLAN_INPUT="$2"
+    run ;;
+  stress-contribution)
+    [ "$#" -eq 5 ] || die "stress-contribution needs scenario, valuation, demand and stress files"
+    isfile "$2"; isfile "$3"; isfile "$4"; isfile "$5"
+    export YIELDCRAFT_PLANNING_SCENARIO="$2" YIELDCRAFT_PLANNING_VALUATION="$3"
+    export YIELDCRAFT_PLANNING_DEMAND="$4" YIELDCRAFT_PLANNING_STRESS="$5"
+    run ;;
+  *) usage >&2; exit 2 ;;
+esac

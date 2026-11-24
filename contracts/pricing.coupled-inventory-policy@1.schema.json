@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Yieldcraft two-night robust inventory policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "version", "published", "comparison", "currency", "scale", "first_night", "second_night", "stock_a", "stock_b", "cost_a_minor", "cost_b_minor", "terminal_a_minor", "terminal_b_minor", "periods", "baseline_product", "baseline_price_minor", "initial", "robust_states"],
+  "properties": {
+    "kind": {"const": "pricing.coupled-inventory-policy"},
+    "version": {"const": 1},
+    "published": {"const": false},
+    "comparison": {"const": "modeled_not_observed"},
+    "currency": {"const": "EUR"},
+    "scale": {"const": 1000},
+    "first_night": {"type": "string", "format": "date"},
+    "second_night": {"type": "string", "format": "date"},
+    "stock_a": {"$ref": "#/$defs/stock"},
+    "stock_b": {"$ref": "#/$defs/stock"},
+    "cost_a_minor": {"$ref": "#/$defs/minor"},
+    "cost_b_minor": {"$ref": "#/$defs/minor"},
+    "terminal_a_minor": {"$ref": "#/$defs/minor"},
+    "terminal_b_minor": {"$ref": "#/$defs/minor"},
+    "periods": {"$ref": "#/$defs/period"},
+    "baseline_product": {"$ref": "#/$defs/product"},
+    "baseline_price_minor": {"$ref": "#/$defs/minor"},
+    "initial": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["robust", "nominal", "fixed", "hold"],
+      "properties": {
+        "robust": {"$ref": "#/$defs/evaluation"},
+        "nominal": {"$ref": "#/$defs/evaluation"},
+        "fixed": {"$ref": "#/$defs/evaluation"},
+        "hold": {"$ref": "#/$defs/evaluation"}
+      }
+    },
+    "robust_states": {
+      "type": "array", "minItems": 1, "maxItems": 392,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["period", "stock_a", "stock_b", "value", "action", "offer"],
+        "properties": {
+          "period": {"$ref": "#/$defs/period"},
+          "stock_a": {"$ref": "#/$defs/stock"},
+          "stock_b": {"$ref": "#/$defs/stock"},
+          "value": {"$ref": "#/$defs/evaluation"},
+          "action": {"enum": ["hold", "offer"]},
+          "offer": {}
+        },
+        "if": {"properties": {"action": {"const": "offer"}}},
+        "then": {"properties": {"offer": {"$ref": "#/$defs/offer"}}},
+        "else": {"properties": {"offer": {"type": "null"}}}
+      }
+    }
+  },
+  "$defs": {
+    "minor": {"type": "integer", "minimum": 0, "maximum": 10000000000},
+    "milliMinor": {"type": "integer", "minimum": -120000000000000, "maximum": 120000000000000},
+    "period": {"type": "integer", "minimum": 1, "maximum": 8},
+    "stock": {"type": "integer", "minimum": 0, "maximum": 6},
+    "product": {"enum": [1, 2, 3]},
+    "bps": {"type": "integer", "minimum": 0, "maximum": 10000},
+    "evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nominal_minor_milli", "worst_minor_milli"],
+      "properties": {
+        "nominal_minor_milli": {"$ref": "#/$defs/milliMinor"},
+        "worst_minor_milli": {"$ref": "#/$defs/milliMinor"}
+      }
+    },
+    "offer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "price_minor", "low_bps", "nominal_bps", "high_bps"],
+      "properties": {
+        "product": {"$ref": "#/$defs/product"},
+        "price_minor": {"$ref": "#/$defs/minor"},
+        "low_bps": {"$ref": "#/$defs/bps"},
+        "nominal_bps": {"$ref": "#/$defs/bps"},
+        "high_bps": {"$ref": "#/$defs/bps"}
+      }
+    }
+  }
+}

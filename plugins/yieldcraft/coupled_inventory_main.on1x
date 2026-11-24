@@ -1,0 +1,35 @@
+import plugins.yieldcraft.coupled_inventory as Planner;
+import std.environ as Env;
+import std.io.TextIO as IO;
+import std.os.OS_FileSys as FS;
+import yieldcraft.risk_contribution as Risk;
+
+fn input(key:string) -> string
+{
+  let (found,path) = Env.getenv(key);
+  if !found || path == "" { tool_fail("yieldcraft planning: expected a local input path"); }
+  let size = FS.basis_fs_file_size(path);
+  if size < 1 || size > Planner.bytes_limit() || FS.basis_fs_is_dir(path)
+  { tool_fail("yieldcraft planning: input missing or outside byte profile"); }
+  let raw = IO.basis_text_io_input_all(path);
+  if text_len(raw) != size { tool_fail("yieldcraft planning: incomplete text input"); }
+  return raw;
+}
+
+fn main() -> i64
+{
+  let (has_mode,mode) = Env.getenv("YIELDCRAFT_INVENTORY_PLAN_MODE");
+  if !has_mode || mode == "evaluate"
+  { IO.basis_text_io_print(Planner.solve(input("YIELDCRAFT_INVENTORY_PLAN_INPUT"))); return 0; }
+  if mode == "compare-csv"
+  { IO.basis_text_io_print(Planner.compare_csv(input("YIELDCRAFT_INVENTORY_PLAN_INPUT"))); return 0; }
+  if mode == "stress-contribution"
+  {
+    IO.basis_text_io_print(Risk.solve(input("YIELDCRAFT_PLANNING_SCENARIO"),
+      input("YIELDCRAFT_PLANNING_VALUATION"),input("YIELDCRAFT_PLANNING_DEMAND"),
+      input("YIELDCRAFT_PLANNING_STRESS")));
+    return 0;
+  }
+  tool_fail("yieldcraft planning: unsupported mode");
+  return 1;
+}

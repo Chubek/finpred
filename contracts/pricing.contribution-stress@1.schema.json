@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Yieldcraft contribution under explicit demand stress bounds",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "version", "published", "currency", "price_basis", "scale", "comparison", "scenario", "valuation", "demand", "stress", "assumptions_as_of", "decision_at", "marginal_cost_minor", "feasible_floor_minor", "feasible_cap_minor", "robust", "nominal", "candidates"],
+  "properties": {
+    "kind": {"const": "pricing.contribution-stress"},
+    "version": {"const": 1},
+    "published": {"const": false},
+    "currency": {"const": "EUR"},
+    "price_basis": {"const": "room_night"},
+    "scale": {"const": 1000},
+    "comparison": {"const": "modeled_not_observed"},
+    "scenario": {"$ref": "#/$defs/digest"},
+    "valuation": {"$ref": "#/$defs/digest"},
+    "demand": {"$ref": "#/$defs/digest"},
+    "stress": {"$ref": "#/$defs/digest"},
+    "assumptions_as_of": {"type": "string", "format": "date-time"},
+    "decision_at": {"type": "string", "format": "date-time"},
+    "marginal_cost_minor": {"$ref": "#/$defs/minor"},
+    "feasible_floor_minor": {"$ref": "#/$defs/minor"},
+    "feasible_cap_minor": {"$ref": "#/$defs/minor"},
+    "robust": {"$ref": "#/$defs/selection"},
+    "nominal": {"$ref": "#/$defs/selection"},
+    "candidates": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["price_minor", "low_room_nights_milli", "nominal_room_nights_milli", "high_room_nights_milli", "nominal_minor_milli", "worst_minor_milli", "feasible"],
+        "properties": {
+          "price_minor": {"$ref": "#/$defs/minor"},
+          "low_room_nights_milli": {"$ref": "#/$defs/quantity"},
+          "nominal_room_nights_milli": {"$ref": "#/$defs/quantity"},
+          "high_room_nights_milli": {"$ref": "#/$defs/quantity"},
+          "nominal_minor_milli": {"$ref": "#/$defs/value"},
+          "worst_minor_milli": {"$ref": "#/$defs/value"},
+          "feasible": {"type": "boolean"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^blake3:[0-9a-f]{64}$"},
+    "quantity": {"type": "integer", "minimum": 0, "maximum": 1000000},
+    "minor": {"type": "integer", "minimum": 0, "maximum": 1000000000000},
+    "value": {"type": "integer", "minimum": -1000000000000000000, "maximum": 1000000000000000000},
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "price_minor", "nominal_minor_milli", "worst_minor_milli"],
+      "properties": {
+        "action": {"enum": ["hold", "offer"]},
+        "price_minor": {},
+        "nominal_minor_milli": {"$ref": "#/$defs/value"},
+        "worst_minor_milli": {"$ref": "#/$defs/value"}
+      },
+      "if": {"properties": {"action": {"const": "offer"}}},
+      "then": {"properties": {"price_minor": {"$ref": "#/$defs/minor"}}},
+      "else": {"properties": {"price_minor": {"type": "null"}, "nominal_minor_milli": {"const": 0}, "worst_minor_milli": {"const": 0}}}
+    }
+  }
+}
