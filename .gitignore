@@ -56,5 +56,3 @@ Thumbs.db
 
 # Deliberately tracked: On1xfile, On1xfile.lock (when generated),
 # contracts/, fixtures/, strategies/, tests/, AGENTS.md and source/.
-AGENTS.md
-PATCH_*
