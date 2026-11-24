@@ -1,0 +1,123 @@
+# Primary, pure Yieldcraft policy. Its only evidence is an own-demand snapshot.
+import core.contracts as C;
+import core.csv as CSV;
+import core.date as Date;
+import core.format as F;
+import core.money as Money;
+import std.String as Str;
+
+record Decision
+{
+  price:i64, cost:i64, demand:i64, score:i64, method:sexpr, source:sexpr,
+  observed:sexpr, ingested:sexpr, floor:i64, cap:i64, candidates:sexpr
+}
+
+fn bytes_limit() -> i64 { return 8192; }
+fn version() -> string { return "yieldcraft.contribution@1"; }
+fn scale() -> i64 { return 1000; }
+
+fn number(row:string, index:i64) -> i64
+{
+  let text = CSV.field(row,index);
+  let value = CSV.nat(text);
+  if F.num(value) != text { tool_fail("yieldcraft demand: expected canonical nonnegative integer"); }
+  return value;
+}
+
+fn digest(value:string) -> bool
+{
+  if text_len(value) != 64 { return false; }
+  for i in 0 .. 64
+  {
+    let byte = text_byte(value,i);
+    if !(byte >= 48 && byte <= 57) && !(byte >= 97 && byte <= 102) { return false; }
+  }
+  return true;
+}
+
+fn decide(s:C.Scenario, v:C.Valuation, scenario_digest:string, raw:string) -> Decision
+{
+  if text_len(raw) > bytes_limit() { tool_fail("yieldcraft demand: snapshot exceeds byte limit"); }
+  let rows = CSV.rows(raw);
+  if rows < 6 { tool_fail("yieldcraft: insufficient_demand_evidence; at least two own-demand price estimates are required"); }
+  if rows > 68 { tool_fail("yieldcraft demand: at most 64 price estimates"); }
+  CSV.header(CSV.line(raw,0),"pricing.demand@1");
+  CSV.header(CSV.line(raw,1),"scenario_blake3,observed_at,ingested_at,currency,price_basis,method,evidence_blake3,marginal_cost_minor");
+  let meta = CSV.line(raw,2);
+  CSV.require_width(meta,8);
+  let observed = CSV.field(meta,1);
+  let ingested = CSV.field(meta,2);
+  let method = CSV.field(meta,5);
+  let source = CSV.field(meta,6);
+  let cost = number(meta,7);
+  if !digest(scenario_digest) || CSV.field(meta,0) != scenario_digest
+    || CSV.field(meta,3) != sx_text(s["currency"]) || CSV.field(meta,4) != "room_night"
+    || !Money.safe_nonnegative(cost)
+  { tool_fail("yieldcraft demand: scenario, money or price basis mismatch"); }
+  if (method != "first_party_price_experiment" && method != "calibrated_booking_model") || !digest(source)
+  { tool_fail("yieldcraft demand: unsupported method or malformed evidence reference"); }
+  let cutoff = sx_text(s["decision_at"]);
+  if !Date.utc_timestamp(observed) || !Date.utc_timestamp(ingested)
+    || Str.compare(observed,ingested) > 0 || Str.compare(ingested,cutoff) > 0
+  { tool_fail("yieldcraft demand: invalid or future-dated provenance"); }
+  let age = Date.date_days(text_slice(cutoff,0,10)) - Date.date_days(text_slice(observed,0,10));
+  if age > s["max_age_days"] { tool_fail("yieldcraft: insufficient_demand_evidence; snapshot is stale"); }
+  CSV.header(CSV.line(raw,3),"price_minor,expected_room_nights_milli");
+
+  let current = v["current_cents"];
+  let movement = v["max_move_cents"];
+  var floor = v["floor_cents"];
+  var cap = v["cap_cents"];
+  if current - movement > floor { floor = current - movement; }
+  if current + movement < cap { cap = current + movement; }
+  if floor > cap { tool_fail("yieldcraft: guardrail_conflict; floor, cap and movement do not intersect"); }
+
+  var best_price = 0;
+  var best_demand = 0;
+  var best_score = 0;  # Zero is the no-sale alternative, not a recommendation.
+  var best_distance = 0;
+  var feasible_count = 0;
+  var last_price = -1;
+  var last_demand = 1000000;
+  let candidates = buffer_new();
+  for i in 4 .. rows
+  {
+    let row = CSV.line(raw,i);
+    CSV.require_width(row,2);
+    let price = number(row,0);
+    let demand = number(row,1);
+    if !Money.safe_nonnegative(price) || price <= last_price || demand > last_demand
+    { tool_fail("yieldcraft demand: prices must be bounded and strictly increasing; demand must be bounded and nonincreasing"); }
+    last_price = price;
+    last_demand = demand;
+    # |price-cost| <= 10^12 and demand <= 10^6: the signed product fits i64.
+    let score = (price - cost) * demand;
+    let distance = Money.absolute_distance(price,current);
+    var status = "outside_guardrails";
+    if price >= floor && price <= cap
+    {
+      status = "feasible";
+      feasible_count = feasible_count + 1;
+      # Equal scores prefer the price closest to current; in an exact
+      # distance tie the ascending grid retains the lower price.
+      if score > best_score || (score > 0 && score == best_score && distance < best_distance)
+      {
+        best_price = price;
+        best_demand = demand;
+        best_score = score;
+        best_distance = distance;
+      }
+    }
+    let p = F.num(price);
+    let d = F.num(demand);
+    let e = F.num(score);
+    buffer_append(candidates,"candidate=$p,$d,$e,$status\n");
+  }
+  if feasible_count == 0
+  { tool_fail("yieldcraft: insufficient_demand_evidence; no priced demand point falls inside guardrails"); }
+  if best_score <= 0
+  { tool_fail("yieldcraft: no_positive_expected_contribution; no price recommended"); }
+  return record<Decision>{price:best_price,cost:cost,demand:best_demand,score:best_score,
+    method:sx_string(method),source:sx_string(source),observed:sx_string(observed),
+    ingested:sx_string(ingested),floor:floor,cap:cap,candidates:sx_string(buffer_text(candidates))};
+}

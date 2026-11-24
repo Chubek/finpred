@@ -1,0 +1,27 @@
+# The own-demand optimizer has one statically bound graph. It does not admit
+# market-distribution edges, percentile profiles, or caller-defined handlers.
+import ottomat.grammar as Syntax;
+
+fn graph_version() -> string { return "yieldcraft.contribution-graph@1"; }
+
+fn admits(source:string) -> bool
+{
+  if text_len(source) < 1 || text_len(source) > 512 { return false; }
+  let lines = Syntax.fixed(source);
+  if sx_kind(lines) == 0 || sx_text(sx_head(sx_tail(sx_head(lines)))) != "2" { return false; }
+  let graph = buffer_new();
+  var rest = sx_tail(lines);
+  while sx_kind(rest) == 3
+  {
+    var row = sx_head(rest);
+    while sx_kind(row) == 3
+    {
+      buffer_append(graph,sx_text(sx_head(row)));
+      row = sx_tail(row);
+      if sx_kind(row) == 3 { buffer_append(graph," "); }
+    }
+    buffer_append(graph,"\n");
+    rest = sx_tail(rest);
+  }
+  return buffer_text(graph) == "input hospitality.scenario@1\nsource pricing.demand@1\ntransform pricing.demand@1\nalgorithm pricing.contribution@1\nstrategy pricing.contribution-recommendation@1\ngate pricing.contribution-recommendation@1\noutput pricing.contribution-recommendation@1\nprofile contribution@1 objective expected-contribution\n";
+}

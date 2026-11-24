@@ -1,0 +1,9 @@
+ottomat 2
+input hospitality.scenario@1
+source pricing.demand@1
+transform pricing.demand@1
+algorithm pricing.contribution@1
+strategy pricing.contribution-recommendation@1
+gate pricing.contribution-recommendation@1
+output pricing.contribution-recommendation@1
+profile contribution@1 objective expected-contribution
