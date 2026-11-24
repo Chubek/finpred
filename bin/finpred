@@ -11,6 +11,7 @@ usage() {
   echo "usage: bin/finpred [run [--engine legacy|scalar]|selftest|replay RUN_ID|explain RUN_ID|evidence RUN_ID|poindexter RUN_ID]" >&2
   echo "       bin/finpred forecast {import SNAPSHOT|catalog ID_LIST|issue CATALOG MODEL CUTOFF REQUEST|score ISSUE CATALOG CUTOFF|holdout PLAN|audit SORTED_ID_LIST|replay ID}" >&2
   echo "       bin/finpred cube {evaluate SNAPSHOTS CELLS POLICIES|replay ID}" >&2
+  echo "       bin/finpred {dragnet-inspect|dragnet-offers} CAPTURE UTC_CUTOFF" >&2
   exit 2
 }
 case "$MODE" in
@@ -28,6 +29,15 @@ case "$MODE" in
     [ "$#" -eq 2 ] || usage
     FINPRED_RUN_ID=$2
     export FINPRED_RUN_ID
+    ;;
+  dragnet-inspect|dragnet-offers)
+    [ "$#" -eq 3 ] && [ -n "$2" ] || usage
+    case "$2" in
+      /*) FINPRED_DRAGNET_INPUT=$2 ;;
+      *) FINPRED_DRAGNET_INPUT=$PWD/$2 ;;
+    esac
+    FINPRED_DRAGNET_CUTOFF=$3
+    export FINPRED_DRAGNET_INPUT FINPRED_DRAGNET_CUTOFF
     ;;
   cube)
     case "${2:-}" in
@@ -72,6 +82,13 @@ case "$MODE" in
 esac
 case "$MODE" in
   forecast-*) EXE="$(finpred_cli_output_dir "$ROOT")-forecast/finpred-forecast" ;;
+  dragnet-inspect|dragnet-offers)
+    EXE="$(finpred_dragnet_output_dir "$ROOT")/finpred-dragnet"
+    if [ ! -x "$EXE" ]; then
+      echo "FinPRED Dragnet consumer absent: run 'make dragnet' first" >&2
+      exit 2
+    fi
+    ;;
   *) EXE=$(finpred_cli_executable "$ROOT") ;;
 esac
 if [ ! -x "$EXE" ]; then

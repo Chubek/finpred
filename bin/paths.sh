@@ -18,3 +18,10 @@ finpred_cli_executable() {
     printf '%s/finpred\n' "$cli_dir"
   fi
 }
+
+finpred_dragnet_output_dir() {
+  case ${FINPRED_DRAGNET_BUILD_DIR:-} in
+    /*) realpath -m -- "$FINPRED_DRAGNET_BUILD_DIR" ;;
+    *) realpath -m -- "$1/${FINPRED_DRAGNET_BUILD_DIR:-build/dragnet}" ;;
+  esac
+}

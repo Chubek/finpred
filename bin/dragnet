@@ -1,0 +1,45 @@
+#!/bin/sh
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$ROOT/bin/paths.sh"
+DRAGNET_MODE=once
+DRAGNET_CONFIG=Dragnet.json
+DRAGNET_ALLOWED_HOSTS=
+DRAGNET_OFFER_HOSTS=
+DRAGNET_OUTPUT=jsonl
+DRAGNET_ALLOW_LLM=0
+DRAGNET_REQUIRE_OFFERS=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --daemon) DRAGNET_MODE=daemon; shift ;;
+    --offers-csv|--handoff)
+      [ "$DRAGNET_OUTPUT" = jsonl ] || { echo "Select one Dragnet output format" >&2; exit 2; }
+      DRAGNET_OUTPUT=${1#--}; shift ;;
+    --allow-llm) DRAGNET_ALLOW_LLM=1; shift ;;
+    --require-offers) DRAGNET_REQUIRE_OFFERS=1; shift ;;
+    --config) [ "$#" -ge 2 ] || exit 2; DRAGNET_CONFIG=$2; shift 2 ;;
+    --allow-host|--allow-offer-host)
+      [ "$#" -ge 2 ] || exit 2
+      case "$2" in ''|*[!a-z0-9.-]*) echo "Invalid exact DNS host" >&2; exit 2 ;; esac
+      if [ "$1" = --allow-host ]; then
+        DRAGNET_ALLOWED_HOSTS=${DRAGNET_ALLOWED_HOSTS:+$DRAGNET_ALLOWED_HOSTS,}$2
+      else
+        DRAGNET_OFFER_HOSTS=${DRAGNET_OFFER_HOSTS:+$DRAGNET_OFFER_HOSTS,}$2
+      fi
+      shift 2 ;;
+    --build) exec sh "$ROOT/plugins/dragnet/build.sh" ;;
+    --help)
+      echo "Usage: bin/dragnet [--config Dragnet.json] [--daemon] [--handoff|--offers-csv] [--require-offers] [--allow-host HOST]... [--allow-offer-host HOST]... [--allow-llm]"
+      echo "Offline by default. Daemon stays in foreground; SIGINT/SIGTERM cancel."
+      exit 0 ;;
+    *) echo "Unknown Dragnet option: $1" >&2; exit 2 ;;
+  esac
+done
+export DRAGNET_MODE DRAGNET_CONFIG DRAGNET_ALLOWED_HOSTS DRAGNET_OUTPUT
+export DRAGNET_ALLOW_LLM DRAGNET_OFFER_HOSTS DRAGNET_REQUIRE_OFFERS
+exe="$(finpred_dragnet_output_dir "$ROOT")/dragnet"
+if [ ! -x "$exe" ]; then
+  echo "Build Dragnet first: sh plugins/dragnet/build.sh" >&2
+  exit 2
+fi
+exec "$exe"

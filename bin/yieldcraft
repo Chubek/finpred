@@ -1,0 +1,121 @@
+#!/bin/sh
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$ROOT/bin/paths.sh"
+
+usage() {
+  cat <<'EOF'
+Usage: bin/yieldcraft [--scenario FILE] [--valuation FILE] [--strategy FILE]
+                      [--capture FILE | --dragnet CONFIG [--save-capture FILE]
+                         [--allow-host HOST]... [--allow-offer-host HOST]...]
+
+Without a source option, use FinPRED's existing CSV inputs. With --dragnet,
+capture once using offer-csv-v1; with --capture, use a trusted saved batch offline.
+The scenario's decision_at sets the data cutoff. No booking or price publication.
+EOF
+}
+die() { echo "yieldcraft: $*" >&2; exit 2; }
+absolute() {
+  case "$1" in /*) printf '%s\n' "$1" ;; *) printf '%s/%s\n' "$PWD" "$1" ;; esac
+}
+if [ "${FINPRED_MODE:-}" = execution ]; then
+  die "capability denied: execution is forbidden"
+fi
+config=
+capture=
+save=
+hosts=
+offer_hosts=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --help) usage; exit 0 ;;
+    --scenario|--valuation|--strategy|--dragnet|--capture|--save-capture|--allow-host|--allow-offer-host)
+      [ "$#" -ge 2 ] && [ -n "$2" ] || die "$1 requires a value"
+      case "$1" in
+        --scenario) FINPRED_SCENARIO=$(absolute "$2"); export FINPRED_SCENARIO ;;
+        --valuation) FINPRED_VALUATION=$(absolute "$2"); export FINPRED_VALUATION ;;
+        --strategy) FINPRED_STRATEGY=$(absolute "$2"); export FINPRED_STRATEGY ;;
+        --dragnet)
+          [ -z "$config$capture" ] || die "choose one of --dragnet and --capture"
+          config=$(absolute "$2") ;;
+        --capture)
+          [ -z "$config$capture" ] || die "choose one of --dragnet and --capture"
+          capture=$(absolute "$2") ;;
+        --save-capture)
+          [ -z "$save" ] || die "choose one --save-capture path"
+          save=$(absolute "$2") ;;
+        --allow-host|--allow-offer-host)
+          case "$2" in *[!a-z0-9.-]*) die "invalid exact DNS host" ;; esac
+          if [ "$1" = --allow-host ]; then hosts="$hosts $2"
+          else offer_hosts="$offer_hosts $2"; fi ;;
+      esac
+      shift 2 ;;
+    *) die "unknown option: $1 (see --help)" ;;
+  esac
+done
+if [ -z "$config" ] && [ -n "$save$hosts$offer_hosts" ]; then
+  die "host grants and --save-capture require --dragnet"
+fi
+if [ -z "$config$capture" ]; then
+  exec "$ROOT/bin/finpred" run --engine legacy
+fi
+
+cli=$(finpred_cli_executable "$ROOT")
+[ -x "$cli" ] || die "FinPRED executable absent; run 'make' first"
+dragnet_dir=$(finpred_dragnet_output_dir "$ROOT")
+[ -x "$dragnet_dir/finpred-dragnet" ] || die "Dragnet consumer absent; run 'make dragnet' first"
+if [ -n "$config" ]; then
+  [ -x "$dragnet_dir/dragnet" ] || die "Dragnet executable absent; run 'make dragnet' first"
+fi
+if [ -n "$save" ] && { [ -e "$save" ] || [ -L "$save" ]; }; then
+  die "capture destination already exists: $save"
+fi
+
+umask 077
+stage=
+work=$(mktemp -d -- "${TMPDIR:-/tmp}/finpred-yieldcraft.XXXXXXXX")
+# Paths passed through bin/finpred must stay valid after its cwd change.
+work=$(CDPATH= cd -- "$work" && pwd)
+cleanup() {
+  if [ -n "$stage" ]; then rm -f -- "$stage"; fi
+  rm -f -- "$work/scenario.csv" "$work/capture.jsonl" "$work/offers.csv"
+  rmdir -- "$work"
+}
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# Freeze the exact scenario bytes used for both the cutoff and recommendation.
+# Path flags are relative to the caller; inherited FINPRED_* paths keep their
+# existing repository-relative convention.
+scenario=${FINPRED_SCENARIO:-fixtures/scenario.csv}
+case "$scenario" in /*) ;; *) scenario=$ROOT/$scenario ;; esac
+[ -f "$scenario" ] || die "scenario is not a regular file: $scenario"
+head -c 2000001 -- "$scenario" > "$work/scenario.csv"
+export FINPRED_SCENARIO="$work/scenario.csv"
+cutoff=$(FINPRED_MODE=yieldcraft-scenario-cutoff "$dragnet_dir/finpred-dragnet")
+
+if [ -n "$config" ]; then
+  capture=$work/capture.jsonl
+  set -- --handoff --require-offers --config "$config"
+  # Exact DNS host tokens were validated before collection. No eval or shell
+  # fragments from the config enter the argument vector.
+  for host in $hosts; do set -- "$@" --allow-host "$host"; done
+  for host in $offer_hosts; do set -- "$@" --allow-offer-host "$host"; done
+  "$ROOT/bin/dragnet" "$@" > "$capture"
+fi
+[ -f "$capture" ] || die "capture is not a regular file: $capture"
+"$ROOT/bin/finpred" dragnet-offers "$capture" "$cutoff" > "$work/offers.csv"
+if ! { IFS= read -r header && IFS= read -r row; } < "$work/offers.csv"; then
+  die "capture contains no structured offers"
+fi
+
+if [ -n "$save" ]; then
+  # Publish a complete private capture without replacing any destination.
+  # Stage beside the destination so the final hard link stays on one filesystem.
+  stage=$(mktemp -- "$(dirname -- "$save")/.finpred-yieldcraft.XXXXXXXX")
+  cat -- "$capture" > "$stage"
+  ln -T -- "$stage" "$save"
+fi
+FINPRED_OFFERS="$work/offers.csv" "$ROOT/bin/finpred" run --engine legacy
