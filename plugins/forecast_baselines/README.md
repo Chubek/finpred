@@ -15,7 +15,7 @@ Each takes `training` (`analysis.guest-nights-monthly@1`) and `request`
 (`analysis.guest-nights-forecast-request@1`) in that order. `training` is one
 frozen DATA1 projection, not a live or general series and not a revision
 resolver. The host must select the snapshot as of the training cutoff and
-verify its bytes and lineage with `core.guest_nights.verifies` or an equivalent
+verify its bytes and lineage with `plugins.dragnet.guest_nights.verifies` or an equivalent
 trusted replay path. The model checks the canonical projection profile and
 requires its cutoff to equal the SDK request cutoff. Digest comparisons do not
 authenticate the source.

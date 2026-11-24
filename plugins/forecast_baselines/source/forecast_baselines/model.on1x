@@ -2,7 +2,7 @@
 # lineage before invocation; parsing here does not authenticate input bytes.
 import core.date as Date;
 import core.format as F;
-import core.guest_nights as Guest;
+import plugins.dragnet.guest_nights as Guest;
 import sdk.callable as SDK;
 import std.String as Str;
 import std.crypto.crypto as Crypto;

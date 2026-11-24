@@ -1,6 +1,6 @@
 # Optional consumer-owned adapter. A capture contains claims, not an authority
 # grant. The host calling project() must select a trusted capture.
-import core.dragnet_batch as Dragnet;
+import plugins.dragnet.dragnet_batch as Dragnet;
 import core.contracts as Contracts;
 import std.String as Str;
 

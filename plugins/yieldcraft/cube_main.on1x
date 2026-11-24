@@ -1,0 +1,24 @@
+import plugins.yieldcraft.competitor_archive as Archive;
+import std.environ as Env;
+
+fn setting(name:string, fallback:string) -> string
+{
+  let (found,value) = Env.getenv(name);
+  if !found || value == "" { return fallback; }
+  return value;
+}
+
+fn main() -> i64
+{
+  let mode = setting("FINPRED_MODE","");
+  let home = setting("FINPRED_CUBE_HOME",".finpred-cube");
+  let input = setting("FINPRED_CUBE_INPUT","");
+  if mode == "cube-evaluate"
+  {
+    return Archive.evaluate(home,input,setting("FINPRED_CUBE_CELLS",""),
+      setting("FINPRED_CUBE_POLICIES",""));
+  }
+  if mode == "cube-replay" { return Archive.replay(home,input); }
+  tool_fail("capability denied: execution mode and unknown modes unavailable");
+  return 1;
+}

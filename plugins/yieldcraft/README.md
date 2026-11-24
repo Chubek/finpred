@@ -1,4 +1,8 @@
-# `yieldcraft.percentile` — built-in On1x strategy
+# `yieldcraft.percentile` — secondary market-positioning strategy
+
+This package compares posted offers; it does not estimate willingness to
+pay. For Yieldcraft's default expected-contribution strategy, see
+[Yieldcraft strategies](../../strategies/README.md).
 
 ## Run `bin/yieldcraft`
 
@@ -6,12 +10,13 @@ From the repository root:
 
 ```sh
 make
-./bin/yieldcraft
+./bin/yieldcraft --market-positioning
 ```
 
 This uses the existing FinPRED CSV inputs and writes a local, replayable
-recommendation. It does not start Dragnet unless requested. To acquire one
-Dragnet batch and price from its structured offers:
+market-positioning recommendation. It does not start Dragnet unless
+requested. To acquire one competitor batch and position against its
+structured offers:
 
 ```sh
 make dragnet
@@ -36,7 +41,7 @@ To reuse saved evidence without invoking Dragnet:
 Select only a trusted capture. The launcher validates against the scenario's
 `decision_at`, then supplies the verified offers to the existing pricing
 engine. Empty, invalid, or late captures never fall back to `FINPRED_OFFERS`.
-Optional `--strategy FILE` selects an existing strategy. Path flags are
+Optional `--strategy FILE` selects a market-positioning policy. Path flags are
 relative to the caller; existing `FINPRED_*` inputs keep their normal
 conventions. `--save-capture` keeps a separate, private verified capture
 without overwriting an existing file, even if pricing subsequently fails.
@@ -76,13 +81,14 @@ plugin-independent runner. This typed handler takes validated scenario and
 valuation records, offers CSV bytes, a profile name, an evidence collection
 flag, and a buffer; the trusted host owns authorization and any persisted
 lineage. For the persisted `pricing.recommendation@1`
-envelope use `core.serialize.recommendation` with the host's verified IDs,
+envelope use `core.serialize.recommendation` with the host's verified IDs and
+the strategy identity,
 as illustrated by the [test consumer](../../tests/yieldcraft_package_consumer/main.on1x).
 
 ## Build and test from the FinPRED root
 
 Use the pinned MuLIB checkout and compiler described in
-[AGENTS.md](../../AGENTS.md). To link your own `host.on1x`, point the compiler
+[INSTALL.md](../../INSTALL.md). To link your own `host.on1x`, point the compiler
 at the existing FinPRED modules and the package:
 
 ```sh

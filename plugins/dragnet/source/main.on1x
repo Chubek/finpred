@@ -3,7 +3,7 @@ import hospitality as Hospitality;
 import std.environ as Env;
 import std.String as Str;
 import core.date as Date;
-import core.dragnet_wire as Wire;
+import plugins.dragnet.dragnet_wire as Wire;
 
 # The native host owns transport, JSON decoding, clocks and cancellation.
 # No native policy/decision implementation and no plugin-supplied code.

@@ -1,0 +1,234 @@
+# Pure reader for the published Dragnet handoff. No dependencies on acquisition,
+# credentials, file IO, pricing policy or a consumer registry.
+import plugins.dragnet.dragnet_wire as Wire;
+import core.date as Date;
+import std.String as Str;
+import std.crypto.crypto as Crypto;
+import std.ppx.json as Json;
+
+record ModelEvidence {
+  endpoint:sexpr, model:sexpr, request:sexpr, response:sexpr, digest:sexpr, received_at:sexpr
+}
+record Page {
+  handler:sexpr, query:sexpr, url:sexpr, as_of:sexpr, readable:sexpr, llm_text:sexpr,
+  pricing_claim:bool, offer_csv:sexpr, transport:sexpr, received_at:sexpr, page_digest:sexpr,
+  page_html:sexpr, search_url:sexpr, search_html:sexpr, search_digest:sexpr, model_evidence:ModelEvidence
+}
+record Batch {
+  provider:sexpr, extraction:sexpr, handler:sexpr, transport:sexpr, requested_as_of:sexpr,
+  digest:sexpr, pages:sexpr, count:i64
+}
+
+fn digest(bytes:string) -> string {
+  let (status,hash) = Crypto.basis_crypto_blake3(bytes);
+  if status != 0 { tool_fail("dragnet handoff: digest unavailable"); }
+  return "blake3:$hash";
+}
+fn handler_id(s:string) -> bool {
+  let prefix = "dragnet.search@1:sha256:";
+  let n = text_len(prefix);
+  if text_len(s) != n + 64 || !Str.is_prefix(prefix,s) { return false; }
+  for i in n .. text_len(s) {
+    let c = text_byte(s,i);
+    if !(c >= 48 && c <= 57) && !(c >= 97 && c <= 102) { return false; }
+  }
+  return true;
+}
+fn after(s:string, pos:i64, literal:string, error:string) -> i64 {
+  let end = pos + text_len(literal);
+  if end > text_len(s) || text_slice(s,pos,end) != literal { tool_fail(error); }
+  return end;
+}
+fn field(s:string, pos:i64, delimiter:string, error:string) -> (string,i64) {
+  let start = after(s,pos,delimiter,error);
+  if start >= text_len(s) || text_byte(s,start) != 34 { tool_fail(error); }
+  return Json.ppx_json_quoted(s,start);
+}
+fn https_url(s:string) -> bool {
+  if text_len(s) <= 8 || text_len(s) > 8191 || !Str.is_prefix("https://",s) { return false; }
+  for i in 8 .. text_len(s) {
+    let c = text_byte(s,i);
+    if c <= 32 || c == 92 || c == 127 { return false; }
+  }
+  return true;
+}
+fn utf8(s:string) -> bool {
+  let n = text_len(s);
+  var i = 0;
+  while i < n {
+    let c = text_byte(s,i);
+    i = i + 1;
+    if c < 128 { continue; }
+    var rest = 1;
+    if c >= 224 { rest = 2; }
+    if c >= 240 { rest = 3; }
+    if c < 194 || c > 244 || i + rest > n { return false; }
+    let next = text_byte(s,i);
+    if (c == 224 && next < 160) || (c == 237 && next >= 160)
+      || (c == 240 && next < 144) || (c == 244 && next >= 144) { return false; }
+    for j in i .. i + rest {
+      let b = text_byte(s,j);
+      if b < 128 || b > 191 { return false; }
+    }
+    i = i + rest;
+  }
+  return true;
+}
+fn absent_model() -> ModelEvidence {
+  let none = sx_nil();
+  return record<ModelEvidence>{endpoint:none,model:none,request:none,response:none,digest:none,received_at:none};
+}
+
+# A page line from read(). This validates structure, byte limits and internal
+# parents, not provider authorization or whether its extraction is correct.
+fn page(line:string) -> Page {
+  let err = "dragnet handoff: invalid page record";
+  if text_len(line) > Wire.limit() || !utf8(line) { tool_fail(err); }
+  let (handler,a) = field(line,0,"{\"format\":\"dragnet.page@1\",\"handler\":",err);
+  let (query,b) = field(line,a,",\"query\":",err);
+  let (url,c) = field(line,b,",\"url\":",err);
+  let (as_of,d) = field(line,c,",\"as_of\":",err);
+  let (readable,e) = field(line,d,",\"readable\":",err);
+  let (llm,f) = field(line,e,",\"llm_text\":",err);
+  let p = after(line,f,",\"pricing_input\":",err);
+  var claim = false;
+  var g = p;
+  if p + 4 <= text_len(line) && text_slice(line,p,p + 4) == "true" {
+    claim = true;
+    g = p + 4;
+  } else { g = after(line,p,"false",err); }
+  let (offer,h) = field(line,g,",\"offer_csv\":",err);
+  let (search_url,i) = field(line,h,",\"evidence\":{\"request_url\":",err);
+  let (search_html,j) = field(line,i,",\"search_html\":",err);
+  let (search_digest,k) = field(line,j,",\"search_digest\":",err);
+  let (html,l) = field(line,k,",\"page_html\":",err);
+  let (page_digest,m) = field(line,l,",\"page_digest\":",err);
+  let (transport,n) = field(line,m,",\"transport\":",err);
+  let (received,o) = field(line,n,",\"received_at\":",err);
+  var end = o;
+  var model_evidence = absent_model();
+  if llm != "" {
+    let (endpoint,q) = field(line,o,",\"llm_endpoint\":",err);
+    let (model,r) = field(line,q,",\"llm_model\":",err);
+    let (request,s) = field(line,r,",\"llm_request\":",err);
+    let (response,t) = field(line,s,",\"llm_response\":",err);
+    let (response_digest,u) = field(line,t,",\"llm_digest\":",err);
+    let (llm_received,v) = field(line,u,",\"llm_received_at\":",err);
+    if !https_url(endpoint) || text_len(model) < 1 || text_len(model) > 128
+      || text_len(request) < 1 || text_len(request) > 1600000
+      || text_len(response) > 262144 || response_digest != digest(response)
+      || (transport == "offline" && llm_received != "")
+      || (transport == "https" && (!Date.utc_timestamp(llm_received)
+        || Str.compare(llm_received,received) < 0 || Str.compare(llm_received,as_of) > 0)) {
+      tool_fail("dragnet handoff: invalid LLM lineage");
+    }
+    model_evidence = record<ModelEvidence>{endpoint:sx_string(endpoint),model:sx_string(model),
+      request:sx_string(request),response:sx_string(response),digest:sx_string(response_digest),
+      received_at:sx_string(llm_received)};
+    end = v;
+  }
+  if after(line,end,"}}",err) != text_len(line) || !handler_id(handler)
+    || text_len(query) < 1 || text_len(query) > 256 || !https_url(url) || !https_url(search_url)
+    || !Date.utc_timestamp(as_of) || text_len(readable) > 262144 || text_len(llm) > 16384
+    || text_len(offer) > 2048 || claim != (offer != "")
+    || text_len(search_html) > 262144 || text_len(html) > 262144
+    || (transport != "offline" && transport != "https")
+    || (transport == "offline" && received != "")
+    || (transport == "https" && (!Date.utc_timestamp(received) || Str.compare(received,as_of) > 0)) {
+    tool_fail(err);
+  }
+  var has_term = false;
+  for pos in 0 .. text_len(query) {
+    let byte = text_byte(query,pos);
+    if byte < 32 || byte == 127 { tool_fail(err); }
+    if byte != 32 { has_term = true; }
+  }
+  if !has_term { tool_fail(err); }
+  if search_digest != digest(search_html) || page_digest != digest(html) {
+    tool_fail("dragnet handoff: raw evidence digest mismatch");
+  }
+  return record<Page>{handler:sx_string(handler),query:sx_string(query),url:sx_string(url),
+    as_of:sx_string(as_of),readable:sx_string(readable),llm_text:sx_string(llm),pricing_claim:claim,
+    offer_csv:sx_string(offer),transport:sx_string(transport),received_at:sx_string(received),
+    page_digest:sx_string(page_digest),page_html:sx_string(html),search_url:sx_string(search_url),
+    search_html:sx_string(search_html),search_digest:sx_string(search_digest),model_evidence:model_evidence};
+}
+fn line_end(bytes:string, start:i64) -> i64 {
+  let n = text_len(bytes);
+  for i in start .. n {
+    if text_byte(bytes,i) == 10 { return i; }
+  }
+  tool_fail("dragnet handoff: incomplete batch framing");
+  return 0;
+}
+
+# Read exactly one complete cycle. `pages` is a proper list of page record
+# strings in source order. Call page() to access fields plus the raw line
+# itself for evidence not needed in the common typed view.
+fn read(bytes:string, cutoff:string) -> Batch {
+  let size = text_len(bytes);
+  if size < 1 || size > Wire.limit() || !Date.utc_timestamp(cutoff) {
+    tool_fail("dragnet handoff: invalid input bounds or cutoff");
+  }
+  let e = line_end(bytes,0);
+  let header = text_slice(bytes,0,e);
+  let err = "dragnet handoff: invalid batch header";
+  let (provider,a) = field(header,0,"{\"format\":\"dragnet.batch@1\",\"provider\":",err);
+  let (extraction,b) = field(header,a,",\"extraction\":",err);
+  let (handler,c) = field(header,b,",\"handler\":",err);
+  let (transport,d) = field(header,c,",\"transport\":",err);
+  let (requested,f) = field(header,d,",\"requested_as_of\":",err);
+  if after(header,f,"}",err) != text_len(header)
+    || (provider != "google" && provider != "bing") || !handler_id(handler)
+    || (extraction != "basic" && extraction != "gpt" && extraction != "offer-csv-v1")
+    || (transport != "offline" && transport != "https")
+    || !(Date.utc_timestamp(requested) || (transport == "https" && requested == "now"))
+    || Wire.header(provider,extraction,handler,transport,requested) != text_slice(bytes,0,e + 1) {
+    tool_fail(err);
+  }
+  if requested != "now" && Str.compare(requested,cutoff) > 0 {
+    tool_fail("dragnet handoff: requested as_of exceeds consumer cutoff");
+  }
+  var begin = e + 1;
+  var reversed = sx_nil();
+  var count = 0;
+  var id = "";
+  while begin < size {
+    let end = line_end(bytes,begin);
+    let line = text_slice(bytes,begin,end);
+    if Str.is_prefix("{\"format\":\"dragnet.batch-end@",line) {
+      if end + 1 != size { tool_fail("dragnet handoff: extra bytes after batch framing"); }
+      id = digest(text_slice(bytes,0,begin));
+      if Wire.trailer(count,id) != text_slice(bytes,begin,size) {
+        tool_fail("dragnet handoff: batch count or digest mismatch");
+      }
+      break;
+    }
+    if count >= Wire.max_pages() { tool_fail("dragnet handoff: page count exceeded"); }
+    let item = page(line);
+    if sx_text(item["handler"]) != handler || sx_text(item["transport"]) != transport
+      || (requested != "now" && sx_text(item["as_of"]) != requested)
+      || item["pricing_claim"] && extraction != "offer-csv-v1"
+      || (sx_text(item["llm_text"]) != "") != (extraction == "gpt") {
+      tool_fail("dragnet handoff: mixed handler or extraction profile");
+    }
+    if requested == "now" {
+      var knowledge = sx_text(item["received_at"]);
+      if extraction == "gpt" { knowledge = sx_text(item["model_evidence"]["received_at"]); }
+      if sx_text(item["as_of"]) != knowledge { tool_fail("dragnet handoff: rolling cutoff does not match receipt"); }
+    }
+    if Str.compare(sx_text(item["as_of"]),cutoff) > 0 { tool_fail("dragnet handoff: page exceeds consumer cutoff"); }
+    reversed = sx_cons(sx_string(line),reversed);
+    count = count + 1;
+    begin = end + 1;
+  }
+  if id == "" { tool_fail("dragnet handoff: missing batch framing"); }
+  var pages = sx_nil();
+  while sx_kind(reversed) == 3 {
+    pages = sx_cons(sx_head(reversed),pages);
+    reversed = sx_tail(reversed);
+  }
+  return record<Batch>{provider:sx_string(provider),extraction:sx_string(extraction),
+    handler:sx_string(handler),transport:sx_string(transport),requested_as_of:sx_string(requested),
+    digest:sx_string(id),pages:pages,count:count};
+}

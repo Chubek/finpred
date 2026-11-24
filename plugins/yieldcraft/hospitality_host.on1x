@@ -1,0 +1,121 @@
+# Trusted static caller for the five graph-path hospitality entry points.
+# This is the actual SDK binding for this graph; legacy entry points remain
+# in their existing registry and neither frontend can register a handler.
+import sdk.callable as SDK;
+import automat.financial_graph as G;
+import plugins.yieldcraft.hospitality as H;
+import plugins.yieldcraft.hospitality_sample as Sample;
+import core.format as F;
+
+fn port(name:string, kind:string, unit:string, currency:string, bound:i64) -> SDK.Port
+{
+  return record<SDK.Port>{name:sx_string(name),kind:sx_string(kind),major:1,
+    unit:sx_string(unit),currency:sx_string(currency),states:1,max_bytes:bound};
+}
+fn scenario() -> SDK.Port { return port("scenario","hospitality.scenario","none","EUR",2048); }
+fn offers() -> SDK.Port { return port("offers","finpred.offers.csv","none","none",2000000); }
+fn valuation() -> SDK.Port { return port("valuation","pricing.valuation","minor_per_night","EUR",2048); }
+fn normalized() -> SDK.Port { return port("normalized","hospitality.inventory","minor_per_stay","EUR",65536); }
+fn distribution() -> SDK.Port { return port("distribution","pricing.distribution","minor_per_stay","EUR",8192); }
+fn sample() -> SDK.Port { return port("sample","pricing.sample","minor_per_stay","EUR",128); }
+fn candidate() -> SDK.Port { return port("candidate","pricing.candidate","minor_per_night","EUR",512); }
+fn recommendation() -> SDK.Port
+{
+  return port("recommendation","pricing.recommendation","minor_per_night","EUR",512);
+}
+
+fn normalize_key() -> string { return "yieldcraft.normalize@1"; }
+fn comparables_key() -> string { return "yieldcraft.comparables@1"; }
+fn sample_key() -> string { return "hospitality-diagnostics.sample@1"; }
+fn decide_key() -> string { return "yieldcraft.decide@1"; }
+fn guardrails_key() -> string { return "yieldcraft.guardrails@1"; }
+fn budget() -> i64 { return 1000004; }
+fn prepend(p:SDK.Port, rest:sexpr) -> sexpr { return sx_cons(SDK.port_entry(p),rest); }
+
+# Digest of the framed local On1x source closure (not a compiled binary
+# signature or an assertion of upstream authorship). The consumer pins
+# this bundle independently and rejects accidental source drift.
+fn code_digest() -> string
+{
+  return "blake3:c9bdef211c603aa7a31f6271c8bee5c6bb82da0b5a50f33434fb41d3a0f34759";
+}
+fn bindings_policy(key:string, role:string, inputs:sexpr, output:SDK.Port, work:i64) -> string
+{
+  let out = buffer_new();
+  G.frame(out,"finpred.hospitality-static-policy@1");
+  G.frame(out,key);
+  G.frame(out,role);
+  G.frame(out,"recommendation");
+  G.frame(out,"pure");
+  G.frame(out,"strategy-profile:scenario");
+  G.frame(out,F.num(work));
+  G.frame_port(out,output);
+  var rest = inputs;
+  while sx_kind(rest) == 3
+  {
+    G.frame_port(out,SDK.decode_port(sx_head(rest)));
+    rest = sx_tail(rest);
+  }
+  return G.digest(buffer_text(out));
+}
+fn descriptor(package_name:string, key:string, role:string, inputs:sexpr, output:SDK.Port,
+  work:i64) -> SDK.Descriptor
+{
+  let pin = record<SDK.Pin>{package_name:sx_string(package_name),package_version:sx_string("1.0.0"),
+    handler_name:sx_string(key),handler_version:sx_string("1"),abi:1,
+    code_digest:sx_string(code_digest()),policy_digest:sx_string(bindings_policy(key,role,inputs,output,work))};
+  return record<SDK.Descriptor>{enabled:true,pin:pin,role:sx_string(role),
+    mode:sx_string("recommendation"),effect:sx_string("pure"),inputs:inputs,output:output,max_work:work};
+}
+fn lookup(key:string) -> SDK.Descriptor
+{
+  let yieldcraft = "yieldcraft.percentile";
+  let nil = sx_nil();
+  if key == normalize_key()
+  { return descriptor(yieldcraft,key,"Transformer",prepend(scenario(),prepend(offers(),nil)),normalized(),1); }
+  if key == comparables_key()
+  { return descriptor(yieldcraft,key,"Algorithm",prepend(scenario(),prepend(normalized(),nil)),distribution(),1000000); }
+  if key == sample_key()
+  { return descriptor("hospitality-diagnostics",key,"Algorithm",prepend(scenario(),prepend(distribution(),nil)),sample(),1); }
+  if key == decide_key()
+  {
+    return descriptor(yieldcraft,key,"Strategy",prepend(scenario(),prepend(valuation(),
+      prepend(distribution(),prepend(sample(),nil)))),candidate(),1);
+  }
+  if key == guardrails_key()
+  {
+    return descriptor(yieldcraft,key,"Transformer",prepend(scenario(),prepend(valuation(),
+      prepend(candidate(),nil))),recommendation(),1);
+  }
+  return SDK.unavailable();
+}
+fn call(pin:SDK.Pin, req:SDK.Request) -> SDK.Outcome
+{
+  let key = sx_text(pin["handler_name"]);
+  if key == normalize_key() { return H.normalize_call(req); }
+  if key == comparables_key() { return H.comparables_call(req); }
+  if key == sample_key() { return Sample.diagnose_call(req); }
+  if key == decide_key() { return H.decide_call(req); }
+  if key == guardrails_key() { return H.guardrails_call(req); }
+  return SDK.failure(1);
+}
+
+fn native_graph() -> G.Graph
+{
+  let nil = sx_nil();
+  let s = G.edge("scenario","","scenario");
+  let v = G.edge("valuation","","valuation");
+  let d = G.edge("distribution","comparables","distribution");
+  let norm_edges = sx_cons(s,sx_cons(G.edge("offers","","offers"),nil));
+  let dist_edges = sx_cons(s,sx_cons(G.edge("normalized","normalizer","normalized"),nil));
+  let sample_edges = sx_cons(s,sx_cons(d,nil));
+  let decide_edges = sx_cons(s,sx_cons(v,sx_cons(d,sx_cons(G.edge("sample","diagnostic","sample"),nil))));
+  let guard_edges = sx_cons(s,sx_cons(v,sx_cons(G.edge("candidate","decision","candidate"),nil)));
+  let nodes = sx_cons(G.node("guardrails",guardrails_key(),"pure",guard_edges),
+    sx_cons(G.node("decision",decide_key(),"pure",decide_edges),
+    sx_cons(G.node("diagnostic",sample_key(),"pure",sample_edges),
+    sx_cons(G.node("normalizer",normalize_key(),"pure",norm_edges),
+    sx_cons(G.node("comparables",comparables_key(),"pure",dist_edges),nil)))));
+  return G.graph(prepend(scenario(),prepend(offers(),prepend(valuation(),nil))),nodes,
+    sx_cons(G.output(recommendation(),"guardrails","recommendation"),nil));
+}

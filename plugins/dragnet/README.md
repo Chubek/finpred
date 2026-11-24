@@ -174,7 +174,8 @@ It makes no pricing decision and doesn't open a FinPRED store.
   page bytes, including every LF before the trailer. Do not reserialize a
   frame before verifying it. The shared reader also checks the embedded
   search/page/LLM parent digests and receipt/cutoff consistency.
-- On1x plugins and core modules can `import core.dragnet_batch as Dragnet`.
+- On1x hosts can `import plugins.dragnet.dragnet_batch as Dragnet` with the
+  repository root on the module search path.
   `Dragnet.read(bytes, cutoff)` accepts exactly one frame and returns a
   `Batch` with metadata and a proper list of raw page-record strings in
   acquisition order. `Dragnet.page(sx_text(sx_head(rest)))` returns typed

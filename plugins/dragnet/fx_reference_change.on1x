@@ -1,0 +1,98 @@
+# Compare two explicitly dated, frozen ECB indicative rates for the same
+# EUR/quote pair. No fallback date, interpolation, conversion or execution.
+import core.date as Date;
+import core.feed_snapshot as Feed;
+import plugins.dragnet.fx_reference as FX;
+
+record Request { base_currency:sexpr, quote_currency:sexpr, start_date:sexpr, end_date:sexpr, cutoff:sexpr }
+record Comparison { status:i64, bytes:sexpr }
+
+fn kind() -> string { return "analysis.fx-reference-change"; }
+fn major() -> i64 { return 1; }
+fn unit() -> string { return "quote_currency_per_base_currency"; }
+fn max_bytes() -> i64 { return 1024; }
+
+fn fail(status:i64) -> Comparison { return record<Comparison>{status:status,bytes:sx_nil()}; }
+
+fn whole_digits(rate:string) -> i64 {
+  for i in 0 .. text_len(rate) {
+    if text_byte(rate,i) == 46 { return i; }
+  }
+  return text_len(rate);
+}
+
+# Both inputs have passed positive_decimal. Compare their exact magnitudes
+# digit by digit; implicit trailing fractional zeros do not change the value.
+fn decimal_order(a:string, b:string) -> i64 {
+  let whole_a = whole_digits(a);
+  let whole_b = whole_digits(b);
+  if whole_a < whole_b { return -1; }
+  if whole_a > whole_b { return 1; }
+  for i in 0 .. whole_a {
+    let left = text_byte(a,i);
+    let right = text_byte(b,i);
+    if left < right { return -1; }
+    if left > right { return 1; }
+  }
+  for i in whole_a + 1 .. 24 {
+    var left = 48;
+    var right = 48;
+    if i < text_len(a) { left = text_byte(a,i); }
+    if i < text_len(b) { right = text_byte(b,i); }
+    if left < right { return -1; }
+    if left > right { return 1; }
+  }
+  return 0;
+}
+
+# Status 2 for malformed requests, otherwise statuses 1..4 from the first
+# failing leg (start before end), or 5 when a visible leg has the wrong date.
+# Both expected parents are supplied independently of the payloads.
+fn compare(q:Request, start:string, start_parent:string, end:string, end_parent:string) -> Comparison {
+  if sx_kind(q["base_currency"]) != 2 || sx_kind(q["quote_currency"]) != 2
+    || sx_kind(q["start_date"]) != 2 || sx_kind(q["end_date"]) != 2 || sx_kind(q["cutoff"]) != 2
+  { return fail(2); }
+  let base = sx_text(q["base_currency"]);
+  let quote_currency = sx_text(q["quote_currency"]);
+  let start_date = sx_text(q["start_date"]);
+  let end_date = sx_text(q["end_date"]);
+  let cutoff = sx_text(q["cutoff"]);
+  let start_day = Date.date_days(start_date);
+  if start_day < 0 || Date.date_days(end_date) <= start_day
+    || !Date.utc_timestamp(cutoff) || base != "EUR" || !FX.quote_code(quote_currency)
+  { return fail(2); }
+  let a = FX.read_point(start,start_parent,cutoff,base,quote_currency);
+  if a["status"] != 0 { return fail(a["status"]); }
+  if sx_text(a["reference_date"]) != start_date { return fail(5); }
+  let b = FX.read_point(end,end_parent,cutoff,base,quote_currency);
+  if b["status"] != 0 { return fail(b["status"]); }
+  if sx_text(b["reference_date"]) != end_date { return fail(5); }
+  let start_rate = sx_text(a["rate"]);
+  let end_rate = sx_text(b["rate"]);
+  let order = decimal_order(end_rate,start_rate);
+  var direction = "flat";
+  if order > 0 { direction = "up"; }
+  if order < 0 { direction = "down"; }
+
+  let out = buffer_new();
+  buffer_append(out,"{\"kind\":\"analysis.fx-reference-change\",\"version\":1,\"unit\":\"quote_currency_per_base_currency\",\"pricing_input\":false,\"executable\":false");
+  buffer_append(out,",\"source_kind\":\"dragnet.ecb-fx-reference@1\",\"source_series\":\"eurofxref-daily\"");
+  Feed.field(out,"base_currency",base);
+  Feed.field(out,"quote_currency",quote_currency);
+  Feed.field(out,"cutoff",cutoff);
+  Feed.field(out,"start_date",start_date);
+  Feed.field(out,"end_date",end_date);
+  Feed.field(out,"start_rate",start_rate);
+  Feed.field(out,"end_rate",end_rate);
+  Feed.field(out,"start_parent",start_parent);
+  Feed.field(out,"end_parent",end_parent);
+  Feed.field(out,"direction",direction);
+  buffer_append(out,"}\n");
+  return record<Comparison>{status:0,bytes:sx_string(buffer_text(out))};
+}
+
+fn verifies(q:Request, start:string, start_parent:string, end:string, end_parent:string, artifact:string) -> bool {
+  if text_len(artifact) < 1 || text_len(artifact) > max_bytes() { return false; }
+  let checked = compare(q,start,start_parent,end,end_parent);
+  return checked["status"] == 0 && sx_text(checked["bytes"]) == artifact;
+}

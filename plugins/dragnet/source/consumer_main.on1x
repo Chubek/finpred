@@ -1,6 +1,6 @@
 # Compile the read-only consumer separately from the network host and the
 # legacy CLI's GrammarEmbed pipeline.
-import cli.dragnet_capture as Capture;
+import plugins.dragnet.dragnet_capture as Capture;
 import plugins.yieldcraft.dragnet_import as Yieldcraft;
 import std.environ as Env;
 

@@ -2,7 +2,7 @@
 # acquisition, storage or path authority. Input archives are replayed.
 import core.date as Date;
 import core.format as F;
-import core.guest_nights as Guest;
+import plugins.dragnet.guest_nights as Guest;
 import forecast_baselines.evaluation as Eval;
 import forecast_baselines.model as Model;
 import sdk.callable as SDK;

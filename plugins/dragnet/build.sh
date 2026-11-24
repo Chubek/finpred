@@ -37,7 +37,7 @@ for path in (
     repo / "source/core/date.on1x",
     repo / "source/core/money.on1x",
     repo / "source/core/format.on1x",
-    repo / "source/core/dragnet_wire.on1x",
+    repo / "plugins/dragnet/dragnet_wire.on1x",
     Path(sys.argv[4]),
 ):
     subject.update(hashlib.sha256(path.read_bytes()).digest())
@@ -60,7 +60,7 @@ for flag in $(pkg-config --cflags --libs libcurl); do
 done
 python3 "$MULIB_ROOT/on1x/tools/on1x-build.py" \
   "$ROOT/plugins/dragnet/source/main.on1x" --backend c11 --cc "${CC:-cc}" \
-  --on1xc "$ON1XC" --mulib-root "$MULIB_ROOT" -I "$ROOT/source" -I "$out" \
+  --on1xc "$ON1XC" --mulib-root "$MULIB_ROOT" -I "$ROOT/source" -I "$ROOT" -I "$out" \
   --extra-c "$ROOT/plugins/dragnet/native/kernels.c" \
   "--cflag=-I$MULIB_ROOT/include" --cflag=-lm "$@" -o "$out/dragnet"
 python3 "$MULIB_ROOT/on1x/tools/on1x-build.py" \

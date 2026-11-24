@@ -1,5 +1,5 @@
 # One frozen, analysis-only evaluation. Returns bytes, never publishes them.
-import core.guest_nights as Guest;
+import plugins.dragnet.guest_nights as Guest;
 import forecast_baselines.model as Model;
 import forecast_baselines.score as Score;
 import sdk.callable as SDK;
