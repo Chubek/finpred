@@ -1,0 +1,23 @@
+finpred_root = "/opt/yieldcraft-mcp/finpred"
+state_dir = "/var/lib/yieldcraft-mcp/projects"
+token_file = "/etc/yieldcraft-mcp/tokens.json"
+bind = "127.0.0.1"
+port = 8788
+# public_url = "https://foo.com/mcp"
+# allowed_origins = ["https://foo.com"]
+enable_live = false
+allowed_hosts = []
+offer_hosts = []
+allow_llm = false
+# Operator-supplied configuration, never accepted from MCP callers:
+# daemon_config = "/opt/yieldcraft-mcp/finpred/plugins/dragnet/examples/Dragnet.json"
+daemon_autostart = false
+max_concurrent = 4
+timeout = 120
+max_artifact_bytes = 2000000
+max_project_bytes = 100000000
+# Optional externally provisioned OAuth issuer (RFC 7662 introspection):
+# oauth_issuer = "https://auth.foo.com"
+# oauth_introspection_url = "https://auth.foo.com/introspect"
+# oauth_client_id = "yieldcraft-resource-server"
+# oauth_secret_file = "/etc/yieldcraft-mcp/oauth-secret"

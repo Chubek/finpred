@@ -1,0 +1,11 @@
+{
+ "$schema":"https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+ "name":"Ottomat","scopeName":"source.ottomat","fileTypes":["ottomat"],
+ "patterns":[
+  {"name":"keyword.control.ottomat","match":"\\b(ottomat|ottmat|input|source|transform|algorithm|strategy|gate|output|profile|effect|import|let|emit)\\b"},
+  {"name":"storage.type.ottomat","match":"\\b(pure|read|record|required|optional|target_bps|curve|objective)\\b"},
+  {"name":"entity.name.type.ottomat","match":"\\b[a-z][a-z0-9_.-]*@[0-9]+\\b"},
+  {"name":"constant.numeric.ottomat","match":"\\b[0-9]+\\b"},
+  {"name":"keyword.operator.ottomat","match":"="}
+ ]
+}

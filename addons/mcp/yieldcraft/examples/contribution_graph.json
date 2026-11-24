@@ -1,0 +1,10 @@
+{
+  "inputs": [
+    {"name":"scenario","contract":"finpred.scenario-csv@1","unit":"none","currency":"EUR","max_bytes":2048},
+    {"name":"valuation","contract":"finpred.valuation-csv@1","unit":"minor_per_night","currency":"EUR","max_bytes":2048},
+    {"name":"demand","contract":"pricing.demand@1","unit":"room_night","currency":"EUR","max_bytes":8192}
+  ],
+  "nodes": [{"name":"optimum","handler":"yieldcraft.optimize-contribution@1","bindings":{"scenario":"scenario","valuation":"valuation","demand":"demand"}}],
+  "outputs": [{"name":"decision","contract":"pricing.contribution-decision-text@1","unit":"minor_per_night","currency":"EUR","max_bytes":8192}],
+  "emit":{"decision":"optimum.decision"}
+}

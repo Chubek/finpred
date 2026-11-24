@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+[project]
+name = "finpred-yieldcraft-mcp"
+version = "0.1.0"
+description = "Authenticated MCP orchestration for FinPRED Yieldcraft and Dragnet"
+requires-python = ">=3.11"
+dependencies = ["mcp==1.28.1", "uvicorn>=0.34,<1", "httpx>=0.28,<1", "pydantic>=2.10,<3", "pygments>=2.19,<3"]
+[project.optional-dependencies]
+test = ["pytest>=8,<10", "pytest-asyncio>=0.25,<2"]
+[project.scripts]
+yieldcraft-mcp = "yieldcraft_mcp.__main__:main"
+[project.entry-points."pygments.lexers"]
+ottomat = "yieldcraft_mcp.highlight:OttomatLexer"
+[tool.setuptools.packages.find]
+include = ["yieldcraft_mcp*"]
+[tool.setuptools.package-data]
+yieldcraft_mcp = ["ui/*.html", "ui/*.js"]
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = ["sdk: requires the official MCP SDK", "native: requires a compiled FinPRED checkout"]
