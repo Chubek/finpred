@@ -129,8 +129,8 @@ or pricing.
 3. [Implementation and acceptance record](docs/IMPLEMENTATION.md#acceptance-record)
    and [test coverage](tests/COVERAGE.md) — historical results and the checks
    that produced them. See the [engineering audit](docs/ENGINEERING_AUDIT.md)
-   for the historical baseline, and the [integration requirements](docs/INTEGRATION_REQUIREMENTS.md)
-   for the six-workstream contract and verification boundaries.
+   for the historical baseline, and the [integration audit](docs/INTEGRATION_AUDIT.md)
+   for the six-workstream results and remaining gates.
 4. [Algorithm Automat](source/automat/README.md) and
    [Ottomat](source/ottomat/README.md) — typed graph semantics, frontend and replay.
 5. [Plugin developer guide](PLUGIN.md) and
