@@ -1,5 +1,8 @@
 # Install and verify FinPRED
 
+To build, verify, or install a versioned, relocatable binary bundle for the
+three analysis CLI hosts, see [CLI release bundles](docs/CLI_RELEASE.md).
+
 Build from the **FinPRED repository root**. The verification target is
 x86-64 GNU/Linux. `bin/build.sh` does not fetch MuLIB or nested LibStone or
 build the On1x compiler. The [acceptance record](docs/IMPLEMENTATION.md#acceptance-record)
@@ -98,6 +101,7 @@ points elsewhere:
 | Dragnet CSV, Crossref, public-feed and dispatcher tools | `build/dragnet/`, `build/dragnet-crossref/`, `build/dragnet-feeds/`, `build/dragnet-dispatch/` (explicit dispatcher output) |
 | Standalone C review builds | `build/native/`, `build/poindexter-tui-review/` |
 | Build and integration-suite scratch space | `build/tmp/` unless `TMPDIR` is set |
+| Temporary On1x source stage | `build/` unless `FINPRED_STAGE_PARENT` is set; keep this path short for the PPX wire budget |
 
 Rebuild with `make mulib` rather than moving an old CMake cache out of the MuLIB
 checkout; the cache contains absolute paths. `make` does not build or fetch
