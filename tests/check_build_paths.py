@@ -34,16 +34,48 @@ def main():
         write(root, "On1xfile", "")
         for source in (
             "source", "plugins/yieldcraft", "plugins/scalar_diagnostics", "plugins/poindexter/src",
+            "strategies/yieldcraft",
         ):
             (root / source).mkdir(parents=True)
         write(root, "plugins/poindexter/On1xfile", "")
+        write(root, "plugins/dragnet/On1xfile.m", "")
+        write(root, "plugins/dragnet/dragnet_wire.on1x", "")
+        write(root, "plugins/dragnet/guest_nights.on1x", "")
+        write(root, "plugins/yieldcraft/cube_main.on1x", "")
         write(root, "source/cli/On1xfile.m", "")
         write(root, "source/main.on1x", "")
         write(root, "plugins/forecast_baselines/forecast_main.on1x", "")
-        for file in ("date", "feed_snapshot", "format", "guest_nights"):
+        for file in ("date", "feed_snapshot", "format"):
             write(root, f"source/core/{file}.on1x", "")
+        for file in ("price_prediction", "price_prediction_on1x"):
+            write(root, f"source/core/{file}.c", "")
         write(root, "source/sdk/callable.on1x", "")
         write(root, "plugins/forecast_baselines/source/forecast_baselines/model.on1x", "")
+        write(root, "third_party/mulib/on1x/tools/on1x-build.py", """
+from pathlib import Path
+import sys
+args = sys.argv
+assert '--cc' in args, 'FinPRED must explicitly select the host C toolchain'
+source = Path(args[1])
+assert source.is_file()
+libraries = {args[n+1] for n, arg in enumerate(args) if arg == '--mulib'}
+companions = [Path(args[n+1]) for n, arg in enumerate(args) if arg == '--extra-c']
+exe = Path(args[args.index('-o') + 1])
+if exe.name == 'finpred':
+    assert source.name == 'main.on1x'
+    assert libraries == {'histprice', 'price-forecast', 'price-ensemble'}
+    assert {p.name for p in companions} == {'price_prediction.c', 'price_prediction_on1x.c'}
+    assert all(p.is_file() for p in companions)
+    body = 'printf "%s\\\\n" "$0"\\n'
+else:
+    assert exe.name == 'finpred-cube'
+    assert source.name == 'cube_main.on1x'
+    assert not libraries and not companions
+    body = 'printf "%s\\\\n" "$0" "$FINPRED_MODE" "$FINPRED_CUBE_INPUT"\\n'
+exe.parent.mkdir(parents=True, exist_ok=True)
+exe.write_text('#!/bin/sh\\n' + body)
+exe.chmod(0o700)
+""")
         write(root, "third_party/mulib/on1x/tools/on1x-project.py", """
 from pathlib import Path
 import sys
@@ -77,6 +109,8 @@ test "$(./bin/finpred selftest)" = "$EXPECTED_EXE"
 
         stale = run("./bin/finpred", "selftest")
         assert stale.returncode == 2 and "FinPRED On1x executable absent" in stale.stdout, stale
+        cube_missing = run("./bin/finpred", "cube", "replay", "fixture")
+        assert cube_missing.returncode == 2 and "competitor cube host absent" in cube_missing.stdout
         missing = run("./bin/build.sh")
         assert missing.returncode == 2 and "Missing compiled On1x compiler" in missing.stdout, missing
         write(root, "build/mulib/on1x/on1xc", "#!/bin/sh\nexit 98\n", executable=True)
@@ -104,6 +138,14 @@ test "$(./bin/finpred selftest)" = "$EXPECTED_EXE"
         forecast = run("./bin/finpred", "forecast", "replay", "fixture",
                        FINPRED_BUILD_DIR="build/custom CLI", FINPRED_EXE="target/dev/finpred")
         assert forecast.returncode == 0 and forecast.stdout.strip() == str(Path(custom).parent) + "-forecast/finpred-forecast", forecast
+        for cube_args, mode, input_value in (
+            (("replay", "fixture"), "cube-replay", "fixture"),
+            (("evaluate", "snapshots", "cells", "policies"), "cube-evaluate", "snapshots"),
+        ):
+            cube = run("./bin/finpred", "cube", *cube_args,
+                       FINPRED_BUILD_DIR="build/custom CLI", FINPRED_EXE="target/dev/finpred")
+            assert cube.returncode == 0 and cube.stdout.splitlines() == [
+                str(Path(custom).with_name("finpred-cube")), mode, input_value], cube
         dragnet_missing = run("./bin/finpred", "dragnet-inspect", "frame", "2026-11-24T00:00:00Z")
         assert dragnet_missing.returncode == 2 and "consumer absent" in dragnet_missing.stdout
         write(root, "build/custom Dragnet/finpred-dragnet",
@@ -145,7 +187,7 @@ test "$(./bin/finpred selftest)" = "$EXPECTED_EXE"
         pin(root, "third_party/mulib", mulib_sha)
         nested = run("make", "mulib", "CMAKE=false")
         assert nested.returncode == 2 and f"Submodule pin mismatch at {libstone}:" in nested.stdout, nested
-    print("build_paths_ok=true default=1 custom=1 forecast_gate=2 dragnet_gate=2 "
+    print("build_paths_ok=true default=1 custom=1 forecast_gate=2 cube_gate=3 dragnet_gate=2 "
           "stale_target_rejected=1 missing_toolchain=2 pin_mismatches=2")
 
 

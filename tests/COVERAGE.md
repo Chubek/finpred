@@ -28,6 +28,8 @@ OpenAI endpoint and OAuth login/refresh are not covered. See
 
 | Source / feature | Positive execution | Rejection or failure execution |
 | --- | --- | --- |
+| Core MuLIB price prediction | [Prediction CLI](check_price_prediction.py) checks baselines, trend, ensemble, rounding and read-only output | Invalid models, malformed histories and insufficient observations |
+| Primary Yieldcraft contribution strategy | [Contribution CLI](check_yieldcraft_contribution.py) checks the cost-sensitive optimum, ties, guardrails and exact v3 replay | Competitor-only inputs, stale or malformed demand, unsupported prices and tampered replay inputs |
 | `source/core/`: CSV, contracts, as-of times, units and serialization | [Integration](run.sh) validates emitted JSON against schemas and the normalized input oracle | [Ingestion](check_ingestion_cli.py) feeds invalid records to the CLI |
 | `plugins/yieldcraft/`, `source/algorithms/`: exact room bundles, quantiles, guardrails | [Pricing](check_pricing_cli.py) and [package consumer](check_yieldcraft_package.py) check nightly amounts and archived envelopes | Same tests reject infeasible samples, conflicting guardrails or forbidden modes |
 | [Checked-in pricing fixtures](../fixtures/README.md) | [Independent oracle](check_fixtures.py) and [compiled integration](run.sh) check the inclusive as-of boundaries and two-stage rounding across leap day; integration pins run and output digests and verifies read-only replay | Moving the decision one second earlier loses the third comparable and produces no run or recommendation |

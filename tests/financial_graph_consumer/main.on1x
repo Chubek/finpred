@@ -1,6 +1,6 @@
 import automat.financial_graph as G;
 import automat.financial_run as Run;
-import automat.hospitality_host as Host;
+import plugins.yieldcraft.hospitality_host as Host;
 import sdk.callable as SDK;
 import std.io.TextIO as IO;
 import std.os.CommandLine as Env;
@@ -32,8 +32,8 @@ fn bundle_digest() -> string
   bundle_file(b,"/plugins/yieldcraft/matcher.on1x");
   bundle_file(b,"/plugins/yieldcraft/strategy.on1x");
   bundle_file(b,"/source/algorithms/quantile.on1x");
-  bundle_file(b,"/source/automat/hospitality.on1x");
-  bundle_file(b,"/source/automat/hospitality_sample.on1x");
+  bundle_file(b,"/plugins/yieldcraft/hospitality.on1x");
+  bundle_file(b,"/plugins/yieldcraft/hospitality_sample.on1x");
   bundle_file(b,"/source/automat/runner.on1x");
   bundle_file(b,"/source/core/contracts.on1x");
   bundle_file(b,"/source/core/csv.on1x");

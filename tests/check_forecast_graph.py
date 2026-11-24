@@ -99,7 +99,7 @@ def main():
         subprocess.run([sys.executable, mulib / "on1x/tools/on1x-build.py",
                         ROOT / "tests/forecast_graph_consumer/main.on1x", "--backend", "c11",
                         "--on1xc", compiler, "--mulib-root", mulib, "-I", ROOT / "source",
-                        "-I", PACKAGE / "source", "-I", dragnet / "source", "-o", exe],
+                         "-I", ROOT, "-I", PACKAGE / "source", "-I", dragnet / "source", "-o", exe],
                        cwd=work, env=build_env, check=True, timeout=90)
         offline = work / "offline"
         offline.mkdir()

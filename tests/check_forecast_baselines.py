@@ -88,7 +88,7 @@ def main():
         build_env = os.environ | {"TMPDIR": str(work), "PYTHONDONTWRITEBYTECODE": "1"}
         subprocess.run([sys.executable, mulib / "on1x/tools/on1x-build.py", CONSUMER / "main.on1x",
                         "--backend", "c11", "--on1xc", compiler, "--mulib-root", mulib,
-                        "-I", ROOT / "source", "-I", PACKAGE / "source", "-o", exe],
+                         "-I", ROOT / "source", "-I", ROOT, "-I", PACKAGE / "source", "-o", exe],
                        env=build_env, cwd=work, check=True, timeout=90)
         run_dir = work / "offline"
         run_dir.mkdir()

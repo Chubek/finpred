@@ -26,7 +26,7 @@ def main():
         subprocess.run(["python3", mulib / "on1x/tools/on1x-build.py",
                         ROOT / "tests/dragnet_batch_consumer.on1x", "--backend", "c11",
                         "--cc", os.environ.get("CC", "cc"), "--mulib-root", mulib,
-                        "--on1xc", on1xc, "-I", ROOT / "source", "-o", independent],
+                         "--on1xc", on1xc, "-I", ROOT / "source", "-I", ROOT, "-o", independent],
                        check=True, cwd=tmp)
         flags = shlex.split(subprocess.check_output(
             ["pkg-config", "--cflags", "--libs", "libcurl"], text=True))
@@ -427,7 +427,8 @@ def main():
             from_capture = yieldcraft(["--scenario", scenario.name, "--capture", saved.name],
                                       price=price, identity=identity)
             assert from_capture == fresh
-        yieldcraft([], price=17100, identity="28b145fb8f902a239e76502a40c138bd60c7ae6af98ca70e21faf0e0f06e85db")
+        yieldcraft(["--market-positioning"], price=17100,
+                   identity="28b145fb8f902a239e76502a40c138bd60c7ae6af98ca70e21faf0e0f06e85db")
         yieldcraft(["--capture", "missing", "--allow-host", "example.org"], error=b"require --dragnet")
         yieldcraft(["--capture", "missing", "--dragnet", "missing"], error=b"choose one")
         yieldcraft(["--dragnet", "missing"], error=b"execution is forbidden", FINPRED_MODE="execution")

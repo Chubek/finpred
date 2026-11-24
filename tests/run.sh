@@ -5,10 +5,12 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 . "$ROOT/bin/paths.sh"
 finpred_build_env "$ROOT"
 cd "$ROOT"
-unset FINPRED_ENGINE
+unset FINPRED_ENGINE FINPRED_DEMAND
 FINPRED_EXE=$(finpred_cli_executable "$ROOT")
 export FINPRED_EXE
 python3 tests/validate_static.py
+python3 tests/check_price_prediction.py
+python3 tests/check_yieldcraft_contribution.py
 python3 tests/check_on1x_features.py
 python3 tests/check_environ_argv.py
 python3 tests/check_fixtures.py

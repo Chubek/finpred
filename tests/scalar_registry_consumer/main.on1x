@@ -4,6 +4,7 @@ import automat.scalar_manifest as M;
 import automat.scalar_verify as V;
 import ottomat.scalar as S;
 import ottomat.scalar_run as R;
+import plugins.scalar_diagnostics.binding as H;
 import std.crypto.crypto as Crypto;
 import std.Int as Int;
 import std.io.TextIO as IO;
@@ -74,14 +75,10 @@ fn emit(run:D.Outcome, r:M.Snapshot)
 fn native(mode:string, budget:i64, first:i64, second:i64)
 {
   let plan = native_plan(setting("SHAPE"));
-  let status = D.validate(plan,mode,budget);
-  var run = D.run(plan,mode,budget,first,second);
-  var frozen = M.freeze(plan,mode,budget,first,second);
-  if setting("MEMO") == "yes"
-  {
-    run = D.run_memoized(plan,mode,budget,first,second);
-    frozen = M.freeze_memoized(plan,mode,budget,first,second);
-  }
+  let status = D.validate_with(plan,mode,budget,H.lookup);
+  let memoized = setting("MEMO") == "yes";
+  let run = D.run_with(plan,mode,budget,first,second,memoized,H.lookup,H.call);
+  let frozen = M.freeze_with(plan,mode,budget,first,second,memoized,H.lookup,H.call);
   IO.basis_text_io_print("$status ${sx_text(run["status"])} ${sx_text(frozen["status"])}\n");
   if sx_text(run["status"]) != "ok"
   {
@@ -99,8 +96,8 @@ fn native(mode:string, budget:i64, first:i64, second:i64)
 fn ottomat(mode:string, budget:i64, first:i64, second:i64)
 {
   let source = IO.basis_text_io_input_all("strategy");
-  let lowered = S.lower(source,mode,budget);
-  let result = R.freeze(source,mode,budget,first,second);
+  let lowered = S.lower_with(source,mode,budget,H.lookup);
+  let result = R.freeze_with(source,mode,budget,first,second,H.lookup,H.call);
   let frozen = result["snapshot"];
   let plan = lowered["plan"];
   let status = sx_text(lowered["status"]);
@@ -124,7 +121,7 @@ fn ottomat(mode:string, budget:i64, first:i64, second:i64)
     || sx_text(result["source_digest"]) != hash(source)
   { tool_fail("invalid Ottomat v5 lowering or source provenance"); }
   IO.basis_text_io_print("${sx_text(result["lowering"])}\n${sx_text(result["source_digest"])}\n");
-  emit(D.run(plan,mode,budget,first,second),frozen);
+  emit(D.run_with(plan,mode,budget,first,second,false,H.lookup,H.call),frozen);
 }
 
 fn verify()
@@ -141,7 +138,8 @@ fn verify()
   let id = IO.basis_text_io_input_all("id");
   let manifest = IO.basis_text_io_input_all("manifest");
   let decoded = Decode.decode(manifest);
-  IO.basis_text_io_print("${decoded["valid"]} ${V.verify(id,manifest,entries)}\n");
+  assert(!V.verify(id,manifest,entries));
+  IO.basis_text_io_print("${decoded["valid"]} ${V.verify_with(id,manifest,entries,H.lookup,H.call)}\n");
 }
 
 fn main() -> i64

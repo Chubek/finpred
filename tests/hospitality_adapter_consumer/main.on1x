@@ -1,5 +1,5 @@
-import automat.hospitality as H;
-import automat.hospitality_sample as Sample;
+import plugins.yieldcraft.hospitality as H;
+import plugins.yieldcraft.hospitality_sample as Sample;
 import core.contracts as C;
 import core.serialize as JSON;
 import plugins.yieldcraft.entry as Y;
@@ -52,6 +52,7 @@ fn main() -> i64
   let legacy = Y.recommend_profile(scenario,valuation,offers,profile,false,buffer_new());
   if candidate != H.recommendation_bytes(legacy) { tool_fail("adapter differs from legacy"); }
   IO.basis_text_io_print(JSON.recommendation(scenario,H.recommendation(candidate),
-    env("GRAPH_RUN"),env("GRAPH_SD"),env("GRAPH_OD"),env("GRAPH_VD"),env("GRAPH_TD")));
+    env("GRAPH_RUN"),env("GRAPH_SD"),env("GRAPH_OD"),env("GRAPH_VD"),env("GRAPH_TD"),
+    "yieldcraft.percentile@1"));
   return 0;
 }

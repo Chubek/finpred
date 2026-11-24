@@ -22,10 +22,10 @@ PARENTS = {
     "decision": ["scenario", "valuation", "comparables", "diagnostic"],
     "guardrails": ["scenario", "valuation", "decision"],
 }
-GRAPH_ID = "blake3:d920ef081ac043bd394bdb2edb371227eb60f3b0f85e378393148b776abb0bb0"
+GRAPH_ID = "blake3:d7f83ea49b2610bed9b5df102436ac43df0f9510aeca78806ceb756c5a0ebb03"
 ROOT_IDS = {
-    "": "blake3:5551c21b6873be0a16c879ce1d66cf2a3061f51918cb66dcad596f14b51b21c2",
-    "_multiroom": "blake3:ff0fb50110a991477e8203654d79f8e28d5d302b76eb8615e0168cad779987c5",
+    "": "blake3:cb09c71eef28de3e81cb110a0a17a0a3fb9cce49395fb12e9e383abd41bd82d8",
+    "_multiroom": "blake3:34ed09d793bfc3b19a59c489ee1b2b5e689186efe47af6c61bc2d80cbc4be07b",
 }
 
 

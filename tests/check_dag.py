@@ -13,13 +13,16 @@ with tempfile.TemporaryDirectory(prefix="finpred-dag-") as tmp:
     exe = Path(tmp) / "consumer"
     subprocess.run([sys.executable, sdk / "on1x/tools/on1x-build.py",
                     ROOT / "tests/dag_consumer/main.on1x", "--backend", "c11",
-                    "--on1xc", compiler, "--mulib-root", sdk, "-I", ROOT / "source", "-I", ROOT,
+                    "--on1xc", compiler, "--mulib-root", sdk, "-I", ROOT / "source",
                     "-o", exe], cwd=tmp, check=True)
     hi = "hi=maximum@1(first,second):42\n"
     lo = "lo=minimum@1(first,second):17\n"
     end = "spread=distance@1(hi,lo):25\n"
     for case, expected in [
         ("ok", "ok\nscalar.distance@1:25\n" + hi + lo + end),
+        ("builtin", "ok\nscalar.distance@1:25\n" + hi + lo + end),
+        ("bound", "ok\nscalar.distance@1:0\nhi=left@1(first,second):17\n" + lo
+         + "spread=distance@1(hi,lo):0\n"),
         ("reverse", "ok\nscalar.distance@1:25\n" + lo + hi + end),
         ("ok", "ok\nscalar.distance@1:25\n" + hi + lo + end),
         ("short", "ok\nscalar.level@1:42\nlo=minimum@1(first,second):42\n"),
@@ -30,7 +33,7 @@ with tempfile.TemporaryDirectory(prefix="finpred-dag-") as tmp:
             f"{name}=select@1(a,{parent},first):42\n"
             for name, parent in zip("bcdefghijklmnop", ["second", *"bcdefghijklmno"]))),
         ("mode", "denied\n"), ("action", "unknown_handler\n"),
-        ("version", "version\n"), ("unknown", "unknown_handler\n"),
+        ("version", "version\n"), ("unknown", "unknown_handler\n"), ("unbound", "unknown_handler\n"),
         ("budget", "budget\n"), ("missing", "missing_port\n"),
         ("cycle", "cycle\n"), ("type", "type_mismatch\n"),
         ("duplicate", "duplicate\n"), ("malformed", "invalid_node\n"),
@@ -39,4 +42,4 @@ with tempfile.TemporaryDirectory(prefix="finpred-dag-") as tmp:
     ]:
         result = subprocess.check_output([exe], cwd=tmp, env={**os.environ, "DAG_CASE": case}, timeout=10)
         assert result == expected.encode("ascii"), (case, result, expected)
-print("scalar_dag_ok=true executions=6 rejected=14")
+print("scalar_dag_ok=true executions=8 rejected=15")

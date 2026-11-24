@@ -1,7 +1,7 @@
 # Independent trusted caller: the SDK path uses neither the fd dispatcher
 # nor the legacy five-argument shim, which has a separate compatibility trial.
 import dragnet.source_registry as Sources;
-import core.fx_reference as FX;
+import plugins.dragnet.fx_reference as FX;
 import sdk.callable as SDK;
 import std.crypto.crypto as Crypto;
 import std.os.CommandLine as Env;

@@ -6,6 +6,15 @@ import automat.dag_replay as Replay;
 import automat.scalar_manifest as Manifest;
 import automat.scalar_verify as Frozen;
 
+fn lookup(op:string, mode:string) -> D.Descriptor
+{
+  if op == "left@1" || op == "maximum@1"
+  { return D.host_binary(op,3,"test.host@1","scalar.level@1","scalar.level@1"); }
+  return D.no_binding(op,mode);
+}
+
+fn left_port(op:string, left:i64, right:i64) -> i64 { return left; }
+
 fn main() -> i64
 {
   let test = Env.basis_command_line_get_env("DAG_CASE");
@@ -19,6 +28,8 @@ fn main() -> i64
   if test == "mode" { mode = "execution"; }
   if test == "version" { version = "automat.scalar-dag@99"; }
   if test == "unknown" { op = "maximum@2"; }
+  if test == "unbound" || test == "bound"
+  { op = "left@1"; version = "automat.scalar-dag@3"; }
   if test == "action" { op = "publish@1"; }
   if test == "budget" { budget = 2; }
   if test == "missing" { left = "absent"; }
@@ -66,7 +77,9 @@ fn main() -> i64
     version = "automat.scalar-dag@2";
   }
   let plan = record<D.Plan>{version:sx_string(version),nodes:nodes,output:sx_string(output)};
-  let r = D.run(plan,mode,budget,first,42);
+  var r = D.run(plan,mode,budget,first,42);
+  if test == "bound" || test == "builtin"
+  { r = D.run_with(plan,mode,budget,first,42,false,lookup,left_port); }
   IO.basis_text_io_print(sx_text(r["status"]));
   IO.basis_text_io_print("\n");
   if sx_text(r["status"]) == "ok"

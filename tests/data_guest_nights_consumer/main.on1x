@@ -1,4 +1,4 @@
-import core.guest_nights as Nights;
+import plugins.dragnet.guest_nights as Nights;
 import dragnet.public_feeds as Feed;
 import std.crypto.crypto as Crypto;
 import std.os.CommandLine as Env;

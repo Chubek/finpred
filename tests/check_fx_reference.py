@@ -46,7 +46,7 @@ def run_tests(work):
     subprocess.run(
         [sys.executable, mulib / "on1x/tools/on1x-build.py",
          ROOT / "tests/fx_reference_consumer/main.on1x", "--backend", "c11",
-         "--on1xc", compiler, "--mulib-root", mulib, "-I", ROOT / "source", "-o", exe],
+         "--on1xc", compiler, "--mulib-root", mulib, "-I", ROOT / "source", "-I", ROOT, "-o", exe],
         cwd=work, env=env, check=True, timeout=180,
     )
 

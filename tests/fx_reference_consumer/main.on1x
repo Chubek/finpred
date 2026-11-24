@@ -1,5 +1,5 @@
-import core.fx_reference as FX;
-import core.fx_reference_change as Change;
+import plugins.dragnet.fx_reference as FX;
+import plugins.dragnet.fx_reference_change as Change;
 import std.crypto.crypto as Crypto;
 import std.os.CommandLine as Env;
 import std.io.TextIO as IO;

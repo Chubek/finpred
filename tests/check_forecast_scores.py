@@ -9,6 +9,7 @@ import argparse
 from fractions import Fraction
 import json
 import os
+import runpy
 from pathlib import Path
 import subprocess
 import sys
@@ -369,20 +370,28 @@ def compiled(chronology, validator, expected):
         subprocess.run([sys.executable, str(mulib / "on1x/tools/on1x-build.py"),
                         str(CONSUMER), "--backend", "c11", "--on1xc", str(compiler),
                         "--mulib-root", str(mulib), "-I", str(ROOT / "source"),
-                        "-I", str(PACKAGE / "source"), "-o", str(exe)],
+                         "-I", str(ROOT), "-I", str(PACKAGE / "source"), "-o", str(exe)],
                        cwd=work, env=env, check=True, timeout=120)
         offline = work / "empty-store"
         offline.mkdir()
         evaluation_validator = Draft202012Validator(json.loads(EVALUATION_SCHEMA.read_bytes()),
                                                      format_checker=FormatChecker())
         Draft202012Validator.check_schema(evaluation_validator.schema)
-        subjects = [SCORE_SOURCE, EVALUATION_SOURCE, *(ROOT / f"source/{name}.on1x" for name in (
-            "core/date", "core/feed_snapshot", "core/format", "core/guest_nights", "sdk/callable"))]
+        subjects = [SCORE_SOURCE, EVALUATION_SOURCE, *(ROOT / f"{name}.on1x" for name in (
+            "source/core/date", "source/core/feed_snapshot", "source/core/format",
+            "plugins/dragnet/guest_nights", "source/sdk/callable"))]
+        normalize = runpy.run_path(str(ROOT / "bin/forecast-subject.py"))["v1_source"]
         scoring_subject = "finpred.test-scoring-source-subject@1\n"
         for path in subjects:
-            source = path.read_bytes().decode("ascii")
-            scoring_subject += f"{path.relative_to(ROOT)}\n{len(source)}:{source}"
-        env |= {"CODE_BYTES": MODEL_SOURCE.read_text(),
+            name = path.relative_to(ROOT).as_posix()
+            if path.parent == MODEL_SOURCE.parent:
+                _, raw = normalize(f"forecast_baselines/{path.name}", path.read_bytes())
+            else:
+                name, raw = normalize(name.removeprefix("source/"), path.read_bytes())
+                name = f"source/{name}"
+            scoring_subject += f"{name}\n{len(raw)}:{raw.decode('ascii')}"
+        _, model_bytes = normalize(f"forecast_baselines/{MODEL_SOURCE.name}", MODEL_SOURCE.read_bytes())
+        env |= {"CODE_BYTES": model_bytes.decode("ascii"),
                 "SCORING_CODE_BYTES": scoring_subject,
                 "FINPRED_HOME": str(offline / "absent")}
         def digest(payload):

@@ -1,5 +1,5 @@
 # Independent compiled consumer: neither the CLI nor the pricing store is linked.
-import core.guest_nights as Guest;
+import plugins.dragnet.guest_nights as Guest;
 import core.format as F;
 import forecast_baselines.evaluation as Evaluation;
 import forecast_baselines.holdout as Holdout;

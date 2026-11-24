@@ -1,4 +1,4 @@
-import core.guest_nights as Guest;
+import plugins.dragnet.guest_nights as Guest;
 import forecast_baselines.model as Model;
 import sdk.callable as SDK;
 import std.io.TextIO as IO;

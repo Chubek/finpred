@@ -6,12 +6,23 @@ import re
 from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 sources = sorted((root/'source').rglob('*.on1x'))
-for package in sorted(path for path in (root/'plugins').iterdir() if path.is_dir()):
+packages = sorted(path for path in (root/'plugins').iterdir() if path.is_dir())
+for package in packages:
     assert not (root/'source'/package.name).exists(), package.name
 assert not (root/'source/plugins').exists()
 assert len(sources) >= 12, len(sources)
+engine_namespaces = {'algorithms', 'automat', 'core', 'ottomat', 'sdk', 'store'}
+external_namespaces = {'cli', 'plugins', *(path.name for path in packages)}
+package_catalog = {'sdk.packages', 'sdk.registry', 'sdk.sdk', 'sdk.static_host'}
 for module in sources:
     text = module.read_text()
+    namespace = module.relative_to(root/'source').parts[0]
+    if namespace in engine_namespaces:
+        imports = set(re.findall(r'^\s*import\s+([\w.]+)\b', text, re.MULTILINE))
+        external = {name for name in imports if name.partition('.')[0] in external_namespaces}
+        if namespace != 'sdk':
+            external |= imports & package_catalog
+        assert not external, (module, external)
     # The smoke check ignores text, character literals and line comments.
     # `#\` starts an On1x character literal, not a comment.
     stripped = re.sub(r'"(?:\\.|[^"\\])*"|#\\(?:[a-zA-Z][\w+]*|[^\n])|#[^\n]*',

@@ -2,6 +2,7 @@ import sdk.registry as Registry;
 import sdk.static_host as Host;
 import automat.dag as Dag;
 import plugins.scalar_diagnostics.midpoint as Midpoint;
+import plugins.scalar_diagnostics.binding as Diagnostics;
 import plugins.yieldcraft.entry as Yieldcraft;
 import std.os.CommandLine as Env;
 import std.io.TextIO as IO;
@@ -27,10 +28,29 @@ fn main() -> i64
     assert(!Host.yieldcraft("execution"));
     return 0;
   }
+  if task == "disabled"
+  {
+    assert(!Registry.admits("dragnet.frozen_csv.offers_as_of","analysis"));
+    assert(!Registry.admits("poindexter.sheet.render","analysis"));
+    assert(!Registry.admits("plugins.scalar_diagnostics.midpoint.midpoint","analysis"));
+    return 0;
+  }
+  if task == "denied_dependency"
+  {
+    assert(!Registry.admits(Registry.yieldcraft_entry(),"recommendation"));
+    assert(!Registry.admits("dragnet.frozen_csv.offers_as_of","analysis"));
+    assert(!Registry.admits("poindexter.sheet.render","analysis"));
+    assert(Registry.admits("plugins.scalar_diagnostics.midpoint.midpoint","analysis"));
+    return 0;
+  }
   let n = Dag.node("midpoint","midpoint@1","first","second");
   let plan = record<Dag.Plan>{version:sx_string("automat.scalar-dag@3"),
     nodes:sx_cons(n,sx_nil()),output:sx_string("midpoint")};
-  if task == "invoke" { println("${Dag.invoke_binary("midpoint@1","automat.scalar-dag@3","analysis",17,42)}"); }
+  if task == "invoke"
+  {
+    println("${Dag.invoke_binary_with("midpoint@1","automat.scalar-dag@3","analysis",17,42,
+      Diagnostics.lookup,Diagnostics.call)}");
+  }
   if task == "direct" { println("${Midpoint.midpoint(17,42)}"); }
   if task == "direct_yieldcraft"
   {
@@ -42,10 +62,11 @@ fn main() -> i64
   }
   if task == "plan"
   {
-    let outcome = Dag.run_memoized(plan,"analysis",1,17,42);
+    assert(Dag.validate(plan,"analysis",1) == "unknown_handler");
+    let outcome = Dag.run_with(plan,"analysis",1,17,42,true,Diagnostics.lookup,Diagnostics.call);
     println(sx_text(outcome["status"]));
     println("${outcome["invocations"]}");
-    let lowered = Ottomat.lower(IO.basis_text_io_input_all("midpoint.ottomat"),"analysis",3);
+    let lowered = Ottomat.lower_with(IO.basis_text_io_input_all("midpoint.ottomat"),"analysis",3,Diagnostics.lookup);
     println(sx_text(lowered["status"]));
   }
   return 0;

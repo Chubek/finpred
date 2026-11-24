@@ -30,11 +30,12 @@ def main():
     with tempfile.TemporaryDirectory(prefix="finpred-plugin-registry-") as tmp:
         work = Path(tmp)
         project = work / "project"
-        app, dragnet = work / "app", work / "dragnet"
+        app = work / "app"
         consumer = work / "consumer"
         project.mkdir()
         for directory in ("source", "bin"):
             shutil.copytree(ROOT / directory, project / directory)
+        shutil.copytree(ROOT / "strategies/yieldcraft", project / "strategies/yieldcraft")
         shutil.copy(ROOT / "On1xfile", project)
         for package in ("yieldcraft", "scalar_diagnostics", "dragnet", "forecast_baselines"):
             shutil.copytree(ROOT / "plugins" / package, project / "plugins" / package)
@@ -61,12 +62,6 @@ def main():
 
         def run_consumer(case, **expected):
             return execute([consumer], project, env=cli_env | {"REGISTRY_CASE": case}, **expected)
-
-        def run_dragnet(failure):
-            scenario, offers = (ROOT / "fixtures" / f"{name}.csv" for name in ("scenario", "offers"))
-            return execute(["sh", "-c", 'exec "$1" 3<"$2" 4<"$3"',
-                            "dragnet", dragnet / "dragnet-frozen-csv", scenario, offers],
-                           work, failure=failure)
 
         store = work / "store"
         cli_env = {"FINPRED_HOME": str(store), "FINPRED_RUN_ID": MAIN_ID, "FINPRED_ENGINE": "legacy",
@@ -112,9 +107,7 @@ def main():
         run_cli("poindexter", failure=b"sdk: incompatible pricing sheet")
         assert not Path(cli_env["FINPRED_HOME"]).exists()
         cli_env["FINPRED_HOME"] = str(store)
-        subprocess.run([project / "plugins/dragnet/build.sh", dragnet], cwd=project,
-                       env=os.environ | env, check=True)
-        run_dragnet(b"sdk: incompatible frozen CSV source")
+        assert run_consumer("disabled") == b""
 
         disable("yieldcraft_entry()")
         compile_consumer()
@@ -130,9 +123,7 @@ def main():
             "FINPRED_STRATEGY": str(project / "midpoint.ottomat"),
         })
         assert not blocked_store.exists()
-        subprocess.run([project / "plugins/dragnet/build.sh", dragnet], cwd=project,
-                       env=os.environ | env, check=True)
-        run_dragnet(b"sdk: incompatible frozen CSV source")
+        assert run_consumer("denied_dependency") == b""
 
     print("plugin_registry_ok=true disabled_bindings=4 denied_dependency=1 direct_libraries=2")
 

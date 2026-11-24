@@ -58,7 +58,7 @@ def main():
         for case, expected in SDK_CASES.items():
             run(sdk, case, rc=expected)
 
-        data = build("data_guest_nights_consumer", [ROOT / "plugins/dragnet/source"])
+        data = build("data_guest_nights_consumer", [ROOT, ROOT / "plugins/dragnet/source"])
         raw = (ROOT / "tests/dragnet_feeds/eurostat.json").read_text()
         source = run(data, "fixture", RAW=raw)
         assert run(data, "digest", SNAPSHOT=source).strip() == PARENT

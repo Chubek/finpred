@@ -1,5 +1,5 @@
 # Test-only independent consumer: links no acquisition or Yieldcraft source.
-import core.dragnet_batch as Dragnet;
+import plugins.dragnet.dragnet_batch as Dragnet;
 import std.environ as Env;
 
 fn main() -> i64 {
