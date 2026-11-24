@@ -29,7 +29,8 @@ make dragnet
 ./bin/finpred dragnet-inspect capture.jsonl 2026-11-24T00:00:00Z
 ```
 
-For your own On1x consumer, compile with `-I "$PWD/source"` and import
+For your own On1x consumer, compile from the repository root with
+`-I "$PWD/source" -I "$PWD"` and import
 `plugins.dragnet.dragnet_batch as Dragnet`. Pass **bytes**, not a path, to
 `Dragnet.read(bytes, cutoff)`, then use `Dragnet.page()` to access records.
 The [compiled example](tests/dragnet_batch_consumer.on1x) links no acquisition
@@ -54,9 +55,11 @@ Compile the host with `-I "$PWD/source" -I "$PWD"` from the FinPRED root. The [p
 
 Each feasible property contributes one cheapest room bundle. Limits include 512 offer rows, 10 eligible rooms per property, 4 selected rooms, 8 adults, 8 children and a search budget of at most 1,000,000. Fewer than the required independent properties yields `insufficient_evidence` via `tool_fail`, not a fallback price. The frozen fixtures return `17100` (`lower_percentile_shortcut`) and `16000` (`guardrail_adjustment`) cents per night. The CLI shares the matcher and strategy implementations and owns its own evidence, lineage and replay path.
 
-The CLI writes only [`finpred-run@2`](docs/RUN_FORMAT.md#v2-writer-and-verifier).
-That store format does not version the plugin or the `pricing.recommendation@1`
-contract. The pure package neither selects a run format nor accesses archives.
+The market-positioning CLI writes
+[`finpred-run@2`](docs/RUN_FORMAT.md#v2-market-positioning-writer-and-verifier).
+Expected contribution uses its separate [`finpred-run@3`](docs/RUN_FORMAT.md#v3-expected-contribution)
+format. Neither format versions this plugin or its output contract. The pure
+package neither selects a run format nor accesses archives.
 
 For a pure algorithm registered with the scalar graph (also available via
 `run --engine scalar`), see the [scalar diagnostics package](plugins/scalar_diagnostics/README.md).
@@ -97,6 +100,8 @@ For built-in SDK v2 descriptors, use `<finpred/sdk_v2.h>`: look up the package,
 then check its requested use against the host's linked dependencies, resource
 ceilings and grants. The [built-in On1x hosts](source/sdk/static_host.on1x)
 perform this check before dispatch and grant no external capabilities.
+The [installation instructions](INSTALL.md#install-the-descriptor-sdk)
+also cover a relocatable CMake package and metadata-only Python bindings.
 
 The legacy v1 API describes **only** `yieldcraft.percentile`. Include `<finpred/sdk.h>` and link `-lfinpred_sdk`. The sequence in the [C consumer](tests/sdk_consumer.c) is:
 
@@ -111,7 +116,7 @@ Both the C check and the [On1x allowlist](source/sdk/sdk.on1x) recognize `analys
 1. **Choose a narrow entry point.** Pass validated values or frozen contents. Keep file selection, output and run verification in the host. Specify units, time cutoffs, failure behavior and bounds. Reuse the [versioned contracts](contracts/) when your data has those semantics.
 2. **Make the build explicit.** For a reusable local library, copy the layout of [Poindexter](plugins/poindexter/): `On1xfile` declares `kind library`, `On1xfile.m` lists the implementation, and `On1xfile.i` lists the `.on1xi` interface. Declare the dependency in your host project and import it by name; the [standalone consumer project](tests/poindexter_consumer/On1xfile) stages the dependency under `vendor/poindexter`. For a source with host-specific I/O, see [Dragnet's acquisition host](plugins/dragnet/source/main.on1x).
 3. **Document and wire the exact call.** Record the name, package and SDK versions, kind, contracts, entry point, effects, capabilities and bounds in `plugin.json`. These are package descriptions, not a universal manifest parser. An additional CLI feature needs an explicit host call and rebuild. The existing fixed graph and Ottomat declaration do not schedule new packages. Preserve old run identities and replay behavior if changing persisted semantics.
-4. **Test across the host boundary.** Compile a separate consumer; compare fixture bytes and units, test malformed inputs and denied modes, and check for unintended writes. For replay views, include missing and corrupted runs as well as valid runs. Trusted linkage does not provide isolation for untrusted native code, network access or an action gateway.
+4. **Test across the host boundary.** Compile a separate consumer; compare fixture bytes and units, test malformed inputs and denied modes, and check for unintended writes. For replay views, include missing and corrupted runs as well as valid runs. Trusted linkage is not isolation. The [optional offline process worker](docs/OFFLINE_WORKER.md) is separate from these in-process entry points and grants no network or action authority.
 
 Run from the root on Linux; [INSTALL.md](INSTALL.md) covers `MULIB_ROOT`, `ON1XC` and the Python `jsonschema` test dependency. Set `TMPDIR` to a writable executable filesystem with space for disposable builds.
 

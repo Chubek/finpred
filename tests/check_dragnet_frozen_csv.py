@@ -27,7 +27,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="finpred-dragnet-") as tmp:
         work = Path(tmp)
         build = work / "build"
-        subprocess.run([PKG / "build.sh", build], check=True)
+        subprocess.run([PKG / "build-frozen-csv.sh", build], check=True)
         exe = build / "dragnet-frozen-csv"
         empty = work / "empty"
         empty.mkdir()

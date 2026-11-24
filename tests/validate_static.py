@@ -7,12 +7,14 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 sources = sorted((root/'source').rglob('*.on1x'))
 packages = sorted(path for path in (root/'plugins').iterdir() if path.is_dir())
+strategies = sorted(path for path in (root/'strategies').iterdir() if path.is_dir())
 for package in packages:
     assert not (root/'source'/package.name).exists(), package.name
 assert not (root/'source/plugins').exists()
 assert len(sources) >= 12, len(sources)
 engine_namespaces = {'algorithms', 'automat', 'core', 'ottomat', 'sdk', 'store'}
-external_namespaces = {'cli', 'plugins', *(path.name for path in packages)}
+external_namespaces = {'cli', 'plugins', 'strategies',
+                       *(path.name for path in packages + strategies)}
 package_catalog = {'sdk.packages', 'sdk.registry', 'sdk.sdk', 'sdk.static_host'}
 for module in sources:
     text = module.read_text()

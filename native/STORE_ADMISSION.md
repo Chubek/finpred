@@ -6,6 +6,8 @@ build option. The standalone [native review target](README.md) implements
 the host-side operations below; its C tests do not confer KernelBind admission.
 The existing [private-store protocol](../source/store/README.md)
 provides atomic visibility among cooperating publishers, not durable commits.
+The native [process-death regression](README.md#process-death-regression)
+covers visibility and recovery on a live mount, not remount persistence.
 
 ## KernelBind evidence
 

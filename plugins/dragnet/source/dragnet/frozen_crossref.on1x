@@ -1,0 +1,250 @@
+# Versioned local evidence adapter; not an SDK-registered pricing input.
+import core.csv as CSV;
+import core.date as Date;
+import core.format as F;
+import std.String as Str;
+import std.crypto.crypto as Crypto;
+import std.json.normalize as JSON;
+import std.ppx.json as Ppx;
+
+fn digest(bytes: string) -> string
+{
+  let (status, hash) = Crypto.basis_crypto_blake3(bytes);
+  if status != 0 || text_len(hash) != 64 { tool_fail("crossref: BLAKE3 failed"); }
+  return hash;
+}
+
+fn token(c: i64) -> bool
+{
+  return (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) ||
+    c == 45 || c == 46 || c == 95;
+}
+
+fn policy_ref(s: string)
+{
+  if text_len(s) < 1 || text_len(s) > 64 { tool_fail("crossref: invalid policy reference"); }
+  for i in 0 .. text_len(s)
+  {
+    if !token(text_byte(s,i)) { tool_fail("crossref: invalid policy reference"); }
+  }
+}
+
+fn doi(s: string) -> string
+{
+  let n = text_len(s);
+  if n < 9 || n > 255 || text_slice(s,0,3) != "10." { tool_fail("crossref: invalid DOI"); }
+  var slash = 3;
+  while slash < n && text_byte(s,slash) >= 48 && text_byte(s,slash) <= 57 { slash = slash + 1; }
+  if slash < 7 || slash > 12 || slash >= n - 1 || text_byte(s,slash) != 47
+  { tool_fail("crossref: invalid DOI prefix"); }
+  let out = buffer_new();
+  buffer_append(out,text_slice(s,0,slash + 1));
+  for i in (slash + 1) .. n
+  {
+    let c = text_byte(s,i);
+    if !token(c) && c != 40 && c != 41 && c != 47 && c != 59
+    { tool_fail("crossref: unsupported DOI suffix"); }
+    if c >= 65 && c <= 90 { buffer_byte(out,c + 32); }
+    else { buffer_byte(out,c); }
+  }
+  return buffer_text(out);
+}
+
+fn hex(c: i64) -> i64
+{
+  if c >= 48 && c <= 57 { return c - 48; }
+  if c >= 65 && c <= 70 { return c - 55; }
+  return -1;
+}
+
+fn request_url(s: string)
+{
+  let prefix = "https://api.crossref.org/works?query=";
+  let suffix = "&rows=16&select=title,URL";
+  let start = text_len(prefix);
+  let end = text_len(s) - text_len(suffix);
+  if end <= start || end > start + 384 || text_slice(s,0,start) != prefix ||
+    text_slice(s,end,text_len(s)) != suffix
+  { tool_fail("crossref: invalid rendered request URL"); }
+  var at = start;
+  var count = 0;
+  var nonspace = false;
+  while at < end
+  {
+    var c = text_byte(s,at);
+    if c == 37 && at + 2 < end
+    {
+      let hi = hex(text_byte(s,at + 1));
+      let lo = hex(text_byte(s,at + 2));
+      if hi < 0 || lo < 0 { tool_fail("crossref: invalid encoded request URL"); }
+      c = hi * 16 + lo;
+      at = at + 2;
+      if c < 32 || c > 126 || c == 92 || token(c) || c == 126
+      { tool_fail("crossref: invalid encoded request URL"); }
+    }
+    else
+    {
+      if !token(c) && c != 126 { tool_fail("crossref: invalid request URL keyword"); }
+    }
+    if c != 32 { nonspace = true; }
+    count = count + 1;
+    at = at + 1;
+  }
+  if count > 128 || !nonspace { tool_fail("crossref: invalid request URL keyword"); }
+}
+
+fn decode_rows(bytes: string, header: string, min: i64, max: i64) -> i64
+{
+  let size = text_len(bytes);
+  if size < 1 || size > 16384 || text_byte(bytes,size - 1) != 10
+  { tool_fail("crossref: invalid decode size or framing"); }
+  var lines = 0;
+  for i in 0 .. size
+  {
+    let c = text_byte(bytes,i);
+    if c == 10 { lines = lines + 1; }
+    else
+    {
+      if c < 32 || c == 127 { tool_fail("crossref: invalid decode byte"); }
+    }
+  }
+  if lines < min || lines > max || CSV.line(bytes,0) != header
+  { tool_fail("crossref: invalid decode version or row count"); }
+  return lines;
+}
+
+fn decode_field(line: string) -> string
+{
+  let n = text_len(line);
+  if n < 3 || n > 2050 || text_byte(line,0) != 34 || !JSON.json_valid(line)
+  { tool_fail("crossref: invalid work field encoding"); }
+  let (s, end) = Ppx.ppx_json_quoted(line,0);
+  if end != n || text_len(s) < 1 || text_len(s) > 1024
+  { tool_fail("crossref: invalid work field size"); }
+  for i in 0 .. text_len(s)
+  {
+    let c = text_byte(s,i);
+    if c < 32 || c == 127 { tool_fail("crossref: control byte in work field"); }
+  }
+  return s;
+}
+
+fn fields(out: buffer, selection: string, work: string)
+{
+  let n = text_len(selection);
+  if n < 1 || n > 20 { tool_fail("crossref: invalid field selection"); }
+  var start = 0;
+  var used = 0;
+  for i in 0 .. (n + 1)
+  {
+    if i == n || text_byte(selection,i) == 124
+    {
+      let name = text_slice(selection,start,i);
+      var row = 0;
+      var bit = 1;
+      if name == "title" { row = 3; }
+      if name == "publisher" { row = 4; bit = 2; }
+      if name == "type" { row = 5; bit = 4; }
+      if row == 0 || used / bit % 2 == 1 { tool_fail("crossref: invalid field selection"); }
+      if used != 0 { buffer_append(out,","); }
+      used = used + bit;
+      buffer_append(out,F.q(name)); buffer_append(out,":");
+      buffer_append(out,CSV.line(work,row));
+      start = i + 1;
+    }
+  }
+}
+
+fn times(out: buffer, observed: string, ingested: string)
+{
+  buffer_append(out,"{\"observed_at\":"); buffer_append(out,F.q(observed));
+  buffer_append(out,",\"ingested_at\":"); buffer_append(out,F.q(ingested));
+  buffer_append(out,"}");
+}
+
+fn request_row(request:string) -> string
+{
+  if text_len(request) > 1024 || CSV.rows(request) != 3 ||
+    CSV.line(request,0) != "dragnet.crossref-request@1"
+  { tool_fail("crossref: invalid request version or size"); }
+  CSV.header(CSV.line(request,1),
+    "search_observed_at,search_ingested_at,work_observed_at,work_ingested_at,as_of,terms_ref,retention_ref,fields");
+  let row = CSV.line(request,2);
+  CSV.require_width(row,8);
+  return row;
+}
+
+fn request_as_of(request:string) -> string
+{
+  let as_of = CSV.field(request_row(request),4);
+  if !Date.utc_timestamp(as_of) { tool_fail("crossref: expected UTC timestamps"); }
+  return as_of;
+}
+
+fn evidence_as_of(request: string, raw_search: string, raw_work: string,
+  search_decode: string, work_decode: string) -> string
+{
+  let row = request_row(request);
+  let so = CSV.field(row,0);
+  let si = CSV.field(row,1);
+  let wo = CSV.field(row,2);
+  let wi = CSV.field(row,3);
+  let as_of = CSV.field(row,4);
+  let terms = CSV.field(row,5);
+  let retention = CSV.field(row,6);
+  if !Date.utc_timestamp(so) || !Date.utc_timestamp(si) || !Date.utc_timestamp(wo) ||
+    !Date.utc_timestamp(wi) || !Date.utc_timestamp(as_of)
+  { tool_fail("crossref: expected UTC timestamps"); }
+  if Str.compare(so,si) > 0 || Str.compare(wo,wi) > 0 || Str.compare(so,wo) > 0
+  { tool_fail("crossref: invalid observation chronology"); }
+  if Str.compare(si,as_of) > 0 || Str.compare(wi,as_of) > 0
+  { tool_fail("crossref: snapshot not available as-of cutoff"); }
+  policy_ref(terms);
+  policy_ref(retention);
+  if text_len(raw_search) < 1 || text_len(raw_search) > 262144 ||
+    text_len(raw_work) < 1 || text_len(raw_work) > 262144
+  { tool_fail("crossref: invalid raw snapshot size"); }
+  let n = decode_rows(search_decode,"dragnet.crossref-search-decode@1",3,19);
+  let _ = decode_rows(work_decode,"dragnet.crossref-work-decode@1",6,6);
+  let search_hash = digest(raw_search);
+  let work_hash = digest(raw_work);
+  if CSV.line(search_decode,1) != search_hash { tool_fail("crossref: search digest mismatch"); }
+  if CSV.line(work_decode,1) != work_hash { tool_fail("crossref: work digest mismatch"); }
+  let url = CSV.line(search_decode,2);
+  request_url(url);
+  let id = doi(decode_field(CSV.line(work_decode,2)));
+  for i in 3 .. 6
+  {
+    let value = CSV.line(work_decode,i);
+    if value != "null" { let _ = decode_field(value); }
+  }
+  var found = false;
+  for i in 3 .. n
+  {
+    let hit = doi(CSV.line(search_decode,i));
+    if hit == id { found = true; }
+    for j in 3 .. i
+    {
+      if doi(CSV.line(search_decode,j)) == hit { tool_fail("crossref: duplicate DOI in search"); }
+    }
+  }
+  if !found { tool_fail("crossref: DOI not in frozen search"); }
+
+  let out = buffer_new();
+  buffer_append(out,"{\"format\":\"dragnet.crossref-evidence@1\",\"mode\":\"offline\",\"provider\":\"crossref\",");
+  buffer_append(out,"\"search_scope\":\"single_frozen_page\",\"request_url\":"); buffer_append(out,F.q(url));
+  buffer_append(out,",\"doi\":"); buffer_append(out,F.q(id));
+  buffer_append(out,",\"as_of\":"); buffer_append(out,F.q(as_of));
+  buffer_append(out,",\"search_times\":"); times(out,so,si);
+  buffer_append(out,",\"work_times\":"); times(out,wo,wi);
+  buffer_append(out,",\"terms_ref\":"); buffer_append(out,F.q(terms));
+  buffer_append(out,",\"retention_ref\":"); buffer_append(out,F.q(retention));
+  buffer_append(out,",\"evidence\":{\"request\":\"blake3:"); buffer_append(out,digest(request));
+  buffer_append(out,"\",\"search\":\"blake3:"); buffer_append(out,search_hash);
+  buffer_append(out,"\",\"work\":\"blake3:"); buffer_append(out,work_hash);
+  buffer_append(out,"\",\"search_decode\":\"blake3:"); buffer_append(out,digest(search_decode));
+  buffer_append(out,"\",\"work_decode\":\"blake3:"); buffer_append(out,digest(work_decode));
+  buffer_append(out,"\"},\"fields\":{"); fields(out,CSV.field(row,7),work_decode);
+  buffer_append(out,"}}\n");
+  return buffer_text(out);
+}

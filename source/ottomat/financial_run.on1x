@@ -1,0 +1,13 @@
+# Compose a successful Ottomat lowering with the native runtime. Authority,
+# payloads and strategy context remain explicit host inputs.
+import ottomat.financial as Ott;
+import automat.financial_run as Run;
+import sdk.callable as SDK;
+
+fn execute(lowered:Ott.Lowered, roots:sexpr, ctx:Run.Context, mode:string, budget:i64,
+  resolve:fn(string) -> SDK.Descriptor, call:fn(SDK.Pin, SDK.Request) -> SDK.Outcome) -> Run.Result
+{
+  if !SDK.same(lowered["status"],sx_string("ok")) || !SDK.same(lowered["lowering"],sx_string(Ott.identity()))
+  { return Run.error("lowering",""); }
+  return Run.execute_pinned(lowered["graph"],roots,ctx,mode,budget,resolve,call,lowered["graph_digest"]);
+}

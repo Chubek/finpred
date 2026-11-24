@@ -5,48 +5,37 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 . "$ROOT/bin/paths.sh"
 finpred_build_env "$ROOT"
 cd "$ROOT"
-unset FINPRED_ENGINE FINPRED_DEMAND
+unset FINPRED_ENGINE FINPRED_DEMAND FINPRED_MODE FINPRED_RUN_ID
 FINPRED_EXE=$(finpred_cli_executable "$ROOT")
 export FINPRED_EXE
-python3 tests/validate_static.py
-python3 tests/check_price_prediction.py
-python3 tests/check_yieldcraft_contribution.py
-python3 tests/check_on1x_features.py
-python3 tests/check_environ_argv.py
-python3 tests/check_fixtures.py
-python3 tests/check_sdk.py
-python3 tests/check_sdk_packages.py
-python3 tests/check_sdk_data1.py
-python3 tests/check_fx_reference.py
-python3 tests/check_forecast_baselines.py
-python3 tests/check_forecast_cli.py
-python3 tests/check_plugin_registry.py
-python3 tests/check_fixed_runner.py
-python3 tests/check_hospitality_adapters.py
-python3 tests/check_financial_graph.py
-python3 tests/check_ottomat_financial.py
-python3 tests/check_forecast_graph.py
-python3 tests/check_dag.py
-python3 tests/check_dag_replay.py
-python3 tests/check_scalar_manifest.py
-python3 tests/check_scalar_memo.py
-python3 tests/check_ottomat_plan.py
-python3 tests/check_ottomat_scalar.py
-python3 tests/check_scalar_selection.py
-python3 tests/check_scalar_registry.py
-python3 tests/check_scalar_diagnostics_package.py
-work=$(mktemp -d "$TMPDIR/finpred-test.XXXXXXXX")
-trap 'rm -rf -- "$work"' EXIT
-trap 'exit 1' HUP INT TERM
 exe=$FINPRED_EXE
-python3 tests/check_cli_environ.py "$exe"
-python3 tests/check_engines_cli.py
-unset FINPRED_MODE FINPRED_RUN_ID
-python3 tests/check_competitor_cube.py
-FINPRED_HOME="$work/main"
-FINPRED_VALUATION="$ROOT/fixtures/valuation.csv"
-FINPRED_STRATEGY="$ROOT/strategies/yieldcraft.ottomat"
-export FINPRED_HOME FINPRED_VALUATION FINPRED_STRATEGY FINPRED_SCENARIO FINPRED_OFFERS
+
+checks() {
+  for check in "$@"; do
+    python3 "tests/check_$check.py"
+  done
+}
+
+require_tools() {
+  for tool in "$@"; do
+    if ! command -v "$tool" >/dev/null; then
+      echo "$suite verification requires $tool" >&2
+      exit 2
+    fi
+  done
+}
+
+fixture_home() {
+  work=$(mktemp -d "$TMPDIR/finpred-test.XXXXXXXX")
+  trap 'rm -rf -- "$work"' EXIT
+  trap 'exit 1' HUP INT TERM
+  FINPRED_HOME="$work/main"
+  FINPRED_SCENARIO="$ROOT/fixtures/scenario.csv"
+  FINPRED_OFFERS="$ROOT/fixtures/offers.csv"
+  FINPRED_VALUATION="$ROOT/fixtures/valuation.csv"
+  FINPRED_STRATEGY="$ROOT/strategies/yieldcraft.ottomat"
+  export FINPRED_HOME FINPRED_VALUATION FINPRED_STRATEGY FINPRED_SCENARIO FINPRED_OFFERS
+}
 
 # Ignore access times: reading the files may legitimately update those.
 # Inodes and ctime/mtime catch same-byte rewrites and replacement as well.
@@ -94,6 +83,9 @@ check_fixture() {
   grep -Fxq "independent_properties=$4" "$trace_file"
   grep -Fxq "rejected_offers=$5" "$trace_file"
   grep -Fxq "infeasible_properties=$6" "$trace_file"
+  if [ "$suite" != storage ]; then
+    return
+  fi
   IFS=, read -r version sd od vd td rd tr <"$FINPRED_HOME/runs/$id.txt"
   [ "$version" = 'finpred-run@2' ]
   cmp "$FINPRED_SCENARIO" "$FINPRED_HOME/artifacts/blake3-$sd.txt"
@@ -117,41 +109,49 @@ check_fixture() {
   cmp "$work/before" "$work/after"
 }
 
-bin/finpred selftest >"$work/selftest"
-grep -Fx 'selftest_ok=true' "$work/selftest"
-check_fixture '' 17100 lower_percentile_shortcut 5 2 0
-main_id=$id
-# Pin pre-profile v2 identities as well as economic outcomes: the run ID
-# covers all input lineage; the manifest output hashes cover JSON and trace.
-[ "$id:$rd:$tr" = '28b145fb8f902a239e76502a40c138bd60c7ae6af98ca70e21faf0e0f06e85db:5099f766659506292edb848dc8e8376cce99dfae60b9bc8d495d03792d6461ee:4503a57102a1ea380b9e94ac5b3fe5f9c17e3ac44c12c1ab049e60a4d4a75822' ]
-cp "$work/run" "$work/main-summary"
-check_fixture '_multiroom' 16000 guardrail_adjustment 3 0 1
-multi_id=$id
-[ "$id:$rd:$tr" = '7b1f694eab8645b0a09ed431a1268619328da4833a417a22cacf66c68df4612b:1f10e792e433fc59fc6ec49cf100922b7ce543c0c440b01551b4e2e32806f2ea:67f5051fb3613d4011c431a5ab343022ada824a428ad8ca3f1cc8358035dba86' ]
-[ "$multi_id" != "$main_id" ]
-python3 "$ROOT/tests/check_explain_cli.py" "$FINPRED_HOME" "$main_id"
-python3 "$ROOT/tests/check_evidence_cli.py" "$FINPRED_HOME" "$main_id" "$multi_id"
-python3 "$ROOT/tests/check_store.py" "$FINPRED_HOME" "$work/main-summary" "$work/run"
+fixture_runs() {
+  check_fixture '' 17100 lower_percentile_shortcut 5 2 0
+  main_id=$id
+  # Pin pre-profile v2 identities as well as economic outcomes: the run ID
+  # covers all input lineage; the manifest output hashes cover JSON and trace.
+  if [ "$suite" = storage ]; then
+    [ "$id:$rd:$tr" = '28b145fb8f902a239e76502a40c138bd60c7ae6af98ca70e21faf0e0f06e85db:5099f766659506292edb848dc8e8376cce99dfae60b9bc8d495d03792d6461ee:4503a57102a1ea380b9e94ac5b3fe5f9c17e3ac44c12c1ab049e60a4d4a75822' ]
+    cp "$work/run" "$work/main-summary"
+  fi
+  check_fixture '_multiroom' 16000 guardrail_adjustment 3 0 1
+  multi_id=$id
+  [ "$multi_id" != "$main_id" ]
+  if [ "$suite" = storage ]; then
+    [ "$id:$rd:$tr" = '7b1f694eab8645b0a09ed431a1268619328da4833a417a22cacf66c68df4612b:1f10e792e433fc59fc6ec49cf100922b7ce543c0c440b01551b4e2e32806f2ea:67f5051fb3613d4011c431a5ab343022ada824a428ad8ca3f1cc8358035dba86' ]
+    python3 tests/check_explain_cli.py "$FINPRED_HOME" "$main_id"
+    python3 tests/check_evidence_cli.py "$FINPRED_HOME" "$main_id" "$multi_id"
+    python3 tests/check_store.py "$FINPRED_HOME" "$work/main-summary" "$work/run"
+  fi
 
-check_fixture '_asof' 18000 target_percentile 3 4 0
-[ "$id:$rd:$tr" = '353d3ec6bd8750df4e4ed70535ef476373d5e20cab386a3d86c33b6a69203a22:bbd2adcba1d540104ff11028f853f558d8831507fe722afac23615225dbd7d63:a47608ae867ebad0b8e7cdb7c13862fb42e17e2de75be7c746c7c6cf2e6ada2a' ]
-bin/finpred evidence "$id" >"$work/evidence"
-for row in 1,301,1,eligible 2,302,1,eligible 3,303,1,eligible \
-    4,304,1,future_observed 5,305,1,future_ingested 6,306,1,stale 7,307,1,validity_mismatch; do
-  grep -Fxq "row=$row" "$work/evidence"
-done
-grep -Fxq 'sample=3,3,adequate' "$work/evidence"
+  check_fixture '_asof' 18000 target_percentile 3 4 0
+  if [ "$suite" = storage ]; then
+    [ "$id:$rd:$tr" = '353d3ec6bd8750df4e4ed70535ef476373d5e20cab386a3d86c33b6a69203a22:bbd2adcba1d540104ff11028f853f558d8831507fe722afac23615225dbd7d63:a47608ae867ebad0b8e7cdb7c13862fb42e17e2de75be7c746c7c6cf2e6ada2a' ]
+  fi
+  bin/finpred evidence "$id" >"$work/evidence"
+  for row in 1,301,1,eligible 2,302,1,eligible 3,303,1,eligible \
+      4,304,1,future_observed 5,305,1,future_ingested 6,306,1,stale 7,307,1,validity_mismatch; do
+    grep -Fxq "row=$row" "$work/evidence"
+  done
+  grep -Fxq 'sample=3,3,adequate' "$work/evidence"
 
-FINPRED_VALUATION="$ROOT/fixtures/valuation_leap_day.csv"
-check_fixture '_leap_day' 17001 target_percentile 3 0 1
-[ "$id:$rd:$tr" = '3755e6e9e88a56b510eeb68eb0cfd2ef165ec0b0aecc53018f67921a53e3aa98:931178dfaabfb4be329e1f07f14cdc8535fc28793a0ccfb2648e5c093e2efcb2:5511938de9f790c1a05d66a07280fe9cd9ae089290635af5b0ef166912eb598c' ]
-grep -Fxq 'nights=2' "$trace_file"
-bin/finpred evidence "$id" >"$work/evidence"
-grep -Fxq 'bundle=403,34001,2' "$work/evidence"
-grep -Fxq 'property=404,no_feasible_bundle,1,1' "$work/evidence"
-FINPRED_VALUATION="$ROOT/fixtures/valuation.csv"
-python3 "$ROOT/tests/validate_runtime_json.py" "$FINPRED_HOME"
+  FINPRED_VALUATION="$ROOT/fixtures/valuation_leap_day.csv"
+  check_fixture '_leap_day' 17001 target_percentile 3 0 1
+  if [ "$suite" = storage ]; then
+    [ "$id:$rd:$tr" = '3755e6e9e88a56b510eeb68eb0cfd2ef165ec0b0aecc53018f67921a53e3aa98:931178dfaabfb4be329e1f07f14cdc8535fc28793a0ccfb2648e5c093e2efcb2:5511938de9f790c1a05d66a07280fe9cd9ae089290635af5b0ef166912eb598c' ]
+  fi
+  grep -Fxq 'nights=2' "$trace_file"
+  bin/finpred evidence "$id" >"$work/evidence"
+  grep -Fxq 'bundle=403,34001,2' "$work/evidence"
+  grep -Fxq 'property=404,no_feasible_bundle,1,1' "$work/evidence"
+  FINPRED_VALUATION="$ROOT/fixtures/valuation.csv"
+}
 
+storage_integrity() {
 id=$main_id
 FINPRED_SCENARIO="$ROOT/fixtures/scenario.csv"
 FINPRED_OFFERS="$ROOT/fixtures/offers.csv"
@@ -212,7 +212,9 @@ expect_failure 'divergence' bin/finpred replay "$main_id"
 tr -d '\n' <"$FINPRED_HOME/runs/$id.txt" >"$work/edited"
 mv "$work/edited" "$FINPRED_HOME/runs/$id.txt"
 expect_failure 'malformed run manifest' bin/finpred replay "$id"
+}
 
+security_denials() {
 FINPRED_HOME="$work/denied"
 expect_failure 'insufficient_evidence' env FINPRED_SCENARIO="$ROOT/fixtures/scenario_asof_early.csv" \
     FINPRED_OFFERS="$ROOT/fixtures/offers_asof.csv" bin/finpred run
@@ -231,11 +233,76 @@ expect_failure 'invalid graph or incompatible strategy' env \
 expect_failure 'invalid graph or incompatible strategy' env \
     FINPRED_STRATEGY="$ROOT/strategies/scalar-midpoint.ottomat" bin/finpred run
 [ ! -e "$FINPRED_HOME" ]
-python3 "$ROOT/tests/check_pricing_cli.py"
-python3 "$ROOT/tests/check_profiles_cli.py"
-python3 "$ROOT/tests/check_yieldcraft_formats.py"
-python3 "$ROOT/tests/check_ingestion_cli.py"
-python3 "$ROOT/tests/check_poindexter_cli.py"
-python3 "$ROOT/tests/check_write_failure.py"
-python3 "$ROOT/tests/check_store_publication_status.py"
-echo 'on1x_integration_ok=true'
+}
+
+dragnet_legacy() {
+  checks dragnet_frozen_csv dragnet_elvi crossref_replay dragnet_public_feeds dragnet_dispatch
+}
+
+if [ "$#" -gt 1 ]; then
+  echo 'usage: tests/run.sh [compiler|pricing|forecasting|plugins|storage|security]' >&2
+  exit 2
+fi
+suite=${1-all}
+case "$suite" in
+  all)
+    result=0
+    for group in compiler pricing forecasting plugins storage security; do
+      if ! "$ROOT/tests/run.sh" "$group"; then
+        echo "verification suite failed: $group" >&2
+        result=1
+      fi
+    done
+    [ "$result" -eq 0 ] || exit "$result"
+    echo 'on1x_integration_ok=true'
+    ;;
+  compiler)
+    python3 tests/validate_static.py
+    checks build_paths on1x_features environ_argv ottomat_plan reproducible_build
+    ;;
+  pricing)
+    require_tools strace
+    checks fixtures price_prediction price_backtest yieldcraft_contribution yieldcraft_demand \
+      yieldcraft_inventory contribution_dag competitor_cube fixed_runner hospitality_adapters \
+      financial_graph ottomat_financial pricing_cli profiles_cli
+    fixture_home
+    bin/finpred selftest >"$work/selftest"
+    grep -Fx 'selftest_ok=true' "$work/selftest"
+    fixture_runs
+    ;;
+  forecasting)
+    checks fx_reference forecast_baselines forecast_cli forecast_graph forecast_scores
+    ;;
+  plugins)
+    require_tools strace
+    checks sdk sdk_packages python_sdk sdk_data1 plugin_registry engines_cli scalar_registry \
+      scalar_diagnostics_package yieldcraft_package dragnet_search
+    dragnet_legacy
+    ./bin/poindexter --build
+    checks poindexter_cli poindexter_package poindexter_workbench poindexter_tty
+    require_tools xvfb-run Xvfb xauth
+    checks poindexter_gui
+    ;;
+  storage)
+    checks dag_replay scalar_manifest yieldcraft_formats write_failure store_publication_status
+    fixture_home
+    fixture_runs
+    python3 tests/validate_runtime_json.py "$FINPRED_HOME"
+    storage_integrity
+    ;;
+  security)
+    python3 tests/check_cli_environ.py "$exe"
+    checks dag ingestion_cli ottomat_scalar scalar_memo scalar_selection
+    python3 tests/check_tui_kernel_admission.py --expect-dynlib-syntax
+    fixture_home
+    security_denials
+    checks offline_worker
+    ;;
+  dragnet-legacy) dragnet_legacy ;;
+  dragnet-search) checks dragnet_search ;;
+  forecast-score) checks forecast_scores ;;
+  *)
+    echo "Unknown verification suite: $suite" >&2
+    exit 2
+    ;;
+esac

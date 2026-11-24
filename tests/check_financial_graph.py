@@ -14,6 +14,7 @@ REJECTIONS = {
     "unknown": "unknown_handler", "cycle": "cycle", "ref": "unknown_reference",
     "disabled": "unknown_handler", "budget": "budget", "cutoff": "handler_failure",
     "wrong-parent": "replay_mismatch",
+    "empty-available": "invalid_output", "empty-root": "input", "empty-edge": "invalid_request",
 }
 PARENTS = {
     "normalizer": ["scenario", "offers"],
@@ -86,6 +87,11 @@ def main():
             print(f"financial_graph_fixture={suffix or 'default'} graph={graph_digest} root={root}")
         memo = run("memo")
         verify_evidence(memo, b"17100", b"lower_percentile_shortcut", memo=True)
+        status, _, invocations, evidence = run("empty-unknown").split(b"\n", 3)
+        assert status == b"ok" and invocations == b"1"
+        _, *items = frames(evidence)
+        assert items[::3] == [b"input", b"first", b"second"]
+        assert [frames(artifact)[-2:] for artifact in items[5::3]] == [[b"4", b""], [b"4", b""]]
     print(f"financial_graph_ok=true fixtures=2 rejections={len(REJECTIONS)} replay=2 memo=1")
 
 

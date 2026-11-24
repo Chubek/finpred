@@ -53,9 +53,10 @@ or experiment, not another artifact required for replay. The `evidence`
 report (`yieldcraft.demand-evidence@1`) lists model provenance, feasible price
 bounds, marginal cost, and the recomputed candidate rows
 `candidate=<price>,<expected_milli_room_nights>,<score_in_milli_minor_units>,<status>`.
-The Poindexter market-positioning sheet does not consume this contract. See
-the [strategy documentation](../strategies/README.md) for the input rules
-and objective.
+Poindexter renders a separate contribution sheet only after v3 replay
+verifies the frozen inputs and both outputs. It does not reinterpret v3 as
+a market-positioning sheet. See the [strategy documentation](../strategies/README.md)
+for the input rules and objective.
 
 ## V2 market-positioning writer and verifier
 

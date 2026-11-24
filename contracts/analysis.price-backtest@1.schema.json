@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Read-only chronological diagnostics for one preselected price model",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind", "version", "published", "scope", "model", "baseline", "observations",
+    "horizon", "season", "first_target", "expected", "scored", "insufficient_training",
+    "model_rejected", "metrics", "baseline_metrics", "folds"
+  ],
+  "properties": {
+    "kind": {"const": "analysis.price-backtest"},
+    "version": {"const": 1},
+    "published": {"const": false},
+    "scope": {"const": "ordered_series"},
+    "model": {"enum": ["naive", "ema", "drift", "seasonal", "holt", "ensemble"]},
+    "baseline": {"const": "naive"},
+    "observations": {"type": "integer", "minimum": 2, "maximum": 256},
+    "horizon": {"type": "integer", "minimum": 1, "maximum": 255},
+    "season": {"type": "integer", "minimum": 0, "maximum": 256},
+    "first_target": {"type": "integer", "minimum": 1, "maximum": 255},
+    "expected": {"type": "integer", "minimum": 1, "maximum": 255},
+    "scored": {"$ref": "#/$defs/count"},
+    "insufficient_training": {"$ref": "#/$defs/count"},
+    "model_rejected": {"$ref": "#/$defs/count"},
+    "metrics": {"$ref": "#/$defs/metrics"},
+    "baseline_metrics": {"$ref": "#/$defs/metrics"},
+    "folds": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 255,
+      "items": {"$ref": "#/$defs/fold"}
+    }
+  },
+  "$defs": {
+    "count": {"type": "integer", "minimum": 0, "maximum": 255},
+    "price": {"type": "integer", "minimum": 0, "maximum": 1000000000000},
+    "ratio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["numerator", "denominator"],
+      "properties": {
+        "numerator": {"type": "string", "pattern": "^(0|-?[1-9][0-9]{0,31})$"},
+        "denominator": {"type": "integer", "minimum": 1, "maximum": 255000000000000}
+      }
+    },
+    "metric": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/ratio"}]},
+    "unsigned_metric": {
+      "allOf": [
+        {"$ref": "#/$defs/metric"},
+        {"properties": {"numerator": {"pattern": "^[0-9]"} }}
+      ]
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mae_minor", "mse_minor_squared", "rmse_minor", "wape", "bias_minor"],
+      "properties": {
+        "mae_minor": {"$ref": "#/$defs/unsigned_metric"},
+        "mse_minor_squared": {"$ref": "#/$defs/unsigned_metric"},
+        "rmse_minor": {
+          "type": ["null", "string"],
+          "pattern": "^(0|[1-9][0-9]{0,14})\\.[0-9]{3}$"
+        },
+        "wape": {"$ref": "#/$defs/unsigned_metric"},
+        "bias_minor": {"$ref": "#/$defs/metric"}
+      }
+    },
+    "fold": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target", "origin", "training_count", "state", "point_minor", "actual_minor", "baseline_minor"
+      ],
+      "properties": {
+        "target": {"type": "integer", "minimum": 1, "maximum": 255},
+        "origin": {"type": "integer", "minimum": 0, "maximum": 254},
+        "training_count": {"type": "integer", "minimum": 1, "maximum": 255},
+        "state": {"enum": ["scored", "insufficient_training", "model_rejected"]},
+        "point_minor": {"type": ["null", "integer"], "minimum": 0, "maximum": 366000000000000},
+        "actual_minor": {"$ref": "#/$defs/price"},
+        "baseline_minor": {"$ref": "#/$defs/price"}
+      },
+      "if": {"properties": {"state": {"const": "scored"}}},
+      "then": {"properties": {"point_minor": {"type": "integer"}}},
+      "else": {"properties": {"point_minor": {"type": "null"}}}
+    }
+  }
+}

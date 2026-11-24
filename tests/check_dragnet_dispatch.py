@@ -134,10 +134,11 @@ def sdk_consumer(work, env):
         frame(path.encode("ascii")) + frame((ROOT / path).read_bytes()) for path in SOURCE_CLOSURE), work)
 
     def invoke(key, files=(), *, case="success", cutoff="2026-11-16T10:10:01Z",
-               mode="analysis", rc=0, error=None, parent="", base="EUR", quote="USD"):
+               mode="analysis", rc=0, error=None, parent="", base="EUR", quote="USD",
+               closure=bundle):
         p = run(consumer, cwd=work, good=False, env={
             **env, "DRAGNET_SDK_SOURCE": key, "DRAGNET_SDK_MODE": mode, "DRAGNET_SDK_CASE": case,
-            "DRAGNET_SDK_CUTOFF": cutoff, "DRAGNET_SDK_BUNDLE": str(bundle),
+            "DRAGNET_SDK_CUTOFF": cutoff, "DRAGNET_SDK_BUNDLE": str(closure),
             "DRAGNET_SDK_PARENT": parent, "DRAGNET_SDK_BASE": base, "DRAGNET_SDK_QUOTE": quote,
             **{f"DRAGNET_SDK_{i}": str(file) for i, file in enumerate(files, 1)},
         })
@@ -147,6 +148,10 @@ def sdk_consumer(work, env):
             assert p.returncode == rc and not p.stderr and (rc == 0 or not p.stdout), p
         return p.stdout
 
+    original = bundle.read_bytes()
+    tampered = raw("changed-source-closure.bundle", original[:-1] + b" ", work)
+    assert tampered.read_bytes() != original
+    invoke("dragnet.frozen_csv@1", case="identity", closure=tampered, rc=91)
     return invoke
 
 
@@ -220,7 +225,7 @@ def main():
         offers = ROOT / "fixtures/offers.csv"
         csv_source = "dragnet.frozen_csv@1"
         csv_out = work / "frozen-csv"
-        run(PKG / "build.sh", csv_out, env=env, timeout=180)
+        run(PKG / "build-frozen-csv.sh", csv_out, env=env, timeout=180)
         frozen = routed(exe, csv_source, [scenario, offers], work, env, trace=trace).stdout
         assert frozen == inherited(csv_out / "dragnet-frozen-csv", [scenario, offers], work, env).stdout
         records = [json.loads(line) for line in frozen.splitlines()]

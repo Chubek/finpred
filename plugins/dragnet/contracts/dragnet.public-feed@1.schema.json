@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dragnet public feed snapshots, version 1",
+  "type": "object",
+  "properties": {
+    "mode": {"enum": ["public_https", "offline_snapshot", "loopback_fixture"]},
+    "observed_at": {"$ref": "#/$defs/utc"},
+    "received_at": {"$ref": "#/$defs/utc"},
+    "ingested_at": {"$ref": "#/$defs/utc"},
+    "as_of": {"$ref": "#/$defs/utc"},
+    "terms_ref": {"$ref": "#/$defs/policy"},
+    "retention_ref": {"$ref": "#/$defs/policy"},
+    "raw_evidence": {"$ref": "#/$defs/digest"},
+    "capture_evidence": {"$ref": "#/$defs/digest"},
+    "raw_bytes": {"type": "integer", "minimum": 1, "maximum": 65536},
+    "pricing_input": {"const": false}
+  },
+  "required": [
+    "mode", "observed_at", "received_at", "ingested_at", "as_of", "terms_ref", "retention_ref",
+    "raw_evidence", "capture_evidence", "raw_bytes", "pricing_input"
+  ],
+  "oneOf": [
+    {
+      "properties": {
+        "format": {"const": "dragnet.ecb-fx-reference@1"},
+        "source": {"const": "European Central Bank"},
+        "source_series": {"const": "eurofxref-daily"},
+        "status": {"const": "complete"},
+        "reference_date": {"type": "string", "format": "date"},
+        "provider_updated_at": {"type": "null"},
+        "base_currency": {"const": "EUR"},
+        "unit": {"const": "quote_currency_per_EUR"},
+        "observations": {
+          "type": "array", "minItems": 1, "maxItems": 64,
+          "items": {
+            "type": "object", "required": ["currency", "rate"], "additionalProperties": false,
+            "properties": {
+              "currency": {"type": "string", "pattern": "^[A-Z]{3}$", "not": {"const": "EUR"}},
+              "rate": {"type": "string", "maxLength": 24, "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"}
+            }
+          }
+        }
+      },
+      "required": ["format", "source", "source_series", "status", "reference_date",
+                   "provider_updated_at", "base_currency", "unit", "observations"]
+    },
+    {
+      "properties": {
+        "format": {"const": "dragnet.eurostat-accommodation-nights@1"},
+        "source": {"const": "Eurostat"},
+        "source_series": {"const": "tour_occ_nim"},
+        "geography": {"const": "EU27_2020"},
+        "activity": {"const": "I551-I553"},
+        "residence": {"const": "TOTAL"},
+        "unit": {"const": "guest_nights"},
+        "status": {"enum": ["complete", "partial"]},
+        "provider_updated_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{4}$"},
+        "observations": {
+          "type": "array", "minItems": 1, "maxItems": 3,
+          "items": {
+            "type": "object", "required": ["period", "nights", "provider_flag"], "additionalProperties": false,
+            "properties": {
+              "period": {"type": "string", "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$"},
+              "nights": {"type": ["integer", "null"], "minimum": 0, "maximum": 999999999999},
+              "provider_flag": {"type": ["string", "null"], "pattern": "^[a-z ]{1,16}$"}
+            }
+          }
+        }
+      },
+      "required": ["format", "source", "source_series", "status", "geography", "activity",
+                   "residence", "unit", "provider_updated_at", "observations"]
+    }
+  ],
+  "unevaluatedProperties": false,
+  "$defs": {
+    "utc": {"type": "string", "format": "date-time", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+    "policy": {"type": "string", "pattern": "^[a-zA-Z0-9_.-]{1,64}$"},
+    "digest": {"type": "string", "pattern": "^blake3:[a-f0-9]{64}$"}
+  }
+}

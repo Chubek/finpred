@@ -5,11 +5,14 @@ The [CI workflow](../.github/workflows/verify.yml) builds `on1xc` from the
 compiled CLI and disposable stores. `check_fixtures.py` and `validate_static.py`
 are supplementary checks; neither executes On1x.
 
-**Dragnet replacement at `b84e928`:** the old package sources were removed
-before the new Elvi search implementation. Historical CSV/Crossref/feed/dispatch
-rows below describe retained tests, **not passing current coverage**.
-`make dragnet-test` and the full suite are blocked on those missing sources.
-The replacement has its own [compiled search conformance](check_dragnet_search.py)
+The workflow uses independent compiler, pricing, forecasting, plugins, storage,
+and security jobs. `make test` runs those suites locally; a failed suite does
+not suppress independent suite results and prevents an aggregate success.
+
+**Dragnet:** the frozen CSV, Crossref, public-feed and dispatcher tools
+removed at `b84e928` were restored alongside, not in place of, the current
+Elvi search host. `make dragnet-test` runs their retained coverage.
+The current host has its own [compiled search conformance](check_dragnet_search.py)
 (`make dragnet-search-test`): real Google/Bing Elvi extraction, independent
 JSON schemas, page keyword matching, readable text, frozen Responses decoding,
 credential precedence, LLM data-egress denial, malformed/late structured
@@ -28,8 +31,13 @@ OpenAI endpoint and OAuth login/refresh are not covered. See
 
 | Source / feature | Positive execution | Rejection or failure execution |
 | --- | --- | --- |
+| Reproducible application build | [Two isolated builds](check_reproducible_build.py) compare all three host binaries under the same installed toolchain | Different output or scratch directories must not change executable bytes |
 | Core MuLIB price prediction | [Prediction CLI](check_price_prediction.py) checks baselines, trend, ensemble, rounding and read-only output | Invalid models, malformed histories and insufficient observations |
+| Ordered price backtest | [Independent oracle](check_price_backtest.py) verifies matched horizon-specific folds and large-error metrics | Rejects invalid splits and checks that intervening, target and future observations do not leak into training |
 | Primary Yieldcraft contribution strategy | [Contribution CLI](check_yieldcraft_contribution.py) checks the cost-sensitive optimum, ties, guardrails and exact v3 replay | Competitor-only inputs, stale or malformed demand, unsupported prices and tampered replay inputs |
+| First-party demand | [Demand tests](check_yieldcraft_demand.py) compare the monotone fit to exact arithmetic and replay the contribution handoff | Rejects unavailable and unresolved cohorts, stale evidence, insufficient variation and substituted evidence |
+| Finite-inventory pricing | [Inventory tests](check_yieldcraft_inventory.py) compare the contingent policy to exhaustive policy-tree enumeration | Invalid grids, zero stock, holding value, and rounding/tie boundaries |
+| Typed contribution adapter | [Contribution graph](check_contribution_dag.py) checks a pure typed call and exact replay against the strategy | Malformed frozen inputs, mismatched pins and altered evidence |
 | `source/core/`: CSV, contracts, as-of times, units and serialization | [Integration](run.sh) validates emitted JSON against schemas and the normalized input oracle | [Ingestion](check_ingestion_cli.py) feeds invalid records to the CLI |
 | `plugins/yieldcraft/`, `source/algorithms/`: exact room bundles, quantiles, guardrails | [Pricing](check_pricing_cli.py) and [package consumer](check_yieldcraft_package.py) check nightly amounts and archived envelopes | Same tests reject infeasible samples, conflicting guardrails or forbidden modes |
 | [Checked-in pricing fixtures](../fixtures/README.md) | [Independent oracle](check_fixtures.py) and [compiled integration](run.sh) check the inclusive as-of boundaries and two-stage rounding across leap day; integration pins run and output digests and verifies read-only replay | Moving the decision one second earlier loses the third comparable and produces no run or recommendation |
@@ -47,6 +55,7 @@ OpenAI endpoint and OAuth login/refresh are not covered. See
 | `automat.scalar-dag@2`, `scalar-run@2`, Ottomat v4: pure conditional selection | [Selection consumer](check_scalar_selection.py) checks both branch outcomes, native/DSL parity and frozen replay | Rejects wrong port kinds and arity, cross-version declarations and altered lineage |
 | `plugins/scalar_diagnostics/`, native scalar registry and Ottomat v5 | [Registry consumer](check_scalar_registry.py) checks linked dispatch and exact owner/handler lineage; [standalone package](check_scalar_diagnostics_package.py) tests direct midpoint calls | Rejects unavailable imports, forged owners and out-of-range direct arguments |
 | `source/sdk/`: static descriptors and compatibility checks | [SDK consumers](check_sdk_packages.py) exercise C11 and On1x against all three packages | Same hosts check incompatible requests; no dynamic invocation claim |
+| Installed Python and C SDK | [Relocation and binding tests](check_python_sdk.py) exercise the shared ABI and CMake export from a moved prefix | Invalid input representation, capability grants, dependency, port and budget denials |
 | `source/sdk/registry.on1x`: engine dispatch allowlist | [Registry test](check_plugin_registry.py) exercises registered call sites | Disables four compiled entries, rejects an unregistered manifest and checks direct-use separation |
 | `source/sdk/callable.on1x`: host-owned callable boundary | [SDK consumer](check_sdk_data1.py) invokes two separately registered test packages | Rejects changed pins, disabled handlers, denied effects, incompatible ports, and out-of-budget requests |
 | `analysis.guest-nights-monthly@1`: analysis-only Eurostat projection | [Projection consumer](check_sdk_data1.py) checks source and output digests, missing vs zero, and byte-exact replay | Rejects late, malformed, or tampered evidence and mismatched source parents |
@@ -68,6 +77,8 @@ OpenAI endpoint and OAuth login/refresh are not covered. See
 | `plugins/poindexter/workbench/native/`: isolated MuLIB TUI viewport | [C11 tests](../plugins/poindexter/workbench/native/test_viewport.c) verify clipping, changed cells and no-change rendering | Rejects invalid dimensions, text and output buffers; does not certify KernelBind admission |
 | `plugins/poindexter/gui/`: optional ImmGTK local workbook frontend | [GUI conformance](check_poindexter_gui.py) uses the real On1x worksheet worker with a software frame and optional private X11 display | Rejects invalid edits and nonregular or malformed books; no implicit save |
 | `native/store.c`: standalone C candidate | [Contract consumer](../native/tests/store_contract.c) installs/reads objects; [archive copy](../native/tests/run.py) compares v1 bytes | Same consumer checks conflicting content, reader write denial and sync errors |
+| Native publication process death | [Crash and contention test](../native/tests/process_death.py) checks intact recovery and same-key races | Real process death before and after publication; not power-loss evidence |
+| Linux offline worker | [Process conformance](check_offline_worker.py) runs a real Bubblewrap/seccomp worker | Denies filesystem, socket and subprocess access and rejects oversized, invalid or incomplete output |
 
 The fixture integration log includes the actual run, recommendation and trace
 digests before comparing them to the pinned values. Neither stores nor build

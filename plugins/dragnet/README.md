@@ -1,6 +1,6 @@
 # Dragnet — Elvi search and bounded page extraction
 
-This replacement is an **On1x-controlled, trusted standalone host**, not a
+The search host is an **On1x-controlled, trusted standalone host**, not a
 generic plugin sandbox. It uses the pinned MuLIB `elvi-scrape` engine and its
 Google/Bing profiles, then `scrape-readable` to remove tags, comments, scripts
 and styles and collapse whitespace. It does not execute JavaScript or a browser.
@@ -35,6 +35,48 @@ daemon, with a nonzero status; there are no hidden retries. A fresh process
 per cycle bounds process-lifetime On1x allocations. There is no background
 double-fork, scheduler database, pidfile or claim of exactly-once ingestion.
 Use one supervisor instance per configuration.
+
+## Frozen source adapters
+
+The standalone adapters retain their original input and output contracts. They
+are independent of the search host and do not need its configuration or
+credentials:
+
+| Adapter | Build | Run or verify |
+| --- | --- | --- |
+| Frozen offer CSV | `plugins/dragnet/build-frozen-csv.sh` | `build/dragnet/dragnet-frozen-csv 3<fixtures/scenario.csv 4<fixtures/offers.csv` |
+| Frozen Crossref | `plugins/dragnet/build-crossref.sh` | `plugins/dragnet/crossref` (local snapshots only) |
+| ECB / Eurostat feeds | `plugins/dragnet/build-feeds.sh` | [`plugins/dragnet/feeds`](PUBLIC_FEEDS.md) |
+| Offline Source dispatcher | `plugins/dragnet/build-dispatch.sh build/dragnet-dispatch` | [Source selectors and descriptor protocol](SOURCE_DISPATCH.md) |
+
+The frozen CSV [manifest](plugin.json) declares a pure, analysis-only Source
+with no host capabilities. It validates the complete CSV and emits eligible
+`hospitality.offer@1` records as JSON Lines, using the exact offer CSV bytes
+for the provenance digest. Only the explicit, caller-opened descriptor inputs
+are used. Supply unchanged regular files from a trusted directory: scenario
+on fd 3, offers on fd 4, at most 2,000,000 bytes each and 1–512 offer rows.
+Invalid inputs produce no records; a valid snapshot with no eligible
+observations succeeds with empty stdout.
+
+For example, import and verify the synthetic, offline Crossref fixtures:
+
+```sh
+plugins/dragnet/build-crossref.sh
+fixtures=tests/dragnet_elvi_consumer
+plugins/dragnet/crossref import 'hotel & rates' \
+  "$fixtures/request.csv" "$fixtures/search.json" "$fixtures/work.json" > evidence.json
+plugins/dragnet/crossref verify 'hotel & rates' \
+  "$fixtures/request.csv" "$fixtures/search.json" "$fixtures/work.json" evidence.json
+```
+
+`DRAGNET_CROSSREF_BIN` overrides the Crossref tool directory. Pass only
+authorized local snapshots: the launcher decodes and checks exact-byte
+digests, but does not authenticate the provider or the asserted capture
+times. It never queries Crossref or opens the pricing store.
+Public-feed polling is a separate operation that requires explicit terms and
+retention references; replay and the dispatcher do not poll.
+
+Run `make dragnet-test` for the saved-fixture adapter and dispatcher checks.
 
 ## Dragnet.json
 
@@ -261,9 +303,7 @@ rename on successful exit rather than treating a redirected empty file as succes
 - Acquisition is a standalone trusted executable using a scalar native adapter.
   The reusable reader is not SDK Source registration, dynamic plugin execution
   or native storage admission.
-- Earlier Dragnet CSV/Crossref/feed/dispatcher sources were removed by commit
-  `b84e928`. Their retained tests/CI references are **not satisfied by this
-  replacement**. `make dragnet-test` still refers to that removed generation;
-  use the new `make dragnet-search-test` for this implementation. Do not
-  interpret its pass as a pass of the historical suite or full CI.
+- The restored CSV/Crossref/feed/dispatcher tools have their own build paths
+  and `make dragnet-test` gate. `make dragnet-search-test` separately checks
+  the current Elvi host and its distinct capture format.
 - No historical run formats, pricing algorithms or archived fixtures change.

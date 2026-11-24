@@ -5,6 +5,7 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import runpy
 import shlex
 import subprocess
 import sys
@@ -57,6 +58,28 @@ def latest_snapshot(releases, cutoff, months):
     return name, release
 
 
+def graph_code_subject(compiler_sha):
+    # Share the operator's v1 source normalization, but keep the graph
+    # fixture's own domain separator, framed bytes and repository paths.
+    subject = runpy.run_path(str(ROOT / "bin/forecast-subject.py"))
+    normalize = subject["v1_source"]
+    guest = subject["GUEST_NIGHTS"]
+    source = ROOT / "source"
+    package_source = PACKAGE / "source"
+    inputs = [
+        (package_source, MODEL_FILE.relative_to(package_source).as_posix(), MODEL_FILE),
+        *((source, name, ROOT / name if name == guest else source / name) for name in (
+            "core/date.on1x", subject["FEED_SNAPSHOT"], "core/format.on1x", guest, "sdk/callable.on1x"
+        )),
+    ]
+    code_subject = frame("finpred.model-graph-source-subject@1") + frame(compiler_sha)
+    for base, name, path in inputs:
+        legacy_name, raw = normalize(name, path.read_bytes())
+        label = (base / legacy_name).relative_to(ROOT).as_posix()
+        code_subject += frame(label) + frame(raw.decode("ascii"))
+    return code_subject
+
+
 def main():
     mulib = Path(os.environ.get("MULIB_ROOT", ROOT / "third_party/mulib")).resolve()
     compiler = Path(os.environ.get("ON1XC", ROOT / "build/mulib/on1x/on1xc")).resolve()
@@ -71,12 +94,8 @@ def main():
     # Reconstruct what a later provider could publish for the same February
     # training window. It is supplied only to the host's negative fixture.
     late = revision | {"values": feb["values"] | revision["values"]}
-    code_inputs = [MODEL_FILE, *(ROOT / f"source/{p}.on1x" for p in (
-        "core/date", "core/feed_snapshot", "core/format", "core/guest_nights", "sdk/callable"))]
     compiler_sha = sha256(compiler.read_bytes()).hexdigest()
-    code_subject = frame("finpred.model-graph-source-subject@1") + frame(compiler_sha)
-    for path in code_inputs:
-        code_subject += frame(str(path.relative_to(ROOT))) + frame(path.read_bytes().decode("ascii"))
+    code_subject = graph_code_subject(compiler_sha)
     strategy_subject = (
         "finpred.forecast-graph-fixture-policy@1\nlatest-ingested-single-window;"
         "deny-tied-latest;verified-DATA1;same-cutoff;frozen-replay\n"

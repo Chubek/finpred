@@ -9,6 +9,7 @@ import std.io.TextIO as IO;
 import std.os.OS_FileSys as FS;
 import yieldcraft.contribution as Policy;
 import yieldcraft.declaration as Declaration;
+import poindexter.sheet as Sheet;
 
 fn version() -> string { return "finpred-run@3"; }
 
@@ -131,8 +132,7 @@ fn matches(raw:string) -> bool
 
 fn replay(home:string, id:string, mode:string, raw:string) -> i64
 {
-  if mode == "poindexter" { tool_fail("yieldcraft contribution: use explain or evidence; Poindexter sheets are for market-positioning runs"); }
-  if mode != "replay" && mode != "explain" && mode != "evidence"
+  if mode != "replay" && mode != "explain" && mode != "evidence" && mode != "poindexter"
   { tool_fail("capability denied: execution mode and unknown modes unavailable"); }
   if CSV.rows(raw) != 1 || !matches(raw) { tool_fail("replay: malformed contribution manifest"); }
   let row = CSV.line(raw,0);
@@ -159,6 +159,14 @@ fn replay(home:string, id:string, mode:string, raw:string) -> i64
   let trace = explanation(s,r,id,sd,dd,vd,pd);
   if Store.fetch(home,rd) != rec || Store.fetch(home,td) != trace
   { tool_fail("replay: contribution output divergence"); }
+  if mode == "poindexter"
+  {
+    let (ok,csv) = Sheet.render_contribution(id,rd,vd,dd,sx_text(s["currency"]),"room_night",
+      v["current_cents"],r["price"],r["cost"],r["demand"],r["score"],Policy.scale());
+    if !ok { tool_fail(csv); }
+    IO.basis_text_io_print(csv);
+    return 0;
+  }
   println("replay_ok=true");
   summary(s,r,id,rd,td);
   if mode == "explain" { IO.basis_text_io_print("trace_begin\n$trace"); println("trace_end"); }

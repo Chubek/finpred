@@ -1,4 +1,5 @@
 import ottomat.financial as Ott;
+import ottomat.financial_run as OttRun;
 import automat.financial_graph as G;
 import automat.financial_run as Run;
 import plugins.yieldcraft.hospitality_host as Host;
@@ -10,6 +11,22 @@ import core.format as F;
 fn print(text:string) { IO.basis_text_io_print(text); }
 fn env(key:string) -> string { return Env.basis_command_line_get_env(key); }
 fn file(key:string) -> string { return IO.basis_text_io_input_all(env(key)); }
+fn changed_lookup(key:string) -> SDK.Descriptor
+{
+  let d = Host.lookup(key);
+  if key != Host.sample_key() { return d; }
+  let pin = d["pin"];
+  let changed = record<SDK.Pin>{package_name:pin["package_name"],package_version:pin["package_version"],
+    handler_name:pin["handler_name"],handler_version:pin["handler_version"],abi:pin["abi"],
+    code_digest:sx_string(G.digest("updated binding")),policy_digest:pin["policy_digest"]};
+  return record<SDK.Descriptor>{enabled:d["enabled"],pin:changed,role:d["role"],mode:d["mode"],
+    effect:d["effect"],inputs:d["inputs"],output:d["output"],max_work:d["max_work"]};
+}
+fn forbid_call(pin:SDK.Pin, req:SDK.Request) -> SDK.Outcome
+{
+  tool_fail("unapproved lowering reached a handler");
+  return SDK.failure(1);
+}
 fn report(result:Run.Result)
 {
   print(text_concat(sx_text(result["status"]),"\n"));
@@ -37,7 +54,13 @@ fn main() -> i64
   let line = lowered["line"];
   let col = lowered["column"];
   print("$status $line $col\n");
-  if status != "ok" { return 0; }
+  if status != "ok"
+  {
+    let ctx = record<Run.Context>{cutoff:sx_nil(),strategy_digest:sx_nil()};
+    let rejected = OttRun.execute(lowered,sx_nil(),ctx,"recommendation",Host.budget(),Host.lookup,forbid_call);
+    if sx_text(rejected["status"]) != "lowering" { tool_fail("failed lowering was admitted"); }
+    return 0;
+  }
   if sx_text(lowered["source"]) != source || sx_text(lowered["compiler_identity"]) != compiler
     || G.length(lowered["resolved"],32) != 5 { tool_fail("lowering provenance mismatch"); }
   let spans = lowered["spans"];
@@ -56,7 +79,16 @@ fn main() -> i64
     sx_cons(Run.input("offers",1,file("OFFERS")),sx_cons(Run.input("valuation",1,file("VALUATION")),sx_nil())));
   let ctx = record<Run.Context>{cutoff:sx_string("2026-11-20T10:00:00Z"),
     strategy_digest:Host.lookup(Host.decide_key())["pin"]["policy_digest"]};
-  let result = Run.execute(lowered["graph"],roots,ctx,"recommendation",Host.budget(),Host.lookup,Host.call);
+  if env("CASE") == "changed-binding"
+  {
+    let rejected = OttRun.execute(lowered,roots,ctx,"recommendation",Host.budget(),changed_lookup,forbid_call);
+    if sx_kind(rejected["graph_digest"]) != 0 || sx_kind(rejected["artifacts"]) != 0
+      || sx_kind(rejected["outputs"]) != 0 || rejected["invocations"] != 0
+    { tool_fail("binding mismatch exposed execution evidence"); }
+    report(rejected);
+    return 0;
+  }
+  let result = OttRun.execute(lowered,roots,ctx,"recommendation",Host.budget(),Host.lookup,Host.call);
   if !SDK.same(lowered["graph_digest"],result["graph_digest"]) { tool_fail("lowered graph changed"); }
   report(result);
   return 0;

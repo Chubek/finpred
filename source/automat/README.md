@@ -25,6 +25,10 @@ ordered named parents; node artifacts also pin the graph and exact SDK
 identity. Run-local memoization preserves these artifacts and their ordering.
 `financial_run.replay` recomputes from frozen bytes and compares exact
 evidence without writing a store. These are not `finpred-run` archives.
+`financial_run.execute_pinned` checks a host-supplied canonical graph digest
+before running handlers. A terminal output may have zero bytes when explicitly
+`unknown` and permitted by its port; external roots and downstream requests
+must still be nonempty, even when the edge types otherwise match.
 The hospitality adapters reuse legacy validators; some invalid legacy
 inputs still terminate the host rather than return a structured error.
 The work ceiling is a bound on admitted work, not hard CPU metering.

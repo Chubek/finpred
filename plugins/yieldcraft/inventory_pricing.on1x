@@ -1,0 +1,149 @@
+# Pure bounded finite-horizon pricing. No evidence collection or I/O.
+import core.csv as CSV;
+import core.format as F;
+import std.collections.Array as A;
+
+fn bytes_limit() -> i64 { return 8192; }
+fn money_limit() -> i64 { return 10000000000; }
+fn periods_limit() -> i64 { return 12; }
+fn stock_limit() -> i64 { return 12; }
+fn arms_limit() -> i64 { return 8; }
+fn probability_scale() -> i64 { return 10000; }
+fn value_scale() -> i64 { return 1000; }
+
+fn number(row:string, column:i64, maximum:i64) -> i64
+{
+  let raw = CSV.field(row,column);
+  let n = CSV.nat(raw);
+  if n > maximum || F.num(n) != raw
+  { tool_fail("inventory pricing: noncanonical or out-of-range integer"); }
+  return n;
+}
+
+fn solve(raw:string) -> string
+{
+  if text_len(raw) > bytes_limit() { tool_fail("inventory pricing: input exceeds byte limit"); }
+  let n = CSV.rows(raw);
+  if n < 5 || n > 4+periods_limit()*arms_limit()
+  { tool_fail("inventory pricing: requires 1..12 periods with 1..8 candidates each"); }
+  CSV.header(CSV.line(raw,0),"pricing.inventory-input@1");
+  CSV.header(CSV.line(raw,1),"initial_stock,unit_cost_minor,terminal_stock_value_minor");
+  let meta = CSV.line(raw,2);
+  CSV.require_width(meta,3);
+  let stock = number(meta,0,stock_limit());
+  let cost = number(meta,1,money_limit());
+  let terminal = number(meta,2,money_limit());
+  CSV.header(CSV.line(raw,3),"period,price_minor,net_sale_bps");
+
+  let prob_scale = probability_scale();
+  let scale = value_scale();
+  let arms = arms_limit();
+  let rows = n-4;
+  let price = A.basis_array_array(rows,0);
+  let probability = A.basis_array_array(rows,0);
+  let ends = A.basis_array_array(periods_limit()+1,0);
+  var periods = 0;
+  var group_count = 0;
+  var last_price = 0-1;
+  var last_probability = prob_scale;
+  for i in 0 .. rows
+  {
+    let row = CSV.line(raw,i+4);
+    CSV.require_width(row,3);
+    let period = number(row,0,periods_limit());
+    let candidate = number(row,1,money_limit());
+    let net_sale = number(row,2,prob_scale);
+    if period == periods+1
+    {
+      periods = period;
+      group_count = 0;
+      last_price = 0-1;
+      last_probability = prob_scale;
+    }
+    if period == 0 || period != periods || group_count >= arms
+    { tool_fail("inventory pricing: periods must be contiguous and contain 1..8 candidates"); }
+    if candidate <= last_price || net_sale > last_probability
+    { tool_fail("inventory pricing: prices must increase with nonincreasing net-sale probabilities within a period"); }
+    A.basis_array_update(price,i,candidate);
+    A.basis_array_update(probability,i,net_sale);
+    A.basis_array_update(ends,period,i+1);
+    group_count = group_count+1;
+    last_price = candidate;
+    last_probability = net_sale;
+  }
+
+  # Value grid order is period 1..T+1, stock 0..S. Terminal row is T+1.
+  let stride = stock+1;
+  let values = A.basis_array_array((periods+1)*stride,0);
+  let choices = A.basis_array_array(periods*stride,0-1);
+  for s in 0 .. stride { A.basis_array_update(values,periods*stride+s,s*terminal*scale); }
+  for step in 0 .. periods
+  {
+    let t = periods-1-step;
+    let from = A.basis_array_sub(ends,t);
+    let to = A.basis_array_sub(ends,t+1);
+    for s in 1 .. stride
+    {
+      let next = (t+1)*stride+s;
+      let hold = A.basis_array_sub(values,next);
+      let after_sale = A.basis_array_sub(values,next-1);
+      var best = hold*prob_scale;
+      var choice = 0-1;
+      for i in from .. to
+      {
+        let p = A.basis_array_sub(probability,i);
+        let margin = (A.basis_array_sub(price,i)-cost)*scale;
+        # An action can realize at most stock * money_limit across sales and
+        # terminal units. Before division, the absolute numerator <= 12*10^17.
+        let weighted = (margin+after_sale)*p + hold*(prob_scale-p);
+        # Compare numerators, not rounded values. Hold wins ties, then low price.
+        if weighted > best { best = weighted; choice = i; }
+      }
+      let idx = t*stride+s;
+      A.basis_array_update(values,idx,(best+prob_scale/2)/prob_scale);
+      A.basis_array_update(choices,idx,choice);
+    }
+  }
+
+  let out = buffer_new();
+  let initial_stock = F.num(stock);
+  let horizon = F.num(periods);
+  let c = F.num(cost);
+  let end_value = F.num(terminal);
+  let initial = A.basis_array_sub(values,stock);
+  let value = F.num(initial);
+  let increment = F.num(initial-stock*terminal*scale);
+  let grid_scale = F.num(scale);
+  buffer_append(out,"{\"kind\":\"pricing.inventory-policy\",\"version\":1,\"published\":false,\"scale\":$grid_scale,\"initial_stock\":$initial_stock,\"periods\":$horizon,");
+  buffer_append(out,"\"unit_cost_minor\":$c,\"terminal_stock_value_minor\":$end_value,\"initial_expected_value_minor_milli\":$value,\"initial_expected_incremental_over_hold_minor_milli\":$increment,\"states\":[");
+  for t in 0 .. periods
+  {
+    let period = F.num(t+1);
+    for s in 0 .. stride
+    {
+      if t != 0 || s != 0 { buffer_append(out,","); }
+      let idx = t*stride+s;
+      let choice = A.basis_array_sub(choices,idx);
+      let remain = F.num(s);
+      let state_value = F.num(A.basis_array_sub(values,idx));
+      buffer_append(out,"{\"period\":$period,\"stock\":$remain,\"expected_value_minor_milli\":$state_value,");
+      if choice < 0
+      {
+        buffer_append(out,"\"action\":\"hold\",\"price_minor\":null,\"net_sale_bps\":null}");
+      }
+      else
+      {
+        let p = F.num(A.basis_array_sub(price,choice));
+        let q = F.num(A.basis_array_sub(probability,choice));
+        buffer_append(out,"\"action\":\"offer\",\"price_minor\":$p,\"net_sale_bps\":$q}");
+      }
+    }
+  }
+  buffer_append(out,"]}\n");
+  A.basis_array_destroy(choices);
+  A.basis_array_destroy(values);
+  A.basis_array_destroy(ends);
+  A.basis_array_destroy(probability);
+  A.basis_array_destroy(price);
+  return buffer_text(out);
+}

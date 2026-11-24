@@ -33,20 +33,40 @@ fn csv(b:G.Book) -> string {
 }
 fn import_sheet(b:G.Book,s:string) {
   # Only the launcher's verified, bounded, unquoted Poindexter projection.
-  let header="view,source_run,source_recommendation,source_valuation,currency,price_basis,current_minor,recommended_minor,change_minor,reason,published\n";
-  if text_len(s)<=text_len(header) || text_slice(s,0,text_len(header))!=header
+  let core="view,source_run,source_recommendation,source_valuation,currency,price_basis,current_minor,recommended_minor,change_minor,reason,published";
+  let contribution=text_concat(core,",source_demand,marginal_cost_minor,expected_room_nights_milli,expected_contribution_minor_milli,scale\n");
+  let extended=text_len(s)>text_len(contribution) && text_slice(s,0,text_len(contribution))==contribution;
+  let header=text_concat(core,"\n");
+  if (!extended && (text_len(s)>512 || text_len(s)<=text_len(header) || text_slice(s,0,text_len(header))!=header))
     || G.byte(s,text_len(s)-1)!=10 { tool_fail("worksheet: invalid pricing sheet"); }
+  var width=11; var view="poindexter.pricing-sheet@1";
+  if extended { width=16; view="poindexter.contribution-sheet@1"; }
   var start=0; var row=0; var col=0;
   for i in 0 .. text_len(s) {
     let c=G.byte(s,i);
     if c==44 || c==10 {
-      if row>=2 || col>=11 || i==start { tool_fail("worksheet: invalid pricing row"); }
+      if row>=2 || col>=width || i==start { tool_fail("worksheet: invalid pricing row"); }
       let v=text_slice(s,start,i);
-      if row==1 && col>=6 && col<=8 {
-        let(st,n)=F.literal(v); if st!=1 { tool_fail("worksheet: expected integer cents"); } G.set(b,row*16+col,v);
-      } else { G.set(b,row*16+col,text_concat("'",v)); }
+      if row==1 && col==0 && v!=view { tool_fail("worksheet: unexpected pricing view"); }
+      if row==1 && ((col>=6 && col<=8) || (extended && (col==12 || col==13 || col==15))) {
+        let(st,n)=F.literal(v);
+        if st!=1 || Int.to_string(n)!=v { tool_fail("worksheet: expected canonical pricing integer"); }
+        if extended && col==15 && n!=1000 { tool_fail("worksheet: invalid contribution scale"); }
+        G.set(b,row*16+col,v);
+      } else {
+        if row==1 && extended && col==14 {
+          let prefix="milli_minor:";
+          if text_len(v)<=text_len(prefix) || text_slice(v,0,text_len(prefix))!=prefix
+          { tool_fail("worksheet: invalid expected contribution"); }
+          let digits=text_slice(v,text_len(prefix),text_len(v));
+          let(ok,n)=Int.from_string(digits);
+          if !ok || n<1 || n>1000000000000000000 || Int.to_string(n)!=digits
+          { tool_fail("worksheet: invalid expected contribution"); }
+        }
+        G.set(b,row*16+col,text_concat("'",v));
+      }
       start=i+1; col=col+1;
-      if c==10 { if col!=11 { tool_fail("worksheet: wrong pricing row width"); } row=row+1; col=0; }
+      if c==10 { if col!=width { tool_fail("worksheet: wrong pricing row width"); } row=row+1; col=0; }
     }
   }
   if row!=2 { tool_fail("worksheet: expected two pricing rows"); }
@@ -139,7 +159,7 @@ fn main() -> i64 {
       G.set(b,id,F.relocate(env("PX_VALUE"),from_id,id));
     }
     if mode=="script" { P.run(b,read_file(env("PX_DATA"),33000)); }
-    if mode=="import" { import_sheet(b,read_file(env("PX_DATA"),512)); }
+    if mode=="import" { import_sheet(b,read_file(env("PX_DATA"),768)); }
     if mode=="importcsv" { import_values(b,read_file(env("PX_DATA"),210000)); }
     IO.basis_text_io_print(G.encode(b));
   } else { if mode!="get" && mode!="raw" && mode!="csv" && mode!="frame" && mode!="terminal_frame" { tool_fail("worksheet: unknown operation"); } }

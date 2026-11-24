@@ -12,6 +12,8 @@ From the FinPRED root, on Linux with C11, kernel headers for `openat2`, CMake,
 Python 3, and a GNU-compatible linker for the fault-injection tests:
 
 ```sh
+mkdir -p build/tmp
+export TMPDIR="$PWD/build/tmp"
 cmake -S native -B build/native -DCMAKE_C_FLAGS='-Wall -Wextra -Werror -pedantic'
 cmake --build build/native --parallel 4
 ctest --test-dir build/native --output-on-failure
@@ -77,7 +79,26 @@ syscall errors, including errors at installation, sync, or close, are not
 retried. Transfer syscalls are bounded by the object limit, an EOF check on
 reads, and the retry budget. These are not time limits.
 
-**Admission remains open.** Native tests exercise actual filesystem behaviour
-and injected errors; they are not power-cut/remount tests. The pinned On1x
-compiler has no callable storage profile. See [STORE_ADMISSION.md](STORE_ADMISSION.md)
-for the independent review, lowering, and remaining deployment gates.
+## Process-death regression
+
+`ctest --test-dir build/native -R native_store_process_death -V` uses separate
+processes and test-only linker wrappers around real syscalls. With each
+artifact and synthetic run, it sends `SIGKILL` after a partial write, after
+file sync, after the final name is linked, and after directory sync but before
+the caller returns. Readers must observe either absence or exact bytes,
+without syncing. Recovery must leave no named staging residue, retain any
+visible inode, reject different bytes, and explicitly install or re-sync
+identical bytes. The run test installs its referenced artifact first; the
+native API does not enforce run lineage.
+
+The same test parks two contenders before `linkat` and a third just after its
+successful link. It checks the actual existing-name race: the different
+payload cannot replace the winner, and the identical contender must sync the
+winning inode and destination directory before reporting success. No sleeps
+are used to arrange the interleavings.
+
+**Admission remains open.** These are live-mount process-death and fault
+injection tests, not evidence of persistence across power loss or remount.
+The On1x compiler has no callable storage profile for this candidate. See
+[STORE_ADMISSION.md](STORE_ADMISSION.md) for the independent review, lowering,
+and remaining deployment gates.

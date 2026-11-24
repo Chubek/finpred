@@ -338,7 +338,7 @@ fn entry() -> i64
 {
   let mode = env_default("FINPRED_MODE","run");
   if mode == "selftest" { return selftest(); }
-  if mode == "price-predict" { return PricePrediction.entry(); }
+  if mode == "price-predict" || mode == "price-backtest" { return PricePrediction.entry(mode == "price-backtest"); }
   let home = env_default("FINPRED_HOME",".finpred");
   if mode == "replay" || mode == "explain" || mode == "evidence" || mode == "poindexter"
   {

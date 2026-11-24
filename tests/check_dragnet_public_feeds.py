@@ -289,6 +289,12 @@ def main():
         assert snapshot(denied_store) == store_before
         assert run("poll", "arbitrary-url", out, "terms-r1", "retention-r2", "1").returncode == 2
         assert run("poll-fixture", "https://localhost/", out, "terms-r1", "retention-r2").returncode == 2
+        shared_spool = work / "shared-spool"
+        shared_spool.mkdir()
+        shared_spool.chmod(0o750)
+        refused = run("poll-fixture", "1", shared_spool, "terms-r1", "retention-r2")
+        assert refused.returncode == 2 and not refused.stdout and b"0700 spool" in refused.stderr
+        assert not list(shared_spool.iterdir())
     print("dragnet_public_feeds_ok=true providers=2 acquisition=loopback offline_replay=verified")
 
 

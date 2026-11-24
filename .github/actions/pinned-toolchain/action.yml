@@ -1,0 +1,19 @@
+name: Build pinned On1x toolchain
+description: Initialize the two required gitlinks and build on1xc and GrammarEmbed
+runs:
+  using: composite
+  steps:
+    - name: Fetch pinned compiler submodules
+      shell: bash
+      run: |
+        git submodule update --init third_party/mulib
+        git -C third_party/mulib submodule update --init on1x/third_party/libstone
+        git submodule status third_party/mulib
+        git -C third_party/mulib submodule status on1x/third_party/libstone
+    - name: Build and fingerprint the compiler and GrammarEmbed
+      shell: bash
+      run: |
+        make mulib
+        sha256sum build/mulib/on1x/on1xc \
+          build/mulib/on1x/stdppx/on1x-ppx-GrammarEmbed \
+          build/mulib/on1x/stdppx/category.schema.json

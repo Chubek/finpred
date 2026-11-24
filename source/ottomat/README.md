@@ -34,6 +34,11 @@ graph identities are separate: for example, argument reordering can preserve
 the graph digest while changing the source digest. Any non-pure declaration
 is denied.
 The frontend does not execute the graph and does not alter dialects 1–5.
+A trusted host can pass a successful `Lowered` to `ottomat.financial_run.execute`
+with its own inputs, context, budget, resolver and invoker. The bridge
+rechecks the canonical graph digest before dispatch and rejects a changed
+valid binding as `graph_mismatch`. The digest is not an authorization token;
+the host still controls the linked handlers.
 Run `python3 tests/check_ottomat_financial.py` for compiled native parity and
 negative syntax, type, import, and effect cases.
 

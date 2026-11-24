@@ -19,4 +19,13 @@ if(BUILD_TESTING)
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/run.py $<TARGET_FILE:store_contract_test>)
   add_test(NAME native_store_v1_bytes COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/run.py $<TARGET_FILE:store_contract_test> copy-v1)
+
+  add_executable(store_process_test tests/store_process.c)
+  set_target_properties(store_process_test PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES C_EXTENSIONS NO)
+  target_link_libraries(store_process_test PRIVATE finpred_native_store)
+  target_link_options(store_process_test PRIVATE
+    -Wl,--wrap=write -Wl,--wrap=fsync -Wl,--wrap=linkat)
+  add_test(NAME native_store_process_death COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/process_death.py $<TARGET_FILE:store_process_test>)
+  set_tests_properties(native_store_process_death PROPERTIES TIMEOUT 90)
 endif()

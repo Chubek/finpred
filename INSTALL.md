@@ -19,8 +19,9 @@ ordinary CLI and terminal workbench do not require X11.
 
 `make dragnet` builds the On1x Elvi search host and a separate offline consumer;
 `make dragnet-search-test` verifies the pipeline and consumer-neutral handoff
-after `make`. See [Dragnet](plugins/dragnet/README.md) for credentials, daemon
-operation, and the known blocker in the retained legacy Dragnet tests.
+after `make`. `make dragnet-test` verifies the restored legacy offline adapters
+and loopback public-feed acquisition. See [Dragnet](plugins/dragnet/README.md)
+for credentials, permissions and daemon operation.
 
 ## 1. Prepare the host
 
@@ -123,14 +124,49 @@ make test
 make native-test
 ```
 
-`make test` builds the CLI, checks build paths, runs the application
-integration suite, and invokes `make dragnet-test` and
-`make forecast-score-test`. The [CI workflow](.github/workflows/verify.yml)
-configures equivalent checks on Ubuntu 24.04 x86-64, plus independent package
-consumers and Poindexter workbench and terminal checks. The X11 GUI test is
-conditional on X11 development files. The native-store job does not test
-KernelBind admission or power-loss behavior. The [coverage index](tests/COVERAGE.md)
-links the positive and negative cases.
+`make test` builds the CLI and runs the six verification suites, including
+Dragnet search and legacy adapters, forecast scoring, independent SDK
+consumers, workbench checks, and standalone native CTests. After building, run
+one suite independently with `make test-compiler`, `make test-pricing`,
+`make test-forecasting`, `make test-plugins`, `make test-storage` or
+`make test-security`. The [CI workflow](.github/workflows/verify.yml) explicitly
+provisions X11 development files and private Xvfb on Ubuntu 24.04 x86-64;
+install `libx11-dev`, `xvfb`, `xauth` and `xfonts-base` for equivalent GUI
+coverage locally. The native-store suite does not test KernelBind admission
+or power loss; it needs a supported filesystem for its build directory.
+The [coverage index](tests/COVERAGE.md) links the positive and negative cases.
+The security suite requires the [offline worker](docs/OFFLINE_WORKER.md)
+prerequisites, including Bubblewrap and enabled unprivileged user namespaces.
+
+### Install the descriptor SDK
+
+The C SDK can be installed without the On1x compiler. To install the shared
+library, C headers, CMake target and optional Python 3.10+ binding:
+
+```sh
+cmake -S source/sdk -B build/sdk -DBUILD_SHARED_LIBS=ON \
+  -DFINPRED_INSTALL_PYTHON_SDK=ON -DCMAKE_INSTALL_LIBDIR=lib \
+  -DCMAKE_INSTALL_PREFIX="$PWD/build/sdk-install"
+cmake --build build/sdk
+cmake --install build/sdk
+```
+
+Native CMake consumers use `find_package(FinPREDSDK 1.1 CONFIG REQUIRED)`
+and link `FinPRED::sdk`, with the install prefix on `CMAKE_PREFIX_PATH`.
+For Python:
+
+```sh
+PYTHONPATH="$PWD/build/sdk-install/lib/finpred/python" python3 -c \
+  'import sys; from finpred_sdk import SDK; print(SDK(sys.argv[1]).describe("yieldcraft.percentile"))' \
+  "$PWD/build/sdk-install/lib/libfinpred_sdk.so"
+```
+
+`SDK.check(name, use, host)` takes an independent host inventory and
+resource ceilings, and returns the C ABI status. The binding copies
+descriptions into immutable Python values. Load only an explicitly selected
+trusted SDK shared library by absolute path. These are descriptor APIs, not
+plugin invocation or a grant of authority. Test relocation and both consumers
+with `python3 tests/check_python_sdk.py`.
 
 For faster checks, use the fixture oracle and static validator; run the
 integration script directly only if you already built the intended executable:

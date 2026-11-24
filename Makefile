@@ -6,7 +6,10 @@ MULIB_JOBS ?= 4
 NATIVE_BUILD_DIR ?= build/native
 TUI_REVIEW_BUILD_DIR ?= build/poindexter-tui-review
 
-.PHONY: all build mulib test dragnet dragnet-test dragnet-search-test forecast-score-test native-test poindexter poindexter-gui poindexter-gui-test poindexter-tui-review
+TEST_SUITES := compiler pricing forecasting plugins storage security
+TEST_TARGETS := $(addprefix test-,$(TEST_SUITES))
+
+.PHONY: all build mulib test $(TEST_TARGETS) dragnet dragnet-test dragnet-search-test forecast-score-test native-test poindexter poindexter-gui poindexter-gui-test poindexter-tui-review
 
 all: build
 
@@ -17,29 +20,32 @@ mulib:
 	CMAKE="$(CMAKE)" MULIB_JOBS="$(MULIB_JOBS)" sh ./bin/build-mulib.sh
 
 test: build
-	python3 tests/check_build_paths.py
-	env -u FINPRED_EXE ./tests/run.sh
-	$(MAKE) dragnet-test
-	$(MAKE) forecast-score-test
+	status=0; \
+		env -u FINPRED_EXE ./tests/run.sh || status=1; \
+		$(MAKE) native-test || status=1; \
+		$(MAKE) poindexter-tui-review || status=1; \
+		exit $$status
+
+# Build the matching CLI/compiler first when running a selector locally.
+# Like direct tests/run.sh, selectors can use an explicit FINPRED_EXE.
+$(TEST_TARGETS): test-%:
+	./tests/run.sh $*
+
+test-storage: native-test
+
+test-plugins: poindexter-tui-review
 
 dragnet-test:
-	set -eu; . ./bin/build-env.sh; finpred_build_env "$(CURDIR)"; \
-		python3 tests/check_dragnet_frozen_csv.py; \
-		python3 tests/check_dragnet_elvi.py; \
-		python3 tests/check_crossref_replay.py; \
-		python3 tests/check_dragnet_public_feeds.py; \
-		python3 tests/check_dragnet_dispatch.py
+	./tests/run.sh dragnet-legacy
 
 dragnet-search-test:
-	set -eu; . ./bin/build-env.sh; finpred_build_env "$(CURDIR)"; \
-		python3 tests/check_dragnet_search.py
+	./tests/run.sh dragnet-search
 
 dragnet:
 	sh ./plugins/dragnet/build.sh
 
 forecast-score-test:
-	set -eu; . ./bin/build-env.sh; finpred_build_env "$(CURDIR)"; \
-		python3 tests/check_forecast_scores.py
+	./tests/run.sh forecast-score
 
 native-test:
 	$(CMAKE) -S native -B "$(NATIVE_BUILD_DIR)" -DBUILD_TESTING=ON -DCMAKE_C_FLAGS='-Wall -Wextra -Werror -pedantic'

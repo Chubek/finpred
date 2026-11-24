@@ -45,6 +45,11 @@ These are deterministic positioning decisions, **not** demand predictions
 or guarantees of financial performance. Both report `published=false`.
 Contribution runs use `finpred-run@3`; existing `finpred-run@1` and
 `finpred-run@2` archives keep their recorded bytes and identities.
+The optional [`bin/yieldcraft-demand`](docs/YIELDCRAFT_DEMAND.md) estimator
+can build a demand grid from frozen first-party price experiments. It does
+not infer demand from competitor offers or claim empirical uplift.
+The [finite-inventory planner](docs/YIELDCRAFT_INVENTORY.md) is a separate
+On1x API for explicitly supplied net-sale probabilities over multiple periods.
 
 ## Build and verify
 
@@ -58,19 +63,19 @@ git -C third_party/mulib submodule update --init on1x/third_party/libstone
 make mulib           # builds the local On1x compiler + GrammarEmbed
 make                 # builds build/dev/finpred
 ./bin/finpred selftest
-make test            # full suite; see legacy Dragnet caveat below
+make test            # full suite; see INSTALL.md for verification dependencies
 make dragnet-search-test  # current offline Dragnet search and handoff
+make dragnet-test    # restored frozen CSV, Crossref, public feeds and dispatcher
 make native-test     # isolated C store review target
 ```
 
-The full suite retains legacy Dragnet checks whose sources are no longer
-present. See the [coverage notes](tests/COVERAGE.md) for the blocker and
-`make forecast-score-test` for a separate
+See the [coverage notes](tests/COVERAGE.md) for the Dragnet compatibility gates
+and `make forecast-score-test` for a separate
 [forecast scoring and evaluation replay](docs/FORECAST_SCORING.md) check.
 [Verify FinPRED](.github/workflows/verify.yml) is the sole Actions workflow:
-it checks the application and standalone native store on Ubuntu 24.04. It
-does not publish releases or deploy anything. The badge reflects hosted
-workflow status on `master`, not verification of a local checkout.
+it has independent compiler, pricing, forecasting, plugins, storage and security
+jobs on Ubuntu 24.04. It does not publish or deploy. The badge reflects
+hosted workflow status on `master`, not verification of a local checkout.
 
 ## Architecture and entry points
 
@@ -83,7 +88,7 @@ workflow status on `master`, not verification of a local checkout.
 | **Core price prediction** | [`source/core/price_prediction.c`](source/core/price_prediction.c) — MuLIB-backed forecasts from frozen price histories via [`finpred price-predict`](GUIDE.md#predict-prices-from-a-history) |
 | **Dragnet** | [`plugins/dragnet/`](plugins/dragnet/) — Elvi web acquisition, optional GPT analysis, and offline capture handoff to plugins and core consumers |
 | **Forecast baselines** | [`plugins/forecast_baselines/`](plugins/forecast_baselines/) — moving-average and seasonal-naive monthly guest-night models; later actuals are used only to score issued forecasts |
-| **Poindexter** | [`plugins/poindexter/`](plugins/poindexter/) — verified-run projection, terminal spreadsheet and optional ImmGTK X11 frontend |
+| **Poindexter** | [`plugins/poindexter/`](plugins/poindexter/) — verified market-positioning and contribution sheets, terminal spreadsheet and optional ImmGTK X11 frontend |
 | **Artifact store** | [`source/store/`](source/store/) — versioned immutable object/run evidence in a private cooperative store |
 | **Native store candidate** | [`native/`](native/) — standalone security review target; **not** the CLI's admitted durable backend |
 
@@ -101,6 +106,10 @@ strategies, see the separate [competitor pricing cube](docs/COMPETITOR_CUBE.md).
 The `finpred forecast` commands issue, score, aggregate and replay guest-night
 forecasts from an immutable release catalog in a separate local store.
 See the [forecast workflow](GUIDE.md#run-point-in-time-forecasts).
+Use [`finpred price-backtest`](docs/PRICE_BACKTEST.md) for a separate
+horizon-specific diagnostic on ordered price series, not revision-aware evidence.
+The [ECB FX exercise](research/ecb-fx/README.md) is empirical but single-vintage;
+it is not a hospitality demand or pricing validation.
 
 ## Start here
 
@@ -108,8 +117,8 @@ See the [forecast workflow](GUIDE.md#run-point-in-time-forecasts).
 2. [Operator guide](GUIDE.md) — run, replay, explain and inspect frozen evidence.
 3. [Implementation and acceptance record](docs/IMPLEMENTATION.md#acceptance-record)
    and [test coverage](tests/COVERAGE.md) — historical results and the checks
-   that produced them. The [assessment](docs/CURRENT_ASSESSMENT.md) describes
-   an earlier checkpoint and its remaining gates.
+   that produced them. See the [engineering audit](docs/ENGINEERING_AUDIT.md)
+   for the pre-change baseline and acceptance boundaries.
 4. [Algorithm Automat](source/automat/README.md) and
    [Ottomat](source/ottomat/README.md) — typed graph semantics, frontend and replay.
 5. [Plugin developer guide](PLUGIN.md) and
@@ -118,8 +127,9 @@ See the [forecast workflow](GUIDE.md#run-point-in-time-forecasts).
    [forecast scoring](docs/FORECAST_SCORING.md).
 7. [Poindexter workbench](plugins/poindexter/workbench/README.md) or
    [optional GUI](plugins/poindexter/gui/README.md).
-8. [Native storage admission decision](native/STORE_ADMISSION.md) — review
-   the missing host/KernelBind primitives before stronger durability claims.
+8. [Native storage admission decision](native/STORE_ADMISSION.md) and
+   [optional offline worker](docs/OFFLINE_WORKER.md) — separate storage and
+   process trust boundaries.
 9. [Product and future milestones](docs/USER_SPECIFICATION.md) — design
    objectives, not evidence that every listed capability exists today.
 
@@ -130,8 +140,8 @@ See the [forecast workflow](GUIDE.md#run-point-in-time-forecasts).
   terms.
 - An ECB reference rate is **not** an executable FX quote; Eurostat aggregate
   guest nights are **not** property-level inventory or pricing comparables.
-- Algorithm and plugin metadata are not authority tokens. Untrusted plugins
-  require a reviewed worker isolation boundary, not merely a static descriptor.
+- Algorithm and plugin metadata are not authority tokens. Existing linked
+  packages are trusted code; the optional isolated worker is not attached to them.
 - Run and source BLAKE3 digests provide byte integrity, **not** provider
   authenticity or signatures.
 - The CLI store assumes cooperating publishers and trusted directories. The

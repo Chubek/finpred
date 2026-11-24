@@ -1,0 +1,10 @@
+name: Install schema validator
+description: Provide the Draft 2020-12 test dependency in an isolated environment
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        python3 -m venv "$RUNNER_TEMP/validation"
+        "$RUNNER_TEMP/validation/bin/pip" install 'jsonschema==4.26.0'
+        echo "$RUNNER_TEMP/validation/bin" >> "$GITHUB_PATH"

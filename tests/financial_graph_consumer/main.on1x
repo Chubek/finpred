@@ -118,7 +118,8 @@ fn report(result:Run.Result)
   if !SDK.same(result["status"],sx_string("ok")) { return; }
   print(text_concat(sx_text(result["graph_digest"]),"\n"));
   print(text_concat(F.num(result["invocations"]),"\n"));
-  print(sx_text(SDK.value_bytes(G.at(G.lookup(result["outputs"],"recommendation"),2))));
+  let recommendation = G.lookup(result["outputs"],"recommendation");
+  if sx_kind(recommendation) != 0 { print(sx_text(SDK.value_bytes(G.at(recommendation,2)))); }
   let out = buffer_new();
   G.frame(out,sx_text(result["trace"]));
   var entries = result["artifacts"];
@@ -130,9 +131,73 @@ fn report(result:Run.Result)
   }
   print(buffer_text(out));
 }
+fn empty_port(name:string) -> SDK.Port
+{
+  return record<SDK.Port>{name:sx_string(name),kind:sx_string("test.ndjson"),major:1,
+    unit:sx_string("none"),currency:sx_string("none"),states:5,max_bytes:64};
+}
+fn empty_lookup(key:string) -> SDK.Descriptor
+{
+  if key != "test.empty@1" && key != "test.consume@1" { return SDK.unavailable(); }
+  let digest = sx_string(G.digest(key));
+  let pin = record<SDK.Pin>{package_name:sx_string("test"),package_version:sx_string("1"),
+    handler_name:sx_string(key),handler_version:sx_string("1"),abi:1,code_digest:digest,policy_digest:digest};
+  return record<SDK.Descriptor>{enabled:true,pin:pin,role:sx_string("Transformer"),mode:sx_string("analysis"),
+    effect:sx_string("pure"),inputs:Host.prepend(empty_port("input"),sx_nil()),output:empty_port("rows"),max_work:1};
+}
+fn empty_call(pin:SDK.Pin, req:SDK.Request) -> SDK.Outcome
+{
+  if sx_text(pin["handler_name"]) != "test.empty@1" { tool_fail("empty input reached handler"); }
+  if env("CASE") == "empty-available" { return SDK.success(1,""); }
+  return SDK.success(4,"");
+}
+fn check_empty(task:string)
+{
+  let roots = Host.prepend(empty_port("input"),sx_nil());
+  let bindings = sx_cons(G.edge("input","","input"),sx_nil());
+  var second_key = "test.empty@1";
+  var second_bindings = bindings;
+  if task == "empty-edge"
+  {
+    second_key = "test.consume@1";
+    second_bindings = sx_cons(G.edge("input","first","rows"),sx_nil());
+  }
+  let graph = G.graph(roots,sx_cons(G.node("second",second_key,"pure",second_bindings),
+    sx_cons(G.node("first","test.empty@1","pure",bindings),sx_nil())),
+    sx_cons(G.output(empty_port("first_rows"),"first","rows"),
+    sx_cons(G.output(empty_port("second_rows"),"second","rows"),sx_nil())));
+  var inputs = sx_cons(Run.input("input",1,"{}\n"),sx_nil());
+  if task == "empty-root" { inputs = sx_cons(Run.input("input",4,""),sx_nil()); }
+  let ctx = record<Run.Context>{cutoff:sx_string("2026-11-20T10:00:00Z"),strategy_digest:sx_string(G.digest("test"))};
+  let result = Run.execute(graph,inputs,ctx,"analysis",2,empty_lookup,empty_call);
+  report(result);
+  if sx_text(result["status"]) != "ok"
+  {
+    if sx_kind(result["artifacts"]) != 0 || sx_kind(result["outputs"]) != 0
+    { tool_fail("failed run exposed partial evidence"); }
+    return;
+  }
+  if result["invocations"] != 1 { tool_fail("empty value was not memoized"); }
+  var outputs = result["outputs"];
+  while sx_kind(outputs) == 3
+  {
+    let value = G.at(sx_head(outputs),2);
+    if SDK.value_state(value) != 4 || !SDK.same(SDK.value_bytes(value),sx_string(""))
+    { tool_fail("lost empty unknown output"); }
+    outputs = sx_tail(outputs);
+  }
+  let replay = Run.replay(graph,inputs,ctx,"analysis",2,empty_lookup,empty_call,
+    result["graph_digest"],Run.expectation(result));
+  if !SDK.same(replay["status"],sx_string("ok")) { tool_fail("empty unknown replay failed"); }
+}
 fn main() -> i64
 {
   let task = env("CASE");
+  if task == "empty-unknown" || task == "empty-available" || task == "empty-root" || task == "empty-edge"
+  {
+    check_empty(task);
+    return 0;
+  }
   if task == "bundle"
   {
     print(text_concat(bundle_digest(),"\n"));

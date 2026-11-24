@@ -1,5 +1,9 @@
 # FinPRED v1 implementation notes and review checklist
 
+This page retains historical acceptance records. See the
+[engineering audit](ENGINEERING_AUDIT.md) and [coverage index](../tests/COVERAGE.md)
+for the current verification layout and outstanding milestones.
+
 ## Provenance
 
 - User-supplied design: `docs/USER_SPECIFICATION.md`.

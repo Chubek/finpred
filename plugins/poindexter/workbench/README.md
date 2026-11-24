@@ -61,8 +61,15 @@ Use the same `FINPRED_HOME`. Import calls `bin/finpred poindexter` and
 requires successful replay before any cells are created. Row 1 contains
 the pricing headers; `G2`, `H2` and `I2` contain current, recommended and
 change in nightly EUR cents. Run and artifact references are text cells.
+For a v3 own-demand run, `L2` identifies the frozen demand CSV; `M2` is
+marginal cost in cents per room-night, `N2` is expected room-nights × 1000,
+and `P2` is the scale (`1000`). `O2` preserves the modeled contribution
+total as exact `milli_minor:<decimal>` text, even when it is too large
+for worksheet arithmetic. See the [v3 column definitions](../README.md#v3-own-demand-contribution-sheet).
+
 The imported row is an **editable working copy**. Subsequent values,
-scenarios, and exports are worksheet data, not verified recommendations.
+scenarios, and exports are worksheet data, not verified recommendations or
+evidence; the values do not stay linked to the archived run.
 
 ## Cells and formulas
 

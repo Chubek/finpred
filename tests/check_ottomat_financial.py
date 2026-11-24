@@ -23,9 +23,9 @@ def main():
         empty.mkdir()
         edited = work / "strategy.ottomat"
 
-        def run(exe, suffix="", *, source=raw, identity=compiler_id):
+        def run(exe, suffix="", *, source=raw, identity=compiler_id, case="native"):
             edited.write_bytes(source)
-            env = {**os.environ, "CASE": "native", "ROOT": str(ROOT), "STRATEGY": str(edited),
+            env = {**os.environ, "CASE": case, "ROOT": str(ROOT), "STRATEGY": str(edited),
                    "COMPILER_ID": identity, "FINPRED_HOME": str(empty / "store"),
                    "SCENARIO": str(FIX / f"scenario{suffix}.csv"),
                    "OFFERS": str(FIX / f"offers{suffix}.csv"), "VALUATION": str(FIX / "valuation.csv")}
@@ -45,6 +45,7 @@ def main():
         reordered = raw.replace(b"scenario=scenario offers=offers", b"offers=offers scenario=scenario")
         alternate = accepted(reordered)
         assert alternate != first
+        assert run(ott, case="changed-binding").splitlines()[-1] == b"graph_mismatch"
 
         cases = (
             (raw.replace(b"ottomat 6", b"ottmat 6"), b"syntax"),
@@ -71,7 +72,8 @@ def main():
             assert len(result.splitlines()) == 1 and (result.startswith(expected + b" ") or result == expected + b"\n"), (
                 expected, result)
         assert run(ott, identity="unset") == b"compiler_identity 1 1\n"
-    print(f"ottomat_financial_ok=true parity=3 rejected={len(cases)+1} source={first.decode()} alternate={alternate.decode()}")
+    print(f"ottomat_financial_ok=true parity=3 rejected={len(cases)+1} binding_mismatch=1 "
+          f"source={first.decode()} alternate={alternate.decode()}")
 
 
 if __name__ == "__main__":

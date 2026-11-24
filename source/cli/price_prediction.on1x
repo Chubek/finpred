@@ -1,6 +1,7 @@
 import std.environ as Env;
 import std.io.TextIO as IO;
 import std.os.OS_FileSys as FS;
+import core.csv as CSV;
 import core.format as F;
 import core.price_prediction as Price;
 
@@ -27,7 +28,18 @@ fn number(raw:string, limit:i64) -> i64
   return n;
 }
 
-fn entry() -> i64
+fn read_history(path:string) -> string
+{
+  if path == "" || !FS.basis_fs_exists(path) { tool_fail("price prediction: history file missing"); }
+  let size = FS.basis_fs_file_size(path);
+  if size < 1 || size > 5000 || FS.basis_fs_is_dir(path)
+  { tool_fail("price prediction: history file outside bounded profile"); }
+  let history = IO.basis_text_io_input_all(path);
+  if text_len(history) != size { tool_fail("price prediction: incomplete history text"); }
+  return history;
+}
+
+fn entry(backtest:bool) -> i64
 {
   let path = setting("FINPRED_PRICE_HISTORY");
   let model = setting("FINPRED_PRICE_MODEL");
@@ -35,12 +47,10 @@ fn entry() -> i64
   let season_raw = setting("FINPRED_PRICE_SEASON");
   var season = 0;
   if season_raw != "" { season = number(season_raw,256); }
-  if path == "" || !FS.basis_fs_exists(path) { tool_fail("price prediction: history file missing"); }
-  let size = FS.basis_fs_file_size(path);
-  if size < 1 || size > 5000 || FS.basis_fs_is_dir(path)
-  { tool_fail("price prediction: history file outside bounded profile"); }
-  let history = IO.basis_text_io_input_all(path);
-  if text_len(history) != size { tool_fail("price prediction: incomplete history text"); }
+  let history = read_history(path);
+  if backtest {
+    return evaluate(history,model,horizon,season,number(setting("FINPRED_PRICE_FIRST_TARGET"),255));
+  }
 
   let prediction = Price.predict(history,model,horizon,season);
   let status = sx_text(prediction["status"]);
@@ -57,5 +67,99 @@ fn entry() -> i64
   buffer_append(report,",\"dispersion_minor\":"); buffer_append(report,dispersion);
   buffer_append(report,"}");
   println(buffer_text(report));
+  return 0;
+}
+
+fn minimum(model:string, season:i64) -> i64
+{
+  if model == "seasonal" && season >= 2 { return season; }
+  if season != 0 { return 0; }
+  if model == "naive" || model == "ema" { return 1; }
+  if model == "drift" || model == "holt" { return 2; }
+  if model == "ensemble" { return 3; }
+  return 0;
+}
+
+fn ratio(numerator:string, denominator:string) -> string
+{
+  return "{\"numerator\":\"$numerator\",\"denominator\":$denominator}";
+}
+
+fn metrics(pairs:string, count:i64) -> string
+{
+  if count == 0 { return "{\"mae_minor\":null,\"mse_minor_squared\":null,\"rmse_minor\":null,\"wape\":null,\"bias_minor\":null}"; }
+  let wire = Price.measure(pairs);
+  if CSV.columns(wire) != 5 { tool_fail("price backtest: metric bounds exceeded"); }
+  let n = F.num(count);
+  let abs = CSV.field(wire,0);
+  let mae = ratio(abs,n);
+  let mse = ratio(CSV.field(wire,1),n);
+  let bias = ratio(CSV.field(wire,2),n);
+  let total = CSV.field(wire,3);
+  let rmse = CSV.field(wire,4);
+  var wape = "null";
+  if total != "0" { wape = ratio(abs,total); }
+  return "{\"mae_minor\":$mae,\"mse_minor_squared\":$mse,\"rmse_minor\":\"$rmse\",\"wape\":$wape,\"bias_minor\":$bias}";
+}
+
+fn evaluate(history:string, model:string, horizon:i64, season:i64, first:i64) -> i64
+{
+  let min_train = minimum(model,season);
+  if min_train == 0 || first < horizon { tool_fail("price backtest: invalid-request"); }
+  let count = Price.history_count(history);
+  if count == 0 { tool_fail("price backtest: invalid-history"); }
+  if first >= count { tool_fail("price backtest: invalid-request"); }
+
+  # Canonical history has LF after every row. Advance the boundary by one
+  # row per fold; neither the target nor the intervening rows enter the fit.
+  var prefix_end = 0;
+  for row in 0 .. first - horizon + 1 {
+    prefix_end = prefix_end + text_len(CSV.line(history,row)) + 1;
+  }
+  let folds = buffer_new();
+  let pairs = buffer_new();
+  let baseline_pairs = buffer_new();
+  var scored = 0;
+  var insufficient = 0;
+  var rejected = 0;
+  for target in first .. count {
+    let origin = target - horizon;
+    let training_count = origin + 1;
+    let origin_row = CSV.line(history,training_count);
+    prefix_end = prefix_end + text_len(origin_row) + 1;
+    let baseline = CSV.field(origin_row,1);
+    let actual = CSV.field(CSV.line(history,target+1),1);
+    var point = "null";
+    var state = "insufficient_training";
+    if training_count < min_train {
+      insufficient = insufficient + 1;
+    } else {
+      let prediction = Price.predict(text_slice(history,0,prefix_end),model,horizon,season);
+      let status = sx_text(prediction["status"]);
+      if status == "ok" {
+        if prediction["observations"] != training_count { tool_fail("price backtest: prefix mismatch"); }
+        state = "scored";
+        point = F.num(prediction["point_minor"]);
+        scored = scored + 1;
+        buffer_append(pairs,"$point,$actual\n");
+        buffer_append(baseline_pairs,"$baseline,$actual\n");
+      } else {
+        if status != "model-rejected" { tool_fail("price backtest: $status"); }
+        state = "model_rejected";
+        rejected = rejected + 1;
+      }
+    }
+    if target != first { buffer_append(folds,","); }
+    buffer_append(folds,"{\"target\":$target,\"origin\":$origin,\"training_count\":$training_count,\"state\":\"$state\",\"point_minor\":$point,\"actual_minor\":$actual,\"baseline_minor\":$baseline}");
+  }
+  let expected = F.num(count-first);
+  let owned = metrics(buffer_text(pairs),scored);
+  let naive = metrics(buffer_text(baseline_pairs),scored);
+  let fold_bytes = buffer_text(folds);
+  let out = buffer_new();
+  buffer_append(out,"{\"kind\":\"analysis.price-backtest\",\"version\":1,\"published\":false,\"scope\":\"ordered_series\",\"model\":\"$model\",\"baseline\":\"naive\"");
+  buffer_append(out,",\"observations\":$count,\"horizon\":$horizon,\"season\":$season,\"first_target\":$first,\"expected\":$expected,\"scored\":$scored,\"insufficient_training\":$insufficient,\"model_rejected\":$rejected");
+  buffer_append(out,",\"metrics\":$owned,\"baseline_metrics\":$naive,\"folds\":[$fold_bytes]}");
+  println(buffer_text(out));
   return 0;
 }

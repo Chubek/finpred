@@ -1,0 +1,56 @@
+#!/bin/sh
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$ROOT/bin/build-env.sh"
+. "$ROOT/bin/paths.sh"
+out=$(finpred_cli_output_dir "$ROOT")/finpred-yieldcraft-demand
+
+usage() {
+  cat <<'EOF'
+Usage: bin/yieldcraft-demand build
+       bin/yieldcraft-demand scenario-digest SCENARIO.csv
+       bin/yieldcraft-demand estimate SCENARIO.csv EXPOSURES.csv
+       bin/yieldcraft-demand evidence SCENARIO.csv EXPOSURES.csv
+       bin/yieldcraft-demand replay SCENARIO.csv EXPOSURES.csv DEMAND.csv EVIDENCE.json blake3:ID
+
+Estimate writes pricing.demand@1 CSV to stdout; evidence writes the JSON report.
+Provide only trusted, stable, local files. No network or price publication.
+EOF
+}
+die() { echo "yieldcraft-demand: $*" >&2; exit 2; }
+file() { [ -f "$1" ] || die "expected a regular file: $1"; }
+command=${1:-}
+case "$command" in
+  -h|--help) usage; exit 0 ;;
+  build)
+    [ "$#" -eq 1 ] || die "build takes no arguments"
+    MULIB_ROOT=${MULIB_ROOT:-"$ROOT/third_party/mulib"}
+    ON1XC=${ON1XC:-"$(finpred_mulib_build_dir "$ROOT")/on1xc"}
+    [ -x "$ON1XC" ] || die "missing On1x compiler; run make mulib or set ON1XC"
+    finpred_build_env "$ROOT"
+    mkdir -p -- "$(dirname -- "$out")"
+    stage=$(mktemp -- "${out}.XXXXXXXX")
+    trap 'rm -f -- "$stage"' EXIT
+    trap 'exit 1' HUP INT TERM
+    python3 "$MULIB_ROOT/on1x/tools/on1x-build.py" "$ROOT/plugins/yieldcraft/demand_main.on1x" \
+      --backend c11 --cc "${CC:-cc}" --on1xc "$ON1XC" --mulib-root "$MULIB_ROOT" \
+      -I "$ROOT/source" -I "$ROOT" -o "$stage"
+    mv -fT -- "$stage" "$out"
+    exit 0 ;;
+  scenario-digest)
+    [ "$#" -eq 2 ] || die "scenario-digest requires a scenario file" ;;
+  estimate|evidence)
+    [ "$#" -eq 3 ] || die "$command requires a scenario and exposure file"
+    file "$3"
+    export YIELDCRAFT_DEMAND_EXPOSURE="$3" ;;
+  replay)
+    [ "$#" -eq 6 ] || die "replay requires four files and an expected evidence ID"
+    file "$3"; file "$4"; file "$5"
+    export YIELDCRAFT_DEMAND_EXPOSURE="$3" YIELDCRAFT_DEMAND_FROZEN_SNAPSHOT="$4"
+    export YIELDCRAFT_DEMAND_FROZEN_EVIDENCE="$5" YIELDCRAFT_DEMAND_EXPECTED_ID="$6" ;;
+  *) usage >&2; exit 2 ;;
+esac
+file "$2"
+[ -x "$out" ] || die "missing estimator; run bin/yieldcraft-demand build"
+export YIELDCRAFT_DEMAND_COMMAND="$command" YIELDCRAFT_DEMAND_SCENARIO="$2"
+exec "$out"

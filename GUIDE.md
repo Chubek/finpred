@@ -62,6 +62,10 @@ alternative prices; it does not provide Yieldcraft's demand evidence.
 
 ## Run point-in-time forecasts
 
+For a fixed-horizon ordered price-series diagnostic, see
+[`finpred price-backtest`](docs/PRICE_BACKTEST.md). Unlike the guest-night
+workflow below, that input does not carry point-in-time releases or revisions.
+
 The forecast host analyzes the EU27 guest-night series from frozen Dragnet
 Eurostat captures. Set `FINPRED_FORECAST_HOME` to a private, trusted local
 directory with an existing parent. The default is `.finpred-forecast/`.

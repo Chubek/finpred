@@ -1,0 +1,294 @@
+# Pure, plugin-local normalization; no pricing action, file or network grant.
+import core.csv as CSV;
+import core.date as Date;
+import core.format as F;
+import std.crypto.crypto as Crypto;
+
+fn append(out: buffer, field: string, value: string)
+{
+  buffer_append(out,","); buffer_append(out,F.q(field));
+  buffer_append(out,":"); buffer_append(out,value);
+}
+
+fn digest(bytes: string) -> string
+{
+  let (status, hash) = Crypto.basis_crypto_blake3(bytes);
+  if status != 0 || text_len(hash) != 64 { tool_fail("feed: BLAKE3 failed"); }
+  return hash;
+}
+
+fn framed(bytes: string, limit: i64) -> i64
+{
+  let n = text_len(bytes);
+  if n < 1 || n > limit || text_byte(bytes,n - 1) != 10
+  { tool_fail("feed: invalid handoff or capture size/framing"); }
+  var rows = 0;
+  for i in 0 .. n
+  {
+    let c = text_byte(bytes,i);
+    if c == 10 { rows = rows + 1; }
+    else { if c < 32 || c > 126 { tool_fail("feed: invalid handoff byte"); } }
+  }
+  return rows;
+}
+
+fn policy_ref(s: string)
+{
+  if text_len(s) < 1 || text_len(s) > 64 { tool_fail("feed: invalid policy reference"); }
+  for i in 0 .. text_len(s)
+  {
+    let c = text_byte(s,i);
+    if !((c >= 48 && c <= 57) || (c >= 65 && c <= 90) ||
+         (c >= 97 && c <= 122) || c == 45 || c == 46 || c == 95)
+    { tool_fail("feed: invalid policy reference"); }
+  }
+}
+
+fn seconds(s: string) -> i64
+{
+  if !Date.utc_timestamp(s) { tool_fail("feed: expected second-precision UTC clock"); }
+  return Date.date_days(text_slice(s,0,10)) * 86400 +
+    (Date.digit(s,11) * 10 + Date.digit(s,12)) * 3600 +
+    (Date.digit(s,14) * 10 + Date.digit(s,15)) * 60 + Date.digit(s,17) * 10 + Date.digit(s,18);
+}
+
+fn provider_seconds(s: string) -> i64
+{
+  if text_len(s) != 24 { tool_fail("feed: invalid provider update offset"); }
+  let sign = text_byte(s,19);
+  let h1 = Date.digit(s,20);
+  let h2 = Date.digit(s,21);
+  let m1 = Date.digit(s,22);
+  let m2 = Date.digit(s,23);
+  let h = h1 * 10 + h2;
+  let m = m1 * 10 + m2;
+  if (sign != 43 && sign != 45) || h1 < 0 || h2 < 0 || m1 < 0 || m2 < 0 ||
+     h > 14 || m > 59 || (h == 14 && m != 0)
+  { tool_fail("feed: invalid provider update offset"); }
+  let clock = seconds(text_concat(text_slice(s,0,19),"Z"));
+  let offset = h * 3600 + m * 60;
+  if sign == 43 { return clock - offset; }
+  return clock + offset;
+}
+
+fn validate_rate(currency: string, rate: string)
+{
+  if text_len(currency) != 3 || currency == "EUR" { tool_fail("feed: invalid FX quote currency"); }
+  for i in 0 .. 3
+  {
+    let c = text_byte(currency,i);
+    if c < 65 || c > 90 { tool_fail("feed: invalid FX quote currency"); }
+  }
+  let n = text_len(rate);
+  if n < 1 || n > 24 || (n > 1 && text_byte(rate,0) == 48 && text_byte(rate,1) != 46)
+  { tool_fail("feed: invalid FX decimal"); }
+  var point = false;
+  var positive = false;
+  for i in 0 .. n
+  {
+    if text_byte(rate,i) == 46
+    {
+      if point || i == 0 || i == n - 1 { tool_fail("feed: invalid FX decimal"); }
+      point = true;
+    }
+    else
+    {
+      let d = Date.digit(rate,i);
+      if d < 0 { tool_fail("feed: invalid FX decimal"); }
+      if d > 0 { positive = true; }
+    }
+  }
+  if !positive { tool_fail("feed: nonpositive FX reference rate"); }
+}
+
+fn fx_rows(out: buffer, decode: string, rows: i64)
+{
+  if rows > 68 { tool_fail("feed: FX row bound"); }
+  for i in 4 .. rows
+  {
+    let row = CSV.line(decode,i);
+    CSV.require_width(row,2);
+    let currency = CSV.field(row,0);
+    let rate = CSV.field(row,1);
+    validate_rate(currency,rate);
+    for j in 4 .. i
+    {
+      if currency == CSV.field(CSV.line(decode,j),0) { tool_fail("feed: duplicate FX quote"); }
+    }
+    if i > 4 { buffer_append(out,","); }
+    buffer_append(out,"{\"currency\":"); buffer_append(out,F.q(currency));
+    append(out,"rate",F.q(rate)); buffer_append(out,"}");
+  }
+}
+
+fn month_start(period: string) -> i64
+{
+  if text_len(period) != 7 { tool_fail("feed: invalid accommodation period"); }
+  let start = Date.date_days(text_concat(period,"-01"));
+  if start < 0 { tool_fail("feed: invalid accommodation period"); }
+  return start;
+}
+
+fn month_end(period: string) -> i64
+{
+  var year = text_slice(period,0,4);
+  var month = Date.digit(period,5) * 10 + Date.digit(period,6) + 1;
+  if month == 13
+  {
+    let next_year = Date.digit(year,0) * 1000 + Date.digit(year,1) * 100 +
+      Date.digit(year,2) * 10 + Date.digit(year,3) + 1;
+    year = F.num(next_year);
+    month = 1;
+  }
+  var number = F.num(month);
+  if month < 10 { number = text_concat("0",number); }
+  return Date.date_days(text_concat(year,text_concat("-",text_concat(number,"-01"))));
+}
+
+fn tourism_rows(out: buffer, decode: string, rows: i64, updated: i64) -> i64
+{
+  if rows > 7 { tool_fail("feed: accommodation row bound"); }
+  var present = 0;
+  var last = -1;
+  for i in 4 .. rows
+  {
+    let row = CSV.line(decode,i);
+    CSV.require_width(row,3);
+    let period = CSV.field(row,0);
+    let value = CSV.field(row,1);
+    let flag = CSV.field(row,2);
+    let start = month_start(period);
+    if start <= last { tool_fail("feed: unordered or duplicate accommodation period"); }
+    last = start;
+    let next = month_end(period);
+    if next < 0 || next * 86400 > updated { tool_fail("feed: unfinished period at provider update"); }
+    if i > 4 { buffer_append(out,","); }
+    buffer_append(out,"{\"period\":"); buffer_append(out,F.q(period));
+    if value == "-" { append(out,"nights","null"); }
+    else
+    {
+      let n = text_len(value);
+      if n < 1 || n > 12 || (n > 1 && text_byte(value,0) == 48)
+      { tool_fail("feed: invalid accommodation count"); }
+      for j in 0 .. n
+      {
+        if Date.digit(value,j) < 0 { tool_fail("feed: invalid accommodation count"); }
+      }
+      append(out,"nights",value);
+      present = present + 1;
+    }
+    if flag == "-" { append(out,"provider_flag","null"); }
+    else
+    {
+      if text_len(flag) < 1 || text_len(flag) > 16 { tool_fail("feed: invalid accommodation flag"); }
+      for j in 0 .. text_len(flag)
+      {
+        let c = text_byte(flag,j);
+        if (c < 97 || c > 122) && c != 32 { tool_fail("feed: invalid accommodation flag"); }
+      }
+      append(out,"provider_flag",F.q(flag));
+    }
+    buffer_append(out,"}");
+  }
+  return present;
+}
+
+fn capture_meta(capture:string) -> string
+{
+  if framed(capture,512) != 2 || CSV.line(capture,0) != "dragnet.feed-capture@1"
+  { tool_fail("feed: invalid capture contract"); }
+  let meta = CSV.line(capture,1);
+  CSV.require_width(meta,6);
+  return meta;
+}
+fn capture_provider(capture:string) -> string { return CSV.field(capture_meta(capture),0); }
+
+# The trusted host regenerates the decoder handoff from raw before calling.
+# The digest tie checks transport/copy integrity, not provenance authenticity.
+# The SDK binds the expected provider. The legacy direct caller leaves it
+# empty and continues to use the provider in its capture record.
+fn normalize_profile(capture:string, raw:string, decode:string, as_of:string,
+  expected_provider:string) -> (string,i64)
+{
+  let meta = capture_meta(capture);
+  let feed = CSV.field(meta,0);
+  let mode = CSV.field(meta,1);
+  let receipt = CSV.field(meta,2);
+  let ingest = CSV.field(meta,3);
+  let terms = CSV.field(meta,4);
+  let retention = CSV.field(meta,5);
+  if feed != "ecb" && feed != "eurostat" { tool_fail("feed: unknown source"); }
+  if expected_provider != "" && feed != expected_provider { tool_fail("feed: capture provider mismatch"); }
+  if mode != "public_https" && mode != "loopback_fixture" && mode != "offline_snapshot"
+  { tool_fail("feed: unknown capture mode"); }
+  let received = seconds(receipt);
+  let ingested = seconds(ingest);
+  if ingested < received { tool_fail("feed: receipt is later than ingest"); }
+  if ingested > seconds(as_of) { tool_fail("feed: capture not available as of cutoff"); }
+  policy_ref(terms);
+  policy_ref(retention);
+  if text_len(raw) < 1 || text_len(raw) > 65536 { tool_fail("feed: raw body outside byte bound"); }
+  let hash = digest(raw);
+  let n = framed(decode,4096);
+  if n < 5 || CSV.line(decode,0) != "dragnet.feed-decode@1" ||
+     CSV.line(decode,1) != feed || CSV.line(decode,2) != hash
+  { tool_fail("feed: invalid or mismatched decode handoff"); }
+  let stamp = CSV.line(decode,3);
+  let observations = buffer_new();
+  var status = "complete";
+  let out = buffer_new();
+  buffer_append(out,"{\"format\":");
+  if feed == "ecb"
+  {
+    let period = Date.date_days(stamp);
+    let lag = received / 86400 - period;
+    if period < 0 || lag < 0 || lag > 7 { tool_fail("feed: future or stale FX date"); }
+    fx_rows(observations,decode,n);
+    buffer_append(out,"\"dragnet.ecb-fx-reference@1\"");
+    append(out,"source",F.q("European Central Bank"));
+    append(out,"source_series",F.q("eurofxref-daily"));
+    append(out,"reference_date",F.q(stamp));
+    append(out,"provider_updated_at","null");
+    append(out,"base_currency",F.q("EUR"));
+    append(out,"unit",F.q("quote_currency_per_EUR"));
+  }
+  else
+  {
+    let updated = provider_seconds(stamp);
+    if updated > received || received - updated > 10368000
+    { tool_fail("feed: future or stale accommodation update"); }
+    let present = tourism_rows(observations,decode,n,updated);
+    if present < 3 { status = "partial"; }
+    buffer_append(out,"\"dragnet.eurostat-accommodation-nights@1\"");
+    append(out,"source",F.q("Eurostat"));
+    append(out,"source_series",F.q("tour_occ_nim"));
+    append(out,"provider_updated_at",F.q(stamp));
+    append(out,"geography",F.q("EU27_2020"));
+    append(out,"activity",F.q("I551-I553"));
+    append(out,"residence",F.q("TOTAL"));
+    append(out,"unit",F.q("guest_nights"));
+  }
+  append(out,"status",F.q(status));
+  append(out,"mode",F.q(mode));
+  append(out,"observed_at",F.q(receipt));
+  append(out,"received_at",F.q(receipt));
+  append(out,"ingested_at",F.q(ingest));
+  append(out,"as_of",F.q(as_of));
+  append(out,"terms_ref",F.q(terms));
+  append(out,"retention_ref",F.q(retention));
+  append(out,"raw_evidence",F.q(text_concat("blake3:",hash)));
+  append(out,"capture_evidence",F.q(text_concat("blake3:",digest(capture))));
+  append(out,"raw_bytes",F.num(text_len(raw)));
+  append(out,"pricing_input","false");
+  append(out,"observations",text_concat("[",text_concat(buffer_text(observations),"]")));
+  buffer_append(out,"}\n");
+  var state = 1;
+  if status == "partial" { state = 2; }
+  return (buffer_text(out),state);
+}
+
+fn normalize(capture: string, raw: string, decode: string, as_of: string) -> string
+{
+  let (bytes,_) = normalize_profile(capture,raw,decode,as_of,"");
+  return bytes;
+}

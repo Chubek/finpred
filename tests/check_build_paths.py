@@ -23,7 +23,8 @@ def main():
     env = os.environ.copy()
     for name in (
         "MULIB_ROOT", "ON1XC", "FINPRED_STDPPX_DIR", "FINPRED_BUILD_DIR",
-        "FINPRED_EXE", "FINPRED_DRAGNET_BUILD_DIR", "FINPRED_MODE", "MAKEFLAGS", "MFLAGS", "MAKEOVERRIDES",
+        "FINPRED_EXE", "FINPRED_DRAGNET_BUILD_DIR", "FINPRED_MODE", "MAKEFLAGS",
+        "MFLAGS", "MAKEOVERRIDES", "NATIVE_BUILD_DIR", "TUI_REVIEW_BUILD_DIR",
     ):
         env.pop(name, None)
 
@@ -91,15 +92,8 @@ exe.chmod(0o700)
         write(root, "tests/run.sh", """#!/bin/sh
 set -eu
 test "$(./bin/finpred selftest)" = "$EXPECTED_EXE"
+printf 'suite=%s\\n' "${1:-all}"
 """, executable=True)
-        for test in (
-            "frozen_csv", "elvi", "public_feeds", "dispatch",
-        ):
-            write(root, f"tests/check_dragnet_{test}.py", "")
-        write(root, "tests/check_crossref_replay.py", "")
-        write(root, "tests/check_forecast_scores.py", 'print("forecast-score-stub-ran")\n')
-        # If make test invokes this regression itself, don't recurse.
-        write(root, "tests/check_build_paths.py", "")
 
         def run(*args, cwd=root, **overrides):
             return subprocess.run(
@@ -123,15 +117,30 @@ test "$(./bin/finpred selftest)" = "$EXPECTED_EXE"
         default = str(root / "build/dev/finpred")
         built = run("make")
         assert built.returncode == 0 and Path(default).is_file(), built.stdout
-        tested = run("make", "test", EXPECTED_EXE=default)
+        tested = run("make", "test", "CMAKE=true", "CTEST=true", EXPECTED_EXE=default)
         assert tested.returncode == 0, tested.stdout
-        assert "forecast-score-stub-ran" in tested.stdout, tested.stdout
+        assert tested.stdout.splitlines().count("suite=all") == 1, tested.stdout
+        assert "--test-dir \"build/native\"" in tested.stdout, tested.stdout
+        assert "--test-dir \"build/poindexter-tui-review\"" in tested.stdout, tested.stdout
 
         custom = str(root / "build/custom CLI/finpred")
-        tested = run("make", "test", FINPRED_BUILD_DIR="build/custom CLI", EXPECTED_EXE=custom,
+        tested = run("make", "test", "CMAKE=true", "CTEST=true",
+                      FINPRED_BUILD_DIR="build/custom CLI", EXPECTED_EXE=custom,
                       FINPRED_EXE=str(root / "target/dev/finpred"))
         assert tested.returncode == 0, tested.stdout
-        assert "forecast-score-stub-ran" in tested.stdout, tested.stdout
+        assert tested.stdout.splitlines().count("suite=all") == 1, tested.stdout
+        for target, suite in (
+            ("test-compiler", "compiler"), ("test-pricing", "pricing"),
+            ("test-forecasting", "forecasting"), ("test-plugins", "plugins"),
+            ("test-storage", "storage"), ("test-security", "security"),
+            ("dragnet-test", "dragnet-legacy"), ("dragnet-search-test", "dragnet-search"),
+            ("forecast-score-test", "forecast-score"),
+        ):
+            selected = run("make", target, "CMAKE=true", "CTEST=true",
+                           FINPRED_BUILD_DIR="build/custom CLI", EXPECTED_EXE=custom)
+            assert selected.returncode == 0, selected.stdout
+            assert [line for line in selected.stdout.splitlines() if line.startswith("suite=")] == [
+                f"suite={suite}"], selected.stdout
         outside = run(str(root / "bin/finpred"), "selftest", cwd=root / "tests",
                       FINPRED_BUILD_DIR="build/custom CLI")
         assert outside.returncode == 0 and outside.stdout.strip() == custom, outside
@@ -187,7 +196,7 @@ test "$(./bin/finpred selftest)" = "$EXPECTED_EXE"
         pin(root, "third_party/mulib", mulib_sha)
         nested = run("make", "mulib", "CMAKE=false")
         assert nested.returncode == 2 and f"Submodule pin mismatch at {libstone}:" in nested.stdout, nested
-    print("build_paths_ok=true default=1 custom=1 forecast_gate=2 cube_gate=3 dragnet_gate=2 "
+    print("build_paths_ok=true default=1 custom=1 verification_selectors=9 forecast_gate=2 cube_gate=3 dragnet_gate=2 "
           "stale_target_rejected=1 missing_toolchain=2 pin_mismatches=2")
 
 

@@ -13,6 +13,24 @@ fn hex_digest(value: string) -> bool
   return true;
 }
 
+fn nightly_minor(value:i64) -> bool { return value >= 0 && value <= 1000000000000; }
+
+fn pricing_columns() -> string
+{
+  return "view,source_run,source_recommendation,source_valuation,currency,price_basis,current_minor,recommended_minor,change_minor,reason,published";
+}
+
+fn append_prices(b:buffer, view:string, run_id:string, recommendation_digest:string,
+  valuation_digest:string, current_minor:i64, recommended_minor:i64)
+{
+  buffer_append(b,view); buffer_append(b,",run:"); buffer_append(b,run_id);
+  buffer_append(b,",blake3:"); buffer_append(b,recommendation_digest);
+  buffer_append(b,",blake3:"); buffer_append(b,valuation_digest);
+  buffer_append(b,",EUR,room_night,"); buffer_append(b,Int.to_string(current_minor));
+  buffer_append(b,","); buffer_append(b,Int.to_string(recommended_minor));
+  buffer_append(b,","); buffer_append(b,Int.to_string(recommended_minor - current_minor));
+}
+
 fn render(run_id: string, recommendation_digest: string, valuation_digest: string,
   currency: string, basis: string, current_minor: i64, recommended_minor: i64,
   reason: string, published: bool) -> (bool,string)
@@ -22,8 +40,7 @@ fn render(run_id: string, recommendation_digest: string, valuation_digest: strin
   if currency != "EUR" || basis != "room_night"
   { return (false,"poindexter: incompatible units"); }
   if published { return (false,"poindexter: expected unpublished recommendation"); }
-  if current_minor < 0 || current_minor > 1000000000000
-    || recommended_minor < 0 || recommended_minor > 1000000000000
+  if !nightly_minor(current_minor) || !nightly_minor(recommended_minor)
   { return (false,"poindexter: nightly minor units outside contract bounds"); }
   if reason != "target_percentile" && reason != "lower_percentile_shortcut"
     && reason != "guardrail_adjustment"
@@ -33,13 +50,41 @@ fn render(run_id: string, recommendation_digest: string, valuation_digest: strin
   # No free text enters a cell. Prefix digest cells to preserve text identity
   # even when a spreadsheet would convert a digit-only digest to a number.
   let b = buffer_new();
-  buffer_append(b,"view,source_run,source_recommendation,source_valuation,currency,price_basis,current_minor,recommended_minor,change_minor,reason,published\n");
-  buffer_append(b,"poindexter.pricing-sheet@1,run:"); buffer_append(b,run_id);
-  buffer_append(b,",blake3:"); buffer_append(b,recommendation_digest);
-  buffer_append(b,",blake3:"); buffer_append(b,valuation_digest);
-  buffer_append(b,",EUR,room_night,"); buffer_append(b,Int.to_string(current_minor));
-  buffer_append(b,","); buffer_append(b,Int.to_string(recommended_minor));
-  buffer_append(b,","); buffer_append(b,Int.to_string(recommended_minor - current_minor));
+  buffer_append(b,pricing_columns()); buffer_byte(b,10);
+  append_prices(b,"poindexter.pricing-sheet@1",run_id,recommendation_digest,
+    valuation_digest,current_minor,recommended_minor);
   buffer_append(b,","); buffer_append(b,reason); buffer_append(b,",false\n");
+  return (true,buffer_text(b));
+}
+
+fn render_contribution(run_id: string, recommendation_digest: string, raw_valuation_digest: string,
+  raw_demand_digest: string, currency: string, basis: string, current_minor: i64,
+  recommended_minor: i64, marginal_cost_minor: i64, expected_room_nights_milli: i64,
+  expected_contribution_minor_milli: i64, scale: i64) -> (bool,string)
+{
+  if !hex_digest(run_id) || !hex_digest(recommendation_digest) || !hex_digest(raw_valuation_digest)
+    || !hex_digest(raw_demand_digest) { return (false,"poindexter: malformed source reference"); }
+  if currency != "EUR" || basis != "room_night" || scale != 1000
+  { return (false,"poindexter: incompatible contribution units"); }
+  if !nightly_minor(current_minor) || !nightly_minor(recommended_minor) || !nightly_minor(marginal_cost_minor)
+  { return (false,"poindexter: nightly minor units outside contract bounds"); }
+  if expected_room_nights_milli <= 0 || expected_room_nights_milli > 1000000
+    || recommended_minor <= marginal_cost_minor
+  { return (false,"poindexter: invalid contribution quantities"); }
+  # With the bounds above the positive product is at most 10^18, within i64.
+  if expected_contribution_minor_milli != (recommended_minor - marginal_cost_minor) * expected_room_nights_milli
+  { return (false,"poindexter: inconsistent expected contribution"); }
+  let b = buffer_new();
+  buffer_append(b,pricing_columns());
+  buffer_append(b,",source_demand,marginal_cost_minor,expected_room_nights_milli,expected_contribution_minor_milli,scale\n");
+  append_prices(b,"poindexter.contribution-sheet@1",run_id,recommendation_digest,
+    raw_valuation_digest,current_minor,recommended_minor);
+  buffer_append(b,",max_expected_contribution,false,blake3:"); buffer_append(b,raw_demand_digest);
+  buffer_append(b,","); buffer_append(b,Int.to_string(marginal_cost_minor));
+  buffer_append(b,","); buffer_append(b,Int.to_string(expected_room_nights_milli));
+  # A prefix prevents spreadsheets from rounding these exact integers, and
+  # keeps values above the worksheet's arithmetic bound readable as text.
+  buffer_append(b,",milli_minor:"); buffer_append(b,Int.to_string(expected_contribution_minor_milli));
+  buffer_append(b,",1000\n");
   return (true,buffer_text(b));
 }

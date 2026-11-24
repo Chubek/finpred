@@ -1,0 +1,77 @@
+import automat.financial_graph as G;
+import automat.financial_run as Run;
+import core.contracts as C;
+import sdk.callable as SDK;
+import std.io.TextIO as IO;
+import std.os.CommandLine as Env;
+import yieldcraft.contribution as Policy;
+import yieldcraft.contribution_dag as Contribution;
+
+fn env(key:string) -> string { return Env.basis_command_line_get_env(key); }
+fn file(key:string) -> string { return IO.basis_text_io_input_all(env(key)); }
+fn code() -> string { return G.digest("contribution DAG test binding, not executable identity"); }
+fn resolve(key:string) -> SDK.Descriptor
+{
+  if env("CASE") == "disabled" { return Contribution.descriptor(key,""); }
+  return Contribution.descriptor(key,code());
+}
+fn call(pin:SDK.Pin, req:SDK.Request) -> SDK.Outcome
+{
+  if env("CASE") == "wrong-pin" { return Contribution.invoke(G.digest("different binding"),pin,req); }
+  return Contribution.invoke(code(),pin,req);
+}
+fn main() -> i64
+{
+  let task = env("CASE");
+  let graph = Contribution.graph();
+  let scenario = file("SCENARIO");
+  let valuation = file("VALUATION");
+  let demand = file("DEMAND");
+  let cutoff = env("CUTOFF");
+  let strategy = sx_string(G.digest("contribution DAG test policy context"));
+  let ctx = record<Run.Context>{cutoff:sx_string(cutoff),strategy_digest:strategy};
+  let roots = sx_cons(Run.input("scenario",1,scenario),sx_cons(Run.input("valuation",1,valuation),
+    sx_cons(Run.input("demand",1,demand),sx_nil())));
+  var mode = "recommendation";
+  var budget = Contribution.budget();
+  if task == "analysis" { mode = "analysis"; }
+  if task == "budget" { budget = 0; }
+  let result = Run.execute(graph,roots,ctx,mode,budget,resolve,call);
+  let status = sx_text(result["status"]);
+  IO.basis_text_io_print("$status\n");
+  if status != "ok"
+  {
+    if sx_kind(result["artifacts"]) != 0 || sx_kind(result["outputs"]) != 0
+    { tool_fail("rejected graph exposed partial outputs"); }
+    return 0;
+  }
+  if result["invocations"] != 1 { tool_fail("expected one strategy invocation"); }
+  let value = G.at(G.lookup(result["outputs"],"decision"),2);
+  if SDK.value_state(value) != 1 { tool_fail("positive decision missing"); }
+  let output = sx_text(SDK.value_bytes(value));
+  if task == "parity"
+  {
+    let s = C.scenario_csv(scenario);
+    let v = C.valuation_csv(valuation,s);
+    let previous = Policy.decide(s,v,text_slice(G.digest(scenario),7,71),demand);
+    if output != Contribution.encode(previous) { tool_fail("current policy and DAG decision differ"); }
+    let expected = Run.expectation(result);
+    let replay = Run.replay(graph,roots,ctx,mode,budget,resolve,call,result["graph_digest"],expected);
+    if sx_text(replay["status"]) != "ok" { tool_fail("contribution evidence did not replay"); }
+    # Change the frozen bytes without changing any decoded value or decision.
+    let size = text_len(demand);
+    var alternate = text_concat(demand,"\n");
+    if text_byte(demand,size-1) == 10
+    {
+      var end = size-1;
+      if text_byte(demand,end-1) == 13 { end = end-1; }
+      alternate = text_slice(demand,0,end);
+    }
+    let changed = sx_cons(Run.input("scenario",1,scenario),sx_cons(Run.input("valuation",1,valuation),
+      sx_cons(Run.input("demand",1,alternate),sx_nil())));
+    let rejected = Run.replay(graph,changed,ctx,mode,budget,resolve,call,result["graph_digest"],expected);
+    if sx_text(rejected["status"]) != "replay_mismatch" { tool_fail("different frozen demand replay was not rejected"); }
+  }
+  IO.basis_text_io_print(output);
+  return 0;
+}

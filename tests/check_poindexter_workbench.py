@@ -3,6 +3,7 @@
 from contextlib import contextmanager
 import csv
 import io
+import json
 import os
 import pty
 import select
@@ -10,6 +11,9 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
+
+from check_poindexter_cli import CONTRIBUTION_HEADER, CONTRIBUTION_ID, CONTRIBUTION_INPUTS
+from check_store import invoke, tree
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "bin/poindexter"
@@ -86,6 +90,62 @@ def save_conflicts(env, book, new_book):
         new_book.unlink()
         key("s"); expect(b"Workbook saved."); key("q")
     assert new_book.read_bytes() == b"poindexter-workbook@1\nA1\t9\n"
+
+
+def contribution_import(parent, env):
+    home = parent / "contribution-store"
+    missing = parent / "missing"
+    env = {**env, "FINPRED_HOME": str(home),
+           **{f"FINPRED_{k}": str(missing) for k in ("SCENARIO", "OFFERS", "DEMAND", "STRATEGY", "VALUATION")}}
+
+    def cli(*args):
+        return subprocess.run([CLI, *args], env=env, capture_output=True, timeout=20)
+
+    def out(*args):
+        proc = cli(*args)
+        assert proc.returncode == 0, proc
+        return proc.stdout.decode("ascii")
+
+    summary = invoke(home, "run", **CONTRIBUTION_INPUTS).decode("ascii")
+    fields = dict(line.split("=", 1) for line in summary.splitlines())
+    rid = fields["run_id"]
+    assert rid == CONTRIBUTION_ID
+    before = tree(home)
+    book = parent / "contribution.pxw"
+    rows = list(csv.reader(io.StringIO(out("--run", rid, "--book", book, "--csv"))))
+    assert rows[0] == CONTRIBUTION_HEADER.split(",")
+    assert rows[1][:2] == ["poindexter.contribution-sheet@1", f"run:{rid}"]
+    assert rows[1][6:11] == ["17500", "19000", "1500", "max_expected_contribution", "false"]
+    assert rows[1][12:] == ["8000", "105000", "milli_minor:1155000000", "1000"]
+    assert "O2\t'milli_minor:1155000000\n" in book.read_text()
+
+    script = parent / "contribution.pxs"
+    script.write_text("ASSERT (H2-M2)*N2/P2 = 1155000\nSET H2 = H2+1\n")
+    assert out("--book", book, "--script", script, "--get", "H2") == "19001\n"
+    assert out("--run", rid, "--get", "H2") == "19000\n"
+    assert tree(home) == before
+
+    # A valid total may be larger than the worksheet's arithmetic limit.
+    demand = parent / "max-demand.csv"
+    head = CONTRIBUTION_INPUTS["demand"].read_bytes().splitlines()[:4]
+    demand.write_bytes(b"\n".join(head + [b"0,1000000", b"1000000000000,1000000", b""])
+                       .replace(b",8000\n", b",0\n"))
+    valuation = parent / "max-valuation.csv"
+    valuation.write_bytes((ROOT / "fixtures/valuation.csv").read_bytes().replace(
+        b",17500,16000,25000,5000,500\n", b",1000000000000,0,1000000000000,1000000000000,0\n"))
+    edge = invoke(home, "run", **dict(CONTRIBUTION_INPUTS, demand=demand, valuation=valuation))
+    max_id = edge.splitlines()[0].decode("ascii").split("=", 1)[1]
+    before = tree(home)
+    assert out("--run", max_id, "--get", "O2") == "milli_minor:1000000000000000000\n"
+    assert tree(home) == before
+
+    trace = home / f"artifacts/blake3-{fields['trace_digest']}.txt"
+    trace.write_bytes(b"corrupted\n")
+    before = tree(home)
+    rejected = parent / "rejected-contribution.pxw"
+    proc = cli("--run", rid, "--book", rejected, "--csv")
+    assert proc.returncode > 0 and not proc.stdout and not rejected.exists(), proc
+    assert tree(home) == before
 
 
 def main():
@@ -170,19 +230,25 @@ FORMULA D5 = D5+1
         assert cli("--import-csv", data, "--book", bad, "--csv", ok=False) and not bad.exists()
         summary = subprocess.check_output([ROOT / "bin/finpred", "run"], env=env, text=True)
         rid = summary.splitlines()[0].split("=")[1]
+        legacy = json.loads((ROOT / "fixtures/replay_v1.json").read_bytes())
+        for path, content in legacy["files"].items():
+            (d / "store" / path).write_bytes(content.encode("ascii"))
+        legacy_id, = (key for key, text in legacy["runs"].items() if "recommendation_minor=17100\n" in text)
         def snapshot():
             return {p: (p.stat().st_mtime_ns, p.read_bytes()) for p in (d / "store").rglob("*.txt")}
         frozen = snapshot()
         price = ROOT / "plugins/poindexter/workbench/examples/price-check.pxs"
         assert cli("--run", rid, "--script", price, "--get", "B12") == "121800\n"
         assert cli("--run", rid, "--get", "B2") == f"run:{rid}\n"
+        assert cli("--run", legacy_id, "--get", "H2") == "17100\n"
         assert frozen == snapshot()
         assert cli("--run", "0"*64, "--csv", ok=False)
         interactive(env, d / "interactive")
         assert cli("--book", d / "interactive", "--get", "B1") == "30\n"
         save_conflicts(env, d / "existing-save", d / "new-save")
         assert frozen == snapshot()
-    print("poindexter_workbench_ok=true formulae scripts rollback replay_import terminal_edit_save save_conflicts=2")
+        contribution_import(d, env)
+    print("poindexter_workbench_ok=true formulae scripts rollback replay_import_v1_v2_v3 terminal_edit_save save_conflicts=2")
 
 
 if __name__ == "__main__":

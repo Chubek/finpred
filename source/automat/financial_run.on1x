@@ -127,11 +127,30 @@ fn memo_key(pin:SDK.Pin, mode:string, ctx:Context, values:sexpr, work:i64) -> st
 fn execute(g:G.Graph, roots:sexpr, ctx:Context, mode:string, budget:i64,
   resolve:fn(string) -> SDK.Descriptor, call:fn(SDK.Pin, SDK.Request) -> SDK.Outcome) -> Result
 {
+  return execute_checked(g,roots,ctx,mode,budget,resolve,call,sx_nil());
+}
+
+# Execute only the binding and graph identity previously approved by the caller.
+# Compute it from the same prepared graph used below, before invoking handlers.
+fn execute_pinned(g:G.Graph, roots:sexpr, ctx:Context, mode:string, budget:i64,
+  resolve:fn(string) -> SDK.Descriptor, call:fn(SDK.Pin, SDK.Request) -> SDK.Outcome,
+  expected_digest:sexpr) -> Result
+{
+  if !SDK.valid_digest(expected_digest) { return error("graph_mismatch",""); }
+  return execute_checked(g,roots,ctx,mode,budget,resolve,call,expected_digest);
+}
+
+fn execute_checked(g:G.Graph, roots:sexpr, ctx:Context, mode:string, budget:i64,
+  resolve:fn(string) -> SDK.Descriptor, call:fn(SDK.Pin, SDK.Request) -> SDK.Outcome,
+  expected_digest:sexpr) -> Result
+{
   let plan = G.prepare(g,mode,budget,resolve);
   let status = sx_text(plan["status"]);
   if status != "ok" { return error(status,sx_text(plan["subject"])); }
-  if !valid_context(ctx) || !valid_roots(g["inputs"],roots) { return error("input",""); }
   let plan_digest = G.digest(sx_text(plan["canonical"]));
+  if sx_kind(expected_digest) != 0 && !SDK.same(expected_digest,sx_string(plan_digest))
+  { return error("graph_mismatch",""); }
+  if !valid_context(ctx) || !valid_roots(g["inputs"],roots) { return error("input",""); }
   let inputs = root_artifacts(g["inputs"],roots,ctx);
   var artifacts = L.basis_list_rev(inputs);
   var nodes = plan["order"];
@@ -186,7 +205,7 @@ fn execute(g:G.Graph, roots:sexpr, ctx:Context, mode:string, budget:i64,
       memo = sx_cons(sx_cons(sx_string(key),sx_cons(value,sx_nil())),memo);
       invocations = invocations + 1;
     }
-    if !SDK.valid_value(port,SDK.value_state(value),SDK.value_bytes(value))
+    if !SDK.valid_output(port,SDK.value_state(value),SDK.value_bytes(value))
     { return error("invalid_output",id); }
     emitted_bytes = emitted_bytes + text_len(sx_text(SDK.value_bytes(value)));
     if emitted_bytes > 8000000 { return error("budget",id); }

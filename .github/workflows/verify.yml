@@ -5,95 +5,118 @@ permissions:
   contents: read
 
 jobs:
-  application:
+  compiler:
+    name: Compiler
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-      - name: Fetch pinned compiler submodules
+      - uses: ./.github/actions/pinned-toolchain
+      - name: Verify pinned On1x and GrammarEmbed integration
         run: |
-          git submodule update --init third_party/mulib
-          git -C third_party/mulib submodule update --init on1x/third_party/libstone
-          git submodule status third_party/mulib
-          git -C third_party/mulib submodule status on1x/third_party/libstone
-      - name: Build pinned compiler
-        run: |
-          make mulib
-          sha256sum build/mulib/on1x/on1xc build/mulib/on1x/stdppx/on1x-ppx-GrammarEmbed
-      - name: Install schema validator
-        run: |
-          python3 -m venv "$RUNNER_TEMP/validation"
-          "$RUNNER_TEMP/validation/bin/pip" install 'jsonschema==4.26.0'
-          echo "$RUNNER_TEMP/validation/bin" >> "$GITHUB_PATH"
-      - name: Install Dragnet native test dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            pkg-config libcurl4-openssl-dev libxml2-dev libjansson-dev strace
-          pkg-config --modversion libcurl libxml-2.0 jansson
-      - name: Build C11 CLI
-        run: make
-      - name: Dragnet Elvi search and Yieldcraft handoff (offline)
-        id: dragnet_search
-        run: make dragnet-search-test
-      - name: Build, launcher, and suite path regression
-        run: python3 tests/check_build_paths.py
-      - name: Fixture oracles, static checks and full integration
-        id: integration
-        run: ./tests/run.sh
-      - name: Independent compiled package consumers
-        id: packages
-        run: |
-          python3 tests/check_yieldcraft_package.py
-          python3 tests/check_dragnet_frozen_csv.py
-          python3 tests/check_dragnet_elvi.py
-          python3 tests/check_crossref_replay.py
-          python3 tests/check_poindexter_package.py
-          ./bin/poindexter --build
-          python3 tests/check_poindexter_workbench.py
-          python3 tests/check_poindexter_tty.py
-          python3 tests/check_tui_kernel_admission.py --expect-dynlib-syntax
-          make poindexter-tui-review
-      - name: Point-in-time forecast scoring and evaluation replay conformance
-        id: forecast_scores
-        run: make forecast-score-test
-      - name: Public feed transport and replay conformance
-        id: dragnet_feeds
-        run: |
-          python3 tests/check_dragnet_public_feeds.py
-      - name: Trusted source dispatch conformance
-        id: dragnet_dispatch
-        run: |
-          python3 tests/check_dragnet_dispatch.py
-      - name: Optional Poindexter ImmGTK conformance
-        id: gui
-        run: |
-          if command -v pkg-config >/dev/null && pkg-config --exists x11; then
-            make poindexter-gui-test
-          else
-            echo 'poindexter_gui=skipped missing_x11_development_library'
-          fi
-      - name: Test outcomes
-        if: always()
-        run: |
-          echo '{"platform":"linux-x86_64","integration":"${{ steps.integration.outcome }}","packages":"${{ steps.packages.outcome }}","forecast_scores":"${{ steps.forecast_scores.outcome }}","dragnet_search":"${{ steps.dragnet_search.outcome }}","dragnet_feeds":"${{ steps.dragnet_feeds.outcome }}","dragnet_dispatch":"${{ steps.dragnet_dispatch.outcome }}","gui_step":"${{ steps.gui.outcome }}","other_platforms":"untested"}'
+          cmake --build build/mulib/on1x --parallel 4 --target \
+            on1x_grammarembed_reference on1x_grammarembed_bridge_tests on1x_ppx_LuaEmbed
+          ctest --test-dir build/mulib/on1x --output-on-failure --no-tests=error \
+            -R '^on1x\.(grammarembed(_bridge)?|stdlib_project)$'
+      - run: make test-compiler
 
-  native-store:
+  pricing:
+    name: Pricing
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-      - name: Build standalone review candidate
+      - uses: ./.github/actions/pinned-toolchain
+      - uses: ./.github/actions/schema-validator
+      - name: Install tracing for offline cube replay
         run: |
-          cmake -S native -B build/native -DBUILD_TESTING=ON -DCMAKE_C_FLAGS='-Wall -Wextra -Werror -pedantic'
-          cmake --build build/native --parallel 4
-      - name: Native contract and archived bytes
-        id: native
-        run: ctest --test-dir build/native --output-on-failure --no-tests=error
-      - if: always()
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends strace
+          strace -f -e trace=network -o "$RUNNER_TEMP/strace-probe" /usr/bin/true
+      - run: make
+      - run: make test-pricing
+
+  forecasting:
+    name: Forecasting
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/pinned-toolchain
+      - uses: ./.github/actions/schema-validator
+      - name: Install fixture decoder dependencies
         run: |
-          echo '{"platform":"linux-x86_64","native_store_ctest":"${{ steps.native.outcome }}","kernelbind_admission":"not_tested","power_loss":"not_tested"}'
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config libxml2-dev libjansson-dev
+          pkg-config --modversion libxml-2.0 jansson
+      - run: make
+      - run: make test-forecasting
+
+  plugins:
+    name: Plugins
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/pinned-toolchain
+      - uses: ./.github/actions/schema-validator
+      - name: Install and verify Dragnet and private X11 dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libcurl4-openssl-dev libxml2-dev libjansson-dev \
+            libx11-dev strace xvfb xauth xfonts-base
+          pkg-config --atleast-version=7.85 libcurl
+          pkg-config --modversion libcurl libxml-2.0 jansson x11
+          strace -f -e trace=network -o "$RUNNER_TEMP/strace-probe" /usr/bin/true
+          xvfb-run -a -s '-screen 0 1024x768x24' /usr/bin/true
+      - run: make
+      - run: make test-plugins
+
+  storage:
+    name: Storage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Select a filesystem supported by the native store
+        run: bash .github/scripts/native-storage-path.sh
+      - uses: ./.github/actions/pinned-toolchain
+      - uses: ./.github/actions/schema-validator
+      - run: make
+      - run: make test-storage
+      - name: Unmount the native storage fixture volume if mounted
+        if: always()
+        run: |
+          path="$RUNNER_TEMP/finpred-native-fs"
+          if mountpoint -q "$path"; then
+            sudo umount "$path"
+          fi
+
+  security:
+    name: Security
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/pinned-toolchain
+      - uses: ./.github/actions/schema-validator
+      - name: Install offline worker sandbox
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bubblewrap
+          /usr/bin/bwrap --version
+      - run: make
+      - run: make test-security
