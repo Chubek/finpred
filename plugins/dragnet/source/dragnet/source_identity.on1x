@@ -1,6 +1,0 @@
-# Fingerprint of the framed repository-local source closure. The independent
-# SDK consumer checks it against exact source bytes. Not binary attestation.
-fn code_digest() -> string
-{
-  return "blake3:7d8be452c7fc7ef8a78134382775d94b3c5c7c1135ba6a501b5fdbf8136c9b09";
-}

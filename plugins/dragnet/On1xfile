@@ -1,6 +1,0 @@
-on1xfile 1
-kind executable
-name "dragnet-frozen-csv"
-directory "source"
-target "dragnet-frozen-csv" "source/host.on1x"
-backend c11
