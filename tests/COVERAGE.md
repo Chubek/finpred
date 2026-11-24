@@ -34,6 +34,7 @@ OpenAI endpoint and OAuth login/refresh are not covered. See
 | Reproducible application build | [Two isolated builds](check_reproducible_build.py) compare all three host binaries under the same installed toolchain | Different output or scratch directories must not change executable bytes |
 | Core MuLIB price prediction | [Prediction CLI](check_price_prediction.py) checks baselines, trend, ensemble, rounding and read-only output | Invalid models, malformed histories and insufficient observations |
 | Ordered price backtest | [Independent oracle](check_price_backtest.py) verifies matched horizon-specific folds and large-error metrics | Rejects invalid splits and checks that intervening, target and future observations do not leak into training |
+| Price prediction and backtest properties | [Seeded differential test](check_price_properties.py) verifies exact points, translation invariance, and single-fold parity between CLI operations | Generated malformed rows must fail in both operations without emitting results or writing a store |
 | Primary Yieldcraft contribution strategy | [Contribution CLI](check_yieldcraft_contribution.py) checks the cost-sensitive optimum, ties, guardrails and exact v3 replay | Competitor-only inputs, stale or malformed demand, unsupported prices and tampered replay inputs |
 | First-party demand | [Demand tests](check_yieldcraft_demand.py) compare the monotone fit to exact arithmetic and replay the contribution handoff | Rejects unavailable and unresolved cohorts, stale evidence, insufficient variation and substituted evidence |
 | Finite-inventory pricing | [Inventory tests](check_yieldcraft_inventory.py) compare the contingent policy to exhaustive policy-tree enumeration | Invalid grids, zero stock, holding value, and rounding/tie boundaries |
@@ -84,6 +85,12 @@ The fixture integration log includes the actual run, recommendation and trace
 digests before comparing them to the pinned values. Neither stores nor build
 outputs are cached. Other platforms, power-loss/remount behavior and independent
 On1x storage admission are outside this workflow.
+
+After building, `python3 tests/benchmark_price_backtest.py --repeat 5` reports
+raw wall-clock samples (including CLI startup) and output checksums for
+deterministic 64- and 256-observation synthetic histories. Compare under the
+same host/toolchain and load. Timings are diagnostic, not a CI threshold or
+evidence of forecasting accuracy.
 
 ## Competitor cube coverage
 

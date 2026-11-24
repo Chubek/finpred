@@ -6,5 +6,6 @@ runs:
     - shell: bash
       run: |
         python3 -m venv "$RUNNER_TEMP/validation"
-        "$RUNNER_TEMP/validation/bin/pip" install 'jsonschema==4.26.0'
+        "$RUNNER_TEMP/validation/bin/python" -m pip install \
+          --require-hashes --only-binary=:all: -r "$GITHUB_WORKSPACE/tests/requirements-schema.txt"
         echo "$RUNNER_TEMP/validation/bin" >> "$GITHUB_PATH"

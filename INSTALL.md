@@ -43,8 +43,12 @@ If `jsonschema` is not already installed, create a test environment:
 ```sh
 python3 -m venv build/test-venv
 . build/test-venv/bin/activate
-python3 -m pip install 'jsonschema==4.26.0'
+python3 -m pip install --require-hashes --only-binary=:all: -r tests/requirements-schema.txt
 ```
+
+This is the same hash-locked wheel set used by CI. The native wheel hashes
+cover standard CPython 3.10–3.14 on glibc Linux (x86-64 and AArch64); that
+does not qualify the application for all those hosts.
 
 ## 2. Pin MuLIB and LibStone
 
