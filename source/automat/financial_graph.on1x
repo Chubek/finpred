@@ -184,10 +184,30 @@ fn planned(id:sexpr, d:SDK.Descriptor, edges:sexpr) -> sexpr
     sx_cons(SDK.port_entry(d["output"]),sx_cons(sx_string(F.num(d["max_work"])),
     sx_cons(d["role"],sx_cons(edges,sx_nil())))))));
 }
+fn same_port(a:SDK.Port, b:SDK.Port) -> bool
+{
+  return SDK.same(a["name"],b["name"]) && SDK.same(a["kind"],b["kind"]) && a["major"] == b["major"]
+    && SDK.same(a["unit"],b["unit"]) && SDK.same(a["currency"],b["currency"])
+    && a["states"] == b["states"] && a["max_bytes"] == b["max_bytes"];
+}
+fn same_ports(a:sexpr, b:sexpr) -> bool
+{
+  var left = a;
+  var right = b;
+  var n = 0;
+  while sx_kind(left) == 3 && sx_kind(right) == 3
+  {
+    if n >= 16 || !same_port(SDK.decode_port(sx_head(left)),SDK.decode_port(sx_head(right))) { return false; }
+    left = sx_tail(left);
+    right = sx_tail(right);
+    n = n + 1;
+  }
+  return sx_kind(left) == 0 && sx_kind(right) == 0;
+}
 fn matches_signature(entry:sexpr, d:SDK.Descriptor) -> bool
 {
   return d["max_work"] == SDK.nat(at(entry,4)) && SDK.same(d["role"],at(entry,5))
-    && SDK.same_port(d["output"],SDK.decode_port(at(entry,3))) && SDK.same_ports(d["inputs"],at(entry,2));
+    && same_port(d["output"],SDK.decode_port(at(entry,3))) && same_ports(d["inputs"],at(entry,2));
 }
 fn consistent_binding(entries:sexpr, d:SDK.Descriptor) -> bool
 {

@@ -239,7 +239,10 @@ fn execute_expected(g:G.Graph, roots:sexpr, ctx:Context, mode:string, budget:i64
     if sx_kind(value) == 0
     {
       let request = record<SDK.Request>{inputs:values,cutoff:ctx["cutoff"],work:work};
-      let outcome = SDK.invoke_resolved(pin,mode,request,current,call);
+      # Invoke against this checked snapshot, not a new host lookup. The
+      # original callable module is also part of the Dragnet v1 source pin.
+      let checked = fn(name:string) -> SDK.Descriptor { return current; };
+      let outcome = SDK.invoke(pin,mode,request,checked,call);
       if outcome["status"] != 0 { return error(failure_status(outcome["status"]),id); }
       value = SDK.value_entry(outcome["state"],sx_text(outcome["bytes"]));
       memo = sx_cons(sx_cons(sx_string(key),sx_cons(value,sx_nil())),memo);
