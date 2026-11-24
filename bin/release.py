@@ -124,6 +124,7 @@ def release(args):
     cc = str(Path(cc).absolute())  # Preserve the driver basename (e.g. a Clang symlink).
     env = dict(os.environ, MULIB_ROOT=str(mulib), ON1XC=str(compiler),
                FINPRED_STDPPX_DIR=str(ppx), CC=cc, LC_ALL="C", TZ="UTC", PYTHONHASHSEED="0",
+               FINPRED_STAGE_PARENT=str(ROOT / "build"),
                SOURCE_DATE_EPOCH=str(epoch), PYTHONDONTWRITEBYTECODE="1")
     for key in ("FINPRED_BUILD_DIR", "ON1X_STDLIB", "ON1X_MULIB_ROOT", "ON1X_PPX_SCHEMA"):
         env.pop(key, None)

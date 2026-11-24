@@ -74,3 +74,12 @@ including system headers, assembler, linker, libraries and compression stack;
 it is not a cross-host or independently rebuilt compiler claim. Release
 archive hashes are separate from application artifact IDs. No historical
 pricing archives, model identifiers or replay contracts are migrated.
+
+The On1x v1 PPX transport preserves canonical paths in source locations and
+has a fixed 4 MiB request and response budget. The CLI build puts its temporary
+On1x source stage directly in `build/` rather than nesting it in `TMPDIR`, and
+relativizes staged locations in the response. Tool scratch still uses `TMPDIR`.
+For an unusually deep checkout, set `FINPRED_STAGE_PARENT` to a shorter
+writable directory when invoking `bin/build.sh`; the release command uses the
+original checkout's `build/` rather than its nested snapshot. A very large
+merged On1x unit can still exceed the compiler's request budget.

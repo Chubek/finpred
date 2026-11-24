@@ -26,7 +26,11 @@ esac
 # canonical plugin sources stay under plugins/.
 out=$(finpred_cli_output_dir "$ROOT")
 mkdir -p "$(dirname -- "$out")"
-work=$(mktemp -d "$TMPDIR/finpred-project.XXXXXXXX")
+# On1x v1 canonicalizes paths before it serializes the PPX input. Keep this
+# source stage shallow and separate from the C/tool scratch (still TMPDIR).
+stage=$(realpath -m -- "${FINPRED_STAGE_PARENT:-$ROOT/build}")
+mkdir -p -- "$stage"
+work=$(mktemp -d "$stage/p.XXXXXXXX")
 trap 'rm -rf -- "$work"' EXIT
 trap 'exit 1' HUP INT TERM
 cp -R "$ROOT/source" "$work/source"
