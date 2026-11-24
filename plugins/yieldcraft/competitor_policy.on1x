@@ -1,0 +1,128 @@
+# Pure policy for guest-payable whole-party/whole-stay amounts in minor units.
+import algorithms.quantile as Q;
+import algorithms.weighted_quantile as WQ;
+import core.competitor as C;
+import core.csv as CSV;
+import core.money as Money;
+
+record Policy
+{
+  id:i64, curve:sexpr, near:i64, far:i64, horizon:i64, shape:i64, knot:i64,
+  weighted:bool, lower:i64, shortcut:sexpr, threshold:i64, floor:i64, cap:i64
+}
+record Decision
+{
+  target:i64, intended:i64, lower:i64, selected:i64, candidate:i64, price:i64, reason:sexpr
+}
+
+fn parse(row:string) -> Policy
+{
+  CSV.require_width(row,13);
+  let id = C.number(row,0);
+  let curve = CSV.field(row,1);
+  let near = C.number(row,2);
+  let far = C.number(row,3);
+  let horizon = C.number(row,4);
+  let shape = C.number(row,5);
+  let knot = C.number(row,6);
+  let method = CSV.field(row,7);
+  let lower = C.number(row,8);
+  let shortcut = CSV.field(row,9);
+  let threshold = C.number(row,10);
+  let floor = C.number(row,11);
+  let cap = C.number(row,12);
+  if !C.valid_id(id) || near > 10000 || far > 10000 || lower > near || lower > far
+    || horizon > 365 || floor > cap || cap > 4000000000000
+    || (method != "type7" && method != "weighted")
+  { tool_fail("competitor policy: invalid target, quantile or guardrails"); }
+  if curve == "fixed"
+  {
+    if near != far || horizon != 0 || shape != 0 || knot != 0
+    { tool_fail("competitor policy: invalid fixed curve"); }
+  }
+  else
+  {
+    if horizon < 1 { tool_fail("competitor policy: curve needs a positive horizon"); }
+    if curve == "piecewise"
+    {
+      if shape < 1 || shape >= horizon || knot > 10000 || knot < lower
+      { tool_fail("competitor policy: invalid piecewise knot"); }
+    }
+    else
+    {
+      if knot != 0 || (curve == "linear" && shape != 0)
+        || (curve == "power" && (shape < 2 || shape > 4))
+        || (curve == "exponential" && (shape < 1 || shape > 16))
+        || (curve != "linear" && curve != "power" && curve != "exponential")
+      { tool_fail("competitor policy: invalid curve shape"); }
+    }
+  }
+  if (shortcut == "off" && threshold != 0) || (shortcut == "bps" && threshold > 10000)
+    || (shortcut == "minor" && threshold > 4000000000000)
+    || (shortcut != "off" && shortcut != "bps" && shortcut != "minor")
+  { tool_fail("competitor policy: invalid shortcut"); }
+  return record<Policy>{id:id,curve:sx_string(curve),near:near,far:far,horizon:horizon,shape:shape,knot:knot,
+    weighted:method=="weighted",lower:lower,shortcut:sx_string(shortcut),threshold:threshold,floor:floor,cap:cap};
+}
+
+fn power(base:i64, exponent:i64) -> i64
+{
+  var result = 1;
+  for i in 0 .. exponent { result = result * base; }
+  return result;
+}
+fn interpolate(a:i64, b:i64, numerator:i64, denominator:i64) -> i64
+{
+  return Money.half_up(a * (denominator - numerator) + b * numerator,denominator);
+}
+fn target(p:Policy, lead:i64) -> i64
+{
+  let horizon = p["horizon"];
+  let near = p["near"];
+  let far = p["far"];
+  if lead <= 0 { return near; }
+  if lead >= horizon { return far; }
+  let curve = sx_text(p["curve"]);
+  let shape = p["shape"];
+  if curve == "piecewise"
+  {
+    if lead <= shape { return interpolate(near,p["knot"],lead,shape); }
+    return interpolate(p["knot"],far,lead-shape,horizon-shape);
+  }
+  if curve == "power" { return interpolate(near,far,power(lead,shape),power(horizon,shape)); }
+  if curve == "exponential"
+  {
+    # Normalized powers of two; linear interpolation between adjacent knots.
+    let step = power(2,lead*shape/horizon);
+    let fraction = (lead*shape) % horizon;
+    return interpolate(near,far,(step-1)*horizon + step*fraction,(power(2,shape)-1)*horizon);
+  }
+  return interpolate(near,far,lead,horizon);
+}
+fn quantile(p:Policy, prices:i64, weights:i64, count:i64, percentile:i64) -> i64
+{
+  if p["weighted"] { return WQ.evaluate(prices,weights,count,percentile); }
+  return Q.type7(prices,count,percentile);
+}
+fn decide(p:Policy, lead:i64, prices:i64, weights:i64, count:i64) -> Decision
+{
+  let bps = target(p,lead);
+  let intended = quantile(p,prices,weights,count,bps);
+  let lower = quantile(p,prices,weights,count,p["lower"]);
+  let delta = intended - lower;
+  let mode = sx_text(p["shortcut"]);
+  var selected = bps;
+  var candidate = intended;
+  var reason = "target_percentile";
+  if delta > 0 && ((mode == "minor" && delta < p["threshold"])
+    || (mode == "bps" && delta*10000 < intended*p["threshold"]))
+  {
+    selected = p["lower"];
+    candidate = lower;
+    reason = "lower_percentile_shortcut";
+  }
+  let price = Money.capped(candidate,p["floor"],p["cap"]);
+  if price != candidate { reason = "guardrail_adjustment"; }
+  return record<Decision>{target:bps,intended:intended,lower:lower,selected:selected,
+    candidate:candidate,price:price,reason:sx_string(reason)};
+}

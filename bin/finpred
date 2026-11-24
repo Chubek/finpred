@@ -10,6 +10,7 @@ MODE=${1:-run}
 usage() {
   echo "usage: bin/finpred [run [--engine legacy|scalar]|selftest|replay RUN_ID|explain RUN_ID|evidence RUN_ID|poindexter RUN_ID]" >&2
   echo "       bin/finpred forecast {import SNAPSHOT|catalog ID_LIST|issue CATALOG MODEL CUTOFF REQUEST|score ISSUE CATALOG CUTOFF|holdout PLAN|audit SORTED_ID_LIST|replay ID}" >&2
+  echo "       bin/finpred cube {evaluate SNAPSHOTS CELLS POLICIES|replay ID}" >&2
   exit 2
 }
 case "$MODE" in
@@ -27,6 +28,23 @@ case "$MODE" in
     [ "$#" -eq 2 ] || usage
     FINPRED_RUN_ID=$2
     export FINPRED_RUN_ID
+    ;;
+  cube)
+    case "${2:-}" in
+      evaluate)
+        [ "$#" -eq 5 ] || usage
+        MODE=cube-evaluate
+        FINPRED_CUBE_INPUT=$3 FINPRED_CUBE_CELLS=$4 FINPRED_CUBE_POLICIES=$5
+        export FINPRED_CUBE_CELLS FINPRED_CUBE_POLICIES
+        ;;
+      replay)
+        [ "$#" -eq 3 ] || usage
+        MODE=cube-replay
+        FINPRED_CUBE_INPUT=$3
+        ;;
+      *) usage ;;
+    esac
+    export FINPRED_CUBE_INPUT
     ;;
   forecast)
     [ "$#" -ge 2 ] || usage

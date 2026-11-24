@@ -40,6 +40,7 @@ exe=$FINPRED_EXE
 python3 tests/check_cli_environ.py "$exe"
 python3 tests/check_engines_cli.py
 unset FINPRED_MODE FINPRED_RUN_ID
+python3 tests/check_competitor_cube.py
 FINPRED_HOME="$work/main"
 FINPRED_VALUATION="$ROOT/fixtures/valuation.csv"
 FINPRED_STRATEGY="$ROOT/strategies/yieldcraft.ottomat"

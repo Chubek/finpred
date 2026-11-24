@@ -1,0 +1,236 @@
+# Import profile for complete, frozen competitor quote releases. No IO or clock.
+import core.csv as CSV;
+import core.date as Date;
+import core.format as F;
+import core.money as Money;
+import std.String as Str;
+import std.collections.Array as A;
+import std.collections.List as L;
+
+record Release
+{
+  id:i64, property_id:i64, provider:sexpr, arrival:sexpr, departure:sexpr,
+  currency:sexpr, observed:sexpr, received:sexpr, ingested:sexpr, weight:i64,
+  bundle_rooms:i64, bundle_discount:i64, from_row:i64, to_row:i64
+}
+
+record Snapshot { releases:sexpr, quotes:i64 }
+record Quote
+{
+  id:i64, pool:i64, quantity:i64, adults:i64, children:i64, min_age:i64, max_age:i64,
+  min_nights:i64, cancellation:i64, gross:i64, net_base:i64
+}
+record Party
+{
+  adults:i64, children:i64, ages:sexpr, packed_ages:i64, rooms:i64, nights:i64, cancellation:i64
+}
+
+fn party(adults:i64, raw_ages:string, rooms:i64, nights:i64, cancellation:string) -> Party
+{
+  if adults < 1 || adults > 8 || rooms < 1 || rooms > 4 || rooms > adults || nights < 1
+    || text_len(raw_ages) > 23
+  { tool_fail("competitor: invalid party or stay"); }
+  var children = 0;
+  var packed = 0;
+  var power = 1;
+  var start = 0;
+  var previous = -1;
+  for end in 0 ..= text_len(raw_ages)
+  {
+    if raw_ages == "" { break; }
+    if end == text_len(raw_ages) || text_byte(raw_ages,end) == 124
+    {
+      let age = nat(text_slice(raw_ages,start,end));
+      if age > 17 || age < previous || children >= 8 { tool_fail("competitor: invalid or unsorted child ages"); }
+      packed = packed + age * power;
+      power = power * 18;
+      children = children + 1;
+      previous = age;
+      start = end + 1;
+    }
+  }
+  var code = cancellation_code(cancellation);
+  if cancellation == "any" { code = 3; }
+  if code == 0 { tool_fail("competitor: unknown requested cancellation policy"); }
+  return record<Party>{adults:adults,children:children,ages:sx_string(raw_ages),packed_ages:packed,
+    rooms:rooms,nights:nights,cancellation:code};
+}
+
+fn nat(s:string) -> i64
+{
+  let n = CSV.nat(s);
+  if F.num(n) != s { tool_fail("competitor: expected canonical decimal"); }
+  return n;
+}
+fn number(row:string, col:i64) -> i64 { return nat(CSV.field(row,col)); }
+fn valid_id(n:i64) -> bool { return n >= 1 && n <= 999999999999; }
+fn currency_supported(code:string) -> bool
+{
+  return code == "EUR" || code == "GBP" || code == "USD" || code == "JPY";
+}
+fn provider_name(s:string) -> bool
+{
+  if text_len(s) < 1 || text_len(s) > 32 { return false; }
+  for i in 0 .. text_len(s)
+  {
+    let c = text_byte(s,i);
+    if !(c >= 97 && c <= 122) && !(i > 0 && ((c >= 48 && c <= 57) || c == 45))
+    { return false; }
+  }
+  return true;
+}
+fn cancellation_code(s:string) -> i64
+{
+  if s == "flexible" { return 1; }
+  if s == "nonrefundable" { return 2; }
+  return 0;
+}
+fn release(row:string, from_row:i64, to_row:i64) -> Release
+{
+  return record<Release>{id:number(row,1),property_id:number(row,2),provider:sx_string(CSV.field(row,3)),
+    arrival:sx_string(CSV.field(row,4)),departure:sx_string(CSV.field(row,5)),
+    currency:sx_string(CSV.field(row,6)),observed:sx_string(CSV.field(row,7)),
+    received:sx_string(CSV.field(row,8)),ingested:sx_string(CSV.field(row,9)),weight:number(row,10),
+    bundle_rooms:number(row,11),bundle_discount:number(row,12),from_row:from_row,to_row:to_row};
+}
+fn item(entry:sexpr) -> Release
+{
+  let bounds = sx_tail(entry);
+  return release(sx_text(sx_head(entry)),nat(sx_text(sx_head(bounds))),nat(sx_text(sx_head(sx_tail(bounds)))));
+}
+fn same_scope(a:Release, b:Release) -> bool
+{
+  return a["property_id"] == b["property_id"] && sx_text(a["arrival"]) == sx_text(b["arrival"])
+    && sx_text(a["departure"]) == sx_text(b["departure"]) && sx_text(a["currency"]) == sx_text(b["currency"]);
+}
+fn validate(r:Release, previous:sexpr)
+{
+  let observed = sx_text(r["observed"]);
+  let received = sx_text(r["received"]);
+  let ingested = sx_text(r["ingested"]);
+  if !valid_id(r["id"]) || !valid_id(r["property_id"]) || !provider_name(sx_text(r["provider"]))
+    || !currency_supported(sx_text(r["currency"])) || Date.nights(sx_text(r["arrival"]),sx_text(r["departure"])) < 1
+    || Date.lead_days(observed,sx_text(r["arrival"])) < 0 || !Date.utc_timestamp(received)
+    || !Date.utc_timestamp(ingested) || Str.compare(observed,received) > 0 || Str.compare(received,ingested) > 0
+    || r["weight"] < 1 || r["weight"] > 10000
+  { tool_fail("competitor: invalid release identity, stay, weight or provenance"); }
+  if !Money.safe_nonnegative(r["bundle_discount"]) || r["bundle_rooms"] > 4
+    || (r["bundle_rooms"] == 0 && r["bundle_discount"] != 0)
+    || (r["bundle_rooms"] > 0 && (r["bundle_rooms"] < 2 || r["bundle_discount"] == 0))
+  { tool_fail("competitor: invalid bundle discount"); }
+  var rest = previous;
+  while sx_kind(rest) == 3
+  {
+    let prior = item(sx_head(rest));
+    if prior["property_id"] == r["property_id"]
+    {
+      if sx_text(prior["provider"]) != sx_text(r["provider"])
+      { tool_fail("competitor: property assigned to multiple providers"); }
+      if same_scope(prior,r) && sx_text(prior["observed"]) == observed
+      { tool_fail("competitor: ambiguous release at the same observed time"); }
+    }
+    rest = sx_tail(rest);
+  }
+}
+
+fn read_quote(row:string) -> Quote
+{
+  CSV.require_width(row,14);
+  let id = number(row,1);
+  let pool = number(row,2);
+  let quantity = number(row,3);
+  let adults = number(row,4);
+  let children = number(row,5);
+  let min_age = number(row,6);
+  let max_age = number(row,7);
+  let min_nights = number(row,8);
+  let cancellation = cancellation_code(CSV.field(row,9));
+  let base = number(row,10);
+  let fee = number(row,11);
+  let tax = number(row,12);
+  let discount = number(row,13);
+  if !valid_id(id) || !valid_id(pool) || quantity < 1 || quantity > 32 || adults < 1 || adults > 8 || children > 8
+    || max_age > 17 || min_age > max_age || (children == 0 && (min_age != 0 || max_age != 17))
+    || min_nights < 1 || min_nights > 365 || cancellation == 0
+    || !Money.safe_nonnegative(base) || !Money.safe_nonnegative(fee) || !Money.safe_nonnegative(tax)
+    || discount > base || base - discount > 1000000000000 - fee - tax
+  { tool_fail("competitor: invalid quote occupancy, inventory, conditions or amount"); }
+  return record<Quote>{id:id,pool:pool,quantity:quantity,adults:adults,children:children,min_age:min_age,
+    max_age:max_age,min_nights:min_nights,cancellation:cancellation,gross:base - discount + fee + tax,
+    net_base:base - discount};
+}
+fn quote_at(rows:i64, index:i64) -> Quote
+{
+  let i = index * 11;
+  return record<Quote>{id:A.basis_array_sub(rows,i),pool:A.basis_array_sub(rows,i+1),
+    quantity:A.basis_array_sub(rows,i+2),adults:A.basis_array_sub(rows,i+3),children:A.basis_array_sub(rows,i+4),
+    min_age:A.basis_array_sub(rows,i+5),max_age:A.basis_array_sub(rows,i+6),
+    min_nights:A.basis_array_sub(rows,i+7),cancellation:A.basis_array_sub(rows,i+8),
+    gross:A.basis_array_sub(rows,i+9),net_base:A.basis_array_sub(rows,i+10)};
+}
+fn write_quote(rows:i64, index:i64, q:Quote)
+{
+  let i = index * 11;
+  A.basis_array_update(rows,i,q["id"]); A.basis_array_update(rows,i+1,q["pool"]);
+  A.basis_array_update(rows,i+2,q["quantity"]); A.basis_array_update(rows,i+3,q["adults"]);
+  A.basis_array_update(rows,i+4,q["children"]); A.basis_array_update(rows,i+5,q["min_age"]);
+  A.basis_array_update(rows,i+6,q["max_age"]); A.basis_array_update(rows,i+7,q["min_nights"]);
+  A.basis_array_update(rows,i+8,q["cancellation"]); A.basis_array_update(rows,i+9,q["gross"]);
+  A.basis_array_update(rows,i+10,q["net_base"]);
+}
+
+fn parse(bytes:string) -> Snapshot
+{
+  if text_len(bytes) > 128000 { tool_fail("competitor: snapshot exceeds byte limit"); }
+  let lines = CSV.rows(bytes);
+  if lines < 1 || lines > 577 { tool_fail("competitor: snapshot row limit"); }
+  CSV.header(CSV.line(bytes,0),"hospitality.competitor-snapshot@1");
+  let data = A.basis_array_array(512 * 11,0);
+  var releases = sx_nil();
+  var at = 1;
+  var pos = 0;
+  var last_id = 0;
+  var count = 0;
+  while at < lines
+  {
+    let header = CSV.line(bytes,at);
+    CSV.require_width(header,13);
+    if CSV.field(header,0) != "release" || count >= 64 { tool_fail("competitor: expected bounded release block"); }
+    count = count + 1;
+    at = at + 1;
+    let start = pos;
+    var last_quote = 0;
+    var minimum_base = 1000000000000;
+    while at < lines
+    {
+      let row = CSV.line(bytes,at);
+      if CSV.field(row,0) != "quote" { break; }
+      if pos >= 512 || pos - start >= 32 { tool_fail("competitor: quote row limit"); }
+      let q = read_quote(row);
+      if q["id"] <= last_quote { tool_fail("competitor: quote IDs must be strictly increasing within release"); }
+      for i in start .. pos
+      {
+        let peer = quote_at(data,i);
+        if peer["pool"] == q["pool"] && peer["quantity"] != q["quantity"]
+        { tool_fail("competitor: inconsistent shared pool quantity"); }
+      }
+      if q["net_base"] < minimum_base { minimum_base = q["net_base"]; }
+      last_quote = q["id"];
+      write_quote(data,pos,q);
+      pos = pos + 1;
+      at = at + 1;
+    }
+    let r = release(header,start,pos);
+    validate(r,releases);
+    if r["id"] <= last_id { tool_fail("competitor: release IDs must be strictly increasing"); }
+    if r["bundle_discount"] > r["bundle_rooms"] * minimum_base
+      || (start == pos && r["bundle_rooms"] != 0)
+    { tool_fail("competitor: bundle discount not supported by every qualifying base total"); }
+    last_id = r["id"];
+    releases = sx_cons(sx_cons(sx_string(header),sx_cons(sx_string(F.num(start)),
+      sx_cons(sx_string(F.num(pos)),sx_nil()))),releases);
+  }
+  return record<Snapshot>{releases:L.basis_list_rev(releases),quotes:data};
+}
+
+fn destroy(s:Snapshot) { A.basis_array_destroy(s["quotes"]); }

@@ -2,6 +2,7 @@
 # These may contain proprietary input data or other sensitive information.
 .finpred/
 .finpred-forecast/
+.finpred-cube/
 
 # On1x project outputs and generated/native build products.
 /target/

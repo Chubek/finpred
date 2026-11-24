@@ -1,0 +1,165 @@
+# Exact occupancy-quoted matching. The historical capacity matcher remains
+# independent: its replay semantics are not shared with this quote profile.
+import core.competitor as C;
+import core.format as F;
+import std.collections.Array as A;
+
+record Search
+{
+  release:C.Release, party:C.Party, quotes:i64, budget:i64, masks:i64,
+  selected:i64, best:i64, counters:i64
+}
+record Bundle { total:i64, inspected:i64, rooms:sexpr }
+
+# State slots: work consumed, exhaustion flag, best total (-1 if absent),
+# best room count. Every quote visit and every attempted subset consumes work.
+fn tick(s:Search) -> bool
+{
+  let work = A.basis_array_sub(s["counters"],0);
+  if work >= s["budget"]
+  {
+    A.basis_array_update(s["counters"],1,1);
+    return false;
+  }
+  A.basis_array_update(s["counters"],0,work+1);
+  return true;
+}
+fn child_masks(party:C.Party) -> (i64,i64)
+{
+  var count = 1;
+  for i in 0 .. party["children"] { count = count * 2; }
+  let masks = A.basis_array_array(count * 3,0);
+  for mask in 1 .. count
+  {
+    var ages = party["packed_ages"];
+    var bits = mask;
+    var minimum = 17;
+    var maximum = 0;
+    var size = 0;
+    for i in 0 .. party["children"]
+    {
+      let age = ages % 18;
+      if bits % 2 == 1
+      {
+        if age < minimum { minimum = age; }
+        if age > maximum { maximum = age; }
+        size = size + 1;
+      }
+      ages = ages / 18;
+      bits = bits / 2;
+    }
+    A.basis_array_update(masks,mask*3,size);
+    A.basis_array_update(masks,mask*3+1,minimum);
+    A.basis_array_update(masks,mask*3+2,maximum);
+  }
+  return (masks,count - 1);
+}
+fn subset(mask:i64, remaining:i64) -> bool
+{
+  var a = mask;
+  var b = remaining;
+  while a > 0
+  {
+    if a % 2 > b % 2 { return false; }
+    a = a / 2;
+    b = b / 2;
+  }
+  return true;
+}
+fn stock(s:Search, q:C.Quote, depth:i64) -> bool
+{
+  var used = 0;
+  for i in 0 .. depth
+  {
+    if A.basis_array_sub(s["selected"],i*3+2) == q["pool"] { used = used + 1; }
+  }
+  return used < q["quantity"];
+}
+fn accept(s:Search, depth:i64, gross:i64)
+{
+  let release = s["release"];
+  var price = gross;
+  if depth >= release["bundle_rooms"] { price = price - release["bundle_discount"]; }
+  let previous = A.basis_array_sub(s["counters"],2);
+  let previous_rooms = A.basis_array_sub(s["counters"],3);
+  if previous < 0 || price < previous || (price == previous && depth < previous_rooms)
+  {
+    A.basis_array_update(s["counters"],2,price);
+    A.basis_array_update(s["counters"],3,depth);
+    for i in 0 .. depth*3
+    { A.basis_array_update(s["best"],i,A.basis_array_sub(s["selected"],i)); }
+  }
+}
+fn visit(s:Search, start:i64, depth:i64, adults:i64, remaining:i64, gross:i64)
+{
+  if adults == 0
+  {
+    if remaining == 0 { accept(s,depth,gross); }
+    return;
+  }
+  let party = s["party"];
+  if depth >= party["rooms"] { return; }
+  let release = s["release"];
+  let masks = s["masks"];
+  for i in start .. release["to_row"]
+  {
+    if !tick(s) { return; }
+    let q = C.quote_at(s["quotes"],i);
+    if q["adults"] > adults || q["children"] > A.basis_array_sub(masks,remaining*3)
+      || q["min_nights"] > party["nights"] || (party["cancellation"] != 3 && q["cancellation"] != party["cancellation"])
+      || !stock(s,q,depth)
+    { continue; }
+    var limit = remaining;
+    if q["children"] == 0 { limit = 0; }
+    for mask in 0 ..= limit
+    {
+      if !tick(s) { return; }
+      if A.basis_array_sub(masks,mask*3) != q["children"] || !subset(mask,remaining) { continue; }
+      if mask != 0 && (A.basis_array_sub(masks,mask*3+1) < q["min_age"]
+        || A.basis_array_sub(masks,mask*3+2) > q["max_age"])
+      { continue; }
+      A.basis_array_update(s["selected"],depth*3,i);
+      A.basis_array_update(s["selected"],depth*3+1,mask);
+      A.basis_array_update(s["selected"],depth*3+2,q["pool"]);
+      # Nondecreasing quote index removes room permutations, not guest assignments.
+      visit(s,i,depth+1,adults-q["adults"],remaining-mask,gross+q["gross"]);
+      if A.basis_array_sub(s["counters"],1) != 0 { return; }
+    }
+  }
+}
+fn solve(release:C.Release, quotes:i64, party:C.Party, budget:i64) -> Bundle
+{
+  let (masks,full) = child_masks(party);
+  let selected = A.basis_array_array(12,0);
+  let best = A.basis_array_array(12,0);
+  let counters = A.basis_array_array(4,0);
+  A.basis_array_update(counters,2,0-1);
+  let s = record<Search>{release:release,party:party,quotes:quotes,budget:budget,masks:masks,
+    selected:selected,best:best,counters:counters};
+  visit(s,release["from_row"],0,party["adults"],full,0);
+  let inspected = A.basis_array_sub(counters,0);
+  var price = A.basis_array_sub(counters,2);
+  let rooms = buffer_new();
+  buffer_append(rooms,"[");
+  if A.basis_array_sub(counters,1) != 0 { price = 0-2; }
+  if price >= 0
+  {
+    for i in 0 .. A.basis_array_sub(counters,3)
+    {
+      let q = C.quote_at(quotes,A.basis_array_sub(best,i*3));
+      if i != 0 { buffer_append(rooms,","); }
+      buffer_append(rooms,"{\"quote\":"); buffer_append(rooms,F.num(q["id"]));
+      buffer_append(rooms,",\"pool\":"); buffer_append(rooms,F.num(q["pool"]));
+      buffer_append(rooms,",\"adults\":"); buffer_append(rooms,F.num(q["adults"]));
+      buffer_append(rooms,",\"child_mask\":"); buffer_append(rooms,F.num(A.basis_array_sub(best,i*3+1)));
+      buffer_append(rooms,",\"gross_minor\":"); buffer_append(rooms,F.num(q["gross"]));
+      buffer_append(rooms,"}");
+    }
+  }
+  buffer_append(rooms,"]");
+  A.basis_array_destroy(masks);
+  A.basis_array_destroy(selected);
+  A.basis_array_destroy(best);
+  A.basis_array_destroy(counters);
+  return record<Bundle>{total:price,inspected:inspected,rooms:sx_string(buffer_text(rooms))};
+}

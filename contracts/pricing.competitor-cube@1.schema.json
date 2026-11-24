@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Frozen guest-payable competitor pricing cube v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "version", "basis", "published", "cells", "market_evaluations"],
+  "properties": {
+    "kind": {"const": "pricing.competitor-cube"},
+    "version": {"const": 1},
+    "basis": {"const": "guest_payable_minor_per_party_stay"},
+    "published": {"const": false},
+    "market_evaluations": {"type": "integer", "minimum": 1, "maximum": 48},
+    "cells": {"type": "array", "minItems": 1, "maxItems": 48, "items": {"$ref": "#/$defs/cell"}}
+  },
+  "$defs": {
+    "id": {"type": "integer", "minimum": 1, "maximum": 999999999999},
+    "stayMoney": {"type": "integer", "minimum": 0, "maximum": 4000000000000},
+    "bps": {"type": "integer", "minimum": 0, "maximum": 10000},
+    "date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "format": "date"},
+    "utc": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$", "format": "date-time"},
+    "room": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["quote", "pool", "adults", "child_mask", "gross_minor"],
+      "properties": {
+        "quote": {"$ref": "#/$defs/id"},
+        "pool": {"$ref": "#/$defs/id"},
+        "adults": {"type": "integer", "minimum": 1, "maximum": 8},
+        "child_mask": {"type": "integer", "minimum": 0, "maximum": 255},
+        "gross_minor": {"type": "integer", "minimum": 0, "maximum": 1000000000000}
+      }
+    },
+    "comparable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["property", "release", "provider", "observed_at", "received_at", "ingested_at", "weight", "total_minor", "rooms"],
+      "properties": {
+        "property": {"$ref": "#/$defs/id"},
+        "release": {"$ref": "#/$defs/id"},
+        "provider": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$"},
+        "observed_at": {"$ref": "#/$defs/utc"},
+        "received_at": {"$ref": "#/$defs/utc"},
+        "ingested_at": {"$ref": "#/$defs/utc"},
+        "weight": {"type": "integer", "minimum": 1, "maximum": 10000},
+        "total_minor": {"$ref": "#/$defs/stayMoney"},
+        "rooms": {"type": "array", "minItems": 1, "maxItems": 4, "items": {"$ref": "#/$defs/room"}}
+      }
+    },
+    "cell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "arrival", "departure", "nights", "as_of", "currency", "cancellation", "adults", "child_ages", "max_rooms", "min_properties", "policy", "search_work", "comparables", "status", "recommendation_minor"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "arrival": {"$ref": "#/$defs/date"},
+        "departure": {"$ref": "#/$defs/date"},
+        "nights": {"type": "integer", "minimum": 1, "maximum": 365},
+        "as_of": {"$ref": "#/$defs/utc"},
+        "currency": {"enum": ["EUR", "GBP", "USD", "JPY"]},
+        "cancellation": {"enum": ["flexible", "nonrefundable", "any"]},
+        "adults": {"type": "integer", "minimum": 1, "maximum": 8},
+        "child_ages": {"type": "string", "maxLength": 23, "pattern": "^(([0-9]|1[0-7])(\\|([0-9]|1[0-7])){0,7})?$"},
+        "max_rooms": {"type": "integer", "minimum": 1, "maximum": 4},
+        "min_properties": {"type": "integer", "minimum": 1, "maximum": 64},
+        "policy": {"$ref": "#/$defs/id"},
+        "search_work": {"type": "integer", "minimum": 0, "maximum": 50000},
+        "comparables": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/comparable"}},
+        "status": {"enum": ["recommended", "insufficient_evidence", "no_observations", "stale_observations", "no_feasible_bundle", "budget_exhausted"]},
+        "recommendation_minor": {"type": ["integer", "null"], "minimum": 0, "maximum": 4000000000000},
+        "target_bps": {"$ref": "#/$defs/bps"},
+        "selected_bps": {"$ref": "#/$defs/bps"},
+        "intended_minor": {"$ref": "#/$defs/stayMoney"},
+        "lower_minor": {"$ref": "#/$defs/stayMoney"},
+        "candidate_minor": {"$ref": "#/$defs/stayMoney"},
+        "reason": {"enum": ["target_percentile", "lower_percentile_shortcut", "guardrail_adjustment"]}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "recommended"}}},
+          "then": {
+            "required": ["target_bps", "selected_bps", "intended_minor", "lower_minor", "candidate_minor", "reason"],
+            "properties": {"comparables": {"minItems": 1}, "recommendation_minor": {"$ref": "#/$defs/stayMoney"}}
+          },
+          "else": {
+            "properties": {"recommendation_minor": {"type": "null"}},
+            "not": {"anyOf": [
+              {"required": ["target_bps"]}, {"required": ["selected_bps"]}, {"required": ["intended_minor"]},
+              {"required": ["lower_minor"]}, {"required": ["candidate_minor"]}, {"required": ["reason"]}
+            ]}
+          }
+        },
+        {
+          "if": {"properties": {"status": {"enum": ["recommended", "insufficient_evidence"]}}},
+          "then": {"properties": {"comparables": {"minItems": 1}}},
+          "else": {"properties": {"comparables": {"maxItems": 0}}}
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,4 @@
+pricing.competitor-policy@1
+id,curve,near_bps,far_bps,horizon_days,shape,knot_bps,quantile,lower_bps,shortcut_mode,threshold,floor_minor,cap_minor
+1,fixed,5000,5000,0,0,0,type7,2500,minor,1500,0,1000000
+2,linear,5000,7500,60,0,0,weighted,2500,off,0,0,1000000

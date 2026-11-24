@@ -65,6 +65,8 @@ workflow status on `master`, not verification of a local checkout.
 
 The pricing CLI uses the legacy runner. Scalar analysis prints a result
 without saving a run. The typed financial graph is a library interface.
+For exact party-specific quote matching across multiple frozen stays and
+strategies, see the separate [competitor pricing cube](docs/COMPETITOR_CUBE.md).
 The `finpred forecast` commands issue, score, aggregate and replay guest-night
 forecasts from an immutable release catalog in a separate local store.
 See the [forecast workflow](GUIDE.md#run-point-in-time-forecasts).

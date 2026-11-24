@@ -50,3 +50,15 @@ The fixture integration log includes the actual run, recommendation and trace
 digests before comparing them to the pinned values. Neither stores nor build
 outputs are cached. Other platforms, power-loss/remount behavior and independent
 On1x storage admission are outside this workflow.
+
+## Competitor cube coverage
+
+[`check_competitor_cube.py`](check_competitor_cube.py), part of `tests/run.sh`,
+checks the compiled CLI against the independently validated output schema,
+synthetic point-in-time revisions, deterministic lead-time policy examples, and
+24 generated exact matching cases with an exhaustive Python oracle. It checks
+room assignments, quantity sharing, cancellation and stay eligibility, matching
+cache reuse, budget exhaustion, a full 48-cell by 64-property archive and replay,
+malformed inputs, archive tampering and
+read-only replay after removal of the source files (network-traced when
+`strace` is available).

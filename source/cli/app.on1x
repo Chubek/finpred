@@ -22,6 +22,7 @@ import sdk.registry as Registry;
 import algorithms.quantile as Quantile;
 import poindexter.sheet as Sheet;
 import plugins.yieldcraft.entry as Yieldcraft;
+import cli.competitor_archive as Cube;
 
 fn env_default(key: string, fallback: string) -> string
 {
@@ -331,6 +332,14 @@ fn entry() -> i64
 {
   let mode = env_default("FINPRED_MODE","run");
   if mode == "selftest" { return selftest(); }
+  if mode == "cube-evaluate"
+  {
+    return Cube.evaluate(env_default("FINPRED_CUBE_HOME",".finpred-cube"),
+      env_default("FINPRED_CUBE_INPUT",""),env_default("FINPRED_CUBE_CELLS",""),
+      env_default("FINPRED_CUBE_POLICIES",""));
+  }
+  if mode == "cube-replay"
+  { return Cube.replay(env_default("FINPRED_CUBE_HOME",".finpred-cube"),env_default("FINPRED_CUBE_INPUT","")); }
   let home = env_default("FINPRED_HOME",".finpred");
   if mode == "replay" || mode == "explain" || mode == "evidence" || mode == "poindexter"
   {

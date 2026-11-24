@@ -1,0 +1,7 @@
+pricing.competitor-cells@1
+id,arrival,departure,as_of,adults,child_ages,max_rooms,currency,cancellation,max_age_days,min_properties,search_budget,policy
+1,2027-02-01,2027-02-03,2027-01-03T00:00:00Z,2,5|10,2,EUR,flexible,10,3,10000,1
+2,2027-02-01,2027-02-03,2027-01-03T00:00:00Z,2,5|10,2,EUR,flexible,10,3,10000,2
+3,2027-02-01,2027-02-03,2027-01-04T00:00:00Z,2,5|10,2,EUR,flexible,10,3,10000,1
+4,2027-02-01,2027-02-02,2027-01-03T00:00:00Z,2,5|10,2,EUR,flexible,10,3,10000,1
+5,2027-02-01,2027-02-03,2027-01-03T00:00:00Z,2,5|10,2,EUR,flexible,10,3,1,1
