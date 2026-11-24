@@ -38,6 +38,9 @@ DOCUMENTS = {
     "fixtures/valuation.csv", "strategies/yieldcraft.ottomat",
 }
 LIMIT = 64 * 1024 * 1024
+# RFC 1952 header emitted by GzipFile: deflate, no optional fields, zero
+# mtime, maximum compression hint, unknown OS.
+GZIP_HEADER = b"\x1f\x8b\x08\x00\x00\x00\x00\x00\x02\xff"
 
 
 def require(condition, message):
@@ -122,14 +125,17 @@ def release(args):
     cc = shutil.which(os.environ.get("CC", "cc"))
     require(cc, "C compiler missing (set CC to a driver executable)")
     cc = str(Path(cc).absolute())  # Preserve the driver basename (e.g. a Clang symlink).
+    stage = Path(os.environ.get("FINPRED_STAGE_PARENT", ROOT / "build")).resolve()
     env = dict(os.environ, MULIB_ROOT=str(mulib), ON1XC=str(compiler),
                FINPRED_STDPPX_DIR=str(ppx), CC=cc, LC_ALL="C", TZ="UTC", PYTHONHASHSEED="0",
-               FINPRED_STAGE_PARENT=str(ROOT / "build"),
+               FINPRED_STAGE_PARENT=str(stage), ON1X_STDLIB=str(mulib / "on1x/stdlib"),
                SOURCE_DATE_EPOCH=str(epoch), PYTHONDONTWRITEBYTECODE="1")
-    for key in ("FINPRED_BUILD_DIR", "ON1X_STDLIB", "ON1X_MULIB_ROOT", "ON1X_PPX_SCHEMA"):
+    for key in ("FINPRED_BUILD_DIR", "ON1X_PATH", "ON1X_PROJECT_COMPILER",
+                "ON1X_MULIB_ROOT", "ON1X_PPX_SCHEMA", "PYTHONPATH", "PYTHONHOME"):
         env.pop(key, None)
     tool_paths = {"on1xc": compiler, "GrammarEmbed": ppx / "on1x-ppx-GrammarEmbed",
                   "category_schema": ppx / "category.schema.json", "cc": Path(cc)}
+
     def tool_hashes():
         return {name: sha256(path.read_bytes()).hexdigest() for name, path in tool_paths.items()}
 
@@ -184,14 +190,17 @@ def release(args):
 
 
 def verify(args):
-    require(args.archive.stat().st_size <= LIMIT, "compressed release exceeds limit")
-    blob = args.archive.read_bytes()
+    with args.archive.open("rb") as stream:
+        blob = stream.read(LIMIT + 1)
+    require(len(blob) <= LIMIT, "compressed release exceeds limit")
     digest = sha256(blob).hexdigest()
     if args.sha256 is not None:
         require(HEX.fullmatch(args.sha256) and args.sha256 == digest, "archive SHA-256 mismatch")
-    with gzip.GzipFile(fileobj=io.BytesIO(blob)) as stream:
-        raw = stream.read(LIMIT + 1)
+    require(blob.startswith(GZIP_HEADER), "noncanonical release gzip header")
+    decompress = zlib.decompressobj(wbits=31)
+    raw = decompress.decompress(blob, LIMIT + 1)
     require(len(raw) <= LIMIT, "uncompressed release exceeds limit")
+    require(decompress.eof and not decompress.unused_data, "invalid release gzip stream")
     files, metadata = {}, []
     name = None
     with tarfile.open(fileobj=io.BytesIO(raw), mode="r:") as archive:
@@ -249,7 +258,8 @@ def main():
     args = parser.parse_args()
     try:
         args.action(args)
-    except (EOFError, OSError, ValueError, tarfile.TarError, subprocess.CalledProcessError, zlib.error) as exc:
+    except (EOFError, OSError, ValueError, RecursionError, tarfile.TarError,
+            subprocess.CalledProcessError, zlib.error) as exc:
         parser.exit(2, f"release: {exc}\n")
 
 

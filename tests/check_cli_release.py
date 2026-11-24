@@ -41,8 +41,8 @@ def main():
         sidecar = bundle.with_name(bundle.name + ".sha256")
         assert sidecar.read_text() == f"{digest}  {bundle.name}\n"
 
-        def verify(path, diagnostic=None, **kwargs):
-            proc = subprocess.run([*command, "verify", path, *kwargs.get("flags", ())],
+        def verify(path, diagnostic=None, flags=()):
+            proc = subprocess.run([*command, "verify", path, *flags],
                                   capture_output=True, text=True, timeout=10)
             if diagnostic is None:
                 assert proc.returncode == 0 and "release_verified=true" in proc.stdout, proc
@@ -54,8 +54,9 @@ def main():
 
         def tamper(kind):
             result = work / f"{kind}.tar.gz"
-            with tarfile.open(bundle, "r:gz") as original, tarfile.open(
-                    result, "w:gz", format=tarfile.USTAR_FORMAT) as changed:
+            with (tarfile.open(bundle, "r:gz") as original, result.open("wb") as out,
+                  gzip.GzipFile(filename="", fileobj=out, mode="wb", mtime=0) as compressed,
+                  tarfile.open(fileobj=compressed, mode="w", format=tarfile.USTAR_FORMAT) as changed):
                 for entry in original:
                     data = original.extractfile(entry).read()
                     if entry.name.endswith("/fixtures/offers.csv"):
@@ -77,8 +78,12 @@ def main():
                                  ("duplicate", "invalid archive entry")):
             verify(tamper(kind), diagnostic)
         tail = work / "tail.tar.gz"
-        tail.write_bytes(gzip.compress(gzip.decompress(blob) + b"trailing-data", mtime=0))
+        with (tail.open("wb") as out,
+              gzip.GzipFile(filename="", fileobj=out, mode="wb", mtime=0) as compressed):
+            compressed.write(gzip.decompress(blob) + b"trailing-data")
         verify(tail, "noncanonical release tar")
+        tail.write_bytes(blob + blob)
+        verify(tail, "invalid release gzip stream")
 
         relocated = work / "relocated release"
         relocated.mkdir()
@@ -112,7 +117,8 @@ def main():
         snapshot = work / "synthetic-snapshot.json"
         snapshot.write_text(json.dumps({
             "format": "dragnet.eurostat-accommodation-nights@1",
-            "source": "Eurostat", "source_series": "tour_occ_nim", "provider_updated_at": available,
+            "source": "Eurostat", "source_series": "tour_occ_nim",
+            "provider_updated_at": "2024-03-02T00:00:00+0000",
             "geography": "EU27_2020", "activity": "I551-I553", "residence": "TOTAL",
             "unit": "guest_nights", "status": "complete", "mode": "offline_snapshot",
             "observed_at": available, "received_at": available, "ingested_at": available, "as_of": available,
@@ -132,7 +138,7 @@ def main():
         forecast = json.loads(run("forecast", "replay", issue))
         assert forecast["estimate"] == {"numerator": 3 + 5 + 9, "denominator": 3}, forecast
         assert "capability denied" in run("selftest", extra={"FINPRED_MODE": "execution"}, code=2)
-    print("cli_release_ok=true same_toolchain_rebuilds=2 malformed_archives=7 historical_ids=2 forecast_oracles=1")
+    print("cli_release_ok=true same_toolchain_rebuilds=2 malformed_archives=8 historical_ids=2 forecast_oracles=1")
 
 
 if __name__ == "__main__":
