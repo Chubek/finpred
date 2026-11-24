@@ -88,6 +88,7 @@ def main():
         env = {key: value for key, value in os.environ.items()
                if not key.startswith(("FINPRED_", "ON1X")) and key != "MULIB_ROOT"}
         env["FINPRED_HOME"] = str(work / "demo-store")
+        env["FINPRED_FORECAST_HOME"] = str(work / "forecast-store")
 
         def run(*args, extra=None, code=0):
             proc = subprocess.run([cli, *args], cwd=work, env=env | (extra or {}),
@@ -105,8 +106,33 @@ def main():
                                 for key in ("snapshots", "cells", "policies"))))
         assert cube["cube_id"] == CUBE_ID and cube["cube"]["published"] is False, cube
         assert json.loads(run("cube", "replay", CUBE_ID))["cube_id"] == CUBE_ID
+        evidence = "blake3:" + "0" * 64  # Synthetic placeholder, not a provider capture.
+        issued = "2024-03-03T00:00:00Z"
+        available = "2024-03-02T00:00:00Z"
+        snapshot = work / "synthetic-snapshot.json"
+        snapshot.write_text(json.dumps({
+            "format": "dragnet.eurostat-accommodation-nights@1",
+            "source": "Eurostat", "source_series": "tour_occ_nim", "provider_updated_at": available,
+            "geography": "EU27_2020", "activity": "I551-I553", "residence": "TOTAL",
+            "unit": "guest_nights", "status": "complete", "mode": "offline_snapshot",
+            "observed_at": available, "received_at": available, "ingested_at": available, "as_of": available,
+            "terms_ref": "synthetic", "retention_ref": "synthetic",
+            "raw_evidence": evidence, "capture_evidence": evidence, "raw_bytes": 1, "pricing_input": False,
+            "observations": [{"period": month, "nights": nights, "provider_flag": None}
+                             for month, nights in (("2023-12", 3), ("2024-01", 5), ("2024-02", 9))],
+        }, separators=(",", ":")) + "\n")
+        parents = work / "parents.txt"
+        parents.write_text(run("forecast", "import", snapshot))
+        catalog = run("forecast", "catalog", parents).strip()
+        request = work / "request.json"
+        request.write_text(json.dumps({"issued_at": issued, "target_month": "2024-04", "horizon_months": 1},
+                                      separators=(",", ":")) + "\n")
+        model = "forecast.moving-average-3@1"
+        issue = run("forecast", "issue", catalog, model, issued, request).strip()
+        forecast = json.loads(run("forecast", "replay", issue))
+        assert forecast["estimate"] == {"numerator": 3 + 5 + 9, "denominator": 3}, forecast
         assert "capability denied" in run("selftest", extra={"FINPRED_MODE": "execution"}, code=2)
-    print("cli_release_ok=true same_toolchain_rebuilds=2 malformed_archives=7 historical_ids=2")
+    print("cli_release_ok=true same_toolchain_rebuilds=2 malformed_archives=7 historical_ids=2 forecast_oracles=1")
 
 
 if __name__ == "__main__":
