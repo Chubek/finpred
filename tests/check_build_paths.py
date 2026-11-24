@@ -22,7 +22,7 @@ def main():
     Path(scratch).mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     for name in (
-        "MULIB_ROOT", "ON1XC", "FINPRED_STDPPX_DIR", "FINPRED_BUILD_DIR",
+        "MULIB_ROOT", "ON1XC", "FINPRED_STDPPX_DIR", "FINPRED_BUILD_DIR", "FINPRED_STAGE_PARENT",
         "FINPRED_EXE", "FINPRED_DRAGNET_BUILD_DIR", "FINPRED_MODE", "MAKEFLAGS",
         "MFLAGS", "MAKEOVERRIDES", "NATIVE_BUILD_DIR", "TUI_REVIEW_BUILD_DIR",
     ):
@@ -51,7 +51,8 @@ def main():
         for file in ("price_prediction", "price_prediction_on1x"):
             write(root, f"source/core/{file}.c", "")
         write(root, "source/sdk/callable.on1x", "")
-        write(root, "plugins/forecast_baselines/source/forecast_baselines/model.on1x", "")
+        for module in ("evaluation", "holdout", "model", "score"):
+            write(root, f"plugins/forecast_baselines/source/forecast_baselines/{module}.on1x", "")
         write(root, "third_party/mulib/on1x/tools/on1x-build.py", """
 from pathlib import Path
 import sys
