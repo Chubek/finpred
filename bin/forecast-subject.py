@@ -7,6 +7,7 @@ import sys
 
 GUEST_NIGHTS = "plugins/dragnet/guest_nights.on1x"
 FEED_SNAPSHOT = "core/feed_snapshot.on1x"
+V1_MODULES = ("evaluation.on1x", "holdout.on1x", "model.on1x", "score.on1x")
 
 
 def v1_source(name: str, raw: bytes) -> tuple[str, bytes]:
@@ -31,7 +32,9 @@ def v1_source(name: str, raw: bytes) -> tuple[str, bytes]:
 
 
 def v1_subject(source: Path, compiler: Path) -> str:
-    module_paths = sorted(source.glob("forecast_baselines/*.on1x"))
+    # This is the closure of the v1 forecast host, not every library file
+    # shipped under forecast_baselines. New, unlinked APIs must not re-pin it.
+    module_paths = [source / "forecast_baselines" / name for name in V1_MODULES]
     module_paths.extend(source / name for name in (
         "core/date.on1x", FEED_SNAPSHOT, "core/format.on1x", GUEST_NIGHTS, "sdk/callable.on1x",
     ))
