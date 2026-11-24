@@ -94,3 +94,16 @@ inputs, both cutoffs, the model and scorer pins, and the exact score artifact.
 Replay needs the independently trusted run ID and frozen evidence. The API returns in-memory bytes. The
 [forecast CLI](../../GUIDE.md#run-point-in-time-forecasts) uses it to
 write and replay separate operator archives.
+
+## Vintage-aware forecast and replay
+
+[`vintage_replay`](../../docs/FORECAST_VINTAGE.md) is a separate pure On1x API
+for resolving a bounded catalog at issuance and scoring at a later cutoff.
+It adds a last-complete-month baseline and extends the moving-average and
+seasonal-naive methods to explicit UTC horizons 1–11. Each output records the
+selected per-month revisions; scoring replays issuance before it uses actuals.
+The existing v1 model, score, evaluation and holdout artifacts are unchanged.
+
+Run `python3 tests/check_forecast_vintages.py` with the pinned `ON1XC` and
+`MULIB_ROOT` to compile and verify the offline path against a synthetic
+independent clock and rational arithmetic oracle.

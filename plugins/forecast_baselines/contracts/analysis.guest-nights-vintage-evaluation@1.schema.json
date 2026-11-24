@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://finpred.dev/contracts/analysis.guest-nights-vintage-evaluation@1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "version", "unit", "currency", "pricing_input", "model", "model_code_digest", "model_policy_digest", "vintage_policy_digest", "scoring_code_digest", "scoring_policy_digest", "issued_at", "training_cutoff", "scoring_cutoff", "target_month", "horizon_months", "forecast", "training_catalog", "actuals_catalog", "actual", "state", "reason", "error", "absolute_error"],
+  "properties": {
+    "kind": {"const": "analysis.guest-nights-vintage-evaluation"},
+    "version": {"const": 1},
+    "unit": {"const": "guest_nights"},
+    "currency": {"const": null},
+    "pricing_input": {"const": false},
+    "model": {"$ref": "analysis.guest-nights-vintage-forecast@1.schema.json#/$defs/model"},
+    "model_code_digest": {"$ref": "analysis.guest-nights-vintage-forecast@1.schema.json#/$defs/digest"},
+    "model_policy_digest": {"$ref": "analysis.guest-nights-vintage-forecast@1.schema.json#/$defs/digest"},
+    "vintage_policy_digest": {"$ref": "analysis.guest-nights-vintage-forecast@1.schema.json#/$defs/digest"},
+    "scoring_code_digest": {"$ref": "analysis.guest-nights-vintage-forecast@1.schema.json#/$defs/digest"},
+    "scoring_policy_digest": {"$ref": "analysis.guest-nights-vintage-forecast@1.schema.json#/$defs/digest"},
+    "issued_at": {"$ref": "analysis.guest-nights-vintage-forecast@1.schema.json#/$defs/utc"},
+    "training_cutoff": {"$ref": "analysis.guest-nights-vintage-forecast@1.schema.json#/$defs/utc"},
+    "scoring_cutoff": {"$ref": "analysis.guest-nights-vintage-forecast@1.schema.json#/$defs/utc"},
+    "target_month": {"$ref": "analysis.guest-nights-vintage-forecast@1.schema.json#/$defs/month"},
+    "horizon_months": {"type": "integer", "minimum": 1, "maximum": 11},
+    "forecast": {"$ref": "analysis.guest-nights-vintage-forecast@1.schema.json#/$defs/digest"},
+    "training_catalog": {"$ref": "analysis.guest-nights-vintage-forecast@1.schema.json#/$defs/digest"},
+    "actuals_catalog": {"$ref": "analysis.guest-nights-vintage-forecast@1.schema.json#/$defs/digest"},
+    "actual": {"$ref": "analysis.guest-nights-vintage-forecast@1.schema.json#/$defs/row"},
+    "state": {"enum": ["scored", "unknown"]},
+    "reason": {"enum": [null, "missing_actual", "insufficient_evidence"]},
+    "error": {},
+    "absolute_error": {}
+  },
+  "if": {"properties": {"state": {"const": "scored"}}},
+  "then": {
+    "properties": {
+      "reason": {"const": null},
+      "actual": {"properties": {"state": {"const": "available"}}},
+      "error": {"$ref": "analysis.guest-nights-vintage-forecast@1.schema.json#/$defs/rational"},
+      "absolute_error": {"$ref": "analysis.guest-nights-vintage-forecast@1.schema.json#/$defs/rational", "properties": {"numerator": {"minimum": 0}}}
+    }
+  },
+  "else": {
+    "properties": {"error": {"const": null}, "absolute_error": {"const": null}},
+    "if": {"properties": {"actual": {"properties": {"state": {"const": "available"}}}}},
+    "then": {"properties": {"reason": {"const": "insufficient_evidence"}}},
+    "else": {"properties": {"reason": {"const": "missing_actual"}}}
+  }
+}

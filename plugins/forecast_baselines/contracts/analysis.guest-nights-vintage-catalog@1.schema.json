@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://finpred.dev/contracts/analysis.guest-nights-vintage-catalog@1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "version", "snapshots"],
+  "properties": {
+    "kind": {"const": "analysis.guest-nights-vintage-catalog"},
+    "version": {"const": 1},
+    "snapshots": {
+      "type": "array", "maxItems": 64, "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^blake3:[0-9a-f]{64}$"}
+    }
+  }
+}
