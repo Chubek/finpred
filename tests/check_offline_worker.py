@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Run the real offline sandbox on Linux; absent sandbox support is a failure."""
 
+import argparse
 import fcntl
 import os
 from pathlib import Path
 import shlex
+import signal
+import struct
 import subprocess
 import tempfile
 
@@ -13,25 +16,68 @@ FRAME = b"finpred.offline-worker@1\n"
 CC = shlex.split(os.environ.get("CC", "cc"))
 
 
+def context():
+    values = {name: Path(name).read_text().strip() if Path(name).exists() else "absent"
+              for name in ("/proc/sys/kernel/apparmor_restrict_unprivileged_userns",
+                           "/proc/sys/kernel/unprivileged_userns_clone",
+                           "/proc/sys/user/max_user_namespaces")}
+    bwrap = Path("/usr/bin/bwrap")
+    if bwrap.exists():
+        version = subprocess.run([bwrap, "--version"], capture_output=True, text=True,
+                                 timeout=5).stdout.strip()
+    else:
+        version = "missing /usr/bin/bwrap"
+    return f"{version}; namespace policy: {values}"
+
+
+def verify_probe(path):
+    # Separate compiler/linker failure from a real sandbox startup failure.
+    elf = path.read_bytes()
+    assert elf[:6] == b"\x7fELF\x02\x01", "probe must be little-endian ELF64"
+    assert struct.unpack_from("<HH", elf, 16) == (2, 62), "probe must be x86-64 ET_EXEC (not PIE)"
+    offset, size, count = (struct.unpack_from("<Q", elf, 32)[0],
+                           *struct.unpack_from("<HH", elf, 54))
+    assert count and size == 56 and offset + size * count <= len(elf), "invalid probe headers"
+    assert all(struct.unpack_from("<I", elf, offset + size * i)[0] != 3
+               for i in range(count)), "probe must have no ELF interpreter"
+
+
+def caller_signal_policy():
+    signal.signal(signal.SIGCHLD, signal.SIG_IGN)
+    signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGCHLD})
+
+
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--preflight", action="store_true",
+                        help="check ELF type and one real sandbox round trip")
+    args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="finpred-offline-worker-") as tmp:
         work = Path(tmp)
         worker = work / "supervisor"
         probe = work / "probe"
-        for source, out, flags in (
-            ("source/sdk/process/worker.c", worker, []),
-            ("tests/offline_worker_probe.c", probe, ["-static", "-fno-pie"]),
-        ):
-            subprocess.run([*CC, "-std=c11", "-Wall", "-Wextra", "-Werror", "-pedantic",
-                            *flags, ROOT / source, "-o", out], check=True)
+        cflags = ["-std=c11", "-Wall", "-Wextra", "-Werror", "-pedantic"]
+        subprocess.run([*CC, *cflags, ROOT / "source/sdk/process/worker.c", "-o", worker],
+                       check=True)
+        probe_obj = work / "probe.o"
+        subprocess.run([*CC, *cflags, "-fno-pie", "-c", ROOT / "tests/offline_worker_probe.c",
+                        "-o", probe_obj], check=True)
+        subprocess.run([*CC, "-static", "-Wl,-no-pie", probe_obj, "-o", probe], check=True)
+        verify_probe(probe)
 
         def run(request, path=probe, **kw):
             return subprocess.run([worker, path], input=request, capture_output=True,
                                   timeout=5, **kw)
 
-        for request in (FRAME + b"E\0\xff", FRAME + b"E" * (65536 - len(FRAME))):
-            p = run(request)
-            assert (p.returncode, p.stdout, p.stderr) == (0, request, b""), p.stderr
+        request = FRAME + b"E\0\xff"
+        p = run(request)
+        assert (p.returncode, p.stdout, p.stderr) == (0, request, b""), (p, context())
+        print("offline_worker_preflight_ok=true static_et_exec=true real_sandbox=true", flush=True)
+        if args.preflight:
+            return
+        request = FRAME + b"E" * (65536 - len(FRAME))
+        p = run(request, preexec_fn=caller_signal_policy)
+        assert (p.returncode, p.stdout, p.stderr) == (0, request, b""), p
 
         with (work / "private").open("wb+") as secret:
             secret.write(b"never visible")

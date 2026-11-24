@@ -19,6 +19,18 @@ it. Run without root privileges; install and configure Bubblewrap through the
 operator's security policy. Unsupported or denied sandbox setup fails rather
 than falling back to ordinary execution.
 
+To diagnose a runner before running the suite, use
+`CC=gcc python3 tests/check_offline_worker.py --preflight` (also works with
+`CC=clang`). This first checks that the compiler emitted a static x86-64
+`ET_EXEC` with no interpreter and then checks one real isolated round trip.
+The full test always runs that preflight and the negative probes. If setup
+fails, it reports the trusted Bubblewrap error, version and the host's readable
+namespace settings. `bwrap --version` alone does not test namespace access.
+On an AppArmor-restricted runner, ask the runner administrator to verify that
+the packaged launcher has an approved profile for its namespace operations,
+or use an approved runner that supports this configuration. Do not disable
+namespace restrictions globally, use a privileged launcher, or skip the probe.
+
 ## Wire and authority boundary
 
 The trusted caller supplies an absolute path to a regular, non-symlink static
@@ -44,8 +56,11 @@ publication, approval token, or compatibility verdict.
   disables nested user namespaces. The read-only root contains only the
   sealed worker copy with no shell, libraries, or mounted procfs.
 - The supervisor closes inherited nonprotocol descriptors before sandbox
-  setup, passes a sealed request, and supplies an x86-64 syscall allowlist
-  permitting only the protocol descriptors for I/O. The worker cannot
+  setup, clears ambient capabilities and sets `no_new_privs` before launching
+  Bubblewrap, passes a sealed request,
+  and supplies an x86-64 syscall allowlist permitting only the protocol
+  descriptors for I/O. Stderr carries launcher diagnostics, not worker I/O.
+  The worker cannot
   acquire files, sockets, subprocesses, or effect handles. Anonymous virtual
   memory allocation remains available.
 - The child has a 128 MiB address-space ceiling, one CPU second and no core

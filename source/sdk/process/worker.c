@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/prctl.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
@@ -139,19 +140,28 @@ static int resource_limit(int r, rlim_t value)
     return setrlimit(r, &lim) == 0;
 }
 
-static void child(int input, int output, int executable, int filter, int nullfd)
+static void child(pid_t supervisor, int input, int output, int executable, int filter)
 {
+    /* Cover the interval before Bubblewrap installs its parent-death guard. */
+    if (prctl(PR_SET_PDEATHSIG, (unsigned long)SIGKILL, 0L, 0L, 0L) != 0 ||
+        getppid() != supervisor)
+        _exit(125);
+
     /* Temporary descriptors are above all of the chosen destination numbers. */
     int binary = fcntl(executable, F_DUPFD_CLOEXEC, 5);
     int seccomp = fcntl(filter, F_DUPFD_CLOEXEC, 5);
     if (binary < 0 || seccomp < 0 ||
         dup2(input, STDIN_FILENO) < 0 || dup2(output, STDOUT_FILENO) < 0 ||
-        dup2(nullfd, STDERR_FILENO) < 0 || dup2(binary, 3) != 3 || dup2(seccomp, 4) != 4 ||
+        dup2(binary, 3) != 3 || dup2(seccomp, 4) != 4 ||
         syscall(SYS_close_range, 5u, ~0u, 0u) != 0 ||
+        prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL, 0L, 0L, 0L) != 0 ||
+        prctl(PR_SET_NO_NEW_PRIVS, 1L, 0L, 0L, 0L) != 0 ||
         !resource_limit(RLIMIT_AS, 128 * 1024 * 1024) ||
         !resource_limit(RLIMIT_CPU, 1) || !resource_limit(RLIMIT_CORE, 0) ||
-        !resource_limit(RLIMIT_NOFILE, 64))
+        !resource_limit(RLIMIT_NOFILE, 64)) {
+        fputs("offline worker: could not constrain sandbox launcher\n", stderr);
         _exit(125);
+    }
 
     char *const args[] = {
         "/usr/bin/bwrap", "--unshare-all", "--unshare-user", "--disable-userns", "--cap-drop", "ALL",
@@ -160,7 +170,9 @@ static void child(int input, int output, int executable, int filter, int nullfd)
         "--seccomp", "4", "--", "/worker", NULL,
     };
     char *const env[] = {NULL};
+    /* Only launcher diagnostics can reach stderr; seccomp denies worker I/O on fd 2. */
     execve(args[0], args, env);
+    perror("offline worker: execve /usr/bin/bwrap");
     _exit(125);
 }
 
@@ -219,6 +231,13 @@ int main(int argc, char **argv)
     /* Require that the launching host supplied the three standard channels. */
     for (int fd = 0; fd < 3; ++fd)
         if (fcntl(fd, F_GETFD) < 0) return 2;
+    /* An exec caller may have ignored SIGCHLD or blocked signals. Own the
+     * child lifecycle rather than inheriting that process-management policy. */
+    struct sigaction reap = {.sa_handler = SIG_DFL};
+    sigset_t signals;
+    if (sigemptyset(&reap.sa_mask) != 0 || sigaction(SIGCHLD, &reap, NULL) != 0 ||
+        sigemptyset(&signals) != 0 || sigprocmask(SIG_SETMASK, &signals, NULL) != 0)
+        return 2;
     int source = open(argv[1], O_PATH | O_CLOEXEC | O_NOFOLLOW);
     struct stat st;
     int binary = -1;
@@ -254,23 +273,22 @@ int main(int argc, char **argv)
     }
     int input = memfd_create("finpred-request", MFD_CLOEXEC | MFD_ALLOW_SEALING);
     int filter = memfd_create("finpred-seccomp", MFD_CLOEXEC | MFD_ALLOW_SEALING);
-    int nullfd = open("/dev/null", O_WRONLY | O_CLOEXEC);
     int output[2];
-    if (input < 0 || filter < 0 || nullfd < 0 ||
+    if (input < 0 || filter < 0 ||
         !write_all(input, message, used) || !sealed(input) ||
         !write_all(filter, rules, sizeof(rules)) || !sealed(filter) ||
         pipe2(output, O_CLOEXEC) != 0)
         return 2;
     int64_t start = now_ms();
     if (start < 0) return 2;
+    pid_t supervisor = getpid();
     pid_t pid = fork();
     if (pid < 0) return 2;
-    if (pid == 0) child(input, output[1], binary, filter, nullfd);
+    if (pid == 0) child(supervisor, input, output[1], binary, filter);
     close(output[1]);
     close(input);
     close(binary);
     close(filter);
-    close(nullfd);
     if (supervise(pid, output[0], start + deadline_ms)) return 0;
     fputs("offline worker: isolation setup, worker, or response rejected\n", stderr);
     return 1;
