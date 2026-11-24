@@ -129,5 +129,8 @@ second model; the contribution optimizer continues accepting only its
 separate snapshot contract. The fixtures in the test verify arithmetic and
 validation only; no measured commercial performance is reported.
 
+See the [public-data assessment](../research/HOSPITALITY_DATA.md) for why
+bookings-only and aggregate guest-night sources were not fitted to this contract.
+
 Run `python3 -B tests/check_yieldcraft_demand_panel.py` to build and test all
 four model variants, holdout isolation, contracts and replay.

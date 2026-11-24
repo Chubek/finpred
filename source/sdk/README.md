@@ -26,9 +26,11 @@ Crossref tools and worksheet frontends are not engine-dispatched plugins.
 protocol. It owns no registration table: the trusted, statically linked host
 supplies `lookup` and `call`. `resolve` is the planning gate; `invoke` resolves
 again and checks the exact `Pin` (package and handler versions, protocol ABI,
-and BLAKE3 code and policy identities). A pin identifies code relative to
-trusted build inputs; it does not authenticate an external author. Neither
-the C ABI nor the legacy `sdk.registry` entry points change.
+and BLAKE3 code and policy identities). Prepared graph dispatch also checks
+that the resolved contract and limits have not drifted before calling a
+handler. A pin identifies code relative to trusted build inputs; it does not
+authenticate an external author. Existing C and `sdk.registry` entry points
+remain compatible.
 
 Ports are named, with exact contract kind/major, unit, and currency (`none`
 when unset). `connects` requires the producer's state mask and byte maximum
@@ -41,6 +43,11 @@ compiles independent consumers and exercises both positive calls and denials.
 An explicitly `unknown` output can be zero bytes for formats with a canonical
 empty encoding, such as NDJSON. This does not relax input bounds or allow
 empty `available` output.
+
+The optional `finpred_sdk_connect_ports_v2` symbol and the Python
+`SDK.connect_ports` method check directional compatibility for caller-supplied
+port metadata. They do not grant authority or execute handlers. Older ABI v2
+libraries still provide the existing Python lookup and package-use methods.
 
 ### Legacy package profiles
 
