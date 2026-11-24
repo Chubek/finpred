@@ -81,7 +81,7 @@ fn offer(o: C.Offer, source_digest: string) -> string
 
 fn recommendation(s: C.Scenario, r: C.Recommendation, run_id: string,
   scenario_digest: string, offers_digest: string, valuation_digest: string,
-  strategy_digest: string) -> string
+  strategy_digest: string, strategy: string) -> string
 {
   let b = buffer_new();
   buffer_append(b,"{\"mulib\":\"1.0\",\"kind\":\"pricing.recommendation\",\"schema_version\":\"1.0\",\"id\":");
@@ -90,7 +90,8 @@ fn recommendation(s: C.Scenario, r: C.Recommendation, run_id: string,
   buffer_append(b,F.q(text_concat("blake3:",scenario_digest))); buffer_append(b,",");
   buffer_append(b,F.q(text_concat("blake3:",offers_digest))); buffer_append(b,",");
   buffer_append(b,F.q(text_concat("blake3:",valuation_digest)));
-  buffer_append(b,"],\"strategy\":\"yieldcraft.percentile@1\",\"strategy_digest\":");
+  buffer_append(b,"],\"strategy\":"); buffer_append(b,F.q(strategy));
+  buffer_append(b,",\"strategy_digest\":");
   buffer_append(b,F.q(text_concat("blake3:",strategy_digest)));
   buffer_append(b,"},\"times\":{\"observed_at\":"); buffer_append(b,F.q(sx_text(s["decision_at"])));
   buffer_append(b,",\"ingested_at\":"); buffer_append(b,F.q(sx_text(s["decision_at"])));

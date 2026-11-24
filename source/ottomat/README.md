@@ -188,18 +188,16 @@ V4 permits up to seven tokens per line for the three-binding call. Other
 source bounds and diagnostic rules stay the same. It lowers to
 `automat.scalar-dag@2`, freezes as `scalar-run@2`, and reports
 `ottomat.scalar-lowering@2`. V3 does not admit `select@1`, and v4 is not a
-Yieldcraft recommendation profile.
+fixed recommendation profile.
 
 ## V5 registered scalar algorithms
 
-[`strategies/scalar-midpoint.ottomat`](../../strategies/scalar-midpoint.ottomat)
-uses the v4 grammar with `ottomat 5`. It imports `midpoint@1` from the
-[statically linked scalar diagnostics package](../../plugins/scalar_diagnostics/README.md).
-Import availability comes from the native registry for the requested graph
-version; the parser does not implement or name the midpoint handler.
-`midpoint@1` takes two `scalar.level@1` bindings and returns their floor
-midpoint with the same kind. The package and handler identities appear in
-the node artifact. The mode, effect and resource limits remain unchanged.
+V5 uses the v4 grammar with `ottomat 5` and allows hosts to supply additional
+binary operations. Pass a trusted binding to `lower_with` to validate the
+imports, or to `scalar_run.freeze_with` to use that binding for both lowering
+and execution. The built-in-only `lower` and `freeze` do not see host bindings.
+The operation and owner identities appear in the node artifact. The mode,
+effect and resource limits remain unchanged.
 
 V5 lowers to `automat.scalar-dag@3`, freezes as `scalar-run@3`, and
 reports `ottomat.scalar-lowering@3`. An older profile does not admit the

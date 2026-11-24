@@ -1,6 +1,6 @@
 # An immutable catalog is a canonical, sorted list of stored snapshot IDs.
 import core.date as Date;
-import core.guest_nights as Guest;
+import plugins.dragnet.guest_nights as Guest;
 import forecast_baselines.model as Model;
 import store.artifacts as Store;
 import std.String as Str;

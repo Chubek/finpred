@@ -1,0 +1,61 @@
+import std.environ as Env;
+import std.io.TextIO as IO;
+import std.os.OS_FileSys as FS;
+import core.format as F;
+import core.price_prediction as Price;
+
+fn setting(name:string) -> string
+{
+  let (found,value) = Env.getenv(name);
+  if !found { return ""; }
+  return value;
+}
+
+fn number(raw:string, limit:i64) -> i64
+{
+  let length = text_len(raw);
+  if length < 1 || length > 3 || text_byte(raw,0) == 48
+  { tool_fail("price prediction: invalid-request"); }
+  var n = 0;
+  for i in 0 .. length
+  {
+    let digit = text_byte(raw,i)-48;
+    if digit < 0 || digit > 9 { tool_fail("price prediction: invalid-request"); }
+    n = n*10+digit;
+  }
+  if n > limit { tool_fail("price prediction: invalid-request"); }
+  return n;
+}
+
+fn entry() -> i64
+{
+  let path = setting("FINPRED_PRICE_HISTORY");
+  let model = setting("FINPRED_PRICE_MODEL");
+  let horizon = number(setting("FINPRED_PRICE_HORIZON"),365);
+  let season_raw = setting("FINPRED_PRICE_SEASON");
+  var season = 0;
+  if season_raw != "" { season = number(season_raw,256); }
+  if path == "" || !FS.basis_fs_exists(path) { tool_fail("price prediction: history file missing"); }
+  let size = FS.basis_fs_file_size(path);
+  if size < 1 || size > 5000 || FS.basis_fs_is_dir(path)
+  { tool_fail("price prediction: history file outside bounded profile"); }
+  let history = IO.basis_text_io_input_all(path);
+  if text_len(history) != size { tool_fail("price prediction: incomplete history text"); }
+
+  let prediction = Price.predict(history,model,horizon,season);
+  let status = sx_text(prediction["status"]);
+  if status != "ok" { tool_fail("price prediction: $status"); }
+  var dispersion = "null";
+  if prediction["dispersion_minor"] >= 0 { dispersion = F.num(prediction["dispersion_minor"]); }
+  let report = buffer_new();
+  buffer_append(report,"{\"kind\":\"analysis.price-prediction\",\"version\":1,\"published\":false");
+  buffer_append(report,",\"model\":"); buffer_append(report,F.q(model));
+  buffer_append(report,",\"observations\":"); buffer_append(report,F.num(prediction["observations"]));
+  buffer_append(report,",\"horizon\":"); buffer_append(report,F.num(horizon));
+  buffer_append(report,",\"season\":"); buffer_append(report,F.num(season));
+  buffer_append(report,",\"point_minor\":"); buffer_append(report,F.num(prediction["point_minor"]));
+  buffer_append(report,",\"dispersion_minor\":"); buffer_append(report,dispersion);
+  buffer_append(report,"}");
+  println(buffer_text(report));
+  return 0;
+}

@@ -8,16 +8,11 @@ fn failed(status:sexpr) -> Snapshot
   return record<Snapshot>{status:status,manifest:sx_nil(),run_id:sx_nil(),artifacts:sx_nil()};
 }
 
-fn selected_run(plan:D.Plan, mode:string, budget:i64, first:i64, second:i64, memoized:bool) -> D.Outcome
-{
-  if memoized { return D.run_memoized(plan,mode,budget,first,second); }
-  return D.run(plan,mode,budget,first,second);
-}
-
-fn freeze_plan(plan:D.Plan, mode:string, budget:i64, first:i64, second:i64, memoized:bool) -> Snapshot
+fn freeze_with(plan:D.Plan, mode:string, budget:i64, first:i64, second:i64, memoized:bool,
+  lookup:fn(string,string) -> D.Descriptor, call:fn(string,i64,i64) -> i64) -> Snapshot
 {
   if budget < 1 || budget > 16 { return failed(sx_string("budget")); }
-  let r = selected_run(plan,mode,budget,first,second,memoized);
+  let r = D.run_with(plan,mode,budget,first,second,memoized,lookup,call);
   if sx_text(r["status"]) != "ok" { return failed(r["status"]); }
 
   let plan_version = sx_text(plan["version"]);
@@ -61,10 +56,10 @@ output=${sx_text(plan["output"])}
 
 fn freeze(plan:D.Plan, mode:string, budget:i64, first:i64, second:i64) -> Snapshot
 {
-  return freeze_plan(plan,mode,budget,first,second,false);
+  return freeze_with(plan,mode,budget,first,second,false,D.no_binding,D.no_invoke);
 }
 
 fn freeze_memoized(plan:D.Plan, mode:string, budget:i64, first:i64, second:i64) -> Snapshot
 {
-  return freeze_plan(plan,mode,budget,first,second,true);
+  return freeze_with(plan,mode,budget,first,second,true,D.no_binding,D.no_invoke);
 }

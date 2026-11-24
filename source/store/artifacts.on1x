@@ -149,8 +149,8 @@ fn read_run(home: string, id: string) -> string
   let path = run_path(home, id);
   if !FS.basis_fs_exists(path) { missing_entry(home, "runs", path, "run", id, "unknown id"); }
   if FS.basis_fs_is_dir(path) { entry_error("replay", id, "malformed run manifest: destination is a directory"); }
-  # Both v1 and v2 are exactly 404 bytes (docs/RUN_FORMAT.md). The CLI
-  # dispatches on the version and verifies canonical bytes and references.
+  # Pricing manifests are exactly 404 bytes (docs/RUN_FORMAT.md). The CLI
+  # dispatches by version and verifies canonical bytes and references.
   if FS.basis_fs_file_size(path) != 404 { entry_error("replay", id, "malformed run manifest"); }
   let manifest = IO.basis_text_io_input_all(path);
   if text_len(manifest) != 404 { entry_error("replay", id, "malformed run manifest"); }

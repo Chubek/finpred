@@ -19,11 +19,12 @@ fn entry_shape(entry:sexpr) -> bool
   return text_len(sx_text(payload)) <= 512;
 }
 
-fn verify(plan:D.Plan,mode:string,budget:i64,first:i64,second:i64,
-  artifacts:sexpr,output_digest:sexpr) -> bool
+fn verify_with(plan:D.Plan,mode:string,budget:i64,first:i64,second:i64,
+  artifacts:sexpr,output_digest:sexpr,lookup:fn(string,string) -> D.Descriptor,
+  call:fn(string,i64,i64) -> i64) -> bool
 {
   if !digest_shape(output_digest) { return false; }
-  let result = D.run(plan,mode,budget,first,second);
+  let result = D.run_with(plan,mode,budget,first,second,false,lookup,call);
   if sx_text(result["status"]) != "ok" { return false; }
   if sx_text(output_digest) != sx_text(result["output_digest"]) { return false; }
   var expected = result["artifacts"];
@@ -43,4 +44,9 @@ fn verify(plan:D.Plan,mode:string,budget:i64,first:i64,second:i64,
     count = count + 1;
   }
   return sx_kind(expected) == 0 && sx_kind(supplied) == 0;
+}
+
+fn verify(plan:D.Plan,mode:string,budget:i64,first:i64,second:i64,artifacts:sexpr,output_digest:sexpr) -> bool
+{
+  return verify_with(plan,mode,budget,first,second,artifacts,output_digest,D.no_binding,D.no_invoke);
 }

@@ -92,4 +92,4 @@ fn validate_plan(plan: Plan, mode: string) -> bool
 
 fn validate(mode: string) -> bool { return validate_plan(fixed_plan("scenario"),mode); }
 
-fn version() -> string { return "yieldcraft.fixed-graph@1"; }
+fn version() -> string { return "automat.fixed-graph@1"; }

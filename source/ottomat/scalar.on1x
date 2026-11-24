@@ -44,7 +44,7 @@ fn has_import(imports:sexpr, handler:string) -> bool
   return false;
 }
 
-fn lower(source:string, mode:string, budget:i64) -> Lowered
+fn lower_with(source:string, mode:string, budget:i64, lookup:fn(string,string) -> D.Descriptor) -> Lowered
 {
   # Only an exact v4 or v5 header admits a seventh token on a line. Invalid headers
   # and v3 sources are scanned with the original cap and diagnostics.
@@ -81,7 +81,7 @@ fn lower(source:string, mode:string, budget:i64) -> Lowered
     let words = sx_head(rest);
     if count >= 16 || L.basis_list_length(words) != 2 { return reject("syntax",line); }
     let handler = D.field(words,1);
-    let desc = D.resolve(handler);
+    let desc = D.resolve_with(handler,mode,lookup);
     if !D.available(desc,plan_version) { return reject("unknown_handler",line); }
     if has_import(imports,handler) { return reject("duplicate_import",line); }
     imports = sx_cons(sx_string(handler),imports);
@@ -121,7 +121,12 @@ fn lower(source:string, mode:string, budget:i64) -> Lowered
   # Native validation owns node IDs, forward references, types, mode and budget.
   let plan = record<D.Plan>{version:sx_string(plan_version),
     nodes:L.basis_list_rev(nodes),output:sx_string(D.field(emit,1))};
-  let status = D.validate(plan,mode,budget);
+  let status = D.validate_with(plan,mode,budget,lookup);
   if status != "ok" { return reject(status,line); }
   return record<Lowered>{status:sx_string("ok"),plan:plan,line:0,column:0};
+}
+
+fn lower(source:string, mode:string, budget:i64) -> Lowered
+{
+  return lower_with(source,mode,budget,D.no_binding);
 }

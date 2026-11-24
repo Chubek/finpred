@@ -1,8 +1,10 @@
 import automat.dag_artifacts as A;
+import automat.dag as D;
 import automat.dag_replay as Replay;
 import automat.scalar_decode as Decode;
 
-fn verify(run_id:string, manifest:string, artifacts:sexpr) -> bool
+fn verify_with(run_id:string, manifest:string, artifacts:sexpr,
+  lookup:fn(string,string) -> D.Descriptor, call:fn(string,i64,i64) -> i64) -> bool
 {
   if text_len(manifest) > 4096 || text_len(run_id) != 64 { return false; }
   if A.digest(manifest) != run_id { return false; }
@@ -25,6 +27,11 @@ fn verify(run_id:string, manifest:string, artifacts:sexpr) -> bool
   }
   if sx_kind(hashes) != 0 || sx_kind(pairs) != 0 { return false; }
 
-  return Replay.verify(decoded["plan"],"analysis",decoded["budget"],decoded["first"],
-    decoded["second"],artifacts,decoded["root"]);
+  return Replay.verify_with(decoded["plan"],"analysis",decoded["budget"],decoded["first"],
+    decoded["second"],artifacts,decoded["root"],lookup,call);
+}
+
+fn verify(run_id:string, manifest:string, artifacts:sexpr) -> bool
+{
+  return verify_with(run_id,manifest,artifacts,D.no_binding,D.no_invoke);
 }

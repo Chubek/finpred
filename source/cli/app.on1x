@@ -11,18 +11,21 @@ import core.serialize as JSON;
 import store.artifacts as Store;
 import cli.lineage as Lineage;
 import cli.run_formats as Formats;
+import cli.contribution_archive as Contribution;
+import cli.price_prediction as PricePrediction;
 import automat.graph as Graph;
 import automat.runner as Runner;
 import automat.dag as Dag;
 import automat.scalar_decode as ScalarDecode;
 import ottomat.ottomat as Ottomat;
 import ottomat.scalar as Scalar;
+import yieldcraft.declaration as ContributionDeclaration;
 import sdk.sdk as SDK;
 import sdk.registry as Registry;
 import algorithms.quantile as Quantile;
 import poindexter.sheet as Sheet;
 import plugins.yieldcraft.entry as Yieldcraft;
-import cli.competitor_archive as Cube;
+import plugins.scalar_diagnostics.binding as Diagnostics;
 
 fn env_default(key: string, fallback: string) -> string
 {
@@ -48,7 +51,7 @@ fn trace(s: C.Scenario, r: C.Recommendation, profile: string,
   let b = buffer_new();
   buffer_append(b,"FinPRED decision trace v1\n");
   Lineage.field(b,"strategy",Lineage.strategy_version(profile));
-  buffer_append(b,"graph="); buffer_append(b,Graph.version()); buffer_append(b,"\n");
+  Lineage.field(b,"graph",Lineage.graph_version());
   buffer_append(b,"mode=recommendation\npublished=false\n");
   buffer_append(b,"scenario_id="); buffer_append(b,F.num(s["id"])); buffer_append(b,"\n");
   buffer_append(b,"decision_at="); buffer_append(b,sx_text(s["decision_at"])); buffer_append(b,"\n");
@@ -105,7 +108,7 @@ fn scalar_analysis() -> i64
   let second = scalar_number("FINPRED_SCALAR_SECOND","42",0,1000000000000);
   let budget = scalar_number("FINPRED_SCALAR_BUDGET","16",1,16);
   let raw = source(env_default("FINPRED_STRATEGY","strategies/scalar-spread.ottomat"));
-  let lowered = Scalar.lower(raw,"analysis",budget);
+  let lowered = Scalar.lower_with(raw,"analysis",budget,Diagnostics.lookup);
   let status = sx_text(lowered["status"]);
   if status != "ok"
   {
@@ -114,7 +117,7 @@ fn scalar_analysis() -> i64
     tool_fail("scalar: $status at $line:$column");
   }
   let plan = lowered["plan"];
-  let result = Dag.run(plan,"analysis",budget,first,second);
+  let result = Dag.run_with(plan,"analysis",budget,first,second,false,Diagnostics.lookup,Diagnostics.call);
   let outcome = sx_text(result["status"]);
   if outcome != "ok" { tool_fail("scalar: $outcome"); }
 
@@ -191,7 +194,7 @@ fn publish(scenario_raw: string, offers_raw: string, valuation_raw: string,
   let recipe = buffer_text(lineage);
   let id = Store.digest(recipe);
   if Store.put(home,recipe) != id { tool_fail("artifact: lineage persistence divergence"); }
-  let rec = JSON.recommendation(s,r,id,sd,od,vd,td);
+  let rec = JSON.recommendation(s,r,id,sd,od,vd,td,Lineage.recommendation_strategy());
   let explanation = lineage_trace(trace(s,r,profile,sd,od,vd,td),id);
   let rec_digest = Store.digest(rec);
   let trace_digest = Store.digest(explanation);
@@ -218,7 +221,10 @@ fn replay(home: string, expected_run_id: string, mode: string) -> i64
   { tool_fail("capability denied: execution mode and unknown modes unavailable"); }
   if mode == "poindexter" && !Registry.admits("poindexter.sheet.render","analysis")
   { tool_fail("sdk: incompatible pricing sheet"); }
-  let manifest = Formats.read(Store.read_run(home,expected_run_id));
+  let manifest_raw = Store.read_run(home,expected_run_id);
+  if Contribution.matches(manifest_raw)
+  { return Contribution.replay(home,expected_run_id,mode,manifest_raw); }
+  let manifest = Formats.read(manifest_raw);
   let version = sx_text(manifest["version"]);
   let v2 = version == Formats.current();
   if !v2 && version != Formats.archive_version() { tool_fail("replay: unknown run format"); }
@@ -260,7 +266,7 @@ fn replay(home: string, expected_run_id: string, mode: string) -> i64
     if Store.fetch(home,id) != recipe { tool_fail("replay: stored lineage divergence"); }
   }
   else { id = Formats.archive_key(sd,od,vd,td); }
-  let rec = JSON.recommendation(s,r,id,sd,od,vd,td);
+  let rec = JSON.recommendation(s,r,id,sd,od,vd,td,Lineage.recommendation_strategy());
   var explanation = trace(s,r,profile,sd,od,vd,td);
   if v2 { explanation = lineage_trace(explanation,id); }
   let rec_digest = Store.digest(rec);
@@ -332,14 +338,7 @@ fn entry() -> i64
 {
   let mode = env_default("FINPRED_MODE","run");
   if mode == "selftest" { return selftest(); }
-  if mode == "cube-evaluate"
-  {
-    return Cube.evaluate(env_default("FINPRED_CUBE_HOME",".finpred-cube"),
-      env_default("FINPRED_CUBE_INPUT",""),env_default("FINPRED_CUBE_CELLS",""),
-      env_default("FINPRED_CUBE_POLICIES",""));
-  }
-  if mode == "cube-replay"
-  { return Cube.replay(env_default("FINPRED_CUBE_HOME",".finpred-cube"),env_default("FINPRED_CUBE_INPUT","")); }
+  if mode == "price-predict" { return PricePrediction.entry(); }
   let home = env_default("FINPRED_HOME",".finpred");
   if mode == "replay" || mode == "explain" || mode == "evidence" || mode == "poindexter"
   {
@@ -351,9 +350,18 @@ fn entry() -> i64
   let engine = env_default("FINPRED_ENGINE","legacy");
   if engine == "scalar" { return scalar_analysis(); }
   if engine != "legacy" { tool_fail("unknown engine: expected legacy or scalar"); }
+  let strategy_raw = source(env_default("FINPRED_STRATEGY","strategies/yieldcraft.ottomat"));
+  let demand_path = env_default("FINPRED_DEMAND","");
+  if ContributionDeclaration.admits(strategy_raw)
+  {
+    let demand = Contribution.demand_source(demand_path);
+    return Contribution.publish(home,source(env_default("FINPRED_SCENARIO","fixtures/scenario.csv")),
+      demand,source(env_default("FINPRED_VALUATION","fixtures/valuation.csv")),strategy_raw);
+  }
+  if demand_path != ""
+  { tool_fail("yieldcraft: FINPRED_DEMAND requires the contribution strategy"); }
   return publish(source(env_default("FINPRED_SCENARIO","fixtures/scenario.csv")),
     source(env_default("FINPRED_OFFERS","fixtures/offers.csv")),
     source(env_default("FINPRED_VALUATION","fixtures/valuation.csv")),
-    source(env_default("FINPRED_STRATEGY","strategies/yieldcraft.ottomat")),
-    home);
+    strategy_raw,home);
 }

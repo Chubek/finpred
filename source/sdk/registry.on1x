@@ -32,7 +32,7 @@ fn resolve(entry:string) -> Binding
   if entry == "dragnet.frozen_csv.offers_as_of" { return binding(true,"dragnet.frozen_csv","analysis",
     "Source",P.prepend("hospitality.scenario@1",P.prepend("finpred.offers.csv@1",sx_nil())),
     "hospitality.offer@1",P.prepend("finpred.core@1",P.prepend("yieldcraft.asof-whole-stay-property-min@1",sx_nil()))); }
-  # automat.dag.invoke_binary: eligible only in scalar graph dialect 3.
+  # The scalar diagnostics binding exposes this in graph dialect 3.
   if entry == "plugins.scalar_diagnostics.midpoint.midpoint" { return binding(true,"scalar-diagnostics@1","analysis",
     "Algorithm",P.prepend("scalar.level@1",P.prepend("scalar.level@1",sx_nil())),"scalar.level@1",sx_nil()); }
   return binding(false,"","","",sx_nil(),"",sx_nil());

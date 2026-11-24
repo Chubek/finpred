@@ -1,4 +1,4 @@
-# Readers for the fixed canonical Dragnet JSON profile, not general JSON.
+# Shared primitives for reading fixed canonical snapshot profiles, not general JSON.
 import core.date as Date;
 import core.format as F;
 import std.String as Str;

@@ -13,9 +13,9 @@ host-supplied [`sdk.callable`](../sdk/README.md#internal-typed-calls) resolver a
 invoker; the graph and Ottomat source cannot register handlers or grant
 effects. This slice accepts only pure work and has no CLI route.
 
-The static hospitality host binds normalization, whole-stay comparables,
-an independent sample diagnostic, the Yieldcraft decision, and guardrail
-validation. The normalizer retains the rejected-row count and records
+An external hospitality host binds normalization, whole-stay comparables,
+a sample diagnostic, a policy
+decision, and guardrail validation. The normalizer retains the rejected-row count and records
 the frozen offers artifact as a parent. Only immutable values cross the
 graph boundary; matcher handles stay inside each adapter.
 
@@ -50,18 +50,17 @@ fn(Scenario, Valuation, string, string, bool, buffer) -> Recommendation
 The additional arguments are the frozen offers CSV, the checked profile
 name, the evidence flag, and the caller-owned evidence buffer. The runner
 checks the returned recommendation against the valuation and scenario
-limits. It does not import Yieldcraft or authorize, discover, or isolate
-callbacks. The CLI checks its registry binding and supplies
-`plugins.yieldcraft.entry.recommend_profile` for both new runs and replay.
+limits. The runner does not authorize, discover, or isolate callbacks.
+The CLI checks its registry binding and supplies the policy for both new runs
+and replay.
 The [independent consumer](../../tests/fixed_runner_consumer/main.on1x)
-builds the runner with a local test policy and no plugin search path.
+builds the runner with a local test policy and only the engine search path.
 
 ## Native scalar analysis graphs
 
-`automat.dag` is a native On1x entry point alongside the fixed Yieldcraft
+`automat.dag` is a native On1x entry point alongside the fixed recommendation
 runner. See the [compiled consumer](../../tests/dag_consumer/main.on1x).
-To compile a host directly, add both `source/` and the repository root to
-its module search paths so the statically registered packages are available.
+To compile a built-in-only host directly, add `source/` to its module search path.
 Hosts can freeze and verify this IR through the module APIs below, or lower
 an [Ottomat scalar program](../ottomat/README.md#v3-scalar-analysis) to the same
 plan. `run --engine scalar` displays results from this plan; the CLI does not
@@ -76,7 +75,7 @@ including nodes outside the selected output's dependencies.
 
 `run(plan, "analysis", budget, first, second)` accepts immutable integer
 levels in `[0, 10^12]`. These are unitless diagnostic values, not prices.
-The host registry defines both input ports as `scalar.level@1`.
+The built-in binary operations define both input ports as `scalar.level@1`.
 `minimum@1` and `maximum@1` return that type; `distance@1` returns the
 absolute difference as `scalar.distance@1`. A distance cannot feed a level
 port. Each invocation costs one unit. The plan allows at most 16 nodes,
@@ -90,10 +89,12 @@ binding is an ordinary dependency, even for the unselected alternative.
 The trace records them in role order:
 `id=select@1(condition,positive,zero):value`.
 
-V3 also admits the statically linked `midpoint@1` binary handler, owned
-by [`scalar-diagnostics@1`](../../plugins/scalar_diagnostics/README.md).
-The versioned registry is shared by native planning, invocation and DSL import
-resolution. The scalar plan never gains capabilities from an import line.
+V3 supports host-supplied binary operations. Use `validate_with`,
+`run_with`, `invoke_binary_with`, `freeze_with`, or `verify_with` to pass
+the trusted resolver and (where applicable) invoker explicitly. The same
+binding should be supplied for lowering, planning, invocation, and replay.
+Built-ins cannot be overridden, and an import line never grants capabilities.
+Unqualified entry points resolve built-ins only.
 
 Planning validates every binding and determines the complete order before
 running a handler. `validate(plan, mode, budget)` checks the same structure

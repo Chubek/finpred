@@ -1,5 +1,5 @@
 # Legacy seven-slot recommendation engine. A trusted host wires the policy
-# implementation; neither the plan nor the runner resolves a plugin.
+# implementation; neither the plan nor the runner resolves it.
 import automat.graph as Graph;
 import core.contracts as C;
 

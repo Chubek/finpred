@@ -17,12 +17,16 @@ fn strategy_version(profile: string) -> string
   return text_concat("yieldcraft.",text_concat(profile,"@1"));
 }
 
+# Frozen v1/v2 IDs use the historical host labels, not native engine identity.
+fn graph_version() -> string { return "yieldcraft.fixed-graph@1"; }
+fn recommendation_strategy() -> string { return "yieldcraft.percentile@1"; }
+
 fn policy(out: buffer, profile: string)
 {
   field(out,"engine","finpred.yieldcraft-engine@1");
   field(out,"mode","recommendation");
   field(out,"strategy",strategy_version(profile));
-  field(out,"graph",Graph.version());
+  field(out,"graph",graph_version());
   for i in 0 .. 7
   {
     let n = Graph.node(i);
