@@ -263,7 +263,7 @@ case "$suite" in
   pricing)
     require_tools strace
     checks fixtures price_prediction price_backtest price_properties ecb_yield_study \
-      yieldcraft_contribution yieldcraft_demand \
+      yieldcraft_contribution yieldcraft_demand yieldcraft_demand_panel \
       yieldcraft_inventory contribution_dag competitor_cube fixed_runner hospitality_adapters \
       financial_graph ottomat_financial pricing_cli profiles_cli
     fixture_home
@@ -272,13 +272,14 @@ case "$suite" in
     fixture_runs
     ;;
   forecasting)
-    checks fx_reference forecast_baselines forecast_cli forecast_graph forecast_scores
+    checks fx_reference forecast_baselines forecast_cli forecast_graph forecast_scores forecast_vintages
     ;;
   plugins)
     require_tools strace
     checks sdk sdk_packages python_sdk sdk_data1 plugin_registry engines_cli scalar_registry \
       scalar_diagnostics_package yieldcraft_package dragnet_search
     dragnet_legacy
+    checks dragnet_offline_evidence
     ./bin/poindexter --build
     checks poindexter_cli poindexter_package poindexter_workbench poindexter_tty
     require_tools xvfb-run Xvfb xauth
