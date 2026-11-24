@@ -184,6 +184,25 @@ fn planned(id:sexpr, d:SDK.Descriptor, edges:sexpr) -> sexpr
     sx_cons(SDK.port_entry(d["output"]),sx_cons(sx_string(F.num(d["max_work"])),
     sx_cons(d["role"],sx_cons(edges,sx_nil())))))));
 }
+fn matches_signature(entry:sexpr, d:SDK.Descriptor) -> bool
+{
+  return d["max_work"] == SDK.nat(at(entry,4)) && SDK.same(d["role"],at(entry,5))
+    && SDK.same_port(d["output"],SDK.decode_port(at(entry,3))) && SDK.same_ports(d["inputs"],at(entry,2));
+}
+fn consistent_binding(entries:sexpr, d:SDK.Descriptor) -> bool
+{
+  var rest = entries;
+  let pin = d["pin"];
+  while sx_kind(rest) == 3
+  {
+    let entry = sx_head(rest);
+    let previous = decode_pin(at(entry,1));
+    if SDK.same(previous["handler_name"],pin["handler_name"])
+    { return SDK.same_pin(previous,pin) && matches_signature(entry,d); }
+    rest = sx_tail(rest);
+  }
+  return true;
+}
 fn producer_port(inputs:sexpr, nodes:sexpr, producer:string, port:string) -> SDK.Port
 {
   if producer == "" { return SDK.decode_port(lookup(inputs,port)); }
@@ -324,6 +343,7 @@ fn prepare(g:Graph, mode:string, budget:i64, resolve:fn(string) -> SDK.Descripto
     if field(item,2) != "pure" { return reject("denied",id); }
     let d = SDK.resolve(handler,mode,resolve);
     if !d["enabled"] { return reject("unknown_handler",id); }
+    if !consistent_binding(entries,d) { return reject("descriptor_mismatch",id); }
     let edges = at(item,3);
     if !identifier(sx_text(d["output"]["name"])) || !edges_valid(edges,d["inputs"])
     { return reject("port",id); }
@@ -377,4 +397,100 @@ fn sdk_output_ref(item:sexpr) -> bool
   # No external-input passthrough in the first slice: a declared emit must
   # come from a host-admitted and executed handler.
   return identifier(field(item,2)) && identifier(field(item,3));
+}
+
+# Connect an exported port of the left graph to a root of the right graph.
+# IDs remain public and are never silently renamed or merged.
+record Composition { status:sexpr, subject:sexpr, graph:Graph, prepared:Prepared }
+
+fn link(root:string, export_name:string) -> sexpr
+{
+  return sx_cons(sx_string(root),sx_cons(sx_string(export_name),sx_nil()));
+}
+
+fn composition_failure(p:Prepared) -> Composition
+{
+  return record<Composition>{status:p["status"],subject:p["subject"],
+    graph:graph(sx_nil(),sx_nil(),sx_nil()),prepared:p};
+}
+
+fn rebind_right(nodes:sexpr, wired:sexpr, exports:sexpr) -> sexpr
+{
+  var rest = nodes;
+  var result = sx_nil();
+  while sx_kind(rest) == 3
+  {
+    let item = sx_head(rest);
+    var edges = at(item,3);
+    var rewritten = sx_nil();
+    while sx_kind(edges) == 3
+    {
+      let e = sx_head(edges);
+      var replacement = e;
+      if field(e,1) == ""
+      {
+        let wire = lookup(wired,field(e,2));
+        if sx_kind(wire) == 3
+        {
+          let output = lookup(exports,field(wire,1));
+          replacement = edge(field(e,0),field(output,2),field(output,3));
+        }
+      }
+      rewritten = sx_cons(replacement,rewritten);
+      edges = sx_tail(edges);
+    }
+    result = sx_cons(node(field(item,0),field(item,1),field(item,2),L.basis_list_rev(rewritten)),result);
+    rest = sx_tail(rest);
+  }
+  return L.basis_list_rev(result);
+}
+
+fn concat(left:sexpr, right:sexpr) -> sexpr
+{
+  var items = L.basis_list_rev(left);
+  var result = right;
+  while sx_kind(items) == 3
+  {
+    result = sx_cons(sx_head(items),result);
+    items = sx_tail(items);
+  }
+  return result;
+}
+
+# Validate each fragment and the flattened product with the same trusted host
+# resolver. A link must match the declared export signature, even when the
+# underlying concrete producer happens to offer a narrower signature.
+fn compose(left:Graph, right:Graph, links:sexpr, mode:string, budget:i64,
+  resolve:fn(string) -> SDK.Descriptor) -> Composition
+{
+  if length(links,16) < 1 { return composition_failure(reject("link_shape","")); }
+  let left_plan = prepare(left,mode,budget,resolve);
+  if !SDK.same(left_plan["status"],sx_string("ok")) { return composition_failure(left_plan); }
+  let right_plan = prepare(right,mode,budget,resolve);
+  if !SDK.same(right_plan["status"],sx_string("ok")) { return composition_failure(right_plan); }
+  var wires = links;
+  var remaining = right["inputs"];
+  while sx_kind(wires) == 3
+  {
+    let item = sx_head(wires);
+    let root = field(item,0);
+    let export_name = field(item,1);
+    if length(item,2) != 2 || !identifier(root) || !identifier(export_name)
+    { return composition_failure(reject("link_shape",root)); }
+    let target = lookup(remaining,root);
+    let origin = lookup(left["outputs"],export_name);
+    if sx_kind(origin) == 0 || sx_kind(target) == 0
+    { return composition_failure(reject("link_reference",root)); }
+    if !SDK.connects(SDK.decode_port(at(origin,1)),SDK.decode_port(target))
+    { return composition_failure(reject("edge_type",root)); }
+    remaining = remove(remaining,root);
+    wires = sx_tail(wires);
+  }
+  let merged = graph(concat(left["inputs"],remaining),
+    concat(left["nodes"],rebind_right(right["nodes"],links,left["outputs"])),
+    concat(left["outputs"],right["outputs"]));
+  let prepared = prepare(merged,mode,budget,resolve);
+  if !SDK.same(prepared["status"],sx_string("ok")) { return composition_failure(prepared); }
+  return record<Composition>{status:prepared["status"],subject:prepared["subject"],
+    graph:merged,prepared:prepared};
 }

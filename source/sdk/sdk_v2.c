@@ -114,3 +114,30 @@ finpred_sdk_status finpred_sdk_check_v2(const finpred_sdk_plugin_v2 *plugin,
         !subset(d->capabilities, use->requested)) return FINPRED_SDK_DENIED;
     return FINPRED_SDK_OK;
 }
+
+static int bounded_text(const char *s, size_t limit)
+{
+    if (!s || !s[0]) return 0;
+    for (size_t n = 1; n <= limit; ++n)
+        if (!s[n]) return 1;
+    return 0;
+}
+
+static int valid_port(const finpred_sdk_port_v2 *p)
+{
+    return p && bounded_text(p->name, 63) && bounded_text(p->kind, 127) &&
+        bounded_text(p->unit, 63) && bounded_text(p->currency, 31) &&
+        p->major > 0 && p->major <= 999 && p->states > 0 && p->states <= 31 &&
+        p->max_bytes > 0 && p->max_bytes <= 2000000;
+}
+
+finpred_sdk_status finpred_sdk_connect_ports_v2(const finpred_sdk_port_v2 *output,
+                                               const finpred_sdk_port_v2 *input)
+{
+    if (!valid_port(output) || !valid_port(input)) return FINPRED_SDK_INVALID;
+    if (output->major != input->major || output->max_bytes > input->max_bytes ||
+        (output->states & ~input->states) != 0 || strcmp(output->kind, input->kind) ||
+        strcmp(output->unit, input->unit) || strcmp(output->currency, input->currency))
+        return FINPRED_SDK_INCOMPATIBLE;
+    return FINPRED_SDK_OK;
+}

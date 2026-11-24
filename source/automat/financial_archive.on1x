@@ -1,0 +1,164 @@
+# Portable, content-addressed replay bundle for the native typed graph.
+# It contains frozen inputs/evidence, not executable code or host authority.
+import automat.financial_graph as G;
+import automat.financial_run as Run;
+import sdk.callable as SDK;
+import core.format as F;
+import std.collections.List as L;
+import std.String as Str;
+
+record Capture { result:Run.Result, bytes:sexpr, digest:sexpr }
+record Frame { next:i64, value:sexpr }
+record Decoded { valid:bool, graph_digest:sexpr, ctx:Run.Context, roots:sexpr, evidence:sexpr }
+
+fn version() -> string { return "automat.financial-replay@1"; }
+fn max_archive_bytes() -> i64 { return 26000000; }
+
+# Canonical unsigned decimal byte length, followed by ':' and exact bytes.
+# Bounds are checked before slicing; consuming a bad frame is never possible.
+fn take(raw:string, start:i64, ceiling:i64) -> Frame
+{
+  let invalid = record<Frame>{next:-1,value:sx_nil()};
+  let end = text_len(raw);
+  if start < 0 || start >= end { return invalid; }
+  var pos = start;
+  var n = 0;
+  while pos < end
+  {
+    let b = text_byte(raw,pos);
+    if b == 58
+    {
+      if pos == start || n > end-pos-1 { return invalid; }
+      return record<Frame>{next:pos+1+n,value:sx_string(text_slice(raw,pos+1,pos+1+n))};
+    }
+    if !G.decimal(b) || pos-start >= 8 || (pos > start && text_byte(raw,start) == 48)
+    { return invalid; }
+    n = n*10 + b-48;
+    if n > ceiling { return invalid; }
+    pos = pos + 1;
+  }
+  return invalid;
+}
+
+fn encode(result:Run.Result, roots:sexpr, ctx:Run.Context, mode:string) -> string
+{
+  let bytes = buffer_new();
+  G.frame(bytes,version());
+  G.frame(bytes,mode);
+  G.frame(bytes,sx_text(result["graph_digest"]));
+  G.frame(bytes,sx_text(ctx["cutoff"]));
+  G.frame(bytes,sx_text(ctx["strategy_digest"]));
+  G.frame(bytes,F.num(G.length(roots,16)));
+  var rest = G.sorted(roots);
+  while sx_kind(rest) == 3
+  {
+    let item = sx_head(rest);
+    let value = G.at(item,1);
+    G.frame(bytes,G.field(item,0));
+    G.frame(bytes,F.num(SDK.value_state(value)));
+    G.frame(bytes,sx_text(SDK.value_bytes(value)));
+    rest = sx_tail(rest);
+  }
+  rest = Run.expectation(result);
+  G.frame(bytes,F.num(G.length(rest,48)));
+  while sx_kind(rest) == 3
+  {
+    let item = sx_head(rest);
+    G.frame(bytes,G.field(item,0));
+    G.frame(bytes,G.field(item,1));
+    G.frame(bytes,G.field(item,2));
+    rest = sx_tail(rest);
+  }
+  return buffer_text(bytes);
+}
+
+fn invalid() -> Decoded
+{
+  return record<Decoded>{valid:false,graph_digest:sx_nil(),
+    ctx:record<Run.Context>{cutoff:sx_nil(),strategy_digest:sx_nil()},roots:sx_nil(),evidence:sx_nil()};
+}
+
+# Structure/lineage hashes are checked here; payload meaning remains the
+# responsibility of the explicitly admitted typed handlers during replay.
+fn decode(raw:string, mode:string) -> Decoded
+{
+  if (mode != "analysis" && mode != "recommendation") || text_len(raw) > max_archive_bytes()
+  { return invalid(); }
+  let v = take(raw,0,64);
+  let m = take(raw,v["next"],14);
+  let graph_id = take(raw,m["next"],71);
+  let cutoff = take(raw,graph_id["next"],20);
+  let strategy = take(raw,cutoff["next"],71);
+  let ctx = record<Run.Context>{cutoff:cutoff["value"],strategy_digest:strategy["value"]};
+  if !SDK.same(v["value"],sx_string(version())) || !SDK.same(m["value"],sx_string(mode))
+    || !SDK.valid_digest(graph_id["value"]) || !Run.valid_context(ctx) { return invalid(); }
+  let root_count = take(raw,strategy["next"],2);
+  let n = SDK.nat(root_count["value"]);
+  if n < 1 || n > 16 { return invalid(); }
+  var roots = sx_nil();
+  var pos = root_count["next"];
+  var previous = "";
+  var root_bytes = 0;
+  for i in 0 .. n
+  {
+    let key = take(raw,pos,63);
+    let state = take(raw,key["next"],2);
+    let data = take(raw,state["next"],2000000);
+    let name = sx_text(key["value"]);
+    let mask = SDK.nat(state["value"]);
+    if !G.identifier(name) || Str.compare(name,previous) <= 0 || !SDK.accepts(31,mask)
+      || !SDK.atom(data["value"],2000000) { return invalid(); }
+    root_bytes = root_bytes + text_len(sx_text(data["value"]));
+    if root_bytes > 8000000 { return invalid(); }
+    roots = sx_cons(Run.input(name,mask,sx_text(data["value"])),roots);
+    pos = data["next"];
+    previous = name;
+  }
+  let count = take(raw,pos,2);
+  let size = SDK.nat(count["value"]);
+  if size <= n || size > n+32 { return invalid(); }
+  pos = count["next"];
+  var evidence = sx_nil();
+  for i in 0 .. size
+  {
+    let id = take(raw,pos,63);
+    let digest = take(raw,id["next"],71);
+    let envelope = take(raw,digest["next"],2010000);
+    let name = sx_text(id["value"]);
+    if !G.identifier(name) || sx_kind(G.lookup(evidence,name)) != 0 || !SDK.valid_digest(digest["value"])
+      || !SDK.atom(envelope["value"],2010000)
+      || !SDK.same(digest["value"],sx_string(G.digest(sx_text(envelope["value"])))) { return invalid(); }
+    evidence = sx_cons(sx_cons(id["value"],sx_cons(digest["value"],sx_cons(envelope["value"],sx_nil()))),evidence);
+    pos = envelope["next"];
+  }
+  if pos != text_len(raw) { return invalid(); }
+  return record<Decoded>{valid:true,graph_digest:graph_id["value"],ctx:ctx,
+    roots:L.basis_list_rev(roots),evidence:L.basis_list_rev(evidence)};
+}
+
+fn capture(g:G.Graph, roots:sexpr, ctx:Run.Context, mode:string, budget:i64,
+  resolve:fn(string) -> SDK.Descriptor, call:fn(SDK.Pin, SDK.Request) -> SDK.Outcome,
+  graph_digest:sexpr) -> Capture
+{
+  let result = Run.execute_pinned(g,roots,ctx,mode,budget,resolve,call,graph_digest);
+  if !SDK.same(result["status"],sx_string("ok"))
+  { return record<Capture>{result:result,bytes:sx_nil(),digest:sx_nil()}; }
+  let raw = encode(result,roots,ctx,mode);
+  if text_len(raw) > max_archive_bytes()
+  { return record<Capture>{result:Run.error("archive_size",""),bytes:sx_nil(),digest:sx_nil()}; }
+  return record<Capture>{result:result,bytes:sx_string(raw),digest:sx_string(G.digest(raw))};
+}
+
+# The expected bundle digest is supplied by the trusted caller, not decoded
+# from the bundle. The caller independently selects the mode and work budget.
+fn replay(g:G.Graph, raw:string, expected:sexpr, mode:string, budget:i64,
+  resolve:fn(string) -> SDK.Descriptor, call:fn(SDK.Pin, SDK.Request) -> SDK.Outcome) -> Run.Result
+{
+  if text_len(raw) < 1 || text_len(raw) > max_archive_bytes() { return Run.error("archive_size",""); }
+  if !SDK.valid_digest(expected) || !SDK.same(expected,sx_string(G.digest(raw)))
+  { return Run.error("archive_digest",""); }
+  let decoded = decode(raw,mode);
+  if !decoded["valid"] { return Run.error("archive_format",""); }
+  return Run.replay(g,decoded["roots"],decoded["ctx"],mode,budget,resolve,call,
+    decoded["graph_digest"],decoded["evidence"]);
+}

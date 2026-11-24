@@ -144,6 +144,44 @@ fn execute_checked(g:G.Graph, roots:sexpr, ctx:Context, mode:string, budget:i64,
   resolve:fn(string) -> SDK.Descriptor, call:fn(SDK.Pin, SDK.Request) -> SDK.Outcome,
   expected_digest:sexpr) -> Result
 {
+  return execute_expected(g,roots,ctx,mode,budget,resolve,call,expected_digest,sx_nil(),false);
+}
+
+fn same_evidence(actual:sexpr, entry:sexpr) -> bool
+{
+  return G.length(entry,3) == 3 && SDK.same(G.at(actual,0),G.at(entry,0))
+    && SDK.same(G.at(actual,1),G.at(entry,1)) && SDK.same(G.at(actual,2),G.at(entry,2));
+}
+
+# Refuse archives with inconsistent frozen roots or an invalid evidence
+# inventory before dispatch. Node output bytes still require recomputation.
+fn evidence_inventory(inputs:sexpr, order:sexpr, evidence:sexpr) -> bool
+{
+  var items = evidence;
+  var roots = inputs;
+  while sx_kind(roots) == 3
+  {
+    if sx_kind(items) != 3 || !same_evidence(sx_head(roots),sx_head(items)) { return false; }
+    items = sx_tail(items);
+    roots = sx_tail(roots);
+  }
+  var nodes = order;
+  while sx_kind(nodes) == 3
+  {
+    if sx_kind(items) != 3 { return false; }
+    let item = sx_head(items);
+    if G.length(item,3) != 3 || !SDK.same(G.at(item,0),G.at(sx_head(nodes),0))
+      || !SDK.valid_digest(G.at(item,1)) || !SDK.atom(G.at(item,2),2010000) { return false; }
+    items = sx_tail(items);
+    nodes = sx_tail(nodes);
+  }
+  return sx_kind(items) == 0;
+}
+
+fn execute_expected(g:G.Graph, roots:sexpr, ctx:Context, mode:string, budget:i64,
+  resolve:fn(string) -> SDK.Descriptor, call:fn(SDK.Pin, SDK.Request) -> SDK.Outcome,
+  expected_digest:sexpr, evidence:sexpr, replaying:bool) -> Result
+{
   let plan = G.prepare(g,mode,budget,resolve);
   let status = sx_text(plan["status"]);
   if status != "ok" { return error(status,sx_text(plan["subject"])); }
@@ -152,6 +190,7 @@ fn execute_checked(g:G.Graph, roots:sexpr, ctx:Context, mode:string, budget:i64,
   { return error("graph_mismatch",""); }
   if !valid_context(ctx) || !valid_roots(g["inputs"],roots) { return error("input",""); }
   let inputs = root_artifacts(g["inputs"],roots,ctx);
+  if replaying && !evidence_inventory(inputs,plan["order"],evidence) { return error("replay_mismatch",""); }
   var artifacts = L.basis_list_rev(inputs);
   var nodes = plan["order"];
   var memo = sx_nil();
@@ -194,12 +233,13 @@ fn execute_checked(g:G.Graph, roots:sexpr, ctx:Context, mode:string, budget:i64,
     let current = SDK.resolve(sx_text(pin["handler_name"]),mode,resolve);
     if !current["enabled"] { return error("denied",id); }
     if !SDK.same_pin(current["pin"],pin) { return error("pin_mismatch",id); }
+    if !G.matches_signature(node,current) { return error("descriptor_mismatch",id); }
     let key = memo_key(pin,mode,ctx,values,work);
     var value = G.at(G.lookup(memo,key),1);
     if sx_kind(value) == 0
     {
       let request = record<SDK.Request>{inputs:values,cutoff:ctx["cutoff"],work:work};
-      let outcome = SDK.invoke(pin,mode,request,resolve,call);
+      let outcome = SDK.invoke_resolved(pin,mode,request,current,call);
       if outcome["status"] != 0 { return error(failure_status(outcome["status"]),id); }
       value = SDK.value_entry(outcome["state"],sx_text(outcome["bytes"]));
       memo = sx_cons(sx_cons(sx_string(key),sx_cons(value,sx_nil())),memo);
@@ -257,9 +297,7 @@ fn replays(result:Result, graph_digest:sexpr, expected:sexpr) -> bool
   {
     let item = sx_head(artifacts);
     let other = sx_head(evidence);
-    if G.length(other,3) != 3 || !SDK.same(G.at(item,0),G.at(other,0))
-      || !SDK.same(G.at(item,1),G.at(other,1)) || !SDK.same(G.at(item,2),G.at(other,2))
-    { return false; }
+    if !same_evidence(item,other) { return false; }
     artifacts = sx_tail(artifacts);
     evidence = sx_tail(evidence);
   }
@@ -269,7 +307,9 @@ fn replay(g:G.Graph, roots:sexpr, ctx:Context, mode:string, budget:i64,
   resolve:fn(string) -> SDK.Descriptor, call:fn(SDK.Pin, SDK.Request) -> SDK.Outcome,
   graph_digest:sexpr, expected:sexpr) -> Result
 {
-  let result = execute(g,roots,ctx,mode,budget,resolve,call);
+  if !SDK.valid_digest(graph_digest) { return error("replay_mismatch",""); }
+  let result = execute_expected(g,roots,ctx,mode,budget,resolve,call,graph_digest,expected,true);
+  if SDK.same(result["status"],sx_string("graph_mismatch")) { return error("replay_mismatch",""); }
   if !SDK.same(result["status"],sx_string("ok")) { return result; }
   if !replays(result,graph_digest,expected) { return error("replay_mismatch",""); }
   return result;

@@ -42,6 +42,10 @@ def frames(raw):
     return result
 
 
+def encode_frames(fields):
+    return b"".join(str(len(field)).encode("ascii") + b":" + field for field in fields)
+
+
 def compile_consumer(work, name, *, grammar=False):
     sdk = Path(os.environ.get("MULIB_ROOT", ROOT / "third_party/mulib")).resolve()
     compiler = Path(os.environ.get("ON1XC", ROOT / "build/mulib/on1x/on1xc")).resolve()
@@ -64,18 +68,24 @@ def main():
         exe = compile_consumer(work, "financial_graph_consumer")
         empty = work / "empty"
         empty.mkdir()
-        def run(case, suffix=""):
+        def run(case, suffix="", **extra):
             p = subprocess.run([exe], cwd=empty, capture_output=True, timeout=15,
                                env={**os.environ, "FINPRED_HOME": str(empty / "store"),
                                     "CASE": case, "ROOT": str(ROOT),
                                     "SCENARIO": str(FIX / f"scenario{suffix}.csv"),
                                     "OFFERS": str(FIX / f"offers{suffix}.csv"),
-                                    "VALUATION": str(FIX / "valuation.csv")})
+                                     "VALUATION": str(FIX / "valuation.csv"), **extra})
             assert p.returncode == 0 and not p.stderr and not list(empty.iterdir()), p
             return p.stdout
 
         for case, expected in REJECTIONS.items():
             assert run(case) == expected.encode("ascii") + b"\n", case
+        for case, expected in {
+            "compose-ok": b"ok\njoined\n", "compose-type": b"edge_type\n",
+            "compose-budget": b"budget\n", "compose-duplicate": b"link_reference\n",
+            "compose-reference": b"link_reference\n",
+        }.items():
+            assert run(case) == expected, case
         for suffix, price, reason in (
             ("", b"17100", b"lower_percentile_shortcut"),
             ("_multiroom", b"16000", b"guardrail_adjustment"),
@@ -84,6 +94,34 @@ def main():
             assert native == run("reordered", suffix) == run("replay", suffix)
             graph_digest, root = verify_evidence(native, price, reason)
             assert (graph_digest, root) == (GRAPH_ID, ROOT_IDS[suffix])
+            captured = run("archive-capture", suffix)
+            assert captured == run("archive-reordered", suffix)
+            digest, raw = captured.split(b"\n", 1)
+            items = frames(raw)
+            assert items[:4] == [b"automat.financial-replay@1", b"recommendation", graph_digest.encode(),
+                                 b"2026-11-20T10:00:00Z"]
+            assert items[4].startswith(b"blake3:") and items[5] == b"3"
+            assert items[6:15:3] == [b"offers", b"scenario", b"valuation"]
+            assert items[7:15:3] == [b"1", b"1", b"1"]
+            assert items[8:15:3] == [(FIX / f"offers{suffix}.csv").read_bytes(),
+                                     (FIX / f"scenario{suffix}.csv").read_bytes(),
+                                     (FIX / "valuation.csv").read_bytes()]
+            archived = work / "replay.bundle"
+            archived.write_bytes(raw)
+            archive_args = {"ARCHIVE": str(archived), "APPROVED": digest.decode()}
+            assert run("archive-replay", **archive_args) == native
+            assert run("archive-mode", **archive_args) == b"archive_format\n"
+            assert run("archive-binding", **archive_args) == b"replay_mismatch\n"
+            changed_roots = items.copy()
+            changed_roots[8] += b"\n"
+            reversed_evidence = items[:16] + items[19:22] + items[16:19] + items[22:]
+            for incompatible in (changed_roots, reversed_evidence):
+                archived.write_bytes(encode_frames(incompatible))
+                assert run("archive-inventory", **archive_args) == b"replay_mismatch\n"
+            for malformed in (raw + b"0:", raw[:-1], b"0" + raw, raw[:-1] + b"x"):
+                archived.write_bytes(malformed)
+                assert run("archive-digest", **archive_args) == b"archive_digest\n"
+                assert run("archive-format", **archive_args) == b"archive_format\n"
             print(f"financial_graph_fixture={suffix or 'default'} graph={graph_digest} root={root}")
         memo = run("memo")
         verify_evidence(memo, b"17100", b"lower_percentile_shortcut", memo=True)

@@ -1,5 +1,6 @@
 import automat.financial_graph as G;
 import automat.financial_run as Run;
+import automat.financial_archive as Archive;
 import plugins.yieldcraft.hospitality_host as Host;
 import sdk.callable as SDK;
 import std.io.TextIO as IO;
@@ -190,9 +191,102 @@ fn check_empty(task:string)
     result["graph_digest"],Run.expectation(result));
   if !SDK.same(replay["status"],sx_string("ok")) { tool_fail("empty unknown replay failed"); }
 }
+fn copy_port(p:SDK.Port, name:string, states:i64) -> SDK.Port
+{
+  return record<SDK.Port>{name:sx_string(name),kind:p["kind"],major:p["major"],unit:p["unit"],
+    currency:p["currency"],states:states,max_bytes:p["max_bytes"]};
+}
+fn check_compose(task:string)
+{
+  let native = Host.native_graph();
+  let origin = Host.lookup(Host.normalize_key())["output"];
+  var exported = copy_port(origin,"upstream",origin["states"]);
+  if task == "compose-type" { exported = copy_port(origin,"upstream",5); }
+  let target = copy_port(origin,"transfer",origin["states"]);
+  let left = G.graph(G.remove(native["inputs"],"valuation"),
+    sx_cons(G.lookup(native["nodes"],"normalizer"),sx_nil()),
+    sx_cons(G.output(exported,"normalizer",sx_text(origin["name"])),sx_nil()));
+  let right = G.graph(sx_cons(SDK.port_entry(target),sx_nil()),
+    sx_cons(G.node("copy","test.copy@1","pure",sx_cons(G.edge("transfer","","transfer"),sx_nil())),sx_nil()),
+    sx_cons(G.output(origin,"copy",sx_text(origin["name"])),sx_nil()));
+  var wiring = sx_cons(G.link("transfer","upstream"),sx_nil());
+  if task == "compose-duplicate" { wiring = sx_cons(sx_head(wiring),wiring); }
+  if task == "compose-reference" { wiring = sx_cons(G.link("transfer","missing"),sx_nil()); }
+  var budget = Host.budget()+1;
+  if task == "compose-budget" { budget = Host.lookup(Host.normalize_key())["max_work"]; }
+  let composed = G.compose(left,right,wiring,"recommendation",budget,compose_lookup);
+  let status = sx_text(composed["status"]);
+  print("$status\n");
+  if status != "ok" { return; }
+  let pins = composed["prepared"];
+  let dig = sx_string(G.digest(sx_text(pins["canonical"])));
+  let ctx = record<Run.Context>{cutoff:sx_string("2026-11-20T10:00:00Z"),
+    strategy_digest:sx_string(G.digest("test composition"))};
+  let roots = sx_cons(Run.input("scenario",1,file("SCENARIO")),sx_cons(Run.input("offers",1,file("OFFERS")),sx_nil()));
+  let result = Run.execute_pinned(composed["graph"],roots,ctx,"recommendation",budget,compose_lookup,compose_call,dig);
+  if !SDK.same(result["status"],sx_string("ok")) || result["invocations"] != 2 { tool_fail("composed execution failed"); }
+  let outputs = result["outputs"];
+  let copied = SDK.value_bytes(G.at(G.lookup(outputs,sx_text(origin["name"])),2));
+  let upstream = SDK.value_bytes(G.at(G.lookup(outputs,"upstream"),2));
+  if !SDK.same(copied,upstream) { tool_fail("composition lost typed output"); }
+  print("joined\n");
+}
+fn compose_lookup(key:string) -> SDK.Descriptor
+{
+  let producer = Host.lookup(Host.normalize_key());
+  if key != "test.copy@1" { return Host.lookup(key); }
+  let origin = producer["output"];
+  let signature = copy_port(origin,"transfer",origin["states"]);
+  let digest = sx_string(G.digest("test.copy@1"));
+  let pin = record<SDK.Pin>{package_name:sx_string("test"),package_version:sx_string("1"),
+    handler_name:sx_string(key),handler_version:sx_string("1"),abi:1,code_digest:digest,policy_digest:digest};
+  return record<SDK.Descriptor>{enabled:true,pin:pin,role:sx_string("Transformer"),mode:sx_string("recommendation"),
+    effect:sx_string("pure"),inputs:sx_cons(SDK.port_entry(signature),sx_nil()),output:origin,max_work:1};
+}
+fn compose_call(pin:SDK.Pin, req:SDK.Request) -> SDK.Outcome
+{
+  if sx_text(pin["handler_name"]) != "test.copy@1" { return Host.call(pin,req); }
+  let value = sx_head(req["inputs"]);
+  return SDK.success(SDK.value_state(value),sx_text(SDK.value_bytes(value)));
+}
+fn check_archive(task:string)
+{
+  let graph = Host.native_graph();
+  var budget = Host.budget();
+  if task == "archive-capture" || task == "archive-reordered"
+  {
+    var roots = sx_cons(Run.input("scenario",1,file("SCENARIO")),
+      sx_cons(Run.input("offers",1,file("OFFERS")),sx_cons(Run.input("valuation",1,file("VALUATION")),sx_nil())));
+    if task == "archive-reordered" { roots = L.basis_list_rev(roots); }
+    let ctx = record<Run.Context>{cutoff:sx_string("2026-11-20T10:00:00Z"),
+      strategy_digest:Host.lookup(Host.decide_key())["pin"]["policy_digest"]};
+    let prepared = G.prepare(graph,"recommendation",budget,Host.lookup);
+    let captured = Archive.capture(graph,roots,ctx,"recommendation",budget,Host.lookup,Host.call,
+      sx_string(G.digest(sx_text(prepared["canonical"]))));
+    if !SDK.same(captured["result"]["status"],sx_string("ok")) { tool_fail("capture failed"); }
+    print(text_concat(sx_text(captured["digest"]),"\n"));
+    print(sx_text(captured["bytes"]));
+    return;
+  }
+  let raw = file("ARCHIVE");
+  var approved = sx_string(env("APPROVED"));
+  if task == "archive-format" || task == "archive-inventory" { approved = sx_string(G.digest(raw)); }
+  if task == "archive-replay"
+  {
+    report(Archive.replay(graph,raw,approved,"recommendation",budget,Host.lookup,Host.call));
+    return;
+  }
+  var mode = "recommendation";
+  var given = graph;
+  if task == "archive-mode" { mode = "analysis"; }
+  if task == "archive-binding" { given = changed_plan(graph,"memo"); budget = budget+1; }
+  report(Archive.replay(given,raw,approved,mode,budget,Host.lookup,forbid_call));
+}
 fn main() -> i64
 {
   let task = env("CASE");
+  if text_len(task) >= 8 && text_slice(task,0,8) == "compose-" { check_compose(task); return 0; }
+  if text_len(task) >= 8 && text_slice(task,0,8) == "archive-" { check_archive(task); return 0; }
   if task == "empty-unknown" || task == "empty-available" || task == "empty-root" || task == "empty-edge"
   {
     check_empty(task);

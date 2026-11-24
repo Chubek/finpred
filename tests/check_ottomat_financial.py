@@ -6,7 +6,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-from check_financial_graph import ROOT, FIX, compile_consumer
+from check_financial_graph import ROOT, FIX, compile_consumer, frames
 
 STRATEGY = ROOT / "tests/ottomat_financial_consumer/hospitality.ottomat"
 
@@ -23,12 +23,12 @@ def main():
         empty.mkdir()
         edited = work / "strategy.ottomat"
 
-        def run(exe, suffix="", *, source=raw, identity=compiler_id, case="native"):
+        def run(exe, suffix="", *, source=raw, identity=compiler_id, case="native", **extra):
             edited.write_bytes(source)
             env = {**os.environ, "CASE": case, "ROOT": str(ROOT), "STRATEGY": str(edited),
                    "COMPILER_ID": identity, "FINPRED_HOME": str(empty / "store"),
                    "SCENARIO": str(FIX / f"scenario{suffix}.csv"),
-                   "OFFERS": str(FIX / f"offers{suffix}.csv"), "VALUATION": str(FIX / "valuation.csv")}
+                   "OFFERS": str(FIX / f"offers{suffix}.csv"), "VALUATION": str(FIX / "valuation.csv"), **extra}
             r = subprocess.run([exe], env=env, cwd=empty, capture_output=True, timeout=15)
             assert r.returncode == 0 and not r.stderr and not list(empty.iterdir()), r
             return r.stdout
@@ -46,6 +46,20 @@ def main():
         alternate = accepted(reordered)
         assert alternate != first
         assert run(ott, case="changed-binding").splitlines()[-1] == b"graph_mismatch"
+        approval, bundle = run(ott, case="archive-capture").split(b"\n", 1)
+        alternate_approval, alternate_bundle = run(ott, case="archive-capture", source=reordered).split(b"\n", 1)
+        _, native_bundle = run(native, case="archive-capture").split(b"\n", 1)
+        assert frames(bundle) == [b"ottomat.financial-replay@1", compiler_id.encode(),
+                                  b"finpred.ottomat-financial-lowering@1", raw, native_bundle]
+        assert frames(alternate_bundle)[3:] == [reordered, native_bundle]
+        assert alternate_approval != approval
+        path = work / "ottomat.bundle"
+        path.write_bytes(bundle)
+        args = {"ARCHIVE": str(path), "APPROVED": approval.decode()}
+        assert run(ott, case="archive-replay", source=b"not the archived source", **args) == run(native)
+        assert run(ott, case="archive-reject", identity="sha256:" + "0" * 64, **args) == b"compiler_identity\n"
+        path.write_bytes(alternate_bundle)
+        assert run(ott, case="archive-reject", **args) == b"archive_digest\n"
 
         cases = (
             (raw.replace(b"ottomat 6", b"ottmat 6"), b"syntax"),

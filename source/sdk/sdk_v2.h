@@ -51,8 +51,27 @@ const finpred_sdk_descriptor_v2 *finpred_sdk_describe_v2(const finpred_sdk_plugi
  * Host supplies its own ceilings, dependency inventory and grants. No callbacks,
  * execution, handles to host resources or authority tokens are returned. */
 finpred_sdk_status finpred_sdk_check_v2(const finpred_sdk_plugin_v2 *plugin,
-                                       const finpred_sdk_use_v2 *use,
-                                       const finpred_sdk_host_v2 *host);
+                                        const finpred_sdk_use_v2 *use,
+                                        const finpred_sdk_host_v2 *host);
+
+/* Metadata-only typed port compatibility; no plugin lookup or invocation.
+ * Strings are caller-owned, immutable, NUL-terminated byte strings.
+ * "none" is an ordinary exact-match unit/currency, not a wildcard. */
+#define FINPRED_SDK_STATE_AVAILABLE UINT32_C(1)
+#define FINPRED_SDK_STATE_PARTIAL UINT32_C(2)
+#define FINPRED_SDK_STATE_UNKNOWN UINT32_C(4)
+#define FINPRED_SDK_STATE_STALE UINT32_C(8)
+#define FINPRED_SDK_STATE_REDACTED UINT32_C(16)
+
+typedef struct {
+    const char *name, *kind, *unit, *currency;
+    uint32_t major, states, max_bytes;
+} finpred_sdk_port_v2;
+
+/* INVALID for malformed signatures; INCOMPATIBLE for any mismatch.
+ * Names need not be equal. Producer state and byte bounds must fit the input. */
+finpred_sdk_status finpred_sdk_connect_ports_v2(const finpred_sdk_port_v2 *output,
+                                               const finpred_sdk_port_v2 *input);
 
 #ifdef __cplusplus
 }

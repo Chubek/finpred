@@ -70,6 +70,23 @@ fn connects(output:Port, input:Port) -> bool {
   }
   return true;
 }
+fn same_port(a:Port, b:Port) -> bool {
+  return same(a["name"],b["name"]) && same(a["kind"],b["kind"]) && a["major"] == b["major"]
+    && same(a["unit"],b["unit"]) && same(a["currency"],b["currency"])
+    && a["states"] == b["states"] && a["max_bytes"] == b["max_bytes"];
+}
+fn same_ports(a:sexpr, b:sexpr) -> bool {
+  var left = a;
+  var right = b;
+  var n = 0;
+  while sx_kind(left) == 3 && sx_kind(right) == 3 {
+    if n >= 16 || !same_port(decode_port(sx_head(left)),decode_port(sx_head(right))) { return false; }
+    left = sx_tail(left);
+    right = sx_tail(right);
+    n = n + 1;
+  }
+  return sx_kind(left) == 0 && sx_kind(right) == 0;
+}
 
 # On1x records are nominal and not sexpr members. Descriptor.inputs is a
 # proper list of port_entry values in declared order (at most 16).
@@ -189,7 +206,15 @@ fn invoke(pin:Pin, mode:string, request:Request, lookup:fn(string) -> Descriptor
   call:fn(Pin, Request) -> Outcome) -> Outcome {
   if !atom(pin["handler_name"],127) { return failure(1); }
   let d = resolve(sx_text(pin["handler_name"]),mode,lookup);
-  if !d["enabled"] { return failure(1); }
+  return invoke_resolved(pin,mode,request,d,call);
+}
+
+# Invoke using the exact trusted descriptor snapshot the host has checked.
+# Unlike invoke(), this does not run a second resolver callback.
+fn invoke_resolved(pin:Pin, mode:string, request:Request, d:Descriptor,
+  call:fn(Pin, Request) -> Outcome) -> Outcome {
+  if !atom(pin["handler_name"],127) || !valid_descriptor(d,mode,sx_text(pin["handler_name"]))
+  { return failure(1); }
   if !same_pin(pin,d["pin"]) { return failure(2); }
   if request["work"] < 1 || request["work"] > d["max_work"] { return failure(4); }
   if !atom(request["cutoff"],20) || !Date.utc_timestamp(sx_text(request["cutoff"]))

@@ -47,8 +47,30 @@ fn report(result:Run.Result)
 }
 fn main() -> i64
 {
-  let source = file("STRATEGY");
   let compiler = env("COMPILER_ID");
+  let task = env("CASE");
+  if task == "archive-replay" || task == "archive-reject"
+  {
+    let raw = file("ARCHIVE");
+    let expected = sx_string(env("APPROVED"));
+    if task == "archive-reject"
+    { report(OttRun.replay(raw,expected,"recommendation",Host.budget(),compiler,Host.lookup,forbid_call)); }
+    else { report(OttRun.replay(raw,expected,"recommendation",Host.budget(),compiler,Host.lookup,Host.call)); }
+    return 0;
+  }
+  let source = file("STRATEGY");
+  if task == "archive-capture"
+  {
+    let roots = sx_cons(Run.input("scenario",1,file("SCENARIO")),
+      sx_cons(Run.input("offers",1,file("OFFERS")),sx_cons(Run.input("valuation",1,file("VALUATION")),sx_nil())));
+    let ctx = record<Run.Context>{cutoff:sx_string("2026-11-20T10:00:00Z"),
+      strategy_digest:Host.lookup(Host.decide_key())["pin"]["policy_digest"]};
+    let captured = OttRun.capture(source,roots,ctx,"recommendation",Host.budget(),compiler,Host.lookup,Host.call);
+    if !SDK.same(captured["result"]["status"],sx_string("ok")) { tool_fail("Ottomat capture failed"); }
+    print(text_concat(sx_text(captured["digest"]),"\n"));
+    print(sx_text(captured["bytes"]));
+    return 0;
+  }
   let lowered = Ott.lower(source,"recommendation",Host.budget(),compiler,Host.lookup);
   let status = sx_text(lowered["status"]);
   let line = lowered["line"];
@@ -79,7 +101,7 @@ fn main() -> i64
     sx_cons(Run.input("offers",1,file("OFFERS")),sx_cons(Run.input("valuation",1,file("VALUATION")),sx_nil())));
   let ctx = record<Run.Context>{cutoff:sx_string("2026-11-20T10:00:00Z"),
     strategy_digest:Host.lookup(Host.decide_key())["pin"]["policy_digest"]};
-  if env("CASE") == "changed-binding"
+  if task == "changed-binding"
   {
     let rejected = OttRun.execute(lowered,roots,ctx,"recommendation",Host.budget(),changed_lookup,forbid_call);
     if sx_kind(rejected["graph_digest"]) != 0 || sx_kind(rejected["artifacts"]) != 0

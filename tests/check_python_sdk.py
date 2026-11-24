@@ -14,10 +14,20 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def check_binding(prefix):
     sys.path.insert(0, str(prefix / "lib/finpred/python"))
-    from finpred_sdk import Host, Limits, SDK, SDKError, Status, Use
+    from finpred_sdk import Host, Limits, Port, SDK, SDKError, Status, Use, ValueState
 
     lib = prefix / "lib/libfinpred_sdk.so"
     sdk = SDK(lib)
+    producer = Port("out", "test.value", 1, "minor", "EUR",
+                    ValueState.AVAILABLE | ValueState.PARTIAL, 32)
+    consumer = replace(producer, name="in", max_bytes=64, states=31)
+    assert sdk.connect_ports(producer, consumer) == Status.OK
+    assert sdk.connect_ports(consumer, producer) == Status.INCOMPATIBLE
+    for change in ({"major": 2}, {"kind": "other"}, {"unit": "other"},
+                   {"currency": "none"}, {"states": ValueState.AVAILABLE}, {"max_bytes": 31}):
+        assert sdk.connect_ports(producer, replace(consumer, **change)) == Status.INCOMPATIBLE
+    for change in ({"name": "é" * 32}, {"states": 32}, {"max_bytes": 2000001}):
+        assert sdk.connect_ports(producer, replace(consumer, **change)) == Status.INVALID
     for package in ("dragnet", "poindexter", "yieldcraft"):
         manifest = json.loads((ROOT / "plugins" / package / "plugin.json").read_bytes())
         name = manifest["name"]
@@ -66,6 +76,8 @@ def check_binding(prefix):
         lambda: sdk.check(name, replace(use, sdk_version=2**32 + 1), host),
         lambda: sdk.check(name, use, replace(host, ceilings=Limits(csv_rows=-1))),
         lambda: sdk.check(name, use, replace(host, grants=("x",) * 17)),
+        lambda: sdk.connect_ports(producer, replace(consumer, kind="test\0other")),
+        lambda: sdk.connect_ports(producer, replace(consumer, major=-1)),
     ):
         try:
             call()

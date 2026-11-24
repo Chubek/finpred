@@ -2,10 +2,10 @@
 
 import ctypes as ct
 from dataclasses import dataclass, fields
-from enum import IntEnum
+from enum import IntEnum, IntFlag
 from pathlib import Path
 
-__all__ = ["Descriptor", "Host", "Limits", "SDK", "SDKError", "Status", "Use"]
+__all__ = ["Descriptor", "Host", "Limits", "Port", "SDK", "SDKError", "Status", "Use", "ValueState"]
 
 
 class Status(IntEnum):
@@ -14,6 +14,25 @@ class Status(IntEnum):
     INCOMPATIBLE = 2
     NOT_FOUND = 3
     DENIED = 4
+
+
+class ValueState(IntFlag):
+    AVAILABLE = 1
+    PARTIAL = 2
+    UNKNOWN = 4
+    STALE = 8
+    REDACTED = 16
+
+
+@dataclass(frozen=True)
+class Port:
+    name: str
+    kind: str
+    major: int
+    unit: str
+    currency: str
+    states: int | ValueState
+    max_bytes: int
 
 
 class SDKError(RuntimeError):
@@ -103,6 +122,12 @@ class _Host(ct.Structure):
     _fields_ = [("dependencies", _Names), ("grants", _Names), ("ceilings", _Limits)]
 
 
+class _Port(ct.Structure):
+    _fields_ = [(key, ct.c_char_p) for key in ("name", "kind", "unit", "currency")] + [
+        (key, ct.c_uint32) for key in ("major", "states", "max_bytes")
+    ]
+
+
 def _text(value: str) -> bytes:
     if not isinstance(value, str):
         raise TypeError("SDK text requires str")
@@ -137,6 +162,14 @@ def _read_names(value: _Names) -> tuple[str, ...]:
     return tuple(value.items[i].decode("utf-8") for i in range(value.count))
 
 
+def _port(p: Port) -> _Port:
+    states = p.states
+    if isinstance(states, ValueState):
+        states = int(states)
+    return _Port(_text(p.name), _text(p.kind), _text(p.unit), _text(p.currency),
+                 _u32(p.major), _u32(states), _u32(p.max_bytes))
+
+
 class SDK:
     """Open an explicitly selected, trusted ABI v2 shared library.
 
@@ -158,6 +191,10 @@ class SDK:
         self._check = self._library.finpred_sdk_check_v2
         self._check.argtypes = (ct.c_void_p, ct.POINTER(_Use), ct.POINTER(_Host))
         self._check.restype = ct.c_int32
+        self._connect_ports = getattr(self._library, "finpred_sdk_connect_ports_v2", None)
+        if self._connect_ports is not None:
+            self._connect_ports.argtypes = (ct.POINTER(_Port), ct.POINTER(_Port))
+            self._connect_ports.restype = ct.c_int32
 
     def _handle(self, name: str) -> tuple[Status, ct.c_void_p]:
         handle = ct.c_void_p()
@@ -193,3 +230,9 @@ class SDK:
         limits = _Limits(*(_u32(getattr(host.ceilings, key)) for key in _LIMIT_KEYS))
         inventory = _Host(_names(host.dependencies), _names(host.grants), limits)
         return Status(self._check(handle, ct.byref(request), ct.byref(inventory)))
+
+    def connect_ports(self, output: Port, input: Port) -> Status:
+        """Check a typed edge's metadata, without resolving or invoking handlers."""
+        if self._connect_ports is None:
+            return Status.INCOMPATIBLE
+        return Status(self._connect_ports(ct.byref(_port(output)), ct.byref(_port(input))))
