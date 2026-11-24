@@ -1,0 +1,78 @@
+# Pure permission check. Only a trusted host may supply the grant and clock.
+import core.csv as CSV;
+import core.format as F;
+import dragnet.public_feeds as Feeds;
+
+record Grant {
+  provider:sexpr, cutoff:sexpr, capture:sexpr, body:sexpr, decode:sexpr,
+  terms:sexpr, retention:sexpr
+}
+
+fn hash_id(bytes:string) -> string { return text_concat("blake3:",Feeds.digest(bytes)); }
+
+fn check_hash_id(id:string)
+{
+  if text_len(id) != 71 || text_slice(id,0,7) != "blake3:"
+  { tool_fail("feed permission: invalid digest"); }
+  for i in 7 .. 71 {
+    let c = text_byte(id,i);
+    if !((c >= 48 && c <= 57) || (c >= 97 && c <= 102))
+    { tool_fail("feed permission: invalid digest"); }
+  }
+}
+
+fn admit(policy:string, checked_at:string) -> Grant
+{
+  if Feeds.framed(policy,512) != 2 || CSV.line(policy,0) != "dragnet.feed-permission@1"
+  { tool_fail("feed permission: invalid grant framing"); }
+  let row = CSV.line(policy,1);
+  CSV.require_width(row,10);
+  let provider = CSV.field(row,0);
+  if provider != "ecb" && provider != "eurostat" { tool_fail("feed permission: unknown provider"); }
+  if CSV.field(row,1) != "offline_analysis" { tool_fail("feed permission: purpose denied"); }
+  let cutoff = CSV.field(row,2);
+  let as_of = Feeds.seconds(cutoff);
+  let now = Feeds.seconds(checked_at);
+  let start = Feeds.seconds(CSV.field(row,3));
+  let end = Feeds.seconds(CSV.field(row,4));
+  if as_of > now || start > now || now >= end
+  { tool_fail("feed permission: grant not current"); }
+  let capture = CSV.field(row,5);
+  let body = CSV.field(row,6);
+  let decode = CSV.field(row,7);
+  check_hash_id(capture); check_hash_id(body); check_hash_id(decode);
+  let terms = CSV.field(row,8);
+  let retention = CSV.field(row,9);
+  Feeds.policy_ref(terms); Feeds.policy_ref(retention);
+  return record<Grant>{provider:sx_string(provider),cutoff:sx_string(cutoff),
+    capture:sx_string(capture),body:sx_string(body),decode:sx_string(decode),
+    terms:sx_string(terms),retention:sx_string(retention)};
+}
+
+fn check_capture(grant:Grant, capture:string)
+{
+  if hash_id(capture) != sx_text(grant["capture"])
+  { tool_fail("feed permission: capture digest mismatch"); }
+  let row = Feeds.capture_meta(capture);
+  if CSV.field(row,0) != sx_text(grant["provider"]) || CSV.field(row,1) != "offline_snapshot" ||
+     CSV.field(row,4) != sx_text(grant["terms"]) || CSV.field(row,5) != sx_text(grant["retention"])
+  { tool_fail("feed permission: capture scope mismatch"); }
+  let received = Feeds.seconds(CSV.field(row,2));
+  let ingested = Feeds.seconds(CSV.field(row,3));
+  if received > ingested || ingested > Feeds.seconds(sx_text(grant["cutoff"]))
+  { tool_fail("feed permission: capture outside cutoff"); }
+}
+
+fn evidence(grant:Grant, policy:string, checked_at:string, snapshot:string) -> string
+{
+  let out = buffer_new();
+  buffer_append(out,"{\"format\":\"dragnet.offline-feed-evidence@1\"");
+  Feeds.append(out,"purpose","\"offline_analysis\"");
+  Feeds.append(out,"permission_digest",F.q(hash_id(policy)));
+  Feeds.append(out,"decode_digest",F.q(sx_text(grant["decode"])));
+  Feeds.append(out,"checked_at",F.q(checked_at));
+  Feeds.append(out,"external_execution","false");
+  Feeds.append(out,"snapshot",text_slice(snapshot,0,text_len(snapshot)-1));
+  buffer_append(out,"}\n");
+  return buffer_text(out);
+}

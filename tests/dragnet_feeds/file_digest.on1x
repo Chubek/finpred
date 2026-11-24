@@ -1,0 +1,12 @@
+import std.io.TextIO as IO;
+import std.os.CommandLine as Env;
+import std.crypto.crypto as Crypto;
+
+fn main() -> i64
+{
+  let bytes = IO.basis_text_io_input_all(Env.basis_command_line_get_env("DRAGNET_TEST_HASH_FILE"));
+  let (status,hash) = Crypto.basis_crypto_blake3(bytes);
+  if status != 0 { return 1; }
+  IO.basis_text_io_print(text_concat("blake3:",hash));
+  return 0;
+}

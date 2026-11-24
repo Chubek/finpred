@@ -7,6 +7,11 @@ and replay do not dispatch external effects. Local artifact publication is
 not external action approval. This design admits no connector, credential
 source, execution worker, or production validation.
 
+In particular, the [Dragnet offline feed permission check](../plugins/dragnet/OFFLINE_EVIDENCE.md)
+is scoped to local evidence normalization. Its output explicitly marks
+`external_execution=false`. Neither its grant nor its evidence can stand in
+for any human decision, operation claim, or financial action authority below.
+
 ## Records and trust
 
 Keep the action control plane separate from the graph, SDK and run formats.

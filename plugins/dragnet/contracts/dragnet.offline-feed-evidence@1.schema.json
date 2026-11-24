@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://finpred.local/dragnet/dragnet.offline-feed-evidence@1.schema.json",
+  "title": "Dragnet evidence of an offline analysis permission check",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "purpose", "permission_digest", "decode_digest", "checked_at", "external_execution", "snapshot"],
+  "properties": {
+    "format": {"const": "dragnet.offline-feed-evidence@1"},
+    "purpose": {"const": "offline_analysis"},
+    "permission_digest": {"$ref": "dragnet.public-feed@1.schema.json#/$defs/digest"},
+    "decode_digest": {"$ref": "dragnet.public-feed@1.schema.json#/$defs/digest"},
+    "checked_at": {"$ref": "dragnet.public-feed@1.schema.json#/$defs/utc"},
+    "external_execution": {"const": false},
+    "snapshot": {
+      "$ref": "dragnet.public-feed@1.schema.json",
+      "properties": {"mode": {"const": "offline_snapshot"}}
+    }
+  }
+}

@@ -3,6 +3,9 @@
 This is a **statically linked, local and offline** source-dispatch boundary.
 It does not provide an SDK v3, a dynamic loader, an OS sandbox, a durable
 store, an action gateway, or authorization to retrieve any network resource.
+The separate [offline feed evidence host](OFFLINE_EVIDENCE.md) requires a
+trusted-host permission descriptor and leaves this compatibility protocol
+unchanged.
 
 The implementation lives at:
 
