@@ -37,7 +37,7 @@ curl -fsS http://127.0.0.1:8788/healthz
 .venv/bin/python -m pytest -q
 ```
 
-The server listens only on loopback. `/mcp` uses the official MCP Python SDK's v1 stateless Streamable HTTP with JSON responses; `/editor` serves the standalone highlighter. There is no unauthenticated MCP endpoint. The dependency constraints are in `requirements.in` and `pyproject.toml`; a complete transitive, hash-locked production dependency set still needs to be generated on the target platform. `mcp==1.30.0` retains the v1 API and includes security fixes missing from 1.28.1, including [HTTP client credential forwarding](https://github.com/advisories/GHSA-5h93-6whr-6q8j) and [server-side bearer-token audience handling](https://github.com/advisories/GHSA-w4fh-qvv9-3v23). Review security advisories again before exposing the service.
+The server listens only on loopback. `/mcp` uses the official MCP Python SDK's v1 stateless Streamable HTTP with JSON responses; `/editor` serves the standalone highlighter. Hand-written configs require authentication by default; the deployment script defaults to the limited public demo described below. The dependency constraints are in `requirements.in` and `pyproject.toml`; a complete transitive, hash-locked production dependency set still needs to be generated on the target platform. `mcp==1.30.0` retains the v1 API and includes security fixes missing from 1.28.1, including [HTTP client credential forwarding](https://github.com/advisories/GHSA-5h93-6whr-6q8j) and [server-side bearer-token audience handling](https://github.com/advisories/GHSA-w4fh-qvv9-3v23). Review security advisories again before exposing the service.
 
 ## Remote deployment
 
@@ -48,7 +48,10 @@ Run `deploy.sh` **on your host PC**, not on the VPS. This is a fresh-install scr
 ./deploy.sh root@204.168.206.175 --dry-run
 
 # Quick Tunnel: cloudflared must already be installed from a trusted package source.
-./deploy.sh root@204.168.206.175 -p 8788 -r cloudflared --ssh --systemd
+./deploy.sh root@204.168.206.175 -p 8788 -r cloudflared --ssh --systemd --no-auth
+
+# Full service with bearer authentication:
+./deploy.sh root@204.168.206.175 -r cloudflared --auth
 
 # Custom DNS (point the domain to the VPS first; ports 80/443 must be reachable):
 ./deploy.sh root@204.168.206.175 -r nginx -d foo.com --email ops@foo.com
@@ -74,11 +77,15 @@ Run `deploy.sh` **on your host PC**, not on the VPS. This is a fresh-install scr
 | `--repo`, `--ref` | HTTPS Git repository ending `.git`, immutable full commit SHA. Defaults to assessed revision (or parent FinPRED checkout's HEAD). Push commits before deploying. |
 | `--email` | Required for Nginx/Apache Certbot |
 | `--cloudflared-config` | Existing remote named tunnel config and credentials readable only by root and the service account |
-| `--token-out` | Private cleartext bearer credential path on deploying PC; refuses overwrite |
-| `--no-daemon` | Do not autostart offline demo daemon |
+| `--no-auth` | Default: public synthetic demo; no token or daemon |
+| `--auth` | Require authentication and enable the full tool set |
+| `--token-out` | With `--auth` only: private local token path; refuses overwrite |
+| `--no-daemon` | With `--auth`: do not autostart the offline Dragnet daemon |
 | `--dry-run` | No connection, installation or credential generation |
 
-SSH strict host-key verification is enabled: establish the correct host key before first use. The upload contains only explicitly listed addon source files and the **hash** of the generated random bearer credential. The remote installer fetches the pinned FinPRED commit and nested gitlinks, builds under the unprivileged service account, then makes the installed executable tree root-owned and read-only to the account. The host PC validates the reported destination against the configured domain or Quick Tunnel hostname pattern, then checks TLS directly and performs MCP initialization and `tools/list`, without following redirects or printing the remote transcript. It prints the final URL only on successful probe. The initial admin token remains in the local `yieldcraft-mcp.token` file (0600); prefer `--token-out` with a path outside the checkout and do not share it with ordinary client users.
+SSH strict host-key verification is enabled: establish the correct host key before first use. The upload contains only explicitly listed addon source files and, in `--auth` mode, the **hash** of the generated random bearer credential. The remote installer fetches the pinned FinPRED commit and nested gitlinks, builds under the unprivileged service account, then makes the installed executable tree root-owned and read-only to the account. The host PC validates the reported destination against the configured domain or Quick Tunnel hostname pattern, then checks TLS directly and performs MCP initialization and `tools/list` using the selected mode, without following redirects or printing the remote transcript. It prints the final URL only on successful probe. With `--auth`, the initial admin token remains in the local `yieldcraft-mcp.token` file (0600); prefer `--token-out` with a path outside the checkout and do not share it with ordinary client users.
+
+**Public demo:** Connect to the printed `/mcp` URL without an `Authorization` header. Anyone who can reach that URL can use the demo. It exposes native `yieldcraft_demo` for the checked-in synthetic `contribution`, `market`, and `multiroom` fixtures, plus Ottomat highlighting, preflight, and the built-in strategy list. Pricing runs are not retained. Uploads, saved runs, live acquisition, native strategy execution, and daemon controls are not exposed. Use `--auth` for private data or the full workflow. This switch affects fresh installs only; it does not update or switch the mode of an existing installation.
 
 For a named tunnel, an operator can pre-create a dedicated, empty `yieldcraft-mcp` group and give root-owned config and credential files mode `0640` with that group. Keep their ancestor directories non-writable by other accounts and traversable by the service. The installer checks access as the service account. Nginx and Apache proxy the MCP service only in their HTTPS virtual hosts, including during certificate bootstrap.
 
@@ -94,7 +101,7 @@ The endpoint is `https://<domain>/mcp`, not `/sse`. Use a client supporting Stre
 {"url":"https://foo.com/mcp","headers":{"Authorization":"Bearer <token>"}}
 ```
 
-For ChatGPT/Claude remote connectors that require OAuth, configure an **external** standards-compatible authorization server. The addon implements protected-resource metadata and RFC 7662 access-token introspection, checking active status, issuer, exact resource audience, expiration and subject, then deriving a private project identity from issuer+subject. Its OAuth client secret is read from a private service-readable file. The provider must implement the discovery, registration/client onboarding, consent, PKCE and resource/audience behavior required by the target client. This addon does not issue tokens or implement an authorization server. OAuth/client onboarding has not been tested with ChatGPT or Claude. Do not expose the server anonymously to make a connector work. Static credentials are loaded on startup; rotate the file and restart, using distinct projects and scopes for each client. Do not expose the administrative token to autonomous clients unless needed.
+For ChatGPT/Claude remote connectors that require OAuth, configure an **external** standards-compatible authorization server in authenticated mode. The addon implements protected-resource metadata and RFC 7662 access-token introspection, checking active status, issuer, exact resource audience, expiration and subject, then deriving a private project identity from issuer+subject. Its OAuth client secret is read from a private service-readable file. The provider must implement the discovery, registration/client onboarding, consent, PKCE and resource/audience behavior required by the target client. This addon does not issue tokens or implement an authorization server. OAuth/client onboarding has not been tested with ChatGPT or Claude. Do not expose private workflows anonymously to make a connector work. Static credentials are loaded on startup; rotate the file and restart, using distinct projects and scopes for each client. Do not expose the administrative token to autonomous clients unless needed.
 
 ## Tools and artifacts
 

@@ -1,5 +1,6 @@
 finpred_root = "/opt/yieldcraft-mcp/finpred"
 state_dir = "/var/lib/yieldcraft-mcp/projects"
+auth_required = true
 token_file = "/etc/yieldcraft-mcp/tokens.json"
 bind = "127.0.0.1"
 port = 8788

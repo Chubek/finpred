@@ -10,28 +10,30 @@ Usage: deploy.sh USER@HOST [-p|--port 8788] [-r|--reverse-proxy cloudflared|ngin
   [--ssh-port 22] [--identity FILE] [--telnet-port 23]
   [--repo https://github.com/Chubek/finpred.git] [--ref FULL_COMMIT_SHA]
   [--email ADDRESS] [--cloudflared-config /remote/path.yml]
-  [--token-out FILE] [--no-daemon] [--dry-run]
+  [--no-auth|--auth] [--token-out FILE] [--no-daemon] [--dry-run]
 Deploy a fresh Debian/Ubuntu Linux x86-64 service. SSH is the default.
 Telnet is supported only through a separately secured loopback management tunnel.
 Nginx/Apache2 require a domain pointing at the VPS and --email for Certbot.
 Cloudflared without a domain uses a temporary Quick Tunnel (JSON HTTP, not SSE).
 For a named tunnel, provision DNS and credentials on the VPS and pass its config.
 Its private files can use mode 0640 with a dedicated, empty yieldcraft-mcp group.
-A bearer credential is generated locally; only its hash is uploaded.
+Default: --no-auth serves a public synthetic demo without stored runs or live access.
+Use --auth for the full service. It generates a local bearer credential and uploads only its hash.
 The script refuses to overwrite an existing deployment or token file.
 HELP
 }
 die(){ echo "deploy: $*" >&2; exit 2; }
 [[ $# -gt 0 ]] || { usage; exit 2; }; [[ $1 != -h && $1 != --help ]] || { usage; exit 0; }
 target=$1; shift
-port=8788 proxy=cloudflared domain='' protocol=ssh init=systemd ssh_port=22 telnet_port=23 identity='' email='' cf_config='' repo=https://github.com/Chubek/finpred.git ref=957e9671a14460200318e6285728c2f9904efa8c dry=0 daemon=1 token_out="$PWD/yieldcraft-mcp.token"
+port=8788 proxy=cloudflared domain='' protocol=ssh init=systemd ssh_port=22 telnet_port=23 identity='' email='' cf_config='' repo=https://github.com/Chubek/finpred.git ref=957e9671a14460200318e6285728c2f9904efa8c dry=0 daemon=1 auth=0 token_out_set=0 token_out="$PWD/yieldcraft-mcp.token"
 # Prefer the checked-out parent repository if this addon is inside it.
 if top=$(git -C "$HERE" rev-parse --show-toplevel 2>/dev/null) && [[ -f "$top/bin/finpred" ]]; then ref=$(git -C "$top" rev-parse HEAD); fi
 while (($#)); do
  case "$1" in
  -p|--port|-r|--reverse-proxy|-d|--domain|--ssh-port|--telnet-port|--identity|--repo|--ref|--email|--cloudflared-config|--token-out)
   [[ $# -ge 2 && -n $2 ]] || die "$1 requires a value"; key=$1; val=$2; shift 2
-  case "$key" in -p|--port) port=$val;; -r|--reverse-proxy) proxy=$val;; -d|--domain) domain=$val;; --ssh-port) ssh_port=$val;; --telnet-port) telnet_port=$val;; --identity) identity=$val;; --repo) repo=$val;; --ref) ref=$val;; --email) email=$val;; --cloudflared-config) cf_config=$val;; --token-out) token_out=$val;; esac;;
+   case "$key" in -p|--port) port=$val;; -r|--reverse-proxy) proxy=$val;; -d|--domain) domain=$val;; --ssh-port) ssh_port=$val;; --telnet-port) telnet_port=$val;; --identity) identity=$val;; --repo) repo=$val;; --ref) ref=$val;; --email) email=$val;; --cloudflared-config) cf_config=$val;; --token-out) token_out=$val; token_out_set=1;; esac;;
+  --auth) auth=1; shift;; --no-auth) auth=0; shift;;
  --ssh|--telnet) protocol=${1#--}; shift;; --systemd|--sysvinit) init=${1#--}; shift;; --no-daemon) daemon=0; shift;; --dry-run) dry=1; shift;; -h|--help) usage; exit 0;; *) die "unknown argument: $1";; esac
 done
 [[ $target =~ ^[a-zA-Z_][a-zA-Z0-9_-]{0,31}@[a-zA-Z0-9][a-zA-Z0-9.-]{0,252}$ ]] || die 'expected USER@HOST (IPv4/DNS)'
@@ -45,9 +47,18 @@ if [[ $proxy != cloudflared ]]; then [[ -n $domain ]] || die 'domain required'; 
 if [[ $proxy == nginx || $proxy == apache2 ]]; then [[ $email =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]] || die 'valid --email required for Certbot'; fi
 if [[ $proxy == cloudflared && -n $domain ]]; then [[ $cf_config =~ ^/[a-zA-Z0-9_./-]+$ && $cf_config != *..* ]] || die 'named tunnel needs --cloudflared-config remote path'; else [[ -z $cf_config ]] || die 'cloudflared config is for a named tunnel only'; fi
 if [[ $protocol == telnet ]]; then [[ ${target#*@} == 127.0.0.1 || ${target#*@} == localhost ]] || die 'Telnet requires a separately secured loopback tunnel; use SSH for public VPS'; fi
-[[ $token_out != *[[:cntrl:]]* ]] || die 'token output path must not contain control characters'
-if ((dry)); then printf 'target=%s protocol=%s init=%s port=%s proxy=%s domain=%s ref=%s daemon=%s\n' "$target" "$protocol" "$init" "$port" "$proxy" "${domain:-dynamic}" "$ref" "$daemon"; exit 0; fi
-[[ ! -e $token_out && ! -L $token_out ]] || die 'token output already exists'
+if ((auth)); then
+ [[ $token_out != *[[:cntrl:]]* ]] || die 'token output path must not contain control characters'
+else
+ (( ! token_out_set )) || die '--token-out requires --auth'
+ daemon=0
+fi
+if ((dry)); then printf 'target=%s protocol=%s init=%s port=%s proxy=%s domain=%s ref=%s daemon=%s auth=%s\n' "$target" "$protocol" "$init" "$port" "$proxy" "${domain:-dynamic}" "$ref" "$daemon" "$auth"; exit 0; fi
+if ((auth)); then
+ [[ ! -e $token_out && ! -L $token_out ]] || die 'token output already exists'
+else
+ printf '%s\n' 'deploy: public demo mode; anyone with access to the URL can call the demo tools. Use --auth for private workloads.' >&2
+fi
 command -v python3 >/dev/null || die 'python3 required on host PC'
 stage=$(mktemp -d)
 trap 'rm -rf -- "$stage"' EXIT
@@ -68,10 +79,16 @@ for file in "${payload_files[@]}"; do
  mkdir -p "$stage/addon/$(dirname -- "$file")"
  install -m 0600 -- "$HERE/$file" "$stage/addon/$file"
 done
-python3 "$HERE/deployment/token.py" --cleartext "$token_out" --records "$stage/tokens.json" --admin
+payload_entries=(addon)
+probe_args=()
+if ((auth)); then
+ python3 "$HERE/deployment/token.py" --cleartext "$token_out" --records "$stage/tokens.json" --admin
+ payload_entries+=(tokens.json)
+ probe_args+=("$token_out")
+fi
 # No plaintext token in archive, SSH commands, or logs.
-tar -C "$stage" -czf "$stage/payload.tar.gz" addon tokens.json
-args=("$port" "$proxy" "${domain:--}" "$init" "$repo" "$ref" "${email:--}" "${cf_config:--}" "$daemon")
+tar -C "$stage" -czf "$stage/payload.tar.gz" "${payload_entries[@]}"
+args=("$port" "$proxy" "${domain:--}" "$init" "$repo" "$ref" "${email:--}" "${cf_config:--}" "$daemon" "$auth")
 if [[ $protocol == ssh ]]; then
  sshargs=(-T -p "$ssh_port" -o StrictHostKeyChecking=yes -o ConnectTimeout=15 -o ForwardAgent=no -o ClearAllForwardings=yes); [[ -z $identity ]] || sshargs+=(-i "$identity")
  remote='set +x; set -eu; umask 077; t=$(mktemp -d); trap '\''rm -rf -- "$t"'\'' 0; trap '\''exit 1'\'' HUP INT TERM; tar --no-same-owner --no-same-permissions -xzf - -C "$t"; if [ "$(id -u)" = 0 ]; then bash "$t/addon/deployment/install.sh" "$t"';
@@ -85,5 +102,6 @@ else
  url=$(python3 "$HERE/deployment/telnet_transport.py" "$target" "$telnet_port" "$stage/payload.tar.gz" "${args[@]}") ||
   die 'Telnet transport or remote install failed; inspect the VPS locally'
 fi
-python3 "$HERE/deployment/probe.py" "$url" "$token_out" || die 'remote service installed but public MCP probe failed; inspect VPS service logs'
-printf '\nMCP_SERVER_URL=%s\nTOKEN_FILE=%s\n' "$url" "$token_out"
+python3 "$HERE/deployment/probe.py" "$url" "${probe_args[@]}" || die 'remote service installed but public MCP probe failed; inspect VPS service logs'
+printf '\nMCP_SERVER_URL=%s\n' "$url"
+if ((auth)); then printf 'TOKEN_FILE=%s\n' "$token_out"; fi

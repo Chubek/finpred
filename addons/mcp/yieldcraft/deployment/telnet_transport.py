@@ -74,7 +74,7 @@ def main(argv):
     except ImportError:
         print('Telnet transport requires pexpect', file=sys.stderr)
         return 2
-    if len(argv) != 12:
+    if len(argv) != 13:
         print('Telnet transport requires connection, archive and installation arguments', file=sys.stderr)
         return 2
     try:

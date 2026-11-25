@@ -1,9 +1,10 @@
 from __future__ import annotations
-import json, logging, base64
+import asyncio, json, logging, base64, tempfile
 from contextlib import asynccontextmanager
 from functools import wraps
 from inspect import iscoroutinefunction
 from pathlib import Path
+from typing import Literal
 from .config import Config
 from .auth import Authenticator, Guard, principal, SCOPES
 from .artifacts import Store, identifier
@@ -16,6 +17,7 @@ from .highlight import html
 
 UI=Path(__file__).parent/'ui'/'editor.html'
 UI_URI='ui://yieldcraft/ottomat-editor.html'
+PUBLIC_TOOLS=frozenset({'ottomat_list_strategies','ottomat_validate','ottomat_highlight'})
 log=logging.getLogger(__name__)
 
 def _redact_io(fn):
@@ -59,15 +61,45 @@ def build_app(cfg:Config):
     from mcp.server.transport_security import TransportSecuritySettings
     from mcp.types import ToolAnnotations
     from starlette.responses import JSONResponse, HTMLResponse
-    rt=Runtime(cfg); auth=Authenticator(cfg)
+    rt=Runtime(cfg); auth=Authenticator(cfg) if cfg.auth_required else None
     # Guard validates Host and Origin for every HTTP route, including Quick Tunnel.
-    mcp=FastMCP('Yieldcraft MCP',instructions='Analysis only. Never publish prices, book rooms or trade. Use exact artifact IDs; distinguish observational, experimental and hypothetical evidence.',stateless_http=True,json_response=True,streamable_http_path='/mcp',transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False))
-    tool=_safe_callbacks(mcp.tool)
+    instructions=('Analysis only. Never publish prices, book rooms or trade. Use exact artifact IDs; distinguish observational, experimental and hypothetical evidence.'
+                  if cfg.auth_required else 'Public demo. Use only synthetic data. Pricing runs use fixed fixtures and are not retained.')
+    mcp=FastMCP('Yieldcraft MCP',instructions=instructions,stateless_http=True,json_response=True,streamable_http_path='/mcp',transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False))
+    register_tool=_safe_callbacks(mcp.tool)
+    def tool(*args,**kwargs):
+        def register(fn):
+            if cfg.auth_required or fn.__name__ in PUBLIC_TOOLS: return register_tool(*args,**kwargs)(fn)
+            return fn
+        return register
     resource=_safe_callbacks(mcp.resource)
-    prompt=_safe_callbacks(mcp.prompt)
+    prompt=_safe_callbacks(mcp.prompt) if cfg.auth_required else lambda: lambda fn: fn
     read=ToolAnnotations(readOnlyHint=True,openWorldHint=False)
     local=ToolAnnotations(readOnlyHint=False,destructiveHint=False,idempotentHint=False,openWorldHint=False)
     def p(*s): return principal(*s).project
+    if not cfg.auth_required:
+        demo_slots=asyncio.Semaphore(cfg.max_concurrent)
+
+        @register_tool(annotations=read)
+        async def yieldcraft_demo(case:Literal['contribution','market','multiroom']='contribution')->dict:
+            """Run native pricing on synthetic fixtures only; no input files are accepted and no run is retained."""
+            p('research:read')
+            if demo_slots.locked(): raise ValueError('demo busy; retry later')
+            async with demo_slots:
+                with tempfile.TemporaryDirectory(prefix='.demo-',dir=cfg.state_dir) as folder:
+                    demo=Runtime(cfg.model_copy(update={'state_dir':Path(folder)}))
+                    fixtures=cfg.finpred_root/'fixtures'
+                    def fixture(name):
+                        return demo.store.put('demo',(fixtures/name).read_bytes())
+                    suffix='_multiroom' if case=='multiroom' else ''
+                    evidence=({'demand':fixture('demand_contribution.csv')} if case=='contribution'
+                              else {'offers':fixture(f'offers{suffix}.csv')})
+                    result=await demo.engine.recommend(
+                        'demo',fixture(f'scenario{suffix}.csv'),fixture('valuation.csv'),**evidence)
+                    summary=result['summary']
+                    return {'case':case,'synthetic':True,'published':False,
+                            'recommendation_minor':summary['recommendation_minor'],
+                            'currency':summary['currency'],'reason':summary['reason']}
     @tool(annotations=local)
     def artifact_upload(text:str,encoding:str='utf8')->dict:
         """Save exact input bytes in your project. Use UTF-8 or base64. Not validated financial evidence."""
@@ -201,7 +233,9 @@ def build_app(cfg:Config):
     @tool(annotations=read)
     async def ottomat_validate(source:str)->dict:
         """Preflight source; exact built-ins recognized, general native lowering not yet available."""
-        return await rt.ottomat.native_validate(p('research:read'),source)
+        project=p('research:read')
+        if not cfg.auth_required: return rt.ottomat.validate(source.encode())
+        return await rt.ottomat.native_validate(project,source)
     @tool(annotations=read,meta={'ui':{'resourceUri':UI_URI}})
     def ottomat_highlight(source:str)->dict:
         """Return escaped highlighted HTML and source. Highlighting does not establish validity."""

@@ -3,13 +3,19 @@
 set +x
 set -Eeuo pipefail
 umask 077
-[[ $(id -u) = 0 && $# = 10 ]] || { echo 'root and 10 arguments required' >&2; exit 2; }
-stage=$1 port=$2 proxy=$3 domain=$4 init=$5 repo=$6 ref=$7 email=$8 cf_config=$9 daemon=${10}
+[[ $(id -u) = 0 && $# = 11 ]] || { echo 'root and 11 arguments required' >&2; exit 2; }
+stage=$1 port=$2 proxy=$3 domain=$4 init=$5 repo=$6 ref=$7 email=$8 cf_config=$9 daemon=${10} auth=${11}
 base=/opt/yieldcraft-mcp; etc=/etc/yieldcraft-mcp; state=/var/lib/yieldcraft-mcp; logs=/var/log/yieldcraft-mcp; user=yieldcraft-mcp
 fail(){ echo "install: $*" >&2; exit 2; }
 [[ $port =~ ^[1-9][0-9]{0,4}$ && $port -le 65535 && $ref =~ ^[a-f0-9]{40}$ && $repo =~ ^https://[A-Za-z0-9.-]+/[A-Za-z0-9_./-]+\.git$ && $repo != *..* ]] || fail 'invalid deployment arguments'
 [[ $domain == - || $domain =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] || fail 'invalid domain'
 [[ $init == systemd || $init == sysvinit ]] || fail 'invalid service manager'; [[ $daemon == 0 || $daemon == 1 ]] || fail 'invalid daemon option'
+[[ $auth == 0 || $auth == 1 ]] || fail 'invalid authentication option'
+if ((auth)); then
+ [[ -f $stage/tokens.json && ! -L $stage/tokens.json ]] || fail 'missing token records'
+else
+ [[ $daemon == 0 && ! -e $stage/tokens.json && ! -L $stage/tokens.json ]] || fail 'public demo cannot use daemon or token records'
+fi
 case $proxy in cloudflared|nginx|apache2|caddy) ;; *) fail 'unknown proxy';; esac
 [[ $proxy == cloudflared || $domain != - ]] || fail 'domain required'
 if [[ $proxy == nginx || $proxy == apache2 ]]; then [[ $email =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] || fail 'Certbot email required'; fi
@@ -59,21 +65,33 @@ runuser -u "$user" -- env HOME="$state" python3 -m venv "$base/venv"
 runuser -u "$user" -- env HOME="$state" "$base/venv/bin/pip" install --disable-pip-version-check "$base/addon" >&2
 # Runtime account must not modify executable code or operator config.
 chown -R root:"$user" "$base"; chmod -R u+rwX,g+rX,go-w,o-rwx "$base"
-install -m 0600 -o "$user" -g "$user" "$stage/tokens.json" "$etc/tokens.json"
-install -d -m 0700 -o "$user" -g "$user" "$state/projects"
+if ((auth)); then
+ state_dir="$state/projects"
+ install -m 0600 -o "$user" -g "$user" "$stage/tokens.json" "$etc/tokens.json"
+else
+ state_dir="$state/public-demo"
+fi
+install -d -m 0700 -o "$user" -g "$user" "$state_dir"
 cat > "$etc/config.toml" <<CFG
 finpred_root = "$base/finpred"
-state_dir = "$state/projects"
-token_file = "$etc/tokens.json"
+state_dir = "$state_dir"
 bind = "127.0.0.1"
 port = $port
 enable_live = false
 allowed_hosts = []
 offer_hosts = []
 allow_llm = false
+CFG
+if ((auth)); then
+ cat >> "$etc/config.toml" <<CFG
+auth_required = true
+token_file = "$etc/tokens.json"
 daemon_config = "$base/finpred/plugins/dragnet/examples/Dragnet.json"
 daemon_autostart = $( [[ $daemon == 1 ]] && echo true || echo false )
 CFG
+else
+ printf 'auth_required = false\n' >> "$etc/config.toml"
+fi
 if [[ $domain != - ]]; then printf 'public_url = "https://%s/mcp"\n' "$domain" >> "$etc/config.toml"; fi
 chown root:"$user" "$etc/config.toml"; chmod 0640 "$etc/config.toml"
 cat > "$base/run-mcp" <<RUN

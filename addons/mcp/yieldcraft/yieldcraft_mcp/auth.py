@@ -24,6 +24,7 @@ class Principal:
     def require(self, *scopes):
         if not set(scopes)<=self.scopes: raise PermissionError('insufficient scope')
 current: ContextVar[Principal|None]=ContextVar('principal',default=None)
+PUBLIC_DEMO=Principal('public-demo',frozenset({'research:read'}))
 def principal(*scopes):
     p=current.get()
     if p is None: raise PermissionError('authenticated principal required')
@@ -167,9 +168,12 @@ class Guard:
         if method not in ('POST','GET','DELETE'): return await reject(405,'method denied')
         if self.limit.locked(): return await reject(429,'server busy')
         async with self.limit:
-            header=hs.pop(b'authorization','')
-            match=BEARER.fullmatch(header) if len(header)<=8200 else None
-            p=await self.auth.verify(match[1]) if match else None
+            if self.cfg.auth_required:
+                header=hs.pop(b'authorization','')
+                match=BEARER.fullmatch(header) if len(header)<=8200 else None
+                p=await self.auth.verify(match[1]) if match else None
+            else:
+                p=PUBLIC_DEMO
             if p is None:
                 challenge='Bearer'
                 if self.cfg.oauth_issuer: challenge+=f' resource_metadata="{self.cfg.public_url.removesuffix("/mcp")}/.well-known/oauth-protected-resource/mcp"'

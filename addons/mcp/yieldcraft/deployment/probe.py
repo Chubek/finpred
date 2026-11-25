@@ -56,7 +56,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def probe(url, token):
+def probe(url, token=None):
     destination(url)
     # Require ordinary TLS verification, but do not enable SSLKEYLOGFILE.
     tls = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
@@ -69,12 +69,14 @@ def probe(url, token):
         payload = {'jsonrpc': '2.0', 'method': method, 'params': params}
         if ident is not None:
             payload['id'] = ident
-        req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers={
-            'Authorization': 'Bearer ' + token,
+        headers = {
             'Content-Type': 'application/json',
             'Accept': 'application/json, text/event-stream',
             'MCP-Protocol-Version': '2025-11-25',
-        })
+        }
+        if token is not None:
+            headers['Authorization'] = 'Bearer ' + token
+        req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers=headers)
         with opener.open(req, timeout=15) as r:
             if ident is None:
                 return
@@ -96,27 +98,30 @@ def probe(url, token):
         raise RuntimeError('invalid MCP server info')
     call('notifications/initialized', {}, None)
     result = call('tools/list', {}, 2)
-    if not any(t['name'] == 'yieldcraft_optimize_contribution' for t in result['tools']):
+    expected = 'yieldcraft_demo' if token is None else 'yieldcraft_optimize_contribution'
+    if not any(t['name'] == expected for t in result['tools']):
         raise RuntimeError('required tool missing')
     print('[OK] MCP initialization and tools/list verified')
 
 
 def main(argv):
-    if len(argv) != 2:
-        print('Public probe requires a URL and token file', file=sys.stderr)
+    if len(argv) not in (1, 2):
+        print('Public probe requires a URL and optional token file', file=sys.stderr)
         return 2
-    url, path = argv
+    url = argv[0]
     if url == '--candidate':
+        if len(argv) != 2:
+            return 2
         try:
-            print(candidate_url(sys.stdin, path))
+            print(candidate_url(sys.stdin, argv[1]))
             return 0
         except ValueError:
             return 1
     try:
         destination(url)
-        token = read_token(path)
+        token = read_token(argv[1]) if len(argv) == 2 else None
     except (OSError, ValueError):
-        print('Public probe requires a valid HTTPS URL and private token file', file=sys.stderr)
+        print('Public probe requires a valid HTTPS URL and, if supplied, a private token file', file=sys.stderr)
         return 1
     for i in range(12):
         try:

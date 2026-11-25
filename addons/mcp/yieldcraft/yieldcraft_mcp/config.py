@@ -2,7 +2,7 @@ from __future__ import annotations
 import re, tomllib
 from ipaddress import IPv6Address
 from pathlib import Path
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 from urllib.parse import urlsplit
 
 DNS = re.compile(r'(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\Z')
@@ -38,7 +38,8 @@ class Config(BaseModel):
     model_config = ConfigDict(extra='forbid', frozen=True)
     finpred_root: Path
     state_dir: Path
-    token_file: Path
+    auth_required: StrictBool = True
+    token_file: Path | None = None
     bind: str = '127.0.0.1'
     port: int = Field(8788, ge=1, le=65535)
     public_url: str | None = None
@@ -78,6 +79,11 @@ class Config(BaseModel):
         if self.public_url and https_url(self.public_url).path!='/mcp': raise ValueError('public_url must end in /mcp')
         if any(https_url(u).path for u in self.allowed_origins): raise ValueError('allowed_origins must be HTTPS origins without paths')
         oauth=(self.oauth_issuer,self.oauth_introspection_url,self.oauth_client_id,self.oauth_secret_file)
+        if self.auth_required and self.token_file is None: raise ValueError('authenticated mode requires token_file')
+        if not self.auth_required and (self.token_file is not None or any(v is not None for v in oauth)
+                                       or self.enable_live or self.allow_llm or self.allowed_hosts or self.offer_hosts
+                                       or self.daemon_config is not None or self.daemon_autostart):
+            raise ValueError('public demo cannot use credentials, live acquisition or daemon configuration')
         if any(v is not None for v in oauth) and not all((*oauth,self.public_url)): raise ValueError('complete OAuth introspection configuration required')
         if self.oauth_client_id is not None and not re.fullmatch(r'[!-9;-~]{1,1024}',self.oauth_client_id):
             raise ValueError('invalid OAuth client ID')

@@ -69,10 +69,10 @@ exec "{sys.executable}" "$@"
     env = dict(os.environ, PATH=f'{commands}:{os.environ["PATH"]}', MOCK_DIR=str(tmp_path),
                MOCK_SECRET=SENTINEL, MOCK_STATUS=f'MCP_CANDIDATE_URL={URL}', TMPDIR=str(tmp_path))
 
-    def run(*args, **settings):
+    def run(*args, authenticated=True, **settings):
+        auth_args = ['--auth', '--token-out', str(tmp_path / 'token')] if authenticated else []
         return subprocess.run(['bash', '-x', str(addon / 'deploy.sh'), 'root@127.0.0.1',
-                               '-r', 'caddy', '-d', 'service.example', '--token-out',
-                               str(tmp_path / 'token'), *args],
+                               '-r', 'caddy', '-d', 'service.example', *auth_args, *args],
                               cwd=addon, env=dict(env, **settings), capture_output=True,
                               text=True, timeout=20)
 
@@ -103,6 +103,26 @@ def test_deploy_only_sends_runtime_source_and_hashed_token(mocked_ssh, tmp_path)
     assert token not in observed and SENTINEL not in observed
     assert result.stdout.count('MCP_SERVER_URL=') == 1 and f'MCP_SERVER_URL={URL}\n' in result.stdout
     assert 'unverified.example' not in observed
+
+
+@pytest.mark.parametrize('flags', [(), ('--no-auth',)])
+def test_public_deployment_runs_without_token_records(mocked_ssh, tmp_path, flags):
+    run, addon = mocked_ssh
+    old_token = addon / 'yieldcraft-mcp.token'
+    old_token.write_text(SENTINEL)
+    dry_run = run(*flags, '--dry-run', authenticated=False)
+    assert dry_run.returncode == 0 and 'daemon=0 auth=0' in dry_run.stdout
+    assert run(*flags, '--token-out', str(old_token), authenticated=False).returncode != 0
+    result = run(*flags, authenticated=False)
+    assert result.returncode == 0, result.stderr
+    assert old_token.read_text() == SENTINEL and not (tmp_path / 'token').exists()
+    with tarfile.open(tmp_path / 'uploaded.tar.gz') as tar:
+        assert 'tokens.json' not in tar.getnames()
+        assert all(not name.endswith('.token') for name in tar.getnames())
+    ssh_args, *_ = json.loads((tmp_path / 'ssh.json').read_text())
+    assert "'0' '0'" in ssh_args[-1]
+    assert (tmp_path / 'probe-argv').read_text().splitlines()[1:] == [URL]
+    assert f'MCP_SERVER_URL={URL}\n' in result.stdout and 'TOKEN_FILE=' not in result.stdout
 
 
 @pytest.mark.parametrize('settings,probed', [
@@ -141,8 +161,9 @@ def test_quick_tunnel_candidates_use_one_exact_trycloudflare_hostname(deployment
             candidate_url([f'MCP_CANDIDATE_URL=https://{host}/mcp'], '-')
 
 
-def test_probe_sends_token_only_in_verified_direct_https_and_never_prints_response(
-        deployment_module, monkeypatch, capsys):
+@pytest.mark.parametrize('token', [None, SENTINEL])
+def test_probe_uses_verified_direct_https_and_never_prints_response(
+        deployment_module, monkeypatch, capsys, token):
     probe = deployment_module('probe')
     monkeypatch.setenv('SSLKEYLOGFILE', '/not-a-real-keylog-file')
     methods = []
@@ -152,12 +173,14 @@ def test_probe_sends_token_only_in_verified_direct_https_and_never_prints_respon
         headers['Content-Type'] = 'application/json'
 
     def fake_open(req, *, timeout):
-        assert req.full_url == URL and req.get_header('Authorization') == 'Bearer ' + SENTINEL
+        assert req.full_url == URL
+        assert req.get_header('Authorization') == ('Bearer ' + token if token is not None else None)
         payload = json.loads(req.data)
         method = payload['method']
         methods.append(method)
+        tool = 'yieldcraft_demo' if token is None else 'yieldcraft_optimize_contribution'
         contents = {'initialize': {'serverInfo': {'name': SENTINEL}}, 'notifications/initialized': {},
-                    'tools/list': {'tools': [{'name': 'yieldcraft_optimize_contribution'}]}}
+                    'tools/list': {'tools': [{'name': tool}]}}
         return Response(json.dumps({'id': payload.get('id'), 'result': contents[method]}).encode())
 
     def fake_opener(redirects, proxy, https):
@@ -168,7 +191,7 @@ def test_probe_sends_token_only_in_verified_direct_https_and_never_prints_respon
         return SimpleNamespace(open=fake_open)
 
     monkeypatch.setattr(probe.urllib.request, 'build_opener', fake_opener)
-    probe.probe(URL, SENTINEL)
+    probe.probe(URL, token)
     assert methods == ['initialize', 'notifications/initialized', 'tools/list']
     assert capsys.readouterr().out == '[OK] MCP initialization and tools/list verified\n'
     with pytest.raises(ValueError):
@@ -228,7 +251,7 @@ def test_telnet_never_prints_echoes_or_diagnostics(
     archive = tmp_path / 'archive'
     archive.write_bytes(b'mocked payload')
     status = transport.main(['root@localhost', '12345', str(archive),
-                             '8788', 'caddy', 'service.example', 'systemd', 'repo', 'ref', '-', '-', '0'])
+                             '8788', 'caddy', 'service.example', 'systemd', 'repo', 'ref', '-', '-', '0', '0'])
     captured = capsys.readouterr()
     assert SENTINEL not in captured.out + captured.err
     if failure is None:
