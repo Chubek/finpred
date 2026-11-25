@@ -6,9 +6,9 @@ name = "finpred-yieldcraft-mcp"
 version = "0.1.0"
 description = "Authenticated MCP orchestration for FinPRED Yieldcraft and Dragnet"
 requires-python = ">=3.11"
-dependencies = ["mcp==1.28.1", "uvicorn>=0.34,<1", "httpx>=0.28,<1", "pydantic>=2.10,<3", "pygments>=2.19,<3"]
+dependencies = ["mcp==1.30.0", "uvicorn>=0.34,<1", "httpx>=0.28,<1", "pydantic>=2.10,<3", "pygments>=2.19,<3"]
 [project.optional-dependencies]
-test = ["pytest>=8,<10", "pytest-asyncio>=0.25,<2"]
+test = ["pytest>=8,<10", "pytest-asyncio>=0.25,<2", "PyYAML>=6.0.3,<7"]
 [project.scripts]
 yieldcraft-mcp = "yieldcraft_mcp.__main__:main"
 [project.entry-points."pygments.lexers"]

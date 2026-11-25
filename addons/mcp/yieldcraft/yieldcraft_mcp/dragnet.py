@@ -1,17 +1,29 @@
 from __future__ import annotations
-import asyncio, json, logging, os, stat
+import asyncio, logging, os, stat
 from pathlib import Path
 from .artifacts import safe_json,canonical_json
 from .models import Search, now, utc
-from .processes import EngineError
+from .processes import DRAGNET_AUTH, OPENAI_BASE_URL, EngineError
 log=logging.getLogger(__name__)
+OPERATOR_PROJECT='default'
+CONFIG_MAX=262144
+
+def json_object(raw):
+    try: value=safe_json(raw)
+    except (ValueError,RecursionError): raise EngineError('invalid Dragnet JSON') from None
+    if not isinstance(value,dict): raise EngineError('invalid Dragnet JSON')
+    return value
+
+def write_private(path,raw):
+    fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+    with os.fdopen(fd,'wb') as f: f.write(raw)
 
 async def frames(reader,maximum=2_000_000):
     """Recognize framing only. FinPRED verifies the actual digest and chronology."""
     data=bytearray(); pages=0
     while line:=await reader.readline():
         if not line.endswith(b'\n') or len(data)+len(line)>maximum: raise EngineError('invalid or oversized Dragnet frame')
-        v=safe_json(line); fmt=v.get('format')
+        fmt=(v:=json_object(line)).get('format')
         if not data:
             if fmt!='dragnet.batch@1': raise EngineError('missing Dragnet header')
         elif fmt=='dragnet.page@1':
@@ -42,64 +54,97 @@ class Dragnet:
             args+=['--allow-llm']
         return args
     def credentials(self,config):
-        # Operator config may use a private env_file; no client credential injection.
         if config.get('extraction')!='gpt': return None
-        return {k:os.environ[k] for k in ('OPENAI_API_KEY','OPENAI_ACCESS_TOKEN','OPENAI_MODEL','OPENAI_ORG_ID','OPENAI_PROJECT_ID') if k in os.environ}
+        e={k:os.environ[k] for k in ('OPENAI_MODEL',) if k in os.environ}
+        if config.get('transport')=='https':
+            e.update({k:os.environ[k] for k in DRAGNET_AUTH if k in os.environ})
+            # Process env takes precedence over native dotenv/inline settings.
+            # A search-host grant must not also become an LLM-endpoint grant.
+            e['OPENAI_BASE_URL']=OPENAI_BASE_URL
+        return e
     async def verify(self,project,path,cutoff):
         utc(cutoff)
         return (await self.runner.run(project,'finpred','dragnet-inspect',path,cutoff)).decode('utf-8')
     async def admit(self,project,data):
-        header=safe_json(data.splitlines()[0]); requested=header.get('requested_as_of'); cutoff=now() if requested=='now' else utc(requested)
+        header=json_object(data.partition(b'\n')[0]); requested=header.get('requested_as_of'); cutoff=now() if requested=='now' else utc(requested)
         with self.runner.workspace(project) as folder:
             path=Path(folder)/'batch.jsonl'; path.write_bytes(data)
             inspect=await self.verify(project,path,cutoff)
         return {'artifact_sha256':self.store.put(project,data),'verified_cutoff':cutoff,'inspection':inspect,'published':False}
-    def operator_config(self):
+    def operator_config(self,project):
+        if project!=OPERATOR_PROJECT: raise PermissionError('operator Dragnet configuration belongs to another project')
         path=self.cfg.daemon_config
-        if path is None or not path.is_file(): raise ValueError('operator daemon_config not configured')
-        if path.stat().st_size>262144: raise ValueError('daemon configuration too large')
-        v=safe_json(path.read_bytes()); self.grants(v); return path,v
+        if path is None: raise ValueError('operator daemon_config not configured')
+        try:
+            fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+            with os.fdopen(fd,'rb') as f:
+                info=os.fstat(f.fileno())
+                if not stat.S_ISREG(info.st_mode): raise ValueError('invalid operator Dragnet configuration')
+                raw=f.read(CONFIG_MAX+1)
+        except OSError: raise ValueError('operator daemon_config unavailable') from None
+        if len(raw)>CONFIG_MAX: raise ValueError('daemon configuration too large')
+        v=json_object(raw)
+        # Preserve native restrictions on the source before making a 0600 copy.
+        if 'environment' in v and (info.st_uid!=os.geteuid() or info.st_mode&0o077):
+            raise ValueError('inline environment requires private service-owned configuration')
+        self.grants(v)
+        return raw,v
+    def config_snapshot(self,folder,raw,config):
+        path=Path(folder)/'Dragnet.json'
+        if config.get('extraction')=='gpt' and 'env_file' not in config:
+            # Do not allow native's implicit checkout-relative .env fallback.
+            empty=path.with_name('empty.env')
+            write_private(empty,b'')
+            raw=canonical_json({**config,'env_file':str(empty)})
+            if len(raw)>CONFIG_MAX: raise ValueError('daemon configuration too large')
+        write_private(path,raw)
+        return path
     async def search(self,project,request:Search):
         config=request.config(); args=self.grants(config)
         with self.runner.workspace(project) as folder:
-            path=Path(folder)/'Dragnet.json'; path.write_bytes(canonical_json(config))
+            path=self.config_snapshot(folder,canonical_json(config),config)
             data=await self.runner.run(project,'dragnet','--handoff','--config',path,*args,extra=self.credentials(config),cwd=folder)
         return await self.admit(project,data)
     async def one_offline(self,project):
-        path,v=self.operator_config()
+        raw,v=self.operator_config(project)
         if v.get('transport')!='offline': raise PermissionError('operator config is not offline')
-        data=await self.runner.run(project,'dragnet','--handoff','--config',path,cwd=self.cfg.finpred_root)
+        with self.runner.workspace(project) as folder:
+            path=self.config_snapshot(folder,raw,v)
+            data=await self.runner.run(project,'dragnet','--handoff','--config',path,extra=self.credentials(v),cwd=self.cfg.finpred_root)
         return await self.admit(project,data)
-    async def _loop(self,project,path,config):
-        stderr=None
+    async def _loop(self,project,raw,config):
         try:
-            self.proc=await self.runner.spawn(project,'dragnet',['--daemon','--handoff','--config',path,*self.grants(config)],self.credentials(config),self.cfg.finpred_root)
-            async def drain():
-                while await self.proc.stderr.read(65536): pass
-            stderr=asyncio.create_task(drain())
-            async for data in frames(self.proc.stdout,min(2_000_000,self.cfg.max_artifact_bytes)):
-                self.last=await self.admit(project,data); self.cycles+=1
-            code=await self.proc.wait()
-            if code: raise EngineError(f'Dragnet exited {code}')
+            with self.runner.workspace(project) as folder:
+                path=self.config_snapshot(folder,raw,config)
+                proc=await self.runner.spawn(project,'dragnet',['--daemon','--handoff','--config',path,*self.grants(config)],self.credentials(config),self.cfg.finpred_root)
+                self.proc=proc
+                async def drain():
+                    while await proc.stderr.read(65536): pass
+                stderr=asyncio.create_task(drain())
+                try:
+                    async for data in frames(proc.stdout,min(2_000_000,self.cfg.max_artifact_bytes)):
+                        self.last=await self.admit(project,data); self.cycles+=1
+                    if await proc.wait(): raise EngineError('Dragnet exited unsuccessfully')
+                finally:
+                    try: await self.runner.stop(proc)
+                    finally:
+                        stderr.cancel(); await asyncio.gather(stderr,return_exceptions=True)
+                        self.proc=None
         except asyncio.CancelledError: raise
-        except Exception as e:
-            self.error=type(e).__name__; log.warning('Dragnet stopped: %s',self.error)
-        finally:
-            if self.proc: await self.runner.stop(self.proc)
-            if stderr: stderr.cancel(); await asyncio.gather(stderr,return_exceptions=True)
-            self.proc=None
+        except Exception:
+            self.error='acquisition_failed'; log.warning('Dragnet acquisition failed')
     async def start(self,project):
         async with self.lock:
+            if project!=OPERATOR_PROJECT: raise PermissionError('operator Dragnet configuration belongs to another project')
             if self.task and not self.task.done():
-                if self.owner!=project: raise PermissionError('daemon belongs to another project')
                 return self.status(project)
-            path,c=self.operator_config(); self.owner=project; self.last=None; self.error=None; self.cycles=0
-            self.task=asyncio.create_task(self._loop(project,path,c)); return self.status(project)
+            raw,c=self.operator_config(project); self.owner=project; self.last=None; self.error=None; self.cycles=0
+            self.task=asyncio.create_task(self._loop(project,raw,c)); return self.status(project)
     async def stop(self,project,shutdown=False):
         async with self.lock:
-            if self.owner not in (None,project) and not shutdown: raise PermissionError('daemon belongs to another project')
+            if project!=OPERATOR_PROJECT and not shutdown: raise PermissionError('operator Dragnet configuration belongs to another project')
             if self.task and not self.task.done(): self.task.cancel(); await asyncio.gather(self.task,return_exceptions=True)
             self.task=None; return self.status(project)
     def status(self,project):
-        if self.owner not in (None,project): return {'running':bool(self.task and not self.task.done()),'owned_by_current_project':False}
+        if project!=OPERATOR_PROJECT: return {'running':False,'owned_by_current_project':False}
         return {'running':bool(self.task and not self.task.done()),'owned_by_current_project':True,'cycles':self.cycles,'last_capture':self.last,'error':self.error}

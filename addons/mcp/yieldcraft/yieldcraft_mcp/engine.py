@@ -28,19 +28,22 @@ class Engine:
             p=Path(f)/'scenario.csv'; p.write_bytes(raw)
             # Native scenario digest helper also checks scenario parsing where supported; full pricing validates again.
             out=await self.runner.run(project,'yieldcraft-demand','scenario-digest',p)
-        return {'artifact_sha256':d,'native_scenario_digest':out.decode().strip(),'validation':'native digest helper; full semantic validation occurs during pricing'}
+        try: digest=identifier(out.rstrip(b'\n').decode('ascii'))
+        except ValueError: raise EngineError('invalid native scenario digest') from None
+        return {'artifact_sha256':d,'native_scenario_digest':digest,'validation':'native digest helper; full semantic validation occurs during pricing'}
     def valuation(self,project,valuation:Valuation): return {'artifact_sha256':self.store.put(project,valuation.csv())}
     async def recommend(self,project,scenario,valuation,*,demand=None,offers=None,capture=None,profile='scenario'):
         if sum(x is not None for x in (demand,offers,capture))!=1: raise ValueError('supply exactly one evidence type')
+        identifier(scenario); identifier(valuation)
         if profile not in MARKET: raise ValueError('unknown market profile')
-        if demand and profile!='scenario': raise ValueError('market profile cannot apply to contribution')
+        if demand is not None and profile!='scenario': raise ValueError('market profile cannot apply to contribution')
         with self.runner.workspace(project) as f:
             files=self.inputs(project,f,scenario=scenario,valuation=valuation,demand=demand,offers=offers,capture=capture)
             args=['--scenario',files['scenario'],'--valuation',files['valuation']]; extra={}
-            if demand: args+=['--demand',files['demand']]
+            if demand is not None: args+=['--demand',files['demand']]
             else:
                 args+=['--strategy',self.cfg.finpred_root/'strategies'/MARKET[profile]]
-                if offers: extra['FINPRED_OFFERS']=str(files['offers'])
+                if offers is not None: extra['FINPRED_OFFERS']=str(files['offers'])
                 else: args+=['--capture',files['capture']]
             raw=await self.runner.run(project,'yieldcraft',*args,extra=extra)
         fields={}
@@ -49,7 +52,7 @@ class Engine:
                 k,v=line.split('=',1); fields[k]=v
         run=identifier(fields.get('run_id',''))
         if fields.get('published')!='false': raise EngineError('unexpected publication status')
-        return self.result(project,raw,run_id=run,summary=fields,objective='contribution' if demand else 'market_positioning',input_sha256={'scenario':scenario,'valuation':valuation,'demand':demand,'offers':offers,'capture':capture})
+        return self.result(project,raw,run_id=run,summary=fields,objective='contribution' if demand is not None else 'market_positioning',input_sha256={'scenario':scenario,'valuation':valuation,'demand':demand,'offers':offers,'capture':capture})
     async def estimate(self,project,scenario,exposures,panel=False):
         with self.runner.workspace(project) as f:
             files=self.inputs(project,f,scenario=scenario,exposures=exposures)

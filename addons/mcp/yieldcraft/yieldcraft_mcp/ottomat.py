@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import Field
 from .models import Strict
 from .engine import MARKET
-from .artifacts import identifier
+from .processes import EngineError
 
 WORD=r'[a-z][a-z0-9_-]{0,31}'
 REF=rf'{WORD}(?:\.{WORD})?'
@@ -13,6 +13,16 @@ CONTRACT=rf'{WORD}(?:\.{WORD})+@[1-9][0-9]*'
 HANDLER=rf'{WORD}(?:\.{WORD})*@[1-9][0-9]*'
 SCALAR={'scalar-spread':'scalar-spread.ottomat','scalar-select':'scalar-select.ottomat','scalar-midpoint':'scalar-midpoint.ottomat'}
 BUILTINS={**MARKET,**SCALAR,'contribution':'contribution.ottomat'}
+BLAKE3=re.compile(rb'blake3:[0-9a-f]{64}\Z')
+# These are the native status codes from ottomat.financial/financial_run and
+# automat.financial_graph/financial_archive. Do not forward arbitrary stdout
+# as diagnostic text, including for native failures reported with exit 0.
+LOWERING=frozenset(b'ok size compiler_identity syntax denied port duplicate_id unknown_handler duplicate_import node undeclared_import binding emit output version budget graph_shape descriptor_mismatch unknown_reference cycle edge_type'.split())
+GRAPH_STATUS=LOWERING|frozenset(b'lowering archive_size archive_digest archive_format graph_mismatch input replay_mismatch pin_mismatch invalid_request invalid_output handler_failure'.split())
+
+def native_digests(*fields):
+    if any(not BLAKE3.fullmatch(field) for field in fields): raise EngineError('invalid native Ottomat response')
+    return tuple(field.decode('ascii') for field in fields)
 
 def match(pattern,value):
     if not re.fullmatch(pattern,value): raise ValueError('invalid Ottomat token')
@@ -96,8 +106,15 @@ class Ottomat:
         with self.runner.workspace(project) as f:
             path=Path(f)/'strategy.ottomat'; path.write_bytes(source.encode()); env.update(YC_TASK='validate',YC_SOURCE=str(path))
             raw=await self.runner.run(project,'ottomat-bridge',extra=env)
-        lines=raw.decode().splitlines(); status,line,col=lines[0].split()
-        return {'status':status,'line':int(line),'column':int(col),'native_validated':status=='ok','graph_digest':lines[1] if status=='ok' else None,'source_digest':lines[2] if status=='ok' else None,'bridge_sha256':env['YC_BRIDGE_SHA256']}
+        lines=raw.splitlines()
+        fields=lines[0].split(b' ') if lines else []
+        if len(fields)!=3 or fields[0] not in LOWERING or any(not re.fullmatch(rb'[0-9]{1,4}',n) for n in fields[1:]):
+            raise EngineError('invalid native Ottomat response')
+        status,line,col=fields
+        ok=status==b'ok'
+        if len(lines)!=(3 if ok else 1): raise EngineError('invalid native Ottomat response')
+        graph,source_digest=native_digests(*lines[1:]) if ok else (None,None)
+        return {'status':status.decode('ascii'),'line':int(line),'column':int(col),'native_validated':ok,'graph_digest':graph,'source_digest':source_digest,'bridge_sha256':env['YC_BRIDGE_SHA256']}
     async def execute_graph(self,project,source_id,roots,cutoff):
         from .models import utc
         utc(cutoff); source=self.store.read(project,source_id).decode('ascii'); validation=await self.native_validate(project,source)
@@ -110,17 +127,25 @@ class Ottomat:
                 match(WORD,name); path=Path(f)/f'root-{i}'; path.write_bytes(self.store.read(project,digest)); env[f'YC_NAME_{i}']=name; env[f'YC_FILE_{i}']=str(path)
             raw=await self.runner.run(project,'ottomat-bridge',extra=env)
         status,_,rest=raw.partition(b'\n')
-        if status!=b'ok': raise ValueError('native graph rejected execution: '+status.decode()[:80])
-        digest,graph,archive=rest.split(b'\n',2)
-        return {'archive_sha256':self.store.put(project,archive),'native_archive_digest':digest.decode(),'graph_digest':graph.decode(),'bridge_sha256':env['YC_BRIDGE_SHA256'],'published':False}
+        if status!=b'ok':
+            if status in GRAPH_STATUS: raise EngineError('native graph rejected execution: '+status.decode('ascii'))
+            raise EngineError('native graph rejected execution')
+        fields=rest.split(b'\n',2)
+        if len(fields)!=3 or not fields[2]: raise EngineError('invalid native Ottomat response')
+        digest,graph=native_digests(*fields[:2])
+        return {'archive_sha256':self.store.put(project,fields[2]),'native_archive_digest':digest,'graph_digest':graph,'bridge_sha256':env['YC_BRIDGE_SHA256'],'published':False}
     async def replay_graph(self,project,archive_id,expected):
         if not re.fullmatch(r'blake3:[0-9a-f]{64}',expected): raise ValueError('expected native archive digest required')
         env=self.bridge_env(); env.update(YC_TASK='replay',YC_EXPECTED=expected)
         with self.runner.workspace(project) as f:
             path=Path(f)/'archive'; path.write_bytes(self.store.read(project,archive_id)); env['YC_ARCHIVE']=str(path)
             raw=await self.runner.run(project,'ottomat-bridge',extra=env)
-        lines=raw.decode().splitlines()
-        return {'status':lines[0],'replay_ok':lines[0]=='ok','graph_digest':lines[1] if len(lines)>1 else None,'published':False}
+        lines=raw.splitlines()
+        if not lines or lines[0] not in GRAPH_STATUS: raise EngineError('invalid native Ottomat response')
+        ok=lines[0]==b'ok'
+        if len(lines)!=(2 if ok else 1): raise EngineError('invalid native Ottomat response')
+        graph=native_digests(lines[1])[0] if ok else None
+        return {'status':lines[0].decode('ascii'),'replay_ok':ok,'graph_digest':graph,'published':False}
     async def scalar(self,project,profile,first,second,budget=16):
         if profile not in SCALAR or any(type(x) is not int or not 0<=x<=10**12 for x in (first,second)) or not 1<=budget<=16: raise ValueError('invalid scalar request')
         # Only built-in pure scalar files, not user-supplied source. Internal env allowlist.

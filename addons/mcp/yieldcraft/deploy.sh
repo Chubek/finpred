@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Run from a host PC. No remote command is executed in --dry-run.
+set +x
 set -Eeuo pipefail
 umask 077
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -15,6 +16,7 @@ Telnet is supported only through a separately secured loopback management tunnel
 Nginx/Apache2 require a domain pointing at the VPS and --email for Certbot.
 Cloudflared without a domain uses a temporary Quick Tunnel (JSON HTTP, not SSE).
 For a named tunnel, provision DNS and credentials on the VPS and pass its config.
+Its private files can use mode 0640 with a dedicated, empty yieldcraft-mcp group.
 A bearer credential is generated locally; only its hash is uploaded.
 The script refuses to overwrite an existing deployment or token file.
 HELP
@@ -43,24 +45,45 @@ if [[ $proxy != cloudflared ]]; then [[ -n $domain ]] || die 'domain required'; 
 if [[ $proxy == nginx || $proxy == apache2 ]]; then [[ $email =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]] || die 'valid --email required for Certbot'; fi
 if [[ $proxy == cloudflared && -n $domain ]]; then [[ $cf_config =~ ^/[a-zA-Z0-9_./-]+$ && $cf_config != *..* ]] || die 'named tunnel needs --cloudflared-config remote path'; else [[ -z $cf_config ]] || die 'cloudflared config is for a named tunnel only'; fi
 if [[ $protocol == telnet ]]; then [[ ${target#*@} == 127.0.0.1 || ${target#*@} == localhost ]] || die 'Telnet requires a separately secured loopback tunnel; use SSH for public VPS'; fi
+[[ $token_out != *[[:cntrl:]]* ]] || die 'token output path must not contain control characters'
 if ((dry)); then printf 'target=%s protocol=%s init=%s port=%s proxy=%s domain=%s ref=%s daemon=%s\n' "$target" "$protocol" "$init" "$port" "$proxy" "${domain:-dynamic}" "$ref" "$daemon"; exit 0; fi
 [[ ! -e $token_out && ! -L $token_out ]] || die 'token output already exists'
 command -v python3 >/dev/null || die 'python3 required on host PC'
-stage=$(mktemp -d); trap 'rm -rf -- "$stage"' EXIT
-mkdir "$stage/addon"; tar -C "$HERE" --exclude=.git --exclude=.venv --exclude='__pycache__' --exclude='.pytest_cache' --exclude='*.token' --exclude='*.pyc' -cf - . | tar -C "$stage/addon" -xf -
+stage=$(mktemp -d)
+trap 'rm -rf -- "$stage"' EXIT
+trap 'exit 1' HUP INT TERM
+# Package only known source files, not the checkout, ignored files or operator data.
+payload_files=(
+ pyproject.toml deployment/install.sh deployment/sysvinit.in deployment/tunnel_config.py
+ highlighting/ottomat.js highlighting/ottomat.tmLanguage.json
+ native/bridge.on1x native/build.py
+ yieldcraft_mcp/{__init__,__main__,artifacts,auth,config,dragnet,engine,highlight,models,ottomat,processes,server}.py
+ yieldcraft_mcp/ui/editor.html
+)
+for dir in deployment highlighting native yieldcraft_mcp yieldcraft_mcp/ui; do
+ [[ -d $HERE/$dir && ! -L $HERE/$dir ]] || die 'deployment source directories must not be symlinks'
+done
+for file in "${payload_files[@]}"; do
+ [[ -f $HERE/$file && ! -L $HERE/$file ]] || die "missing or non-regular deployment source: $file"
+ mkdir -p "$stage/addon/$(dirname -- "$file")"
+ install -m 0600 -- "$HERE/$file" "$stage/addon/$file"
+done
 python3 "$HERE/deployment/token.py" --cleartext "$token_out" --records "$stage/tokens.json" --admin
 # No plaintext token in archive, SSH commands, or logs.
 tar -C "$stage" -czf "$stage/payload.tar.gz" addon tokens.json
 args=("$port" "$proxy" "${domain:--}" "$init" "$repo" "$ref" "${email:--}" "${cf_config:--}" "$daemon")
 if [[ $protocol == ssh ]]; then
- sshargs=(-p "$ssh_port" -o StrictHostKeyChecking=yes -o ConnectTimeout=15); [[ -z $identity ]] || sshargs+=(-i "$identity")
- remote='set -eu; umask 077; t=$(mktemp -d); trap '\''rm -rf -- "$t"'\'' EXIT; tar -xzf - -C "$t"; if [ "$(id -u)" = 0 ]; then bash "$t/addon/deployment/install.sh" "$t"';
+ sshargs=(-T -p "$ssh_port" -o StrictHostKeyChecking=yes -o ConnectTimeout=15 -o ForwardAgent=no -o ClearAllForwardings=yes); [[ -z $identity ]] || sshargs+=(-i "$identity")
+ remote='set +x; set -eu; umask 077; t=$(mktemp -d); trap '\''rm -rf -- "$t"'\'' 0; trap '\''exit 1'\'' HUP INT TERM; tar --no-same-owner --no-same-permissions -xzf - -C "$t"; if [ "$(id -u)" = 0 ]; then bash "$t/addon/deployment/install.sh" "$t"';
  for a in "${args[@]}"; do remote+=" '$a'"; done
  remote+='; else sudo -n bash "$t/addon/deployment/install.sh" "$t"'; for a in "${args[@]}"; do remote+=" '$a'"; done; remote+='; fi'
- ssh "${sshargs[@]}" "$target" "$remote" < "$stage/payload.tar.gz" | tee "$stage/result"
+ # The remote side may echo sensitive diagnostics. Never print or save its transcript.
+ url=$(ssh "${sshargs[@]}" "$target" "$remote" < "$stage/payload.tar.gz" 2>/dev/null |
+       python3 "$HERE/deployment/probe.py" --candidate "${domain:--}") ||
+  die 'SSH transport or remote install failed, or no valid candidate URL was reported; check the SSH connection and VPS locally'
 else
- python3 "$HERE/deployment/telnet_transport.py" "$target" "$telnet_port" "$stage/payload.tar.gz" "${args[@]}" | tee "$stage/result"
+ url=$(python3 "$HERE/deployment/telnet_transport.py" "$target" "$telnet_port" "$stage/payload.tar.gz" "${args[@]}") ||
+  die 'Telnet transport or remote install failed; inspect the VPS locally'
 fi
-url=$(sed -n 's/^MCP_CANDIDATE_URL=//p' "$stage/result" | tail -1 | tr -d '\r'); [[ $url =~ ^https://[a-zA-Z0-9.-]+/mcp$ ]] || die 'remote install did not report a valid URL'
 python3 "$HERE/deployment/probe.py" "$url" "$token_out" || die 'remote service installed but public MCP probe failed; inspect VPS service logs'
 printf '\nMCP_SERVER_URL=%s\nTOKEN_FILE=%s\n' "$url" "$token_out"

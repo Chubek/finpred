@@ -9,7 +9,7 @@ enable_live = false
 allowed_hosts = []
 offer_hosts = []
 allow_llm = false
-# Operator-supplied configuration, never accepted from MCP callers:
+# Operator-supplied configuration for the default project only, never accepted from MCP callers:
 # daemon_config = "/opt/yieldcraft-mcp/finpred/plugins/dragnet/examples/Dragnet.json"
 daemon_autostart = false
 max_concurrent = 4

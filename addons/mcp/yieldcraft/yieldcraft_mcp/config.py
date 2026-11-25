@@ -1,10 +1,39 @@
 from __future__ import annotations
-import os, re, tomllib
+import re, tomllib
+from ipaddress import IPv6Address
 from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from urllib.parse import urlsplit
 
 DNS = re.compile(r'(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\Z')
+DNS_LABEL = re.compile(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?')
+AUTHORITY = re.compile(r'([A-Za-z0-9.-]{1,253}|\[[A-Fa-f0-9:.]+\])(?::([0-9]{1,5}))?')
+HTTPS_URL = re.compile(r"https://[A-Za-z0-9:/._~!$&'()*+,;=@%\[\]-]+")
+
+def authority(value):
+    m = AUTHORITY.fullmatch(value)
+    if not m: raise ValueError('invalid HTTP authority')
+    host, port = m.groups()
+    host = host.lower()
+    if host.startswith('['):
+        host = f'[{IPv6Address(host[1:-1]).compressed}]'
+    elif not all(DNS_LABEL.fullmatch(label) for label in host.split('.')):
+        raise ValueError('invalid HTTP host')
+    port = int(port) if port is not None else None
+    if port is not None and not 1 <= port <= 65535: raise ValueError('invalid HTTP port')
+    return host, port
+
+def https_url(value):
+    if not HTTPS_URL.fullmatch(value) or re.search(r'%(?![0-9A-Fa-f]{2})', value):
+        raise ValueError('HTTPS URLs without credentials/query/fragment required')
+    parsed = urlsplit(value)
+    authority(parsed.netloc)
+    return parsed
+
+def https_origin(value):
+    host, port = authority(https_url(value).netloc)
+    return f'https://{host}' + (f':{port}' if port not in (None, 443) else '')
+
 class Config(BaseModel):
     model_config = ConfigDict(extra='forbid', frozen=True)
     finpred_root: Path
@@ -44,12 +73,14 @@ class Config(BaseModel):
         if self.bind not in ('127.0.0.1','::1'): raise ValueError('bind only to loopback; use TLS proxy')
         if not set(self.offer_hosts)<=set(self.allowed_hosts): raise ValueError('offer_hosts must be a subset of allowed_hosts')
         if self.daemon_autostart and not self.daemon_config: raise ValueError('daemon config required')
-        for u in [self.public_url,self.oauth_issuer,self.oauth_introspection_url,*self.allowed_origins]:
-            if u:
-                p=urlsplit(u)
-                if p.scheme!='https' or not p.hostname or p.username or p.password or p.query or p.fragment: raise ValueError('HTTPS URLs without credentials/query/fragment required')
-        if self.public_url and urlsplit(self.public_url).path!='/mcp': raise ValueError('public_url must end in /mcp')
-        if any((self.oauth_issuer,self.oauth_introspection_url,self.oauth_client_id,self.oauth_secret_file)) and not all((self.oauth_issuer,self.oauth_introspection_url,self.oauth_client_id,self.oauth_secret_file,self.public_url)): raise ValueError('complete OAuth introspection configuration required')
+        for u in [self.public_url,self.oauth_issuer,self.oauth_introspection_url]:
+            if u is not None: https_url(u)
+        if self.public_url and https_url(self.public_url).path!='/mcp': raise ValueError('public_url must end in /mcp')
+        if any(https_url(u).path for u in self.allowed_origins): raise ValueError('allowed_origins must be HTTPS origins without paths')
+        oauth=(self.oauth_issuer,self.oauth_introspection_url,self.oauth_client_id,self.oauth_secret_file)
+        if any(v is not None for v in oauth) and not all((*oauth,self.public_url)): raise ValueError('complete OAuth introspection configuration required')
+        if self.oauth_client_id is not None and not re.fullmatch(r'[!-9;-~]{1,1024}',self.oauth_client_id):
+            raise ValueError('invalid OAuth client ID')
         return self
 
 def load(path: Path) -> Config:

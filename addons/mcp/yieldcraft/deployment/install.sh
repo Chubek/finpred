@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Remote fresh installer; invoked only by deploy.sh on the selected VPS.
+set +x
 set -Eeuo pipefail
 umask 077
 [[ $(id -u) = 0 && $# = 10 ]] || { echo 'root and 10 arguments required' >&2; exit 2; }
@@ -20,10 +21,26 @@ if [[ $proxy == cloudflared && $domain != - ]]; then [[ $cf_config =~ ^/[A-Za-z0
 if [[ $init == systemd ]]; then [[ -d /run/systemd/system ]] || fail 'systemd not active'; else command -v start-stop-daemon >/dev/null || fail 'SysV start-stop-daemon missing'; fi
 if [[ $proxy == cloudflared ]]; then command -v cloudflared >/dev/null || fail 'install cloudflared from the official trusted package repository on the VPS first'; fi
 export DEBIAN_FRONTEND=noninteractive
-apt-get update >&2; apt-get install -y --no-install-recommends git build-essential cmake pkg-config perl python3 python3-venv python3-pip libcurl4-openssl-dev libssl-dev zlib1g-dev ca-certificates curl make iproute2 >&2
+packages=(git build-essential cmake pkg-config perl python3 python3-venv python3-pip libcurl4-openssl-dev libssl-dev zlib1g-dev ca-certificates curl make iproute2)
+if [[ $proxy == cloudflared && $domain != - ]]; then packages+=(python3-yaml); fi
+apt-get update >&2; apt-get install -y --no-install-recommends "${packages[@]}" >&2
 python3 -c 'import sys; assert sys.version_info >= (3,11), "Python 3.11+ required"'
 if ss -Hln sport = ":$port" | grep -q .; then fail 'selected port already in use'; fi
-if ! id "$user" >/dev/null 2>&1; then useradd --system --no-create-home --home-dir "$state" --shell /usr/sbin/nologin "$user"; else fail 'service account already exists'; fi
+! id "$user" >/dev/null 2>&1 || fail 'service account already exists'
+# A named tunnel operator may pre-create its group to grant read access
+# without exposing credentials before the installer creates the user.
+user_group=(--user-group)
+if group=$(getent group "$user"); then
+ [[ $proxy == cloudflared && $domain != - ]] || fail 'existing service group'
+ IFS=: read -r group_name _ group_id group_members <<< "$group"
+ [[ $group_name == "$user" && $group_id =~ ^[1-9][0-9]*$ && -z $group_members ]] || fail 'service group must be dedicated and empty'
+ accounts=$(getent passwd) || fail 'could not check the service group'
+ if awk -F: -v gid="$group_id" '$4 == gid { found=1 } END { exit !found }' <<< "$accounts"; then
+  fail 'service group already used by another account'
+ fi
+ user_group=(--gid "$user")
+fi
+useradd --system "${user_group[@]}" --no-create-home --home-dir "$state" --shell /usr/sbin/nologin "$user"
 install -d -m 0755 "$base"; install -d -m 0700 -o "$user" -g "$user" "$state" "$logs"; install -d -m 0750 -o root -g "$user" "$etc"
 # Failure leaves diagnostic files; no existing deployment overwritten. Explicit cleanup documented.
 trap 'echo "Installation failed at line $LINENO; inspect $logs and run documented fresh-install cleanup." >&2' ERR
@@ -41,7 +58,7 @@ runuser -u "$user" -- env HOME="$state" bash -c 'set -e; cd "$1"; make mulib; ma
 runuser -u "$user" -- env HOME="$state" python3 -m venv "$base/venv"
 runuser -u "$user" -- env HOME="$state" "$base/venv/bin/pip" install --disable-pip-version-check "$base/addon" >&2
 # Runtime account must not modify executable code or operator config.
-chown -R root:root "$base"; chmod -R a+rX,go-w "$base"
+chown -R root:"$user" "$base"; chmod -R u+rwX,g+rX,go-w,o-rwx "$base"
 install -m 0600 -o "$user" -g "$user" "$stage/tokens.json" "$etc/tokens.json"
 install -d -m 0700 -o "$user" -g "$user" "$state/projects"
 cat > "$etc/config.toml" <<CFG
@@ -64,7 +81,7 @@ cat > "$base/run-mcp" <<RUN
 umask 077
 exec "$base/venv/bin/python" -m yieldcraft_mcp --config "$etc/config.toml"
 RUN
-chmod 0755 "$base/run-mcp"
+chown root:"$user" "$base/run-mcp"; chmod 0750 "$base/run-mcp"
 install_service(){
  local name=$1 command=$2
  if [[ $init == systemd ]]; then
@@ -99,8 +116,12 @@ UNIT
  chmod 0755 "/etc/init.d/$name"; update-rc.d "$name" defaults; service "$name" start >&2
  fi
 }
+if [[ $proxy == cloudflared && $domain != - ]]; then
+ (cd "$state"; runuser -u "$user" -- env HOME="$state" /usr/bin/python3 "$base/addon/deployment/tunnel_config.py" "$cf_config") ||
+  fail 'provision private named tunnel config and credentials readable only by root and the service account'
+fi
 install_service yieldcraft-mcp "$base/run-mcp"
-for i in $(seq 1 30); do if curl -fsS --max-time 2 "http://127.0.0.1:$port/readyz" >/dev/null; then break; fi; [[ $i != 30 ]] || fail 'MCP readiness failed'; sleep 2; done
+for i in $(seq 1 30); do if curl -q --noproxy '*' -fsS --max-time 2 "http://127.0.0.1:$port/readyz" >/dev/null; then break; fi; [[ $i != 30 ]] || fail 'MCP readiness failed'; sleep 2; done
 case $proxy in
  cloudflared)
   cf=$(command -v cloudflared); [[ $cf =~ ^/[A-Za-z0-9_./-]+$ ]] || fail 'unexpected cloudflared executable path'
@@ -108,29 +129,53 @@ case $proxy in
    cat > "$base/run-tunnel" <<RUN
 #!/bin/sh
 umask 077
-exec "$cf" tunnel --no-autoupdate --url "http://127.0.0.1:$port" --logfile "$logs/cloudflared.log"
+exec "$cf" tunnel --no-autoupdate --url "http://127.0.0.1:$port" --loglevel info --transport-loglevel info --logfile "$logs/cloudflared.log"
 RUN
   else
-   runuser -u "$user" -- test -r "$cf_config" || fail 'named tunnel configuration must be readable by service user; provision scoped credentials outside /root'
    cat > "$base/run-tunnel" <<RUN
 #!/bin/sh
 umask 077
-exec "$cf" tunnel --no-autoupdate --config "$cf_config" --logfile "$logs/cloudflared.log" run
+exec "$cf" tunnel --no-autoupdate --config "$cf_config" --loglevel info --transport-loglevel info --logfile "$logs/cloudflared.log" run
 RUN
   fi
-  chmod 0755 "$base/run-tunnel"; install_service yieldcraft-tunnel "$base/run-tunnel"
+   chown root:"$user" "$base/run-tunnel"; chmod 0750 "$base/run-tunnel"; install_service yieldcraft-tunnel "$base/run-tunnel"
   if [[ $domain == - ]]; then
    url=''; for i in $(seq 1 60); do url=$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' "$logs/cloudflared.log" 2>/dev/null | tail -1 || true); [[ -z $url ]] || break; sleep 2; done
    [[ -n $url ]] || fail 'Quick Tunnel did not publish an endpoint'; url+=/mcp
   else url="https://$domain/mcp"; fi;;
  nginx)
-  apt-get install -y nginx certbot python3-certbot-nginx >&2
-  [[ ! -e /etc/nginx/sites-available/yieldcraft-mcp && ! -e /etc/nginx/sites-enabled/yieldcraft-mcp ]] || fail 'nginx site already exists'
-  cat > /etc/nginx/sites-available/yieldcraft-mcp <<NGINX
-server {
- listen 80;
- server_name $domain;
- client_max_body_size 32m;
+   apt-get install -y nginx certbot python3-certbot-nginx >&2
+   site=/etc/nginx/sites-available/yieldcraft-mcp
+   enabled=/etc/nginx/sites-enabled/yieldcraft-mcp
+   [[ ! -e $site && ! -L $site && ! -e $enabled && ! -L $enabled ]] || fail 'nginx site already exists'
+   # Certificate provisioning must not publish a cleartext MCP backend.
+   cat > "$site" <<NGINX
+ server {
+  listen 80;
+  server_name $domain;
+  access_log off;
+  location / { return 404; }
+ }
+NGINX
+   chmod 0644 "$site"; ln -s "$site" "$enabled"
+   nginx -t >&2; service nginx reload >&2
+   certbot certonly --nginx --non-interactive --agree-tos --email "$email" -d "$domain" --cert-name "$domain" --deploy-hook 'service nginx reload' >&2
+   cat > "$site" <<NGINX
+ server {
+  listen 80;
+  server_name $domain;
+  access_log off;
+  location / { return 308 https://$domain\$request_uri; }
+ }
+ server {
+  listen 443 ssl;
+  server_name $domain;
+  ssl_protocols TLSv1.2 TLSv1.3;
+  ssl_certificate /etc/letsencrypt/live/$domain/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/$domain/privkey.pem;
+  access_log off;
+  error_log /var/log/nginx/yieldcraft-mcp-error.log warn;
+  client_max_body_size 32m;
  location / {
   proxy_pass http://127.0.0.1:$port;
   proxy_http_version 1.1;
@@ -142,16 +187,36 @@ server {
  }
 }
 NGINX
-  chmod 0644 /etc/nginx/sites-available/yieldcraft-mcp; ln -s /etc/nginx/sites-available/yieldcraft-mcp /etc/nginx/sites-enabled/yieldcraft-mcp
-  nginx -t >&2; service nginx reload >&2; certbot --nginx --non-interactive --agree-tos --redirect --email "$email" -d "$domain" >&2; url="https://$domain/mcp";;
+   nginx -t >&2; service nginx reload >&2; url="https://$domain/mcp";;
  apache2)
-  apt-get install -y apache2 certbot python3-certbot-apache >&2
-  [[ ! -e /etc/apache2/sites-available/yieldcraft-mcp.conf ]] || fail 'Apache site exists'
-  a2enmod proxy proxy_http ssl headers >&2
-  cat > /etc/apache2/sites-available/yieldcraft-mcp.conf <<APACHE
-<VirtualHost *:80>
- ServerName $domain
- ProxyPreserveHost On
+   apt-get install -y apache2 certbot python3-certbot-apache >&2
+   site=/etc/apache2/sites-available/yieldcraft-mcp.conf
+   enabled=/etc/apache2/sites-enabled/yieldcraft-mcp.conf
+   [[ ! -e $site && ! -L $site && ! -e $enabled && ! -L $enabled ]] || fail 'Apache site exists'
+   a2enmod proxy proxy_http ssl headers >&2
+   cat > "$site" <<APACHE
+ <VirtualHost *:80>
+  ServerName $domain
+  CustomLog /dev/null common
+ </VirtualHost>
+APACHE
+   chmod 0644 "$site"; a2ensite yieldcraft-mcp >&2; apache2ctl configtest >&2; service apache2 reload >&2
+   certbot certonly --apache --non-interactive --agree-tos --email "$email" -d "$domain" --cert-name "$domain" --deploy-hook 'service apache2 reload' >&2
+   cat > "$site" <<APACHE
+ <VirtualHost *:80>
+  ServerName $domain
+  CustomLog /dev/null common
+  RedirectMatch 308 "^/(?!\\.well-known/acme-challenge/)(.*)\$" "https://$domain/\$1"
+ </VirtualHost>
+ <VirtualHost *:443>
+  ServerName $domain
+  SSLEngine On
+  SSLProtocol -all +TLSv1.2 +TLSv1.3
+  SSLCertificateFile /etc/letsencrypt/live/$domain/fullchain.pem
+  SSLCertificateKeyFile /etc/letsencrypt/live/$domain/privkey.pem
+  CustomLog /dev/null common
+  LogLevel warn
+  ProxyPreserveHost On
  ProxyRequests Off
  ProxyTimeout 1000
  LimitRequestBody 33554432
@@ -159,8 +224,7 @@ NGINX
  ProxyPassReverse / http://127.0.0.1:$port/
 </VirtualHost>
 APACHE
-  chmod 0644 /etc/apache2/sites-available/yieldcraft-mcp.conf; a2ensite yieldcraft-mcp >&2; apache2ctl configtest >&2; service apache2 reload >&2
-  certbot --apache --non-interactive --agree-tos --redirect --email "$email" -d "$domain" >&2; url="https://$domain/mcp";;
+   apache2ctl configtest >&2; service apache2 reload >&2; url="https://$domain/mcp";;
  caddy)
   apt-get install -y caddy >&2; [[ ! -e /etc/caddy/yieldcraft-mcp.caddy && ! -e /etc/caddy/Caddyfile.yieldcraft-backup ]] || fail 'Caddy site exists'
   cp -a /etc/caddy/Caddyfile /etc/caddy/Caddyfile.yieldcraft-backup

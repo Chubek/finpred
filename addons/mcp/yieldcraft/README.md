@@ -20,6 +20,7 @@ bin/yieldcraft-inventory build
 cd addons/mcp/yieldcraft
 python3 -m venv .venv
 .venv/bin/pip install -e '.[test]'
+umask 077
 mkdir -m 700 -p "$HOME/.yieldcraft-mcp/projects"
 .venv/bin/python deployment/token.py \
   --cleartext "$HOME/.yieldcraft-mcp/token" \
@@ -36,7 +37,7 @@ curl -fsS http://127.0.0.1:8788/healthz
 .venv/bin/python -m pytest -q
 ```
 
-The server listens only on loopback. `/mcp` uses the official MCP Python SDK's v1 stateless Streamable HTTP with JSON responses; `/editor` serves the standalone highlighter. There is no unauthenticated MCP endpoint. The dependency constraints are in `requirements.in` and `pyproject.toml`; a complete transitive, hash-locked production dependency set still needs to be generated on the target platform. `mcp==1.28.1` is the deliberately selected v1 API, not a claim to be the latest SDK. Review its security advisories before exposure and upgrade with conformance tests.
+The server listens only on loopback. `/mcp` uses the official MCP Python SDK's v1 stateless Streamable HTTP with JSON responses; `/editor` serves the standalone highlighter. There is no unauthenticated MCP endpoint. The dependency constraints are in `requirements.in` and `pyproject.toml`; a complete transitive, hash-locked production dependency set still needs to be generated on the target platform. `mcp==1.30.0` retains the v1 API and includes security fixes missing from 1.28.1, including [HTTP client credential forwarding](https://github.com/advisories/GHSA-5h93-6whr-6q8j) and [server-side bearer-token audience handling](https://github.com/advisories/GHSA-w4fh-qvv9-3v23). Review security advisories again before exposing the service.
 
 ## Remote deployment
 
@@ -72,12 +73,14 @@ Run `deploy.sh` **on your host PC**, not on the VPS. This is a fresh-install scr
 | `--ssh-port`, `--identity`, `--telnet-port` | Connection parameters |
 | `--repo`, `--ref` | HTTPS Git repository ending `.git`, immutable full commit SHA. Defaults to assessed revision (or parent FinPRED checkout's HEAD). Push commits before deploying. |
 | `--email` | Required for Nginx/Apache Certbot |
-| `--cloudflared-config` | Existing remote named tunnel config, readable by service account |
+| `--cloudflared-config` | Existing remote named tunnel config and credentials readable only by root and the service account |
 | `--token-out` | Private cleartext bearer credential path on deploying PC; refuses overwrite |
 | `--no-daemon` | Do not autostart offline demo daemon |
 | `--dry-run` | No connection, installation or credential generation |
 
-SSH strict host-key verification is enabled: establish the correct host key before first use. The script sends the addon and **only the hash** of the generated random bearer credential. The remote installer fetches the pinned FinPRED commit and nested gitlinks, builds under the unprivileged service account, then makes the installed executable tree root-owned and read-only to the account. It installs a venv, starts the foreground MCP service, configures the selected reverse proxy and prints a remote candidate URL. The host PC then checks TLS and performs a real MCP initialization and `tools/list`; the final URL is printed only on successful probe. The initial admin token remains in the local `yieldcraft-mcp.token` file (0600); do not share it with ordinary client users.
+SSH strict host-key verification is enabled: establish the correct host key before first use. The upload contains only explicitly listed addon source files and the **hash** of the generated random bearer credential. The remote installer fetches the pinned FinPRED commit and nested gitlinks, builds under the unprivileged service account, then makes the installed executable tree root-owned and read-only to the account. The host PC validates the reported destination against the configured domain or Quick Tunnel hostname pattern, then checks TLS directly and performs MCP initialization and `tools/list`, without following redirects or printing the remote transcript. It prints the final URL only on successful probe. The initial admin token remains in the local `yieldcraft-mcp.token` file (0600); prefer `--token-out` with a path outside the checkout and do not share it with ordinary client users.
+
+For a named tunnel, an operator can pre-create a dedicated, empty `yieldcraft-mcp` group and give root-owned config and credential files mode `0640` with that group. Keep their ancestor directories non-writable by other accounts and traversable by the service. The installer checks access as the service account. Nginx and Apache proxy the MCP service only in their HTTPS virtual hosts, including during certificate bootstrap.
 
 **Quick Tunnel limitations:** the assigned `trycloudflare.com` hostname is temporary and may change when cloudflared restarts; it supports JSON HTTP but not SSE. Use a named tunnel or your own HTTPS domain for persistent clients. This installer deliberately does not install Cloudflare binaries from unverified downloads or create Cloudflare accounts/DNS/credentials. For named ingress, use `http://127.0.0.1:8788` (or your selected port) and a catch-all `http_status:404`. The authenticated public probe must succeed. For Nginx/Apache, Certbot obtains and renews certificates; Caddy manages HTTPS itself. The script assumes no conflicting sites already serve the chosen domain; agents must qualify that and improve rollback. A failed fresh install can leave diagnostic files, a partially configured proxy or services. It does not overwrite an existing addon deployment. Inspect and clean up manually before retrying; there is no automated update/rollback in this version.
 
@@ -85,7 +88,7 @@ Locations: `/opt/yieldcraft-mcp/{finpred,addon,venv}`, `/etc/yieldcraft-mcp`, `/
 
 ## Client authentication and connection
 
-The endpoint is `https://<domain>/mcp`, not `/sse`. Use a client supporting Streamable HTTP. For a client supporting static authorization headers, configure `Authorization: Bearer <token>` from the local private file. For example, an MCP client's server definition may resemble this (exact config varies by client):
+The endpoint is `https://<domain>/mcp`, not `/sse`. Use a client supporting Streamable HTTP. For a client supporting static authorization headers, configure `Authorization: Bearer <token>` from the local private file. Keep token and client credential files outside the source checkout and never put a bearer token in a URL or query string. For example, an MCP client's server definition may resemble this (exact config varies by client):
 
 ```json
 {"url":"https://foo.com/mcp","headers":{"Authorization":"Bearer <token>"}}
@@ -106,7 +109,7 @@ All input files are submitted as `artifact_upload` text or base64 and referred t
 
 The underlying runner uses fixed argv vectors, bounded output and timeouts, subprocess groups, a sanitized environment and one private workspace per operation. All recommendation tools preserve `published=false`. The core native CLI validates actual financial contracts. A saved addon artifact is not proof of decision eligibility or commercial performance. See `examples/workflow.md` for a complete synthetic fixture workflow.
 
-Scopes: `research:read`, `artifact:write`, `dragnet:search`, `yieldcraft:analyze`, `yieldcraft:recommend`, `ottomat:generate`, `ottomat:simulate`, `daemon:manage`, `admin`. Administrative daemon control requires `daemon:manage`. OAuth projects derive from subject; bearer tokens have an explicit project. The daemon is single-owner, foreground-managed, and stops on failure; the default auto-start owner is `default`. Captures from another project are not exposed. Live acquisition is opt-in using config `enable_live`, `allowed_hosts` and `offer_hosts`. LLM text egress additionally requires `allow_llm` and the approved endpoint; model credentials are configured by the operator, never a tool request. Basic/GPT page text is untrusted, not a booking quote or a command. Native `dragnet-inspect` validates each full frame before addon storage; incomplete or rejected captures are not committed as successful evidence.
+Scopes: `research:read`, `artifact:write`, `dragnet:search`, `yieldcraft:analyze`, `yieldcraft:recommend`, `ottomat:generate`, `ottomat:simulate`, `daemon:manage`, `admin`. OAuth projects derive from issuer and subject; the resulting project namespace is reserved and cannot be assigned to static bearer tokens. The operator's Dragnet config and daemon belong to the `default` project, and daemon control also requires `daemon:manage`. The daemon stops on failure and does not expose its activity or captures to other projects. Live acquisition is opt-in using config `enable_live`, `allowed_hosts` and `offer_hosts`. LLM text egress additionally requires `allow_llm` and a grant for `api.openai.com`; live GPT is pinned to `https://api.openai.com/v1`. Model credentials are configured by the operator, never a tool request. Basic/GPT page text is untrusted, not a booking quote or a command. Native `dragnet-inspect` validates each full frame before addon storage; incomplete or rejected captures are not committed as successful evidence.
 
 ## Ottomat authoring and the native bridge
 
@@ -127,7 +130,7 @@ It is intended to use the existing trusted hospitality graph handlers and contri
 - `highlighting/ottomat.js`: Highlight.js grammar registration module.
 - `highlighting/ottomat.tmLanguage.json`: TextMate grammar for compatible editor extensions.
 - `/editor`: standalone browser editor, line numbers, light/dark colors, copy and save source.
-- `ui://yieldcraft/ottomat-editor.html`: MCP Apps UI resource linked to generation/highlight tools via `_meta.ui.resourceUri`. A minimal postMessage bridge supports host initialization, tool input/results and server preflight. No remote script dependencies, token handling or direct browser fetches. Compatibility with real ChatGPT/Claude MCP Apps hosts remains a test gate.
+- `ui://yieldcraft/ottomat-editor.html`: MCP Apps UI resource linked to generation/highlight tools via `_meta.ui.resourceUri`. A minimal postMessage bridge supports host initialization, tool input/results and server preflight. Only the source-free initialization can use a wildcard target; preflight sends the draft to the connected parent origin you are using. An opaque parent origin cannot connect, so use standalone or text-only mode there. No remote script dependencies, token handling or direct browser fetches. Compatibility with real ChatGPT/Claude MCP Apps hosts remains a test gate.
 
 A custom `ottomat` fenced block cannot change a third-party website's native Markdown grammar. The MCP Apps resource and standalone editor are the portable mechanisms. Text-only clients receive source and structured results. Financial dashboard UI resources beyond the editor are planned; exported CSV can be imported into Poindexter now.
 
@@ -138,6 +141,37 @@ Resources: `ottomat://grammar`, `ottomat://strategies/{profile}`, `yieldcraft://
 This is a development/integration candidate, not an audited multi-tenant service. Use a dedicated VPS/account, authenticated HTTPS, root-owned executable/config trees, restricted SSH, disk quotas and backups. The Python store assumes private cooperating writers; its quota currently covers addon object bytes, not every native store file or transient workspace. Enforce OS-level filesystem/CPU/memory/network limits and rate limits before accepting untrusted workloads. A single service worker is required; do not scale processes over the same mutable daemon/state without a coordination protocol. Native processes run as the same low-privilege service account, not one OS identity per project. No sandbox admission, power-loss durability, provider authenticity, causal inference or profit uplift is claimed. Data retention and GDPR obligations are operator responsibilities.
 
 See `AGENTS.md` for finishing tasks, exact acceptance criteria and the test results. No real VPS, external financial service, real provider acquisition or client account was accessed in producing this addon.
+
+### Local leak regression checks
+
+From this addon directory, after activating the environment with `.[test]`
+and building the FinPRED CLI and Dragnet as above, run:
+
+```sh
+FINPRED_NATIVE_ROOT="$(git rev-parse --show-toplevel)" python -m pytest -q -rs
+node --test tests/editor_bridge.test.cjs
+bash -n deploy.sh
+bash -n deployment/install.sh
+sh -n deployment/sysvinit.in
+./deploy.sh root@204.168.206.175 --dry-run
+```
+
+The local SDK checks exercise authenticated Streamable HTTP in-process
+and over a loopback TCP socket, including concurrent calls from different
+projects. The native checks use tracked pricing and offline Dragnet
+fixtures, including daemon supervision, and verify that another project
+cannot read the results or control the daemon. These checks do not qualify public
+OAuth onboarding, live acquisition, real MCP Apps hosts, SSH/Telnet,
+systemd/SysV, or any proxy's public TLS configuration. The optional native
+Ottomat bridge remains unqualified and is not auto-deployed.
+
+This pass was tested from FinPRED `f00169a` on Linux x86-64 with Python
+3.14.7, MCP 1.30.0, HTTPX 0.28.1, Pydantic 2.14.4, and Node.js 26.9.0:
+77 Python and 3 Node tests passed with no skips, plus shell syntax and SSH
+and loopback Telnet dry runs. The parent repository's `./tests/run.sh
+storage` also verified historical replays and the golden v2 pricing IDs.
+These results do not replace the deployment and independent review gates
+in `AGENTS.md`.
 
 ## References
 

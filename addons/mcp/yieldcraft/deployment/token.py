@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
 """Generate bearer credentials without storing cleartext on the service host."""
+import sys
+
+# Keep the documented script name without masking Python's stdlib token module
+# when argparse (or one of its dependencies) imports it.
+if __name__ == '__main__' and not getattr(sys.flags, 'safe_path', False):
+    del sys.path[0]
+
 import argparse, hashlib, json, os, secrets, re
 from pathlib import Path
 SCOPES=['research:read','artifact:write','dragnet:search','yieldcraft:analyze','yieldcraft:recommend','ottomat:generate','ottomat:simulate','daemon:manage','admin']
