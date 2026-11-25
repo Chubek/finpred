@@ -64,6 +64,14 @@ async def test_public_endpoint_without_credentials_exposes_only_demo_tools(confi
             for tool in ('artifact_upload', 'artifact_list', 'artifact_read', 'yieldcraft_replay',
                          'dragnet_search', 'dragnet_offline_capture', 'dragnet_start', 'ottomat_execute'):
                 assert (await rpc(client, 'tools/call', {'name': tool, 'arguments': {}}))['isError']
+            prompts = await rpc(client, 'prompts/list', {})
+            assert [prompt['name'] for prompt in prompts['prompts']] == ['reflect']
+            result = await rpc(client, 'prompts/get', {
+                'name': 'reflect', 'arguments': {'goal': 'Can you price my hotel from my own data?'},
+            })
+            text = result['messages'][0]['content']['text']
+            assert 'Public demo only' in text
+            assert 'No private inputs, saved runs, live acquisition or native strategy execution' in text
             assert (await client.get('/.well-known/oauth-protected-resource/mcp')).status_code == 404
     assert not list(config.state_dir.iterdir())
 

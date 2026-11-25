@@ -91,7 +91,7 @@ SECOND_ID=$(python3 -c 'import uuid; print(uuid.uuid4())')
 
 SSH strict host-key verification is enabled: establish the correct host key before first use. The upload contains only explicitly listed addon source files and, in `--auth` mode, the **hash** of the generated random bearer credential. The remote installer fetches the pinned FinPRED commit and nested gitlinks, builds under the instance's unprivileged service account, then makes the installed executable tree root-owned and read-only to the account. The host PC validates the reported destination against the configured domain or Quick Tunnel hostname pattern, then checks TLS directly and performs MCP initialization and `tools/list` using the selected mode, without following redirects or printing the remote transcript. It prints the final URL only on successful probe. With `--auth`, the initial admin token remains in the local `<prefix>.token` file (0600); prefer `--token-out` with a path outside the checkout and do not share it with ordinary client users.
 
-**Public demo:** Connect to the printed `/mcp` URL without an `Authorization` header. Anyone who can reach that URL can use the demo. It exposes native `yieldcraft_demo` for the checked-in synthetic `contribution`, `market`, and `multiroom` fixtures, plus Ottomat highlighting, preflight, and the built-in strategy list. Pricing runs are not retained. Uploads, saved runs, live acquisition, native strategy execution, and daemon controls are not exposed. Use `--auth` for private data or the full workflow.
+**Public demo:** Connect to the printed `/mcp` URL without an `Authorization` header. Anyone who can reach that URL can use the demo. It exposes native `yieldcraft_demo` for the checked-in synthetic `contribution`, `market`, and `multiroom` fixtures, plus Ottomat highlighting, preflight, the built-in strategy list, and the `reflect` prompt. Pricing runs are not retained. Uploads, saved runs, live acquisition, native strategy execution, and daemon controls are not exposed. Use `--auth` for private data or the full workflow.
 
 For a named tunnel, use `-r cloudflared -d mcp.example.com --cloudflared-config /etc/cloudflared/instance.yml` and provision DNS and a scoped tunnel credential on the VPS. `--dry-run` shows `prefix=...`: an operator can pre-create a dedicated empty group with that name and give root-owned config and credential files mode `0640` with that group. Keep ancestors non-writable by other accounts and traversable by the instance. The installer verifies access as the service account and requires exactly one ingress mapping for the configured hostname to `http://127.0.0.1:<port>`, followed by `http_status:404`. Nginx and Apache proxy the MCP service only over HTTPS.
 
@@ -221,7 +221,11 @@ It is intended to use the existing trusted hospitality graph handlers and contri
 
 A custom `ottomat` fenced block cannot change a third-party website's native Markdown grammar. The MCP Apps resource and standalone editor are the portable mechanisms. Text-only clients receive source and structured results. Financial dashboard UI resources beyond the editor are planned; exported CSV can be imported into Poindexter now.
 
-Resources: `ottomat://grammar`, `ottomat://strategies/{profile}`, `yieldcraft://models`, `finpred://documentation`, and the UI resource. Prompts: `analyze_hotel_market`, `generate_ottomat_strategy`, `audit_financial_decision`.
+Resources: `ottomat://grammar`, `ottomat://strategies/{profile}`, `yieldcraft://models`, `finpred://documentation`, and the UI resource. Prompts: `reflect`, `analyze_hotel_market`, `generate_ottomat_strategy`, `audit_financial_decision`.
+
+### Ask what Yieldcraft can do
+
+In an MCP client that supports prompts, select `reflect` (shown as `/reflect` in some clients) and describe your goal. For example: “Can you recommend nightly prices using only competitor offers?” The client uses the prompt to explain what Yieldcraft can provide, what it cannot, and what data or permissions are missing. It does not start an analysis or verify tool readiness. The prompt works in authenticated mode with `research:read` and in the public demo, where it describes only demo capabilities.
 
 ## Security and limitations
 
