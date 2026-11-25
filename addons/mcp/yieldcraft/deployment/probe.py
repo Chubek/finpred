@@ -116,6 +116,9 @@ def main(argv):
             print(candidate_url(sys.stdin, argv[1]))
             return 0
         except ValueError:
+            # Let SSH finish and report its status even after an invalid marker.
+            for _ in sys.stdin:
+                pass
             return 1
     try:
         destination(url)

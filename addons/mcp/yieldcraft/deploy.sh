@@ -54,6 +54,7 @@ else
  daemon=0
 fi
 if ((dry)); then printf 'target=%s protocol=%s init=%s port=%s proxy=%s domain=%s ref=%s daemon=%s auth=%s\n' "$target" "$protocol" "$init" "$port" "$proxy" "${domain:-dynamic}" "$ref" "$daemon" "$auth"; exit 0; fi
+if [[ $protocol == ssh ]]; then command -v ssh >/dev/null || die 'OpenSSH client required on host PC'; fi
 if ((auth)); then
  [[ ! -e $token_out && ! -L $token_out ]] || die 'token output already exists'
 else
@@ -91,13 +92,37 @@ tar -C "$stage" -czf "$stage/payload.tar.gz" "${payload_entries[@]}"
 args=("$port" "$proxy" "${domain:--}" "$init" "$repo" "$ref" "${email:--}" "${cf_config:--}" "$daemon" "$auth")
 if [[ $protocol == ssh ]]; then
  sshargs=(-T -p "$ssh_port" -o StrictHostKeyChecking=yes -o ConnectTimeout=15 -o ForwardAgent=no -o ClearAllForwardings=yes); [[ -z $identity ]] || sshargs+=(-i "$identity")
- remote='set +x; set -eu; umask 077; t=$(mktemp -d); trap '\''rm -rf -- "$t"'\'' 0; trap '\''exit 1'\'' HUP INT TERM; tar --no-same-owner --no-same-permissions -xzf - -C "$t"; if [ "$(id -u)" = 0 ]; then bash "$t/addon/deployment/install.sh" "$t"';
+ remote='set +x; set -eu; umask 077; t=$(mktemp -d) || exit 40; trap '\''rm -rf -- "$t"'\'' 0; trap '\''exit 40'\'' HUP INT TERM; tar --no-same-owner --no-same-permissions -xzf - -C "$t" || exit 40; if [ "$(id -u)" = 0 ]; then set --; else set -- sudo -n; fi; "$@" bash "$t/addon/deployment/install.sh" "$t"'
  for a in "${args[@]}"; do remote+=" '$a'"; done
- remote+='; else sudo -n bash "$t/addon/deployment/install.sh" "$t"'; for a in "${args[@]}"; do remote+=" '$a'"; done; remote+='; fi'
+ # Only the installer's reserved stage statuses pass through. OpenSSH uses 255.
+ remote+=' || { rc=$?; case "$rc" in 4[2-9]|5[0-2]) exit "$rc";; *) exit 41;; esac; }'
  # The remote side may echo sensitive diagnostics. Never print or save its transcript.
- url=$(ssh "${sshargs[@]}" "$target" "$remote" < "$stage/payload.tar.gz" 2>/dev/null |
-       python3 "$HERE/deployment/probe.py" --candidate "${domain:--}") ||
-  die 'SSH transport or remote install failed, or no valid candidate URL was reported; check the SSH connection and VPS locally'
+ url=$(
+  ssh "${sshargs[@]}" "$target" "$remote" < "$stage/payload.tar.gz" 2>/dev/null |
+   PYTHONIOENCODING=utf-8:replace python3 "$HERE/deployment/probe.py" --candidate "${domain:--}" 2>/dev/null
+  statuses=("${PIPESTATUS[@]}")
+  if ((statuses[0])); then exit "${statuses[0]}"; fi
+  if ((statuses[1])); then exit 53; fi
+ ) || {
+  case $? in
+   255) die 'SSH transport failed; check the host, SSH port, known host key and login credentials' ;;
+   40) die 'SSH connected, but VPS staging or archive extraction failed; check tar and temporary disk space' ;;
+   41) die 'could not run the VPS installer; check Bash and, for a non-root SSH user, passwordless sudo -n' ;;
+   42) die 'VPS preflight failed; check Debian/Ubuntu x86-64, the selected init system, backend port and any named tunnel config' ;;
+   43) die 'existing Yieldcraft installation or service definitions on the VPS; inspect for a partial install before retrying' ;;
+   44) die 'cloudflared is not available on the VPS; install it from the official package repository first' ;;
+   45) die 'VPS package setup or Python 3.11+ check failed; check apt and Python on the VPS' ;;
+   46) die 'VPS service account or directory setup failed; check for an existing account or partial install' ;;
+   47) die 'FinPRED checkout failed on the VPS; verify that --repo contains --ref and the VPS can fetch it and its submodules' ;;
+   48) die 'FinPRED native build or self-test failed on the VPS; check the toolchain, disk space and memory' ;;
+   49) die 'Python environment or addon installation failed on the VPS; check package index access and disk space' ;;
+   50) die 'MCP service setup or readiness failed; inspect the yieldcraft-mcp service logs on the VPS' ;;
+   51) die 'reverse proxy setup failed; inspect the selected proxy and its logs on the VPS' ;;
+   52) die 'Quick Tunnel did not report an endpoint; inspect yieldcraft-tunnel and /var/log/yieldcraft-mcp/cloudflared.log on the VPS' ;;
+   53) die 'remote command exited successfully but did not report exactly one valid MCP candidate URL' ;;
+   *) die 'SSH command did not complete the deployment; check the SSH login and VPS shell locally' ;;
+  esac
+ }
 else
  url=$(python3 "$HERE/deployment/telnet_transport.py" "$target" "$telnet_port" "$stage/payload.tar.gz" "${args[@]}") ||
   die 'Telnet transport or remote install failed; inspect the VPS locally'

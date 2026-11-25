@@ -41,7 +41,7 @@ def mocked_ssh(tmp_path):
     commands.mkdir()
     ssh = commands / 'ssh'
     ssh.write_text(f"""#!{sys.executable}
-import json, os, stat, sys
+import json, os, stat, subprocess, sys
 from pathlib import Path
 work = Path(os.environ['MOCK_DIR'])
 stage_archive = Path(os.readlink('/proc/self/fd/0'))
@@ -49,11 +49,17 @@ with (work / 'ssh.json').open('w') as f:
     json.dump([sys.argv[1:], str(stage_archive.parent),
                stat.S_IMODE(stage_archive.stat().st_mode),
                stat.S_IMODE(stage_archive.parent.stat().st_mode)], f)
-(work / 'uploaded.tar.gz').write_bytes(sys.stdin.buffer.read())
+archive = sys.stdin.buffer.read()
+(work / 'uploaded.tar.gz').write_bytes(archive)
+if remote_bin := os.environ.get('MOCK_REMOTE_BIN'):
+    remote_env = dict(os.environ, PATH=remote_bin + ':' + os.environ['PATH'])
+    sys.exit(subprocess.run(['/bin/sh', '-c', sys.argv[-1]], input=archive, env=remote_env).returncode)
 print(os.environ['MOCK_SECRET'])
 print(os.environ['MOCK_SECRET'], file=sys.stderr)
 print('MCP_SERVER_URL=https://unverified.example/mcp')
 print(os.environ['MOCK_STATUS'])
+if os.environ.get('MOCK_NOISY_TRAILER'):
+    print('noisy output ' * 20000)
 sys.exit(int(os.environ.get('MOCK_RC', '0')))
 """)
     python = commands / 'python3'
@@ -125,19 +131,62 @@ def test_public_deployment_runs_without_token_records(mocked_ssh, tmp_path, flag
     assert f'MCP_SERVER_URL={URL}\n' in result.stdout and 'TOKEN_FILE=' not in result.stdout
 
 
-@pytest.mark.parametrize('settings,probed', [
-    ({'MOCK_STATUS': 'MCP_CANDIDATE_URL=https://other.example/mcp'}, False),
-    ({'MOCK_STATUS': f'MCP_CANDIDATE_URL={URL}\nMCP_CANDIDATE_URL={URL}'}, False),
-    ({'MOCK_RC': '1'}, False),
-    ({'MOCK_PROBE_RC': '1'}, True),
+@pytest.mark.parametrize('settings,probed,message', [
+    ({'MOCK_STATUS': ''}, False, 'did not report exactly one valid MCP candidate URL'),
+    ({'MOCK_STATUS': 'MCP_CANDIDATE_URL=https://other.example/mcp'}, False,
+     'did not report exactly one valid MCP candidate URL'),
+    ({'MOCK_STATUS': f'MCP_CANDIDATE_URL={URL}\nMCP_CANDIDATE_URL={URL}'}, False,
+     'did not report exactly one valid MCP candidate URL'),
+    ({'MOCK_RC': '255', 'MOCK_STATUS': ''}, False, 'SSH transport failed'),
+    ({'MOCK_RC': '43'}, False, 'existing Yieldcraft installation'),
+    ({'MOCK_RC': '44', 'MOCK_STATUS': ''}, False, 'cloudflared is not available on the VPS'),
+    ({'MOCK_RC': '47', 'MOCK_STATUS': 'MCP_CANDIDATE_URL=invalid',
+      'MOCK_NOISY_TRAILER': '1'}, False, 'FinPRED checkout failed'),
+    ({'MOCK_RC': '52', 'MOCK_STATUS': ''}, False, 'Quick Tunnel did not report an endpoint'),
+    ({'MOCK_RC': '1'}, False, 'SSH command did not complete the deployment'),
+    ({'MOCK_PROBE_RC': '1'}, True, 'public MCP probe failed'),
 ])
-def test_deploy_failure_never_reports_success(mocked_ssh, tmp_path, settings, probed):
+def test_deploy_failure_never_reports_success(mocked_ssh, tmp_path, settings, probed, message):
     result = mocked_ssh[0](**settings)
     assert result.returncode != 0
+    assert message in result.stderr
     assert 'MCP_SERVER_URL=' not in result.stdout
     assert SENTINEL not in result.stdout + result.stderr
+    assert 'unverified.example' not in result.stdout + result.stderr
     assert (tmp_path / 'probe-argv').exists() is probed
     assert not list(tmp_path.glob('tmp.*'))
+
+
+@pytest.mark.parametrize('failure,message', [
+    ('tar', 'VPS staging or archive extraction failed'),
+    ('sudo', 'passwordless sudo -n'),
+    ('install', 'FinPRED native build or self-test failed'),
+])
+def test_remote_ssh_wrapper_maps_failures(mocked_ssh, tmp_path, failure, message):
+    commands = tmp_path / 'remote-bin'
+    commands.mkdir()
+    scripts = {
+        'id': f"echo {1000 if failure == 'sudo' else 0}",
+        'sudo': 'exit 1',
+        'tar': 'exit 1' if failure == 'tar' else (
+            'mkdir -p "$6/addon/deployment"\n'
+            'printf "%s\\n" "exit 48" > "$6/addon/deployment/install.sh"'),
+    }
+    for name, script in scripts.items():
+        command = commands / name
+        command.write_text(f'#!/bin/sh\n{script}\n')
+        command.chmod(0o755)
+    result = mocked_ssh[0](MOCK_REMOTE_BIN=str(commands))
+    assert result.returncode != 0 and message in result.stderr
+    assert not (tmp_path / 'probe-argv').exists()
+    assert not list(tmp_path.glob('tmp.*'))
+
+
+def test_installer_reports_preflight_status_before_mutating_host():
+    result = subprocess.run(['bash', str(DEPLOYMENT / 'install.sh')],
+                            capture_output=True, text=True, timeout=5)
+    assert result.returncode == 42
+    assert 'root and 11 arguments required' in result.stderr
 
 
 def test_dry_run_and_source_symlink_do_not_create_token_or_connect(mocked_ssh, tmp_path):

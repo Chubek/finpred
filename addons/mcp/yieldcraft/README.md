@@ -93,6 +93,32 @@ For a named tunnel, an operator can pre-create a dedicated, empty `yieldcraft-mc
 
 Locations: `/opt/yieldcraft-mcp/{finpred,addon,venv}`, `/etc/yieldcraft-mcp`, `/var/lib/yieldcraft-mcp/projects`, `/var/log/yieldcraft-mcp`. Service names `yieldcraft-mcp` and (cloudflared only) `yieldcraft-tunnel`.
 
+### Troubleshoot a failed SSH deployment
+
+The deploy script reports the failed stage without printing or saving the
+SSH transcript. To see SSH's own error without installing anything, test
+the connection from your host PC:
+
+```sh
+ssh -o StrictHostKeyChecking=yes -p 22 USER@HOST true
+```
+
+Use the same host, port and `-i FILE` (if you passed `--identity`) as your
+deployment. If the host key is missing or has changed, verify its fingerprint
+through a trusted VPS console before updating `known_hosts`. For a non-root
+login, the installer runs under `sudo -n`; check that your account is allowed
+to do so without prompting.
+
+If SSH connects but the install fails, check the reported stage. The default
+`cloudflared` proxy needs `cloudflared` installed on the VPS beforehand. For a
+checkout failure, compare `./deploy.sh USER@HOST --dry-run` (same options) with
+the commit available from `--repo`; local-only commits cannot be fetched.
+For service failures on systemd, inspect `journalctl -u yieldcraft-mcp` on the
+VPS (and `journalctl -u yieldcraft-tunnel` for Cloudflare). Keep raw logs
+private. If the failure left a partial installation, inspect it before
+retrying. An `--auth` run may also have already written the local token file;
+the script will not overwrite it.
+
 ## Client authentication and connection
 
 The endpoint is `https://<domain>/mcp`, not `/sse`. Use a client supporting Streamable HTTP. For a client supporting static authorization headers, configure `Authorization: Bearer <token>` from the local private file. Keep token and client credential files outside the source checkout and never put a bearer token in a URL or query string. For example, an MCP client's server definition may resemble this (exact config varies by client):

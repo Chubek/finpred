@@ -3,6 +3,9 @@
 set +x
 set -Eeuo pipefail
 umask 077
+# Report only reserved stage exit codes to deploy.sh, not a raw transcript.
+phase=42
+trap 'if (($?)); then exit "$phase"; fi' EXIT
 [[ $(id -u) = 0 && $# = 11 ]] || { echo 'root and 11 arguments required' >&2; exit 2; }
 stage=$1 port=$2 proxy=$3 domain=$4 init=$5 repo=$6 ref=$7 email=$8 cf_config=$9 daemon=${10} auth=${11}
 base=/opt/yieldcraft-mcp; etc=/etc/yieldcraft-mcp; state=/var/lib/yieldcraft-mcp; logs=/var/log/yieldcraft-mcp; user=yieldcraft-mcp
@@ -22,16 +25,22 @@ if [[ $proxy == nginx || $proxy == apache2 ]]; then [[ $email =~ ^[A-Za-z0-9._%+
 if [[ $proxy == cloudflared && $domain != - ]]; then [[ $cf_config =~ ^/[A-Za-z0-9_./-]+$ && $cf_config != *..* && -f $cf_config ]] || fail 'preprovisioned tunnel config required'; fi
 [[ $(uname -m) == x86_64 ]] || fail 'supported target is Linux x86-64'
 . /etc/os-release; [[ $ID == debian || $ID == ubuntu ]] || fail 'Debian/Ubuntu only'
+phase=43
 [[ ! -e $base && ! -e $etc && ! -e $state && ! -e $logs ]] || fail 'existing installation; refuse overwrite (see README)'
 [[ ! -e /etc/systemd/system/yieldcraft-mcp.service && ! -e /etc/systemd/system/yieldcraft-tunnel.service && ! -e /etc/init.d/yieldcraft-mcp && ! -e /etc/init.d/yieldcraft-tunnel ]] || fail 'existing service definitions'
+phase=42
 if [[ $init == systemd ]]; then [[ -d /run/systemd/system ]] || fail 'systemd not active'; else command -v start-stop-daemon >/dev/null || fail 'SysV start-stop-daemon missing'; fi
+phase=44
 if [[ $proxy == cloudflared ]]; then command -v cloudflared >/dev/null || fail 'install cloudflared from the official trusted package repository on the VPS first'; fi
+phase=45
 export DEBIAN_FRONTEND=noninteractive
 packages=(git build-essential cmake pkg-config perl python3 python3-venv python3-pip libcurl4-openssl-dev libssl-dev zlib1g-dev ca-certificates curl make iproute2)
 if [[ $proxy == cloudflared && $domain != - ]]; then packages+=(python3-yaml); fi
 apt-get update >&2; apt-get install -y --no-install-recommends "${packages[@]}" >&2
 python3 -c 'import sys; assert sys.version_info >= (3,11), "Python 3.11+ required"'
+phase=42
 if ss -Hln sport = ":$port" | grep -q .; then fail 'selected port already in use'; fi
+phase=46
 ! id "$user" >/dev/null 2>&1 || fail 'service account already exists'
 # A named tunnel operator may pre-create its group to grant read access
 # without exposing credentials before the installer creates the user.
@@ -48,10 +57,11 @@ if group=$(getent group "$user"); then
 fi
 useradd --system "${user_group[@]}" --no-create-home --home-dir "$state" --shell /usr/sbin/nologin "$user"
 install -d -m 0755 "$base"; install -d -m 0700 -o "$user" -g "$user" "$state" "$logs"; install -d -m 0750 -o root -g "$user" "$etc"
-# Failure leaves diagnostic files; no existing deployment overwritten. Explicit cleanup documented.
-trap 'echo "Installation failed at line $LINENO; inspect $logs and run documented fresh-install cleanup." >&2' ERR
+# Failure leaves diagnostic files; no existing deployment overwritten.
+trap 'echo "Installation failed at line $LINENO; inspect $logs and see the README before retrying." >&2' ERR
 install -d -m 0755 -o "$user" -g "$user" "$base/finpred" "$base/addon" "$base/venv"
 cp -a "$stage/addon/." "$base/addon/"; chown -R "$user:$user" "$base/addon"
+phase=47
 runuser -u "$user" -- env HOME="$state" git -C "$base/finpred" init -q
 runuser -u "$user" -- env HOME="$state" git -C "$base/finpred" remote add origin "$repo"
 runuser -u "$user" -- env HOME="$state" git -C "$base/finpred" fetch --depth=1 origin "$ref" >&2
@@ -59,10 +69,13 @@ runuser -u "$user" -- env HOME="$state" git -C "$base/finpred" checkout --detach
 [[ $(runuser -u "$user" -- git -C "$base/finpred" rev-parse HEAD) == "$ref" ]] || fail 'commit pin mismatch'
 runuser -u "$user" -- env HOME="$state" git -C "$base/finpred" submodule update --init third_party/mulib >&2
 runuser -u "$user" -- env HOME="$state" git -C "$base/finpred/third_party/mulib" submodule update --init on1x/third_party/libstone >&2
+phase=48
 # Native source builds run without root and with private scratch paths.
 runuser -u "$user" -- env HOME="$state" bash -c 'set -e; cd "$1"; make mulib; make; make dragnet; bin/yieldcraft-demand build; bin/yieldcraft-inventory build; bin/finpred selftest' _ "$base/finpred" >&2
+phase=49
 runuser -u "$user" -- env HOME="$state" python3 -m venv "$base/venv"
 runuser -u "$user" -- env HOME="$state" "$base/venv/bin/pip" install --disable-pip-version-check "$base/addon" >&2
+phase=50
 # Runtime account must not modify executable code or operator config.
 chown -R root:"$user" "$base"; chmod -R u+rwX,g+rX,go-w,o-rwx "$base"
 if ((auth)); then
@@ -135,11 +148,14 @@ UNIT
  fi
 }
 if [[ $proxy == cloudflared && $domain != - ]]; then
+ phase=51
  (cd "$state"; runuser -u "$user" -- env HOME="$state" /usr/bin/python3 "$base/addon/deployment/tunnel_config.py" "$cf_config") ||
-  fail 'provision private named tunnel config and credentials readable only by root and the service account'
+   fail 'provision private named tunnel config and credentials readable only by root and the service account'
 fi
+phase=50
 install_service yieldcraft-mcp "$base/run-mcp"
 for i in $(seq 1 30); do if curl -q --noproxy '*' -fsS --max-time 2 "http://127.0.0.1:$port/readyz" >/dev/null; then break; fi; [[ $i != 30 ]] || fail 'MCP readiness failed'; sleep 2; done
+phase=51
 case $proxy in
  cloudflared)
   cf=$(command -v cloudflared); [[ $cf =~ ^/[A-Za-z0-9_./-]+$ ]] || fail 'unexpected cloudflared executable path'
@@ -157,8 +173,9 @@ exec "$cf" tunnel --no-autoupdate --config "$cf_config" --loglevel info --transp
 RUN
   fi
    chown root:"$user" "$base/run-tunnel"; chmod 0750 "$base/run-tunnel"; install_service yieldcraft-tunnel "$base/run-tunnel"
-  if [[ $domain == - ]]; then
-   url=''; for i in $(seq 1 60); do url=$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' "$logs/cloudflared.log" 2>/dev/null | tail -1 || true); [[ -z $url ]] || break; sleep 2; done
+   if [[ $domain == - ]]; then
+    phase=52
+    url=''; for i in $(seq 1 60); do url=$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' "$logs/cloudflared.log" 2>/dev/null | tail -1 || true); [[ -z $url ]] || break; sleep 2; done
    [[ -n $url ]] || fail 'Quick Tunnel did not publish an endpoint'; url+=/mcp
   else url="https://$domain/mcp"; fi;;
  nginx)
