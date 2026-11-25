@@ -3,6 +3,7 @@
 .finpred/
 .finpred-forecast/
 .finpred-cube/
+*.token
 
 # On1x project outputs and generated/native build products.
 /target/
