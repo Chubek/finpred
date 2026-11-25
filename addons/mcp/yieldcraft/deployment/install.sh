@@ -3,15 +3,18 @@
 set +x
 set -Eeuo pipefail
 umask 077
+HERE=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+source "$HERE/instance.sh"
 # Report only reserved stage exit codes to deploy.sh, not a raw transcript.
 phase=42
 trap 'if (($?)); then exit "$phase"; fi' EXIT
-[[ $(id -u) = 0 && $# = 11 ]] || { echo 'root and 11 arguments required' >&2; exit 2; }
-stage=$1 port=$2 proxy=$3 domain=$4 init=$5 repo=$6 ref=$7 email=$8 cf_config=$9 daemon=${10} auth=${11}
-base=/opt/yieldcraft-mcp; etc=/etc/yieldcraft-mcp; state=/var/lib/yieldcraft-mcp; logs=/var/log/yieldcraft-mcp; user=yieldcraft-mcp
 fail(){ echo "install: $*" >&2; exit 2; }
-[[ $port =~ ^[1-9][0-9]{0,4}$ && $port -le 65535 && $ref =~ ^[a-f0-9]{40}$ && $repo =~ ^https://[A-Za-z0-9.-]+/[A-Za-z0-9_./-]+\.git$ && $repo != *..* ]] || fail 'invalid deployment arguments'
-[[ $domain == - || $domain =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] || fail 'invalid domain'
+[[ $(id -u) == 0 ]] || fail 'root required'
+
+install_backend(){
+[[ $# == 5 ]] || fail 'invalid backend arguments'
+stage=$1 repo=$2 ref=$3 daemon=$4 auth=$5
+[[ $ref =~ ^[a-f0-9]{40}$ && $repo =~ ^https://[A-Za-z0-9.-]+/[A-Za-z0-9_./-]+\.git$ && $repo != *..* ]] || fail 'invalid repository arguments'
 [[ $init == systemd || $init == sysvinit ]] || fail 'invalid service manager'; [[ $daemon == 0 || $daemon == 1 ]] || fail 'invalid daemon option'
 [[ $auth == 0 || $auth == 1 ]] || fail 'invalid authentication option'
 if ((auth)); then
@@ -19,15 +22,13 @@ if ((auth)); then
 else
  [[ $daemon == 0 && ! -e $stage/tokens.json && ! -L $stage/tokens.json ]] || fail 'public demo cannot use daemon or token records'
 fi
-case $proxy in cloudflared|nginx|apache2|caddy) ;; *) fail 'unknown proxy';; esac
-[[ $proxy == cloudflared || $domain != - ]] || fail 'domain required'
-if [[ $proxy == nginx || $proxy == apache2 ]]; then [[ $email =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] || fail 'Certbot email required'; fi
-if [[ $proxy == cloudflared && $domain != - ]]; then [[ $cf_config =~ ^/[A-Za-z0-9_./-]+$ && $cf_config != *..* && -f $cf_config ]] || fail 'preprovisioned tunnel config required'; fi
+if [[ $proxy == cloudflared && $domain != - ]]; then [[ -f $cf_config ]] || fail 'preprovisioned tunnel config required'; fi
 [[ $(uname -m) == x86_64 ]] || fail 'supported target is Linux x86-64'
 . /etc/os-release; [[ $ID == debian || $ID == ubuntu ]] || fail 'Debian/Ubuntu only'
 phase=43
-[[ ! -e $base && ! -e $etc && ! -e $state && ! -e $logs ]] || fail 'existing installation; refuse overwrite (see README)'
-[[ ! -e /etc/systemd/system/yieldcraft-mcp.service && ! -e /etc/systemd/system/yieldcraft-tunnel.service && ! -e /etc/init.d/yieldcraft-mcp && ! -e /etc/init.d/yieldcraft-tunnel ]] || fail 'existing service definitions'
+for path in "$base" "$etc" "$state" "$logs" "/etc/systemd/system/$backend.service" "/etc/systemd/system/$tunnel.service" "/etc/init.d/$backend" "/etc/init.d/$tunnel"; do
+ [[ ! -e $path && ! -L $path ]] || fail 'existing instance path; refuse overwrite'
+done
 phase=42
 if [[ $init == systemd ]]; then [[ -d /run/systemd/system ]] || fail 'systemd not active'; else command -v start-stop-daemon >/dev/null || fail 'SysV start-stop-daemon missing'; fi
 phase=44
@@ -39,7 +40,10 @@ if [[ $proxy == cloudflared && $domain != - ]]; then packages+=(python3-yaml); f
 apt-get update >&2; apt-get install -y --no-install-recommends "${packages[@]}" >&2
 python3 -c 'import sys; assert sys.version_info >= (3,11), "Python 3.11+ required"'
 phase=42
-if ss -Hln sport = ":$port" | grep -q .; then fail 'selected port already in use'; fi
+listeners=$(ss -Hln sport = ":$port")
+[[ -z $listeners ]] || fail 'selected port already in use'
+phase=43
+save_record "$record" pending "$port" "$init" "$proxy" "$domain" "$email" "$cf_config"
 phase=46
 ! id "$user" >/dev/null 2>&1 || fail 'service account already exists'
 # A named tunnel operator may pre-create its group to grant read access
@@ -113,6 +117,10 @@ umask 077
 exec "$base/venv/bin/python" -m yieldcraft_mcp --config "$etc/config.toml"
 RUN
 chown root:"$user" "$base/run-mcp"; chmod 0750 "$base/run-mcp"
+install_service "$backend" "$base/run-mcp"
+for i in $(seq 1 30); do if curl -q --noproxy '*' -fsS --max-time 2 "http://127.0.0.1:$port/readyz" >/dev/null; then break; fi; [[ $i != 30 ]] || fail 'MCP readiness failed'; sleep 2; done
+}
+
 install_service(){
  local name=$1 command=$2
  if [[ $init == systemd ]]; then
@@ -143,48 +151,62 @@ WantedBy=multi-user.target
 UNIT
  systemctl daemon-reload; systemctl enable --now "$name.service" >&2
  else
- sed -e "s|@NAME@|$name|g" -e "s|@COMMAND@|$command|g" "$base/addon/deployment/sysvinit.in" > "/etc/init.d/$name"
+  sed -e "s|@NAME@|$name|g" -e "s|@COMMAND@|$command|g" -e "s|@USER@|$user|g" \
+   -e "s|@STATE@|$state|g" -e "s|@LOGS@|$logs|g" "$HERE/sysvinit.in" > "/etc/init.d/$name"
  chmod 0755 "/etc/init.d/$name"; update-rc.d "$name" defaults; service "$name" start >&2
  fi
 }
-if [[ $proxy == cloudflared && $domain != - ]]; then
- phase=51
- (cd "$state"; runuser -u "$user" -- env HOME="$state" /usr/bin/python3 "$base/addon/deployment/tunnel_config.py" "$cf_config") ||
-   fail 'provision private named tunnel config and credentials readable only by root and the service account'
-fi
-phase=50
-install_service yieldcraft-mcp "$base/run-mcp"
-for i in $(seq 1 30); do if curl -q --noproxy '*' -fsS --max-time 2 "http://127.0.0.1:$port/readyz" >/dev/null; then break; fi; [[ $i != 30 ]] || fail 'MCP readiness failed'; sleep 2; done
+
+install_proxy(){
 phase=51
+if [[ $proxy == nginx || $proxy == apache2 ]]; then
+ domain_digest=$(printf '%s' "$domain" | sha256sum)
+ cert="$backend-${domain_digest:0:16}"
+fi
 case $proxy in
  cloudflared)
-  cf=$(command -v cloudflared); [[ $cf =~ ^/[A-Za-z0-9_./-]+$ ]] || fail 'unexpected cloudflared executable path'
-  if [[ $domain == - ]]; then
+   if [[ $domain != - ]]; then
+    apt-get install -y --no-install-recommends python3-yaml >&2
+    (cd "$state"; runuser -u "$user" -- env HOME="$state" /usr/bin/python3 "$base/addon/deployment/tunnel_config.py" "$cf_config" "$port" "$domain") ||
+     fail 'named tunnel must have private credentials and route the configured hostname to this instance'
+   fi
+   cf=$(command -v cloudflared); [[ $cf =~ ^/[A-Za-z0-9_./-]+$ ]] || fail 'unexpected cloudflared executable path'
+   if [[ $domain == - ]]; then
+    if [[ -e $logs/cloudflared.log || -L $logs/cloudflared.log ]]; then
+     runuser -u "$user" -- mv -T -- "$logs/cloudflared.log" "$logs/cloudflared.previous.log"
+    fi
    cat > "$base/run-tunnel" <<RUN
 #!/bin/sh
 umask 077
-exec "$cf" tunnel --no-autoupdate --url "http://127.0.0.1:$port" --loglevel info --transport-loglevel info --logfile "$logs/cloudflared.log"
+exec "$cf" tunnel --no-autoupdate --url "http://127.0.0.1:$port" --metrics 127.0.0.1:0 --loglevel info --transport-loglevel info --logfile "$logs/cloudflared.log"
 RUN
   else
    cat > "$base/run-tunnel" <<RUN
 #!/bin/sh
 umask 077
-exec "$cf" tunnel --no-autoupdate --config "$cf_config" --loglevel info --transport-loglevel info --logfile "$logs/cloudflared.log" run
+exec "$cf" tunnel --no-autoupdate --config "$cf_config" --metrics 127.0.0.1:0 --loglevel info --transport-loglevel info --logfile "$logs/cloudflared.log" run
 RUN
   fi
-   chown root:"$user" "$base/run-tunnel"; chmod 0750 "$base/run-tunnel"; install_service yieldcraft-tunnel "$base/run-tunnel"
+   chown root:"$user" "$base/run-tunnel"; chmod 0750 "$base/run-tunnel"; install_service "$tunnel" "$base/run-tunnel"
    if [[ $domain == - ]]; then
     phase=52
-    url=''; for i in $(seq 1 60); do url=$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' "$logs/cloudflared.log" 2>/dev/null | tail -1 || true); [[ -z $url ]] || break; sleep 2; done
-   [[ -n $url ]] || fail 'Quick Tunnel did not publish an endpoint'; url+=/mcp
+    url=''
+    for i in $(seq 1 60); do
+     if line=$(runuser -u "$user" -- /usr/bin/python3 -I -B - "$port" "$user" < "$HERE/show_endpoint.py" 2>/dev/null); then
+      url=${line#MCP_CANDIDATE_URL=}; break
+     fi
+     sleep 2
+    done
+    [[ -n $url ]] || fail 'Quick Tunnel did not publish an endpoint'
   else url="https://$domain/mcp"; fi;;
  nginx)
    apt-get install -y nginx certbot python3-certbot-nginx >&2
-   site=/etc/nginx/sites-available/yieldcraft-mcp
-   enabled=/etc/nginx/sites-enabled/yieldcraft-mcp
+   site=/etc/nginx/sites-available/$backend
+   enabled=/etc/nginx/sites-enabled/$backend
    [[ ! -e $site && ! -L $site && ! -e $enabled && ! -L $enabled ]] || fail 'nginx site already exists'
    # Certificate provisioning must not publish a cleartext MCP backend.
    cat > "$site" <<NGINX
+# Yieldcraft instance $instance_id
  server {
   listen 80;
   server_name $domain;
@@ -194,8 +216,9 @@ RUN
 NGINX
    chmod 0644 "$site"; ln -s "$site" "$enabled"
    nginx -t >&2; service nginx reload >&2
-   certbot certonly --nginx --non-interactive --agree-tos --email "$email" -d "$domain" --cert-name "$domain" --deploy-hook 'service nginx reload' >&2
+    certbot certonly --nginx --non-interactive --agree-tos --email "$email" -d "$domain" --cert-name "$cert" --deploy-hook 'service nginx reload' >&2
    cat > "$site" <<NGINX
+# Yieldcraft instance $instance_id
  server {
   listen 80;
   server_name $domain;
@@ -206,10 +229,10 @@ NGINX
   listen 443 ssl;
   server_name $domain;
   ssl_protocols TLSv1.2 TLSv1.3;
-  ssl_certificate /etc/letsencrypt/live/$domain/fullchain.pem;
-  ssl_certificate_key /etc/letsencrypt/live/$domain/privkey.pem;
+   ssl_certificate /etc/letsencrypt/live/$cert/fullchain.pem;
+   ssl_certificate_key /etc/letsencrypt/live/$cert/privkey.pem;
   access_log off;
-  error_log /var/log/nginx/yieldcraft-mcp-error.log warn;
+   error_log /var/log/nginx/$backend-error.log warn;
   client_max_body_size 32m;
  location / {
   proxy_pass http://127.0.0.1:$port;
@@ -225,19 +248,21 @@ NGINX
    nginx -t >&2; service nginx reload >&2; url="https://$domain/mcp";;
  apache2)
    apt-get install -y apache2 certbot python3-certbot-apache >&2
-   site=/etc/apache2/sites-available/yieldcraft-mcp.conf
-   enabled=/etc/apache2/sites-enabled/yieldcraft-mcp.conf
+   site=/etc/apache2/sites-available/$backend.conf
+   enabled=/etc/apache2/sites-enabled/$backend.conf
    [[ ! -e $site && ! -L $site && ! -e $enabled && ! -L $enabled ]] || fail 'Apache site exists'
    a2enmod proxy proxy_http ssl headers >&2
    cat > "$site" <<APACHE
+# Yieldcraft instance $instance_id
  <VirtualHost *:80>
   ServerName $domain
   CustomLog /dev/null common
  </VirtualHost>
 APACHE
-   chmod 0644 "$site"; a2ensite yieldcraft-mcp >&2; apache2ctl configtest >&2; service apache2 reload >&2
-   certbot certonly --apache --non-interactive --agree-tos --email "$email" -d "$domain" --cert-name "$domain" --deploy-hook 'service apache2 reload' >&2
+   chmod 0644 "$site"; a2ensite "$backend" >&2; apache2ctl configtest >&2; service apache2 reload >&2
+    certbot certonly --apache --non-interactive --agree-tos --email "$email" -d "$domain" --cert-name "$cert" --deploy-hook 'service apache2 reload' >&2
    cat > "$site" <<APACHE
+# Yieldcraft instance $instance_id
  <VirtualHost *:80>
   ServerName $domain
   CustomLog /dev/null common
@@ -247,8 +272,8 @@ APACHE
   ServerName $domain
   SSLEngine On
   SSLProtocol -all +TLSv1.2 +TLSv1.3
-  SSLCertificateFile /etc/letsencrypt/live/$domain/fullchain.pem
-  SSLCertificateKeyFile /etc/letsencrypt/live/$domain/privkey.pem
+   SSLCertificateFile /etc/letsencrypt/live/$cert/fullchain.pem
+   SSLCertificateKeyFile /etc/letsencrypt/live/$cert/privkey.pem
   CustomLog /dev/null common
   LogLevel warn
   ProxyPreserveHost On
@@ -261,17 +286,54 @@ APACHE
 APACHE
    apache2ctl configtest >&2; service apache2 reload >&2; url="https://$domain/mcp";;
  caddy)
-  apt-get install -y caddy >&2; [[ ! -e /etc/caddy/yieldcraft-mcp.caddy && ! -e /etc/caddy/Caddyfile.yieldcraft-backup ]] || fail 'Caddy site exists'
-  cp -a /etc/caddy/Caddyfile /etc/caddy/Caddyfile.yieldcraft-backup
-  cat > /etc/caddy/yieldcraft-mcp.caddy <<CADDY
-$domain {
+   apt-get install -y caddy >&2
+   dir=/etc/caddy/yieldcraft.d
+   site="$dir/$backend.caddy"; main=/etc/caddy/Caddyfile
+   import='import /etc/caddy/yieldcraft.d/*.caddy'
+   [[ ! -L $dir && ! -L $main && -f $main && ! -e $site && ! -L $site ]] || fail 'Caddy config conflict'
+   install -d -m 0755 "$dir"
+   cat > "$site" <<CADDY
+# Yieldcraft instance $instance_id
+ $domain {
  reverse_proxy 127.0.0.1:$port {
   flush_interval -1
  }
 }
 CADDY
-  chmod 0644 /etc/caddy/yieldcraft-mcp.caddy; printf '\nimport /etc/caddy/yieldcraft-mcp.caddy\n' >> /etc/caddy/Caddyfile
-  if ! caddy validate --config /etc/caddy/Caddyfile >&2; then cp -a /etc/caddy/Caddyfile.yieldcraft-backup /etc/caddy/Caddyfile; fail 'Caddy validation failed'; fi
+   chmod 0644 "$site"
+   if ! grep -Fxq -- "$import" "$main"; then
+    tmp=$(mktemp /etc/caddy/.yieldcraft.XXXXXXXX)
+    cp --preserve=mode,ownership -- "$main" "$tmp"
+    printf '\n%s\n' "$import" >> "$tmp"
+    if ! caddy validate --config "$tmp" --adapter caddyfile >&2; then rm -f -- "$tmp" "$site"; fail 'Caddy validation failed'; fi
+    mv -T -- "$tmp" "$main"
+   fi
+   caddy validate --config "$main" --adapter caddyfile >&2
   service caddy reload >&2; url="https://$domain/mcp";;
+esac
+}
+
+[[ $# -ge 8 ]] || fail 'root and deployment arguments required'
+action=$1 instance_id=$2 port=$3 init=$4 proxy=$5 domain=$6 email=$7 cf_config=$8; shift 8
+instance_paths "$instance_id" && valid_port "$port" && valid_proxy "$proxy" "$domain" "$email" "$cf_config" ||
+ fail 'invalid instance or proxy settings'
+[[ $init == systemd || $init == sysvinit ]] || fail 'invalid service manager'
+export DEBIAN_FRONTEND=noninteractive
+record="$registry/$instance_id.instance"
+case $action in
+ install)
+  phase=43
+  [[ ! -e $record && ! -L $record && ! -e $registry/$instance_id.retired ]] &&
+   available_route "$port" "$domain" '' || fail 'instance ID, port or domain already reserved'
+  phase=42
+  install_backend "$@"
+  install_proxy
+  save_record "$record" active "$port" "$init" "$proxy" "$domain" "$email" "$cf_config"
+  ;;
+ proxy)
+  [[ $# == 0 ]] || fail 'unexpected proxy arguments'
+  install_proxy
+  ;;
+ *) fail 'unsupported installer action';;
 esac
 printf 'MCP_CANDIDATE_URL=%s\n' "$url"

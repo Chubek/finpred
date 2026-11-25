@@ -31,10 +31,11 @@ def read_private(path, limit=1_048_576):
         return data
 
 
-def validate_config(path):
+def validate_config(path, route=None):
     # Inspect only the top-level scalar keys cloudflared consumes. Reject
     # duplicate/merge keys and do not produce a second copy of the YAML on disk.
-    node = yaml.compose(read_private(path), Loader=yaml.SafeLoader)
+    data = read_private(path)
+    node = yaml.compose(data, Loader=yaml.SafeLoader)
     if not isinstance(node, yaml.MappingNode):
         raise ValueError('expected named tunnel configuration mapping')
     keys = set()
@@ -46,13 +47,19 @@ def validate_config(path):
             if value.tag != 'tag:yaml.org,2002:str' or not value.value:
                 raise ValueError('expected credential file path')
             read_private(Path(value.value).expanduser())
+    if route is not None:
+        port, hostname = route
+        ingress = yaml.safe_load(data).get('ingress')
+        if ingress != [{'hostname': hostname, 'service': f'http://127.0.0.1:{port}'},
+                       {'service': 'http_status:404'}]:
+            raise ValueError('named tunnel ingress must target exactly this instance')
 
 
 def main(argv):
     try:
-        if len(argv) != 1:
+        if len(argv) not in (1, 3):
             raise ValueError('expected tunnel config path')
-        validate_config(Path(argv[0]))
+        validate_config(Path(argv[0]), argv[1:] or None)
         return 0
     except (OSError, RuntimeError, ValueError, yaml.YAMLError):
         print('Named tunnel requires a private config and credential files readable by the service account',

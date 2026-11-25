@@ -48,7 +48,7 @@ def transfer(pexpect, target, port, archive, args):
             while data := f.read(384):
                 child.sendline(base64.b64encode(data).decode('ascii'))
         child.sendline('YC_END_PAYLOAD')
-        install = 'bash "$t/addon/deployment/install.sh" "$t" ' + shlex.join(args)
+        install = 'bash "$t/addon/deployment/manage.sh" "$t" ' + shlex.join(args)
         child.sendline(
             'if tar --no-same-owner --no-same-permissions -xzf "$t/payload.tar.gz" -C "$t"; '
             'then if [ "$(id -u)" = 0 ]; then ' + install + '; else sudo -n ' + install +
@@ -60,7 +60,7 @@ def transfer(pexpect, target, port, archive, args):
         # and installer output. Emit no transcript, even on successful installs.
         if child.match.group(1) != '0':
             return 1
-        url = candidate_url(child.before.split('\n'), args[2])
+        url = candidate_url(child.before.split('\n'), args[5])
         child.sendline('exit')
         print(url)
         return 0
@@ -74,7 +74,7 @@ def main(argv):
     except ImportError:
         print('Telnet transport requires pexpect', file=sys.stderr)
         return 2
-    if len(argv) != 13:
+    if len(argv) != 15:
         print('Telnet transport requires connection, archive and installation arguments', file=sys.stderr)
         return 2
     try:

@@ -10,15 +10,17 @@
 set -eu
 NAME=@NAME@
 PID=/run/$NAME.pid
-LOG=/var/log/yieldcraft-mcp/$NAME.log
+LOG=@LOGS@/$NAME.log
 CMD=@COMMAND@
+USER=@USER@
+STATE=@STATE@
 case "${1:-}" in
  start)
-  if start-stop-daemon --status --pidfile "$PID" --user yieldcraft-mcp >/dev/null 2>&1; then exit 0; fi
+   if start-stop-daemon --status --pidfile "$PID" --user "$USER" >/dev/null 2>&1; then exit 0; fi
   rm -f "$PID"
-  start-stop-daemon --start --background --make-pidfile --pidfile "$PID" --chuid yieldcraft-mcp --chdir /var/lib/yieldcraft-mcp --startas /bin/sh -- -c 'umask 077; export HOME=/var/lib/yieldcraft-mcp; exec "$1" >> "$2" 2>&1' _ "$CMD" "$LOG";;
- stop) start-stop-daemon --stop --retry TERM/20/KILL/5 --pidfile "$PID" --user yieldcraft-mcp --oknodo; rm -f "$PID";;
+   start-stop-daemon --start --background --make-pidfile --pidfile "$PID" --chuid "$USER" --chdir "$STATE" --startas /bin/sh -- -c 'umask 077; export HOME="$3"; exec "$1" >> "$2" 2>&1' _ "$CMD" "$LOG" "$STATE";;
+ stop) start-stop-daemon --stop --retry TERM/20/KILL/5 --pidfile "$PID" --user "$USER" --oknodo; rm -f "$PID";;
  restart|force-reload) "$0" stop; "$0" start;;
- status) start-stop-daemon --status --pidfile "$PID" --user yieldcraft-mcp;;
+ status) start-stop-daemon --status --pidfile "$PID" --user "$USER";;
  *) echo "usage: $0 {start|stop|restart|status}" >&2; exit 2;;
 esac

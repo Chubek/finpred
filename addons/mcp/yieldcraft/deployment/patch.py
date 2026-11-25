@@ -15,6 +15,7 @@ import time
 import tomllib
 
 NAME = 'yieldcraft-mcp'
+BACKEND = NAME
 BASE = Path('/opt') / NAME
 ETC = Path('/etc') / NAME
 STATE = Path('/var/lib') / NAME
@@ -53,8 +54,8 @@ def read_config(path):
 def service_command(expected):
     managers = []
     for kind, path, command in (
-        ('systemd', SYSTEMD, ['/usr/bin/systemctl', 'restart', f'{NAME}.service']),
-        ('sysvinit', SYSV, ['/usr/sbin/service', NAME, 'restart']),
+        ('systemd', SYSTEMD, ['/usr/bin/systemctl', 'restart', f'{BACKEND}.service']),
+        ('sysvinit', SYSV, ['/usr/sbin/service', BACKEND, 'restart']),
     ):
         try:
             info = path.lstat()
@@ -221,10 +222,26 @@ def apply_patch(port, expected_init, expected_domain):
     return url
 
 
+def select_instance(prefix):
+    global NAME, BACKEND, BASE, ETC, STATE, LOGS, SYSTEMD, SYSV
+    if re.fullmatch(r'yc-[a-z2-7]{26}', prefix) is None:
+        raise ValueError('invalid instance prefix')
+    NAME = prefix
+    BACKEND = f'{prefix}-mcp'
+    BASE, ETC = Path('/opt') / prefix, Path('/etc') / prefix
+    STATE, LOGS = Path('/var/lib') / prefix, Path('/var/log') / prefix
+    SYSTEMD, SYSV = Path('/etc/systemd/system') / f'{BACKEND}.service', Path('/etc/init.d') / BACKEND
+
+
 def main(argv):
-    if (os.geteuid() != 0 or len(argv) != 3 or not re.fullmatch(r'[1-9][0-9]{0,4}', argv[0])
+    if (os.geteuid() != 0 or len(argv) not in (3, 4) or not re.fullmatch(r'[1-9][0-9]{0,4}', argv[0])
             or int(argv[0]) > 65535):
         return 54
+    if len(argv) == 4:
+        try:
+            select_instance(argv[3])
+        except ValueError:
+            return 54
     try:
         fd = os.open(ETC, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     except OSError:
@@ -236,7 +253,7 @@ def main(argv):
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             return 59
-        port, expected_init, expected_domain = argv
+        port, expected_init, expected_domain = argv[:3]
         print('MCP_CANDIDATE_URL=' + apply_patch(int(port), expected_init, expected_domain))
     except PatchError as error:
         return error.code

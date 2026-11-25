@@ -44,31 +44,33 @@ The server listens only on loopback. `/mcp` uses the official MCP Python SDK's v
 Run `deploy.sh` **on your host PC**, not on the VPS. Fresh installs target Debian/Ubuntu GNU/Linux x86-64 with a supported compiler, Python 3.11+, systemd or SysV init, working DNS, package access and root or passwordless `sudo -n`. Ubuntu 24.04 is the intended first test target. Read `AGENTS.md` before using it on a valuable machine: this delivery has not been run against a real VPS.
 
 ```sh
+# Generate a distinct UUIDv4 for every new installation. Save the IDs.
+ID=$(python3 -c 'import uuid; print(uuid.uuid4())')
+SECOND_ID=$(python3 -c 'import uuid; print(uuid.uuid4())')
+
 # Inspect arguments without connecting or generating a credential:
-./deploy.sh root@204.168.206.175 --dry-run
+./deploy.sh "$SERVER_IP" --id "$ID" --dry-run
 
 # Quick Tunnel: cloudflared must already be installed from a trusted package source.
-./deploy.sh root@204.168.206.175 -p 8788 -r cloudflared --ssh --systemd --no-auth
+./deploy.sh "$SERVER_IP" --id "$ID" --port 8788 --no-auth
 
-# Full service with bearer authentication:
-./deploy.sh root@204.168.206.175 -r cloudflared --auth
+# A second instance with bearer authentication and a different backend port:
+./deploy.sh "$SERVER_IP" --id "$SECOND_ID" --port 8789 --auth
 
-# Custom DNS (point the domain to the VPS first; ports 80/443 must be reachable):
-./deploy.sh root@204.168.206.175 -r nginx -d foo.com --email ops@foo.com
-./deploy.sh root@204.168.206.175 -r apache2 -d foo.com --email ops@foo.com --sysvinit
-./deploy.sh root@204.168.206.175 -r caddy -d foo.com
+# Alternative fresh-install proxy options (point DNS at the VPS first):
+# -r nginx -d mcp.example.com --email ops@example.com
+# -r apache2 -d mcp.example.com --email ops@example.com --sysvinit
+# -r caddy -d mcp.example.com
 
-# Named Cloudflare tunnel: provision ingress/DNS and a scoped credential on the VPS.
-./deploy.sh root@204.168.206.175 -r cloudflared -d foo.com \
-  --cloudflared-config /etc/cloudflared/yieldcraft.yml
-
-# Telnet via an independently secured management tunnel (requires pexpect + telnet locally):
-./deploy.sh root@127.0.0.1 --telnet --telnet-port 2323 -r cloudflared
+# Optional Telnet transport for fresh installs only, over an independently
+# secured loopback tunnel (requires pexpect and telnet locally):
+# ./deploy.sh root@127.0.0.1 --id "$ID" --telnet --telnet-port 2323
 ```
 
 | Option | Meaning |
 | --- | --- |
-| `-p/--port` | Backend port, default `8788` |
+| `--id UUID` | Mandatory lowercase UUIDv4 for a fresh install; selects which instance to manage |
+| `-p/--port` | Backend port, default `8788` on install; optional match check for ID-based management |
 | `-r/--reverse-proxy` | `cloudflared` (default; also accepts `clouadflared`), `nginx`, `apache2`, `caddy` |
 | `-d/--domain` | Domain for TLS proxy/named tunnel |
 | `--ssh`, `--telnet` | SSH by default; Telnet requires a separately secured loopback management tunnel. Never sends credentials to a public Telnet host. |
@@ -83,45 +85,67 @@ Run `deploy.sh` **on your host PC**, not on the VPS. Fresh installs target Debia
 | `--no-daemon` | With `--auth`: do not autostart the offline Dragnet daemon |
 | `--patch --no-auth` | Switch an existing SSH deployment at the selected port to the limited demo |
 | `--show-endpoint` | Print the existing HTTPS `/mcp` URL over SSH, without modifying the installation |
+| `--configure --id UUID --- TASKS` | Change daemon autostart and/or reverse proxy settings |
+| `--uninstall --id UUID` | Stop only that instance and remove its services, proxy route and runtime |
 | `--dry-run` | No connection, installation or credential generation |
 
-SSH strict host-key verification is enabled: establish the correct host key before first use. The upload contains only explicitly listed addon source files and, in `--auth` mode, the **hash** of the generated random bearer credential. The remote installer fetches the pinned FinPRED commit and nested gitlinks, builds under the unprivileged service account, then makes the installed executable tree root-owned and read-only to the account. The host PC validates the reported destination against the configured domain or Quick Tunnel hostname pattern, then checks TLS directly and performs MCP initialization and `tools/list` using the selected mode, without following redirects or printing the remote transcript. It prints the final URL only on successful probe. With `--auth`, the initial admin token remains in the local `yieldcraft-mcp.token` file (0600); prefer `--token-out` with a path outside the checkout and do not share it with ordinary client users.
+SSH strict host-key verification is enabled: establish the correct host key before first use. The upload contains only explicitly listed addon source files and, in `--auth` mode, the **hash** of the generated random bearer credential. The remote installer fetches the pinned FinPRED commit and nested gitlinks, builds under the instance's unprivileged service account, then makes the installed executable tree root-owned and read-only to the account. The host PC validates the reported destination against the configured domain or Quick Tunnel hostname pattern, then checks TLS directly and performs MCP initialization and `tools/list` using the selected mode, without following redirects or printing the remote transcript. It prints the final URL only on successful probe. With `--auth`, the initial admin token remains in the local `<prefix>.token` file (0600); prefer `--token-out` with a path outside the checkout and do not share it with ordinary client users.
 
 **Public demo:** Connect to the printed `/mcp` URL without an `Authorization` header. Anyone who can reach that URL can use the demo. It exposes native `yieldcraft_demo` for the checked-in synthetic `contribution`, `market`, and `multiroom` fixtures, plus Ottomat highlighting, preflight, and the built-in strategy list. Pricing runs are not retained. Uploads, saved runs, live acquisition, native strategy execution, and daemon controls are not exposed. Use `--auth` for private data or the full workflow.
 
-For a named tunnel, an operator can pre-create a dedicated, empty `yieldcraft-mcp` group and give root-owned config and credential files mode `0640` with that group. Keep their ancestor directories non-writable by other accounts and traversable by the service. The installer checks access as the service account. Nginx and Apache proxy the MCP service only in their HTTPS virtual hosts, including during certificate bootstrap.
+For a named tunnel, use `-r cloudflared -d mcp.example.com --cloudflared-config /etc/cloudflared/instance.yml` and provision DNS and a scoped tunnel credential on the VPS. `--dry-run` shows `prefix=...`: an operator can pre-create a dedicated empty group with that name and give root-owned config and credential files mode `0640` with that group. Keep ancestors non-writable by other accounts and traversable by the instance. The installer verifies access as the service account and requires exactly one ingress mapping for the configured hostname to `http://127.0.0.1:<port>`, followed by `http_status:404`. Nginx and Apache proxy the MCP service only over HTTPS.
 
-**Quick Tunnel limitations:** the assigned `trycloudflare.com` hostname is temporary and may change when cloudflared restarts; it supports JSON HTTP but not SSE. Use a named tunnel or your own HTTPS domain for persistent clients. This installer deliberately does not install Cloudflare binaries from unverified downloads or create Cloudflare accounts/DNS/credentials. For named ingress, use `http://127.0.0.1:8788` (or your selected port) and a catch-all `http_status:404`. For Nginx/Apache, Certbot obtains and renews certificates; Caddy manages HTTPS itself. The script assumes no conflicting sites already serve the chosen domain. A failed fresh install can leave diagnostic files, a partially configured proxy or services. Fresh installs do not overwrite an existing deployment and are not automatically rolled back; inspect and clean up manually before retrying.
+**Proxy limits:** a Quick Tunnel's `trycloudflare.com` name can change when it restarts, and it supports JSON HTTP but not SSE. Use a named tunnel or your own HTTPS domain for persistent clients. The installer doesn't create Cloudflare accounts, DNS, or credentials. Certbot obtains certificates for Nginx and Apache; Caddy manages HTTPS itself. Multiple instances can share the same direct web server on different hostnames. Nginx, Apache, and Caddy can't all bind the same public ports: before switching proxy types, make sure the new server can bind ports 80/443 without stopping a server another instance or site needs. Don't select a domain already managed outside this script.
 
-Locations: `/opt/yieldcraft-mcp/{finpred,addon,venv}`, `/etc/yieldcraft-mcp`, `/var/lib/yieldcraft-mcp/projects`, `/var/log/yieldcraft-mcp`. Service names `yieldcraft-mcp` and (cloudflared only) `yieldcraft-tunnel`.
+Each ID maps to a unique `yc-…` prefix derived from the UUIDv4. Install paths
+are `/opt/<prefix>/{finpred,addon,venv}`, `/etc/<prefix>`, `/var/lib/<prefix>`,
+and `/var/log/<prefix>`. Service names are `<prefix>-mcp` and (Cloudflare
+only) `<prefix>-tunnel`. The VPS serializes deploy/manage operations and
+rejects a duplicate ID, reserved backend port, or duplicate managed domain.
+To clean up a partial install that reserved the ID, run `--uninstall` for it.
 
 ### Manage an existing deployment
 
 ```sh
-# Omit --port if the service uses the default backend port, 8788.
-./deploy.sh "$SERVER_IP" --show-endpoint
-./deploy.sh "$SERVER_IP" --patch --no-auth --port 8788
+./deploy.sh "$SERVER_IP" --show-endpoint --id "$ID"
+./deploy.sh "$SERVER_IP" --configure --id "$SECOND_ID" --- --no-daemon
+./deploy.sh "$SERVER_IP" --configure --id "$ID" --- --reverse-proxy caddy --domain mcp.example.com
+./deploy.sh "$SERVER_IP" --patch --id "$SECOND_ID" --no-auth
+./deploy.sh "$SERVER_IP" --uninstall --id "$ID"
 ```
 
 These commands use SSH. Pass `USER@HOST` to choose the login explicitly, or
 just `HOST` to use SSH's configured user. `--show-endpoint` prints one URL
 and does not test reachability or restart anything. It reads the installed
 domain or the latest Quick Tunnel hostname reported in recent VPS logs.
-On a non-root admin login it uses `sudo -n -u yieldcraft-mcp` for read
-access. Pass `--domain` if you want either command to require a specific
-existing hostname.
+On a non-root admin login it uses `sudo -n -u <prefix>` for read
+access. `--domain` can assert the hostname for lookup or patch.
 
-`--patch --no-auth` needs the existing backend port to match. It restarts
-only `yieldcraft-mcp` and switches it to a separate public-demo state
+`--configure` accepts only `--daemon`, `--no-daemon`, or a proxy selection
+with its required flags after `---`; no shell commands. `--daemon` controls
+offline Dragnet autostart and requires an authenticated deployment with a
+daemon config. Changing a proxy can briefly interrupt the endpoint; for
+OAuth deployments, changing the public hostname is refused. The script
+tries to restore the previous config and proxy if applying the changes
+fails. Use `--show-endpoint` afterward and test the URL with your MCP client;
+configure does not use or require a bearer token.
+
+`--patch --no-auth` restarts only `<prefix>-mcp` and switches it to a separate public-demo state
 directory; it leaves the installed software, proxy, private projects and
 token files untouched. The installed addon must already support demo mode.
 The previous config is saved as a root-only
-`/etc/yieldcraft-mcp/config.pre-patch-*.toml` file and restored automatically
+`/etc/<prefix>/config.pre-patch-*.toml` file and restored automatically
 if the new service fails its local startup check. If only the external HTTPS
 probe fails, the demo stays active and the command reports the probe failure.
 To return to private mode, restore the intended backup as
-`/etc/yieldcraft-mcp/config.toml` (owner `root`, group `yieldcraft-mcp`, mode
-`0640` for a standard deployment) on the VPS and restart `yieldcraft-mcp`.
+`/etc/<prefix>/config.toml` (owner `root`, group `<prefix>`, mode
+`0640` for a standard deployment) on the VPS and restart `<prefix>-mcp`.
+
+`--uninstall` retains the instance's config, credentials, private state,
+logs and user account, as well as any certificates, packages and DNS.
+The port can be reused, but a retired ID cannot. Older installs without
+an ID can still use `--patch` and `--show-endpoint` without `--id`; they
+are not automatically migrated or selected by `--configure` or `--uninstall`.
 
 ### Troubleshoot a failed SSH deployment
 
@@ -141,10 +165,10 @@ to do so without prompting.
 
 If SSH connects but the install fails, check the reported stage. The default
 `cloudflared` proxy needs `cloudflared` installed on the VPS beforehand. For a
-checkout failure, compare `./deploy.sh USER@HOST --dry-run` (same options) with
+checkout failure, compare `./deploy.sh USER@HOST --id "$ID" --dry-run` (same options) with
 the commit available from `--repo`; local-only commits cannot be fetched.
-For service failures on systemd, inspect `journalctl -u yieldcraft-mcp` on the
-VPS (and `journalctl -u yieldcraft-tunnel` for Cloudflare). Keep raw logs
+For service failures on systemd, inspect `journalctl -u <prefix>-mcp` on the
+VPS (and `journalctl -u <prefix>-tunnel` for Cloudflare). Keep raw logs
 private. If the failure left a partial installation, inspect it before
 retrying. An `--auth` run may also have already written the local token file;
 the script will not overwrite it.
@@ -216,7 +240,7 @@ node --test tests/editor_bridge.test.cjs
 bash -n deploy.sh
 bash -n deployment/install.sh
 sh -n deployment/sysvinit.in
-./deploy.sh root@204.168.206.175 --dry-run
+./deploy.sh root@vps.example --id "$(python3 -c 'import uuid; print(uuid.uuid4())')" --dry-run
 ```
 
 The local SDK checks exercise authenticated Streamable HTTP in-process

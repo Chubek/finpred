@@ -72,22 +72,31 @@ def existing_endpoint(config: dict, logs: Path) -> str:
 
 
 def main(argv):
-    if len(argv) != 1 or re.fullmatch(r'[1-9][0-9]{0,4}', argv[0]) is None:
+    if len(argv) not in (1, 2) or re.fullmatch(r'0|[1-9][0-9]{0,4}', argv[0]) is None:
+        return 54
+    config_path, logs = CONFIG, LOGS
+    if len(argv) == 2:
+        prefix = argv[1]
+        if re.fullmatch(r'yc-[a-z2-7]{26}', prefix) is None or not (Path('/opt') / prefix / 'run-mcp').is_file():
+            return 54
+        config_path, logs = Path('/etc') / prefix / 'config.toml', Path('/var/log') / prefix
+    elif argv[0] == '0':
         return 54
     port = int(argv[0])
     try:
-        with open_regular(CONFIG) as file:
+        with open_regular(config_path) as file:
             data = file.read(CONFIG_LIMIT + 1)
         if len(data) > CONFIG_LIMIT:
             return 54
         config = tomllib.loads(data.decode('utf-8'))
         installed_port = config.get('port')
-        if not 1 <= port <= 65535 or type(installed_port) is not int or installed_port != port:
+        if (type(installed_port) is not int or not 1 <= installed_port <= 65535
+                or port not in (0, installed_port)):
             return 54
     except (OSError, ValueError):
         return 54
     try:
-        url = existing_endpoint(config, LOGS)
+        url = existing_endpoint(config, logs)
     except (OSError, ValueError):
         return 55
     print(MARKER + url)

@@ -21,6 +21,7 @@ ADDON = Path(__file__).resolve().parents[1]
 DEPLOYMENT = ADDON / 'deployment'
 SENTINEL = 'mock-only-sensitive-value'
 URL = 'https://service.example/mcp'
+INSTANCE = '10203040-5060-4780-90a0-b0c0d0e0f000'
 
 
 @pytest.fixture
@@ -76,7 +77,7 @@ exec "{sys.executable}" "$@"
                MOCK_SECRET=SENTINEL, MOCK_STATUS=f'MCP_CANDIDATE_URL={URL}', TMPDIR=str(tmp_path))
 
     def run(*args, authenticated=True, target='root@127.0.0.1',
-            fresh_options=('-r', 'caddy', '-d', 'service.example'), **settings):
+            fresh_options=('--id', INSTANCE, '-r', 'caddy', '-d', 'service.example'), **settings):
         auth_args = ['--auth', '--token-out', str(tmp_path / 'token')] if authenticated else []
         return subprocess.run(['bash', '-x', str(addon / 'deploy.sh'), target,
                                *fresh_options, *auth_args, *args],
@@ -171,7 +172,7 @@ def test_remote_ssh_wrapper_maps_failures(mocked_ssh, tmp_path, failure, message
         'sudo': 'exit 1',
         'tar': 'exit 1' if failure == 'tar' else (
             'mkdir -p "$6/addon/deployment"\n'
-            'printf "%s\\n" "exit 48" > "$6/addon/deployment/install.sh"'),
+            'printf "%s\\n" "exit 48" > "$6/addon/deployment/manage.sh"'),
     }
     for name, script in scripts.items():
         command = commands / name
@@ -187,7 +188,53 @@ def test_installer_reports_preflight_status_before_mutating_host():
     result = subprocess.run(['bash', str(DEPLOYMENT / 'install.sh')],
                             capture_output=True, text=True, timeout=5)
     assert result.returncode == 42
-    assert 'root and 11 arguments required' in result.stderr
+    assert result.stderr.startswith('install: ')
+
+
+@pytest.mark.parametrize('flags', [
+    ('--no-auth',), ('--id', '../other', '--no-auth'), ('--id', INSTANCE, '--id', INSTANCE),
+    ('--uninstall',), ('--configure', '--id', INSTANCE, '--daemon'),
+    ('--configure', '--id', INSTANCE, '---', 'rm -rf /'),
+    ('--configure', '--id', INSTANCE, '---', '--daemon', '--no-daemon'),
+    ('--configure', '--id', INSTANCE, '---', '--domain', 'service.example'),
+    ('--configure', '--id', INSTANCE, '---', '--reverse-proxy', 'nginx', '--domain', 'service.example'),
+])
+def test_instance_options_are_validated_before_connecting(mocked_ssh, tmp_path, flags):
+    result = mocked_ssh[0](*flags, authenticated=False, fresh_options=())
+    assert result.returncode == 2
+    assert not (tmp_path / 'ssh.json').exists()
+
+
+@pytest.mark.parametrize('flags,command,expected', [
+    (('--uninstall', '--id', INSTANCE), f"'uninstall' '{INSTANCE}' '0'",
+     f'INSTANCE_UNINSTALLED={INSTANCE}'),
+    (('--configure', '--id', INSTANCE, '--port', '8888', '---', '--no-daemon', '--reverse-proxy',
+      'caddy', '--domain', 'changed.example'),
+     f"'configure' '{INSTANCE}' '8888' '0' 'caddy' 'changed.example' '-' '-'",
+     f'INSTANCE_CONFIGURED={INSTANCE}'),
+])
+def test_management_transfers_only_helpers_and_hides_transcript(mocked_ssh, tmp_path, flags, command, expected):
+    result = mocked_ssh[0](*flags, authenticated=False, fresh_options=())
+    assert result.returncode == 0 and result.stdout == expected + '\n', result.stderr
+    assert SENTINEL not in result.stderr
+    assert not (tmp_path / 'token').exists() and not (tmp_path / 'probe-argv').exists()
+    ssh_args, *_ = json.loads((tmp_path / 'ssh.json').read_text())
+    assert command in ssh_args[-1]
+    with tarfile.open(tmp_path / 'uploaded.tar.gz') as tar:
+        files = {m.name for m in tar.getmembers() if m.isfile()}
+    assert 'addon/deployment/manage.sh' in files
+    assert all(file.startswith('addon/deployment/') for file in files)
+    if '--uninstall' in flags:
+        assert files == {'addon/deployment/manage.sh', 'addon/deployment/instance.sh'}
+
+
+def test_fresh_auth_defaults_to_instance_specific_token_file(mocked_ssh):
+    run, addon = mocked_ssh
+    result = run('--auth', authenticated=False)
+    assert result.returncode == 0, result.stderr
+    path, = addon.glob('yc-*.token')
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert f'TOKEN_FILE={path}' in result.stdout and f'INSTANCE_ID={INSTANCE}' in result.stdout
 
 
 def test_patch_sends_only_patch_helpers_and_checks_public_demo(mocked_ssh, tmp_path):
@@ -207,6 +254,15 @@ def test_patch_sends_only_patch_helpers_and_checks_public_demo(mocked_ssh, tmp_p
     assert f'MCP_SERVER_URL={URL}\n' in result.stdout
     assert 'TOKEN_FILE=' not in result.stdout
     assert not (tmp_path / 'token').exists()
+
+
+def test_patch_with_uuid_uses_the_registered_port_by_default(mocked_ssh, tmp_path):
+    run, _ = mocked_ssh
+    result = run('--patch', '--no-auth', '--id', INSTANCE, authenticated=False, fresh_options=())
+    assert result.returncode == 0, result.stderr
+    args, *_ = json.loads((tmp_path / 'ssh.json').read_text())
+    assert 'deployment/manage.sh' in args[-1]
+    assert f"'patch' '{INSTANCE}' '0' 'auto' '-'" in args[-1]
 
 
 @pytest.mark.parametrize('flags,expected', [
@@ -373,8 +429,8 @@ def test_telnet_never_prints_echoes_or_diagnostics(
     monkeypatch.setattr(transport.secrets, 'token_hex', lambda _: nonce)
     archive = tmp_path / 'archive'
     archive.write_bytes(b'mocked payload')
-    status = transport.main(['root@localhost', '12345', str(archive),
-                             '8788', 'caddy', 'service.example', 'systemd', 'repo', 'ref', '-', '-', '0', '0'])
+    status = transport.main(['root@localhost', '12345', str(archive), 'install', INSTANCE,
+                             '8788', 'systemd', 'caddy', 'service.example', '-', '-', 'repo', 'ref', '0', '0'])
     captured = capsys.readouterr()
     assert SENTINEL not in captured.out + captured.err
     if failure is None:
@@ -403,6 +459,12 @@ def test_named_tunnel_rejects_unsafe_permissions_and_secret_output(monkeypatch, 
     config.write_text(f'tunnel: example\ncredentials-file: "{credentials}"\n')
     config.chmod(0o600)
     assert tunnel.main([str(config)]) == 0
+    with config.open('a') as out:
+        out.write('ingress:\n  - hostname: service.example\n    service: http://127.0.0.1:8788\n'
+                  '  - service: http_status:404\n')
+    assert tunnel.main([str(config), '8788', 'service.example']) == 0
+    assert tunnel.main([str(config), '8789', 'service.example']) == 1
+    assert tunnel.main([str(config), '8788', 'other.example']) == 1
     if credentials.stat().st_gid == os.getegid():
         credentials.chmod(0o640)
         assert tunnel.main([str(config)]) == 0

@@ -198,6 +198,16 @@ def test_show_endpoint_domain_is_an_optional_assertion(mocked_show):
     assert 'matching any requested domain' in result.stderr
 
 
+def test_show_endpoint_selects_uuid_scope_without_a_port(mocked_show, tmp_path):
+    instance = '10203040-5060-4780-90a0-b0c0d0e0f000'
+    prefix = 'yc-caqdaqcqmbdybefawdanbyhqaa'
+    result = mocked_show('vps.example.net', '--id', instance)
+    assert result.returncode == 0 and result.stdout == URL + '\n'
+    command = json.loads((tmp_path / 'ssh-argv').read_text())[-1]
+    assert f"u='{prefix}'" in command
+    assert command.endswith(f" - '0' '{prefix}'")
+
+
 @pytest.mark.parametrize('flags', [
     ('--auth',), ('--no-auth',), ('--patch', '--no-auth'), ('--telnet', '--ssh'),
     ('--no-daemon',), ('--systemd',), ('--sysvinit',), ('--token-out', 'token'),
