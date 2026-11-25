@@ -75,10 +75,11 @@ exec "{sys.executable}" "$@"
     env = dict(os.environ, PATH=f'{commands}:{os.environ["PATH"]}', MOCK_DIR=str(tmp_path),
                MOCK_SECRET=SENTINEL, MOCK_STATUS=f'MCP_CANDIDATE_URL={URL}', TMPDIR=str(tmp_path))
 
-    def run(*args, authenticated=True, **settings):
+    def run(*args, authenticated=True, target='root@127.0.0.1',
+            fresh_options=('-r', 'caddy', '-d', 'service.example'), **settings):
         auth_args = ['--auth', '--token-out', str(tmp_path / 'token')] if authenticated else []
-        return subprocess.run(['bash', '-x', str(addon / 'deploy.sh'), 'root@127.0.0.1',
-                               '-r', 'caddy', '-d', 'service.example', *auth_args, *args],
+        return subprocess.run(['bash', '-x', str(addon / 'deploy.sh'), target,
+                               *fresh_options, *auth_args, *args],
                               cwd=addon, env=dict(env, **settings), capture_output=True,
                               text=True, timeout=20)
 
@@ -189,6 +190,48 @@ def test_installer_reports_preflight_status_before_mutating_host():
     assert 'root and 11 arguments required' in result.stderr
 
 
+def test_patch_sends_only_patch_helpers_and_checks_public_demo(mocked_ssh, tmp_path):
+    run, _ = mocked_ssh
+    result = run('--patch', '--no-auth', '-p', '9000', authenticated=False,
+                 target='192.0.2.10', fresh_options=())
+    assert result.returncode == 0, result.stderr
+    ssh_args, *_ = json.loads((tmp_path / 'ssh.json').read_text())
+    assert '192.0.2.10' in ssh_args
+    assert 'deployment/patch.py" \'9000\' \'auto\' \'-\'' in ssh_args[-1]
+    with tarfile.open(tmp_path / 'uploaded.tar.gz') as tar:
+        assert {member.name for member in tar.getmembers() if member.isfile()} == {
+            'addon/deployment/patch.py', 'addon/deployment/probe.py',
+            'addon/deployment/show_endpoint.py',
+        }
+    assert (tmp_path / 'probe-argv').read_text().splitlines()[1:] == [URL]
+    assert f'MCP_SERVER_URL={URL}\n' in result.stdout
+    assert 'TOKEN_FILE=' not in result.stdout
+    assert not (tmp_path / 'token').exists()
+
+
+@pytest.mark.parametrize('flags,expected', [
+    (('--patch',), '--patch requires explicit --no-auth'),
+    (('--patch', '--auth'), '--patch requires explicit --no-auth'),
+    (('--patch', '--no-auth', '--ref', 'abc'), '--ref is a fresh-install option'),
+    (('--patch', '--no-auth', '--telnet'), '--patch requires SSH'),
+])
+def test_patch_rejects_unsupported_options_before_connecting(mocked_ssh, tmp_path, flags, expected):
+    result = mocked_ssh[0](*flags, authenticated=False, fresh_options=())
+    assert result.returncode != 0 and expected in result.stderr
+    assert not (tmp_path / 'ssh.json').exists()
+
+
+def test_patch_dry_run_and_failed_external_probe_are_distinct(mocked_ssh, tmp_path):
+    run, _ = mocked_ssh
+    options = {'authenticated': False, 'fresh_options': ()}
+    dry = run('--patch', '--no-auth', '--dry-run', **options)
+    assert dry.returncode == 0 and 'action=patch init=auto port=8788' in dry.stdout
+    assert not (tmp_path / 'ssh.json').exists()
+    result = run('--patch', '--no-auth', MOCK_PROBE_RC='1', **options)
+    assert result.returncode != 0 and 'patch applied on the VPS' in result.stderr
+    assert 'MCP_SERVER_URL=' not in result.stdout
+
+
 def test_dry_run_and_source_symlink_do_not_create_token_or_connect(mocked_ssh, tmp_path):
     run, addon = mocked_ssh
     assert run('--dry-run').returncode == 0
@@ -227,9 +270,9 @@ def test_probe_uses_verified_direct_https_and_never_prints_response(
         payload = json.loads(req.data)
         method = payload['method']
         methods.append(method)
-        tool = 'yieldcraft_demo' if token is None else 'yieldcraft_optimize_contribution'
+        tools = probe.PUBLIC_TOOLS if token is None else ['yieldcraft_optimize_contribution']
         contents = {'initialize': {'serverInfo': {'name': SENTINEL}}, 'notifications/initialized': {},
-                    'tools/list': {'tools': [{'name': tool}]}}
+                    'tools/list': {'tools': [{'name': tool} for tool in tools]}}
         return Response(json.dumps({'id': payload.get('id'), 'result': contents[method]}).encode())
 
     def fake_opener(redirects, proxy, https):
@@ -245,6 +288,37 @@ def test_probe_uses_verified_direct_https_and_never_prints_response(
     assert capsys.readouterr().out == '[OK] MCP initialization and tools/list verified\n'
     with pytest.raises(ValueError):
         probe.probe('http://service.example/mcp', SENTINEL)
+
+
+def test_local_probe_rejects_extra_public_tools(deployment_module, monkeypatch):
+    probe = deployment_module('probe')
+
+    class Response(io.BytesIO):
+        headers = Message()
+        headers['Content-Type'] = 'application/json'
+
+    def fake_open(request, *, timeout):
+        assert timeout == 2
+        if isinstance(request, str):
+            assert request == 'http://127.0.0.1:8788/readyz'
+            return Response(b'{"ready":true}')
+        assert request.full_url == 'http://127.0.0.1:8788/mcp'
+        assert not request.has_header('Authorization')
+        rpc = json.loads(request.data)
+        result = {}
+        if rpc['method'] == 'initialize':
+            result = {'serverInfo': {'name': 'Yieldcraft MCP'}}
+        if rpc['method'] == 'tools/list':
+            result = {'tools': [{'name': name} for name in probe.PUBLIC_TOOLS | {'artifact_read'}]}
+        return Response(json.dumps({'id': rpc.get('id'), 'result': result}).encode())
+
+    def fake_opener(redirects, proxy):
+        assert redirects.redirect_request() is None and proxy.proxies == {}
+        return SimpleNamespace(open=fake_open)
+
+    monkeypatch.setattr(probe.urllib.request, 'build_opener', fake_opener)
+    assert probe.main(['--local-ready', '8788']) == 0
+    assert probe.main(['--local-demo', '8788']) == 1
 
 
 def test_probe_rejects_shared_or_symlinked_token_without_reading_it(

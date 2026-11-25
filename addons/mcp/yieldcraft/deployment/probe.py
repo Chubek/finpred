@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Validate the deployment destination and probe MCP without logging credentials."""
+import http.client
 import json
 import os
 import re
@@ -14,6 +15,11 @@ HOST = re.compile(rf'(?=.{{1,253}}\Z)(?:{LABEL}\.)+{LABEL}')
 URL = re.compile(r'https://([^/]+)/mcp')
 QUICK_HOST = re.compile(rf'{LABEL}\.trycloudflare\.com')
 MARKER = 'MCP_CANDIDATE_URL='
+PUBLIC_TOOLS = frozenset({
+    'yieldcraft_demo', 'ottomat_list_strategies', 'ottomat_validate', 'ottomat_highlight',
+})
+PROBE_ERRORS = (OSError, ValueError, RuntimeError, KeyError, TypeError, AttributeError,
+                http.client.HTTPException)
 
 
 def destination(url):
@@ -32,7 +38,7 @@ def candidate_url(lines, domain):
             raise ValueError('multiple MCP candidates')
         url = line[len(MARKER):].removesuffix('\n').removesuffix('\r')
         host = destination(url)
-        if not (QUICK_HOST.fullmatch(host) if domain == '-' else host == domain):
+        if domain != 'existing' and not (QUICK_HOST.fullmatch(host) if domain == '-' else host == domain):
             raise ValueError('unexpected MCP candidate host')
     if url is None:
         raise ValueError('missing MCP candidate')
@@ -56,15 +62,16 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def probe(url, token=None):
-    destination(url)
-    # Require ordinary TLS verification, but do not enable SSLKEYLOGFILE.
-    tls = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    tls.load_default_certs()
-    opener = urllib.request.build_opener(
-        NoRedirect(), urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=tls)
-    )
+def response_json(response):
+    if response.headers.get_content_type() != 'application/json':
+        raise RuntimeError('expected JSON transport')
+    body = response.read(2_000_001)
+    if len(body) > 2_000_000:
+        raise RuntimeError('response too large')
+    return json.loads(body)
 
+
+def probe_mcp(opener, url, token=None, *, timeout=15, expected_server=None):
     def call(method, params, ident):
         payload = {'jsonrpc': '2.0', 'method': method, 'params': params}
         if ident is not None:
@@ -77,15 +84,10 @@ def probe(url, token=None):
         if token is not None:
             headers['Authorization'] = 'Bearer ' + token
         req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers=headers)
-        with opener.open(req, timeout=15) as r:
+        with opener.open(req, timeout=timeout) as r:
             if ident is None:
                 return
-            if r.headers.get_content_type() != 'application/json':
-                raise RuntimeError('expected JSON transport')
-            body = r.read(2_000_001)
-            if len(body) > 2_000_000:
-                raise RuntimeError('response too large')
-            v = json.loads(body)
+            v = response_json(r)
             if v.get('id') != ident or 'error' in v:
                 raise RuntimeError('MCP call rejected')
             return v['result']
@@ -94,14 +96,41 @@ def probe(url, token=None):
         'protocolVersion': '2025-11-25', 'capabilities': {},
         'clientInfo': {'name': 'yieldcraft-deploy-probe', 'version': '0.1.0'},
     }, 1)
-    if not isinstance(info['serverInfo']['name'], str):
+    name = info['serverInfo']['name']
+    if not isinstance(name, str) or (expected_server is not None and name != expected_server):
         raise RuntimeError('invalid MCP server info')
     call('notifications/initialized', {}, None)
     result = call('tools/list', {}, 2)
-    expected = 'yieldcraft_demo' if token is None else 'yieldcraft_optimize_contribution'
-    if not any(t['name'] == expected for t in result['tools']):
+    tools = [t['name'] for t in result['tools']]
+    if token is None:
+        if set(tools) != PUBLIC_TOOLS or len(tools) != len(PUBLIC_TOOLS) or result.get('nextCursor'):
+            raise RuntimeError('unexpected public tool set')
+    elif 'yieldcraft_optimize_contribution' not in tools:
         raise RuntimeError('required tool missing')
+
+
+def probe(url, token=None):
+    destination(url)
+    # Require ordinary TLS verification, but do not enable SSLKEYLOGFILE.
+    tls = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    tls.load_default_certs()
+    opener = urllib.request.build_opener(
+        NoRedirect(), urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=tls)
+    )
+    probe_mcp(opener, url, token)
     print('[OK] MCP initialization and tools/list verified')
+
+
+def loopback_probe(port, *, demo):
+    if not re.fullmatch(r'[1-9][0-9]{0,4}', port) or int(port) > 65535:
+        raise ValueError('invalid backend port')
+    base = f'http://127.0.0.1:{port}'
+    opener = urllib.request.build_opener(NoRedirect(), urllib.request.ProxyHandler({}))
+    with opener.open(base + '/readyz', timeout=2) as response:
+        if response_json(response).get('ready') is not True:
+            raise RuntimeError('service not ready')
+    if demo:
+        probe_mcp(opener, base + '/mcp', timeout=2, expected_server='Yieldcraft MCP')
 
 
 def main(argv):
@@ -109,6 +138,14 @@ def main(argv):
         print('Public probe requires a URL and optional token file', file=sys.stderr)
         return 2
     url = argv[0]
+    if url in ('--local-demo', '--local-ready'):
+        if len(argv) != 2:
+            return 2
+        try:
+            loopback_probe(argv[1], demo=url == '--local-demo')
+            return 0
+        except PROBE_ERRORS:
+            return 1
     if url == '--candidate':
         if len(argv) != 2:
             return 2
@@ -130,7 +167,7 @@ def main(argv):
         try:
             probe(url, token)
             return 0
-        except (OSError, ValueError, RuntimeError, KeyError, TypeError, AttributeError):
+        except PROBE_ERRORS:
             if i != 11:
                 time.sleep(5)
     print('Public probe failed', file=sys.stderr)
