@@ -1,4 +1,4 @@
-"""Lexer, parser, and validation for the CaravanScript v1 collection profile."""
+"""Lexer, parser, and validation for CaravanScript collection and transforms."""
 
 import json
 import os
@@ -26,16 +26,39 @@ _REQUIRED = {
     "refresh": {"tick_seconds", "weights", "max_age_seconds"},
     "output": {"observations", "coverage"},
 }
-_FIELDS = {"competitors", "sources"}
-_BLOCKS = _REQUIRED.keys() | {"credentials"}
+_REQUIRED_FIELDS = {"competitors", "sources"}
+_BLOCKS = _REQUIRED.keys() | {"credentials", "transform"}
 _TRIVIA = re.compile(r"(?:[ \t\n\r\f\v]+|#[^\r\n]*)*")
 _TOKEN = re.compile(r"[A-Za-z][A-Za-z0-9_]*|[0-9]+|[{}=\[\],;]")
+_TRANSFORM_TOKEN = re.compile(r"->|<=|>=|==|!=|[()+*:<>-]|" + _TOKEN.pattern)
 _STRING = json.JSONDecoder()
 _LINE_BREAK = re.compile(r"\r\n?|\n")
 _SURROGATE = re.compile(r"[\ud800-\udfff]")
 _DECIMAL = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)")
 _DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 _ZONE = re.compile(r"[A-Za-z0-9_+-]+(?:/[A-Za-z0-9_+-]+)*")
+
+_TYPES = frozenset({"int", "bool", "text"})
+_RESERVED = _TYPES | {"fn", "emit", "return", "true", "false", "not", "and", "or"}
+_BINARY_PRECEDENCE = {
+    "or": 1,
+    "and": 2,
+    "==": 3, "!=": 3,
+    "<": 4, "<=": 4, ">": 4, ">=": 4,
+    "+": 5, "-": 5,
+    "*": 6,
+}
+_COMPARISON_PRECEDENCE = (3, 4)
+_UNARY_PRECEDENCE = 7
+# Guard AST construction before the compiler applies its own validation.
+_MAX_FUNCTIONS = 64
+_MAX_METRICS = 64
+_MAX_LIST_ITEMS = 16
+_MAX_EXPR_NODES = 4096
+_MAX_EXPR_DEPTH = 64
+_MAX_PARSE_NESTING = 128  # Includes parentheses, which don't add AST nodes.
+_MAX_TEXT_BYTES = 4096
+_MAX_INT_LITERAL = 2**63 - 1
 
 # ISO 3166-1 assigned alpha-2 and ISO 4217 active alpha-3 codes, from
 # iso-codes 4.20.1. Only the machine identifiers, not the translated names.
@@ -133,6 +156,8 @@ class _Parser:
     def __init__(self, text):
         self.text = text
         self.position = 0
+        self._in_transform = False
+        self._expr_nodes = 0
         self.token = self._next()
 
     def _error(self, message, offset):
@@ -154,9 +179,14 @@ class _Parser:
                 raise self._error("invalid JSON string", offset) from None
             if _SURROGATE.search(value):
                 raise self._error("unpaired Unicode surrogate", offset)
+            if self._in_transform and (
+                len(value) > _MAX_TEXT_BYTES or len(value.encode("utf-8")) > _MAX_TEXT_BYTES
+            ):
+                raise self._error(f"transform text literal exceeds {_MAX_TEXT_BYTES} bytes", offset)
             return _Token("string", value, offset)
 
-        match = _TOKEN.match(text, offset)
+        lexer = _TRANSFORM_TOKEN if self._in_transform else _TOKEN
+        match = lexer.match(text, offset)
         if match is None:
             raise self._error("unexpected character", offset)
         value = match[0]
@@ -164,10 +194,14 @@ class _Parser:
         if value[0].isdigit():
             if len(value) > 1 and value[0] == "0":
                 raise self._error("integer cannot have leading zeros", offset)
+            if self._in_transform and len(value) > 19:
+                raise self._error("transform integer literal exceeds signed 64-bit range", offset)
             try:
                 number = int(value, 10)
             except ValueError:
                 raise self._error("integer is too large", offset) from None
+            if self._in_transform and number > _MAX_INT_LITERAL:
+                raise self._error("transform integer literal exceeds signed 64-bit range", offset)
             return _Token("integer", number, offset)
         return _Token("identifier" if value[0].isalpha() else value, value, offset)
 
@@ -203,10 +237,143 @@ class _Parser:
         self._take(";")
         return value
 
-    def _statements(self, fields, blocks, *, context):
+    def _transform_name(self):
+        offset = self.token.offset
+        name = self._take("identifier")
+        if name in _RESERVED:
+            raise self._error("reserved transform identifier", offset)
+        return name
+
+    def _transform_type(self):
+        offset = self.token.offset
+        formal_type = self._take("identifier")
+        if formal_type not in _TYPES:
+            raise self._error("expected int, bool, or text", offset)
+        return formal_type
+
+    def _parameter(self):
+        name = self._transform_name()
+        self._take(":")
+        return [name, self._transform_type()]
+
+    def _parenthesized_list(self, read_item):
+        self._take("(")
+        items = []
+        if self.token.kind != ")":
+            while True:
+                if len(items) == _MAX_LIST_ITEMS:
+                    raise self._error(
+                        f"transform list exceeds {_MAX_LIST_ITEMS} items", self.token.offset
+                    )
+                items.append(read_item())
+                if self.token.kind != ",":
+                    break
+                self._take(",")
+        self._take(")")
+        return items
+
+    def _expr_node(self, node, depth, offset):
+        if depth > _MAX_EXPR_DEPTH:
+            raise self._error(f"transform expression exceeds depth {_MAX_EXPR_DEPTH}", offset)
+        self._expr_nodes += 1
+        if self._expr_nodes > _MAX_EXPR_NODES:
+            raise self._error(f"transform exceeds {_MAX_EXPR_NODES} expression nodes", offset)
+        return node, depth
+
+    def _operand(self, nesting):
+        token = self.token
+        if token.kind == "(":
+            self._take("(")
+            result = self._expression(nesting=nesting + 1)
+            self._take(")")
+            return result
+        if token.kind == "-" or (token.kind == "identifier" and token.value == "not"):
+            operator = self._take(token.kind)
+            operand, depth = self._expression(_UNARY_PRECEDENCE, nesting + 1)
+            return self._expr_node(["unary", operator, operand], depth + 1, token.offset)
+        if token.kind in ("integer", "string"):
+            literal = self._take(token.kind)
+            return self._expr_node(["literal", literal], 1, token.offset)
+        if token.kind == "identifier":
+            if token.value in ("true", "false"):
+                literal = self._take("identifier") == "true"
+                return self._expr_node(["literal", literal], 1, token.offset)
+            name = self._transform_name()
+            if self.token.kind == "(":
+                args = self._parenthesized_list(lambda: self._expression(nesting=nesting + 1))
+                depth = max((depth for _, depth in args), default=0) + 1
+                return self._expr_node(["call", name, [arg for arg, _ in args]], depth, token.offset)
+            return self._expr_node(["name", name], 1, token.offset)
+        raise self._error("expected transform expression", token.offset)
+
+    def _binary_precedence(self):
+        token = self.token
+        return _BINARY_PRECEDENCE.get(token.value if token.kind == "identifier" else token.kind, 0)
+
+    def _expression(self, minimum=1, nesting=1):
+        if nesting > _MAX_PARSE_NESTING:
+            raise self._error(
+                f"transform expression nesting exceeds {_MAX_PARSE_NESTING}", self.token.offset
+            )
+        left, left_depth = self._operand(nesting)
+        while (precedence := self._binary_precedence()) >= minimum:
+            offset = self.token.offset
+            operator = self._take(self.token.kind)
+            # The right operand takes strictly tighter binary operators only.
+            right, right_depth = self._expression(precedence + 1, nesting + 1)
+            left, left_depth = self._expr_node(
+                ["binary", operator, left, right], max(left_depth, right_depth) + 1, offset
+            )
+            if precedence in _COMPARISON_PRECEDENCE and self._binary_precedence() == precedence:
+                raise self._error("comparison chaining requires parentheses", self.token.offset)
+        return left, left_depth
+
+    def _transform(self):
+        self._in_transform = True
         self._take("{")
-        values = {}
+        functions, metrics = [], []
         while self.token.kind != "}":
+            offset = self.token.offset
+            keyword = self._take("identifier")
+            if keyword == "fn":
+                if len(functions) == _MAX_FUNCTIONS:
+                    raise self._error(f"transform exceeds {_MAX_FUNCTIONS} functions", offset)
+                name = self._transform_name()
+                parameters = self._parenthesized_list(self._parameter)
+                self._take("->")
+                return_type = self._transform_type()
+                self._take("{")
+                self._take("identifier", "return")
+                expression, _ = self._expression()
+                self._take(";")
+                self._take("}")
+                functions.append({
+                    "name": name, "parameters": parameters, "return_type": return_type,
+                    "expression": expression,
+                })
+            elif keyword == "emit":
+                if len(metrics) == _MAX_METRICS:
+                    raise self._error(f"transform exceeds {_MAX_METRICS} metrics", offset)
+                name = self._transform_name()
+                self._take("=")
+                expression, _ = self._expression()
+                self._take(";")
+                metrics.append({"name": name, "expression": expression})
+            else:
+                raise self._error("expected fn or emit in transform", offset)
+        if not metrics:
+            raise self._error("transform requires at least one emit", self.token.offset)
+        self._in_transform = False
+        self._take("}")
+        return {"functions": functions, "metrics": metrics}
+
+    def _block(self, fields, blocks, *, context):
+        self._take("{")
+        return self._statements(fields, blocks, context=context, end="}")
+
+    def _statements(self, fields, blocks, *, context, end):
+        values = {}
+        while self.token.kind != end:
             offset = self.token.offset
             key = self._take("identifier")
             if key in values:
@@ -214,30 +381,25 @@ class _Parser:
             if key in fields:
                 values[key] = self._field()
             elif key in blocks:
-                if key == "credentials":
-                    values[key] = self._statements((), _SOURCES, context=key)
+                if key == "transform":
+                    values[key] = self._transform()
+                elif key == "credentials":
+                    values[key] = self._block((), _SOURCES, context=key)
                 elif context == "credentials":
-                    values[key] = self._statements(
+                    values[key] = self._block(
                         {"cookies", "environment", "dotenv", "explicit"}, (),
                         context=f"credentials.{key}",
                     )
                 else:
                     optional = _REQUEST_FIELDS if key == "refresh" else set()
-                    values[key] = self._statements(_REQUIRED[key] | optional, (), context=key)
+                    values[key] = self._block(_REQUIRED[key] | optional, (), context=key)
             else:
                 raise self._error(f"unknown field or block in {context}", offset)
-        self._take("}")
+        self._take(end)
         return values
 
     def script(self):
-        self._take("identifier", "caravan")
-        name = self._take("string")
-        self._take("identifier", "version")
-        if self._take("integer") != 1:
-            raise ValueError("unsupported CaravanScript version; expected 1")
-        config = self._statements(_FIELDS, _BLOCKS, context="script")
-        self._take("end of input")
-        return {"name": name, "version": 1, **config}
+        return self._statements(_REQUIRED_FIELDS | {"name"}, _BLOCKS, context="script", end="end of input")
 
 
 def _require_fields(values, required, where):
@@ -283,10 +445,12 @@ def _source(value, where):
 
 
 def _validate(config):
-    _require_fields(config, _FIELDS | _REQUIRED.keys(), "script")
+    _require_fields(config, _REQUIRED_FIELDS | _REQUIRED.keys(), "script")
     for block, required in _REQUIRED.items():
         _require_fields(config[block], required, block)
 
+    if "name" in config and not isinstance(config["name"], str):
+        raise ValueError("name must be a string")
     _file_path(config["competitors"], "competitors")
     _unique_array(config["sources"], "sources", _source)
     prop = config["property"]
@@ -361,9 +525,13 @@ def _validate(config):
 
 
 def parse(text):
-    """Parse and validate v1 text without loading referenced files or secrets."""
+    """Parse and validate a script without loading referenced files or secrets."""
     if not isinstance(text, str) or _SURROGATE.search(text):
         raise ValueError("CaravanScript source must be UTF-8 text")
     config = _Parser(text).script()
     _validate(config)
+    if "transform" in config:
+        from .transform_check import compile_transform
+
+        compile_transform(config["transform"])
     return config

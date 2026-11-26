@@ -155,13 +155,15 @@ def load_plan(path, on_date=None, *, now=None, input_roots=()):
     if start.toordinal() + search["horizon_days"] - 1 + max(stays) > date.max.toordinal():
         raise ValueError("checkout exceeds the supported Gregorian calendar")
 
-    # Bind acquisition semantics, not disk paths, queue policy or a rolling
-    # local date. Each row separately binds its exact check-in and checkout.
+    # Bind acquisition semantics, not report transformations, disk paths,
+    # queue policy or a rolling local date. Each row separately binds its
+    # exact check-in and checkout.
     selected = sorted(config["sources"])
     config_id = _identity({
         "kind": "caravansary.config@1",
-        "name": config["name"],
-        "version": config["version"],
+        "name": config.get("name"),
+        # Preserve existing acquisition digests; not a CaravanScript field.
+        "version": 1,
         "property": config["property"],
         "search": {**search, "guest_configurations": sorted(guest_ids), "stay_lengths": sorted(stays)},
         "sources": selected,
@@ -178,6 +180,29 @@ def load_plan(path, on_date=None, *, now=None, input_roots=()):
 def plan(path, on_date=None, *, now=None, input_roots=()):
     """Return validated, deterministic initial rows without collecting anything."""
     return load_plan(path, on_date, now=now, input_roots=input_roots)[1]
+
+
+def _apply_transform(config, report):
+    """Attach optional metrics without modifying the host's base report."""
+    if "transform" not in config:
+        return report
+    if __package__:
+        from .caravansary_core import transform_check, transform_eval
+    else:
+        # Load siblings the same way as the standalone entry point does.
+        from caravansary_core import transform_check, transform_eval
+
+    ast = config["transform"]
+    metrics = transform_eval.evaluate(transform_check.compile_transform(ast), report)
+    return {
+        **report,
+        "transformation": {
+            "kind": "caravansary.transformation@1",
+            "program_digest": _identity(ast),
+            "base_report_digest": _identity(report),
+            "metrics": metrics,
+        },
+    }
 
 
 def _observations(path):
@@ -259,8 +284,9 @@ def main(argv=None):
             refresh = config["refresh"]
             capacity = Scheduler(refresh, config["sources"]).capacity(rows)
             observations = _observations(args.observations) if args.observations else ()
-            print(_json(coverage(rows, observations, now=now,
-                                 max_age_seconds=refresh["max_age_seconds"], capacity=capacity)))
+            report = coverage(rows, observations, now=now,
+                              max_age_seconds=refresh["max_age_seconds"], capacity=capacity)
+            print(_json(_apply_transform(config, report)))
     except (OSError, ValueError, RecursionError) as exc:
         print(f"caravansary: {exc}", file=sys.stderr)
         return 1

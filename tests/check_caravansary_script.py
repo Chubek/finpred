@@ -26,11 +26,14 @@ def invalid(function, *args, **kwargs):
 
 
 def with_credentials(body):
-    return EXAMPLE.rstrip()[:-1] + "credentials {" + body + "}\n}"
+    return EXAMPLE + "\ncredentials {" + body + "}\n"
 
 
 config = parse(EXAMPLE)
-assert config["name"] == "Riviera Hotel" and config["version"] == 1
+assert config["name"] == "Riviera Hotel" and "version" not in config
+unnamed = EXAMPLE.replace('name = "Riviera Hotel";', "")
+assert "name" not in parse(unnamed)
+assert parse(unnamed + '\nname = "Riviera Hotel";') == config
 assert config["property"]["latitude"] == "43.000000"
 assert parse(EXAMPLE.replace("Riviera Hotel", r"\uD83D\uDE00 #"))["name"] == "😀 #"
 assert parse("# comment\r" + EXAMPLE + "# end") == config
@@ -44,9 +47,9 @@ for old, new in [
     ("Riviera Hotel", r"\uD800"),
     ("Riviera Hotel", r"\x00"),
     ("Riviera Hotel", "literal\nnewline"),
-    ("version 1", "version 01"),
-    ("version 1", "version 2"),
-    ("version 1", "version 1e0"),
+    ('name = "Riviera Hotel";', 'name = 1;'),
+    ('name = "Riviera Hotel";', 'name = ["Riviera Hotel"];'),
+    ('name = "Riviera Hotel";', 'name = "one"; name = "two";'),
     ("property {", "property = 1; property {"),
     ("property {", "property { property {}"),
     ("search {", "search { _not_identifier = 1;"),
@@ -95,6 +98,11 @@ for old, new in [
     assert old in EXAMPLE
     invalid(parse, EXAMPLE.replace(old, new, 1))
 invalid(parse, EXAMPLE + "trailing")
+invalid(parse, EXAMPLE + "}")
+invalid(parse, "{" + EXAMPLE + "}")
+invalid(parse, "version = 1;\n" + EXAMPLE)
+invalid(parse, 'caravan "Riviera Hotel" version 1 {\n' + unnamed + "}")
+invalid(parse, 'caravan "Riviera Hotel" version 2 {\n' + unnamed + "}")
 invalid(parse, EXAMPLE + "# unpaired \ud800")
 invalid(parse, EXAMPLE.encode())
 assert resolve(config, "booking") is None

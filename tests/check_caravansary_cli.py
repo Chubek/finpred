@@ -38,11 +38,9 @@ with TemporaryDirectory() as tmp:
     assert len({row["cell_key"] for row in rows}) == len(rows)
     assert run("plan", script, "--as-of", CLOCK).stdout == output
     original_report = run("report", script, "--as-of", CLOCK).stdout
-    declared = text.replace(
-        "  property {",
-        '  credentials { booking { cookies = "not-readable.json"; }'
+    declared = text + (
+        '\ncredentials { booking { cookies = "not-readable.json"; }'
         ' agoda { environment = ["AGODA_TEST_KEY"]; dotenv = ".not-readable.env"; } }\n'
-        "  property {",
     )
     script.write_text(declared, encoding="utf-8")
     assert run("plan", script, "--as-of", CLOCK).stdout == output

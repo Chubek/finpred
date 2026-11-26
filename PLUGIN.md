@@ -45,6 +45,8 @@ destinations. The reader is not a dynamically registered SDK Source.
 not a registered FinPRED SDK Source. It validates CaravanScript and offline
 inputs, emits the expected matrix, and folds a host-selected observation log
 into a coverage report. Those operations are offline and do not invoke pricing.
+CaravanScript can [derive typed metrics](docs/caravansary/transformations.md)
+from those coverage counts without changing the collection matrix.
 The separate `pilot-booking` command makes a single partner-authorized
 Demand API sandbox search; it does not produce observations.
 

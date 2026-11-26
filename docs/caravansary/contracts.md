@@ -1,4 +1,4 @@
-# CaravanScript v1 and data contracts — draft
+# CaravanScript and data contracts — draft
 
 Status: draft, 2026-11-26. An initial offline parser and planner exist; see
 [the plugin README](../../plugins/caravansary/README.md) for implemented limits. This is an
@@ -12,38 +12,38 @@ filesystem, plugin, or credential authority: the host grants those separately.
 UTF-8 source, case-sensitive identifiers, `#` comments through end of line,
 JSON-style quoted strings, decimal integers, and braces for blocks. Fields use
 `name = value;`; arrays use `[value, ...]`. Commas separate array elements.
-String escape sequences follow JSON. Reject duplicate blocks/fields, unknown
-fields, unsupported versions, invalid escapes, and trailing tokens. No implicit
-environment interpolation, shell execution, or imports. Relative input paths
-resolve against the script directory; output paths are separately host-approved.
+String escape sequences follow JSON. The file contains top-level statements
+with no header, version declaration, or enclosing braces. Reject duplicate
+blocks/fields, unknown fields, invalid escapes, and trailing tokens. No
+implicit environment interpolation, shell execution, or imports. Relative input
+paths resolve against the script directory; output paths are separately host-approved.
 Time zones are IANA names; dates are Gregorian local civil dates; clocks in
 records are RFC 3339 UTC. Currency is ISO 4217. Durations are positive integer
 seconds unless a field says otherwise. Accommodations use an extensible string
 classification, not a closed enumeration.
 
 ```text
-caravan "Riviera Hotel" version 1 {
-  property {
-    type = "hotel"; latitude = "43.000000"; longitude = "7.000000";
-    timezone = "Europe/Paris"; currency = "EUR";
-    room_types = ["standard", "suite"];
-  }
-  competitors = "riviera-comparables.json";
-  sources = ["booking", "agoda"];
-  search {
-    horizon_days = 365; start = "today";
-    guest_configurations = ["one_adult", "two_adults"];
-    stay_lengths = [1, 2, 3];
-    booker_country = "FR"; locale = "fr-FR";
-  }
-  refresh {
-    tick_seconds = 3600; weights = "weights.json";
-    max_age_seconds = 86400; booking_requests_per_hour = 100;
-    agoda_requests_per_hour = 100; booking_concurrency = 1;
-    agoda_concurrency = 1;
-  }
-  output { observations = "observations.jsonl"; coverage = "coverage.json"; }
+name = "Riviera Hotel";
+property {
+  type = "hotel"; latitude = "43.000000"; longitude = "7.000000";
+  timezone = "Europe/Paris"; currency = "EUR";
+  room_types = ["standard", "suite"];
 }
+competitors = "riviera-comparables.json";
+sources = ["booking", "agoda"];
+search {
+  horizon_days = 365; start = "today";
+  guest_configurations = ["one_adult", "two_adults"];
+  stay_lengths = [1, 2, 3];
+  booker_country = "FR"; locale = "fr-FR";
+}
+refresh {
+  tick_seconds = 3600; weights = "weights.json";
+  max_age_seconds = 86400; booking_requests_per_hour = 100;
+  agoda_requests_per_hour = 100; booking_concurrency = 1;
+  agoda_concurrency = 1;
+}
+output { observations = "observations.jsonl"; coverage = "coverage.json"; }
 ```
 
 Example values are hypothetical, not recommendations or a runnable script.
@@ -59,35 +59,37 @@ start. The checkout is check-in plus stay length in calendar days. It can be
 beyond the 365-day horizon. Re-evaluation rolls the start forward; retain past
 observations per authorized retention policy.
 
-V1 above defines the collection subset. Transformation functions, procedures,
-Yieldcraft calls and plugin imports are reserved for a subsequent language
-revision; no executable function syntax or sandbox is promised by this draft.
-That revision must define types, deterministic evaluation, input/output
-contracts, limits, errors, provenance, and granted capabilities before use.
+An optional [transformation block](transformations.md) defines pure, typed
+coverage metrics and helper functions. The language does not support
+procedures, Yieldcraft calls, or plugin imports.
 
 ### Collection grammar and validation
 
-The following EBNF fixes the shape of the draft collection subset. Whitespace
-and comments may occur between tokens; field order inside a block is
+The following EBNF covers the collection statements. Whitespace and comments
+may occur between tokens; order at the top level or in collection blocks is
 irrelevant. `string` is a JSON string, `integer` is a nonnegative decimal
 integer without leading zeros except `0`, and `identifier` is an ASCII letter
 followed by ASCII letters, digits, or underscores. Literal words and
 punctuation are quoted here for clarity.
 
 ```ebnf
-script      = "caravan", string, "version", "1", "{", statement*, "}" ;
+script      = { statement | transform } ;
 statement   = field | block ;
 field       = identifier, "=", value, ";" ;
-block       = identifier, "{", statement*, "}" ;
-value       = string | integer | array ;
-array       = "[", [ value, { ",", value } ], "]" ;
+block       = identifier, "{", { statement }, "}" ;
+scalar      = string | integer ;
+value       = scalar | array ;
+array       = "[", [ scalar, { ",", scalar } ], "]" ;
 ```
 
 This grammar describes syntax; the following schema restricts the otherwise
 generic statements. Require exactly one each of the top-level `property`,
 `search`, `refresh`, and `output` blocks and `competitors` and `sources`
-fields. No other top-level blocks or fields are valid. Property requires
-`type`, `latitude`, `longitude`, `timezone`, `currency`, and `room_types`;
+fields. The optional `name` field is a string and, when present, contributes
+to the collection identity. An optional `credentials` block may declare host-resolved references
+as [described in the plugin README](../../plugins/caravansary/README.md#credential-sources-host-only).
+An optional `transform` block follows its [own grammar](transformations.md).
+Property requires `type`, `latitude`, `longitude`, `timezone`, `currency`, and `room_types`;
 coordinates are decimal strings within latitude -90..90 and longitude
 -180..180. `room_types` is a nonempty array of unique nonempty strings.
 Search requires `horizon_days` (1..365), `start`, nonempty unique

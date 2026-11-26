@@ -1,10 +1,12 @@
 # Caravansary: milestone A
 
-These documents are a design proposal and feasibility assessment, not an
-implemented plugin or a claim of live collection. Requirement 1 is the
-365-day competitor observation matrix; pricing is a separate phase.
+These documents describe the collection contract and provider feasibility.
+The [offline plugin](../../plugins/caravansary/README.md) implements matrix
+planning and reporting, not live collection. Requirement 1 is the 365-day
+competitor observation matrix; pricing is a separate phase.
 
-* [CaravanScript v1 draft and data contracts](contracts.md)
+* [CaravanScript and data contracts](contracts.md)
+* [CaravanScript offline coverage transformations](transformations.md)
 * [Provider assessment, capacity, and pilot plan](feasibility.md)
 * [Pilot evidence template](pilot-record.md)
 * [Offline capacity calculator](capacity.py)

@@ -1,10 +1,17 @@
 # Caravansary: competitor coverage
 
-Caravansary validates [CaravanScript v1](../../docs/caravansary/contracts.md),
+Caravansary validates [CaravanScript](../../docs/caravansary/contracts.md),
 plans a competitor matrix, and reports freshness from an offline observation
-log. It also offers an explicit one-request Booking.com sandbox test. It is a
+log. An optional block adds [typed coverage metrics](../../docs/caravansary/transformations.md).
+Caravansary also offers an explicit one-request Booking.com sandbox test. It is a
 standalone Python 3.10+ tool (stdlib and system IANA timezone data), not a FinPRED
 SDK-registered plugin. It makes no pricing recommendations.
+
+CaravanScript files contain top-level fields and blocks, with no header or
+version declaration. To migrate an older script, replace its opening
+`caravan "Title" version … {` line with `name = "Title";` and remove the
+matching outer `}`. Keeping the title preserves cell keys for replay.
+New scripts may omit `name`.
 
 ## Run the offline example
 
@@ -27,6 +34,12 @@ freshness, and per-source capacity estimates. To fold a frozen log, pass
 but its records must refer to the selected matrix. Filter any authorized
 historical archive separately.
 `report` holds the matrix in memory.
+
+Use the [Riviera metrics script](../../docs/caravansary/examples/riviera-metrics.crs)
+to emit custom metrics. They appear under `transformation.metrics` with
+digests of the parsed program and base report. Changing a transformation
+does not change cell keys or invalidate past observations. Scripts without a
+`transform` block produce the base report unchanged.
 
 `--as-of` fixes the UTC clock for replay and for resolving `today`; `--date`
 overrides only the `today` anchor, not a fixed date in a script. Without an
@@ -162,6 +175,6 @@ There is no production adapter for Booking.com or Agoda.com. Credentials and
 verified mappings do not grant permission to collect or retain data. Written
 permission, representative property IDs, approved budgets, permitted retention
 and the [measured pilot](../../docs/caravansary/feasibility.md) remain required.
-There is no appraised price, Yieldcraft handoff, or transformation language.
+There is no appraised price or Yieldcraft handoff.
 The host must enforce capture permission, retention expiry and provider-specific
 query restrictions before any production collection.
