@@ -5,6 +5,12 @@
 .finpred-cube/
 *.token
 
+# Virtual Env/Dotenv
+
+.env
+/env/
+/venv/
+
 # On1x project outputs and generated/native build products.
 /target/
 /build/
