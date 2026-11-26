@@ -1,0 +1,32 @@
+import plugins.caravansary.planning.json as Json;
+import plugins.caravansary.recommendation as Recommendation;
+
+fn main() -> i64
+{
+  let inputs = Json.parse("[]");
+  let policy = Json.parse("{}");
+  let review = Recommendation.review(inputs,policy);
+  match Recommendation.verify(review,inputs,policy) with
+  {
+    Ok(report) =>
+    {
+      assert(Json.text(Json.field(report,"status")) == "abstained");
+      assert(sx_kind(Json.get(report,"recommended_minor")) == 0);
+    },
+    Err(_) => { assert(false); }
+  };
+  let fake = Json.replace(Json.field(review,"report"),"recommended_minor",Json.integer(10000));
+  let changed = Json.replace(Json.replace(review,"report",fake),"report_sha256",sx_string(Json.digest(fake)));
+  match Recommendation.verify(changed,inputs,policy) with
+  {
+    Ok(_) => { assert(false); },
+    Err(_) => {}
+  };
+  match Recommendation.verify(review,Json.parse("[{}]"),policy) with
+  {
+    Ok(_) => { assert(false); },
+    Err(_) => {}
+  };
+  println("caravansary recommendation replay: OK");
+  return 0;
+}

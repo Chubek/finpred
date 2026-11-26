@@ -1,0 +1,304 @@
+import plugins.caravansary.discovery.discovery as Discovery;
+import plugins.caravansary.discovery.projection as Projection;
+import plugins.caravansary.planning.civil as Civil;
+import plugins.caravansary.planning.inputs as Inputs;
+import plugins.caravansary.planning.json as J;
+import plugins.caravansary.planning.plan as Plan;
+import plugins.caravansary.stdlib.comparables as Comparables;
+import plugins.caravansary.stdlib.geo as Geo;
+import plugins.caravansary.stdlib.property as Property;
+import std.sexpr.sexpr as Sx;
+import std.String as Str;
+from std.environ.environ import on1x_environ_arg as arg, basis_argc as argc;
+
+fn checked(value: Result<sexpr, sexpr>) -> sexpr {
+  match value with {
+    Ok(result) => { return result; },
+    Err(message) => { tool_fail(sx_text(message)); }
+  };
+  return sx_nil();
+}
+
+fn reject(value: Result<sexpr, sexpr>, expected: string) {
+  match value with {
+    Ok(_result) => { tool_fail("expected failure"); },
+    Err(message) => { assert(Str.contains(sx_text(message), expected)); }
+  };
+}
+
+fn fixture_subject() -> sexpr {
+  return J.parse(r!"""{"id":"fictional-subject","name":"North Quay Hotel","type":"hotel","address":"1 Quay",
+    "latitude":"0.000000","longitude":"179.999500"}""");
+}
+
+fn fixture_policy() -> sexpr {
+  return J.parse(r!"""{"radius_m":700,"min_score":25,"excluded_types":["  HostEl "],
+    "excluded_provider_ids":[{"provider":"booking","provider_property_id":"not-comp"}]}""");
+}
+
+fn facts() -> sexpr {
+  return J.parse(r!"""[
+    {"provider":"agoda","provider_property_id":"111","name":"Ice Hotel","type":"hotel","address":"10 Quay",
+     "latitude":0.001,"longitude":"-179.99950","evidence_ref":"fixture-a"},
+    {"provider":"booking","provider_property_id":"111","name":" Ice  Hotel ","type":"Hotel","address":"10 Quay",
+     "latitude":"0.00101","longitude":"-179.9995","evidence_ref":"fixture-b"},
+    {"provider":"agoda","provider_property_id":"111","name":"Ice Hotel","type":"hotel","address":"10 Quay",
+     "latitude":"0.00100000","longitude":"-179.999500","evidence_ref":"fixture-a"},
+    {"provider":"agoda","provider_property_id":"111","name":"Ice Hotel","type":"hotel","address":"10 Quay",
+     "latitude":"0.00100000","longitude":"-179.999500","evidence_ref":"fixture-c"},
+    {"provider":"booking","provider_property_id":"subject","name":"north quay HOTEL","address":"1 Quay",
+     "latitude":"0.000004","longitude":"179.999500"},
+    {"provider":"booking","provider_property_id":"conflict","name":"Two Quay","latitude":0,"longitude":180},
+    {"provider":"booking","provider_property_id":"conflict","name":"Two Quay","latitude":0,"longitude":179},
+    {"provider":"booking","provider_property_id":"far","name":"Far Quay","latitude":0,"longitude":12},
+    {"provider":"booking","provider_property_id":"hostel","name":"Quay Youth","type":"hostel","latitude":0,"longitude":180},
+    {"provider":"booking","provider_property_id":"unknown","name":"Unknown Quay"},
+    {"provider":"booking","provider_property_id":"not-comp","name":"Not a comp","latitude":0,"longitude":180},
+    {"provider":"booking","provider_property_id":"bad-url-1","name":"Fictional 1","latitude":0,"longitude":180,
+     "url":"https://booking.example/shared"},
+    {"provider":"booking","provider_property_id":"bad-url-2","name":"Fictional 2","latitude":0,"longitude":180,
+     "url":"https://booking.example/shared"}
+  ]""");
+}
+
+fn candidates(value: sexpr, source: string, provider_id: string) -> sexpr {
+  let id = Property.candidate_id(source, provider_id);
+  var rest = J.items(J.field(value, "candidates"));
+  while sx_kind(rest) == 3 {
+    let current = sx_head(rest);
+    if sx_text(J.get(current, "candidate_id")) == id { return current; }
+    rest = sx_tail(rest);
+  }
+  tool_fail("missing candidate $source $provider_id");
+  return sx_nil();
+}
+
+fn reason(value: sexpr, expected: string) {
+  assert(sx_text(J.field(value, "status")) == "excluded");
+  assert(Inputs.contains_atom(J.items(J.field(value, "reasons")), expected));
+}
+
+fn geo_test() {
+  let west = Geo.position(J.parse(r!"""{"latitude":"-0.0000000","longitude":"179.900000"}"""), "west");
+  let east = Geo.position(J.parse(r!"""{"latitude":0.0000000001,"longitude":"-179.9"}"""), "east");
+  assert(J.render(east) == r!"""{"latitude":"0.000000","longitude":"-179.900000"}""");
+  assert(J.int64(Geo.distance_m(west, east), "distance") == 22239);
+  let pole = Geo.position(J.parse(r!"""{"latitude":90,"longitude":124}"""), "north pole");
+  assert(J.render(pole) == r!"""{"latitude":"90.000000","longitude":"0.000000"}""");
+  let equator = Geo.position(J.parse(r!"""{"latitude":0,"longitude":0}"""), "equator");
+  let anti = Geo.position(J.parse(r!"""{"latitude":0,"longitude":180}"""), "antipode");
+  assert(J.int64(Geo.distance_m(anti, equator), "antipodal distance") == 20015114);
+  assert(J.int64(Geo.distance_m(pole, pole), "distance") == 0);
+  assert(Geo.coordinate(sx_string("-0.0000005"), 90, "round negative") == -1);
+  assert(Geo.coordinate(J.parse("0.0000005"), 90, "round numeric") == 1);
+}
+
+fn artifact_test() -> sexpr {
+  let result = Discovery.run(fixture_subject(), fixture_policy(), facts());
+  let reverse = Discovery.run(fixture_subject(), fixture_policy(), J.array(Sx.sexpr_reverse(J.items(facts()))));
+  assert(J.render(result) == J.render(reverse));
+  let agoda = candidates(result, "agoda", "111");
+  let booking = candidates(result, "booking", "111");
+  assert(J.render(J.field(agoda, "candidate_id")) != J.render(J.field(booking, "candidate_id")));
+  assert(sx_text(J.field(agoda, "status")) == "eligible");
+  assert(sx_text(J.field(booking, "status")) == "eligible");
+  assert(J.int64(J.field(agoda, "distance_m"), "distance") == 157);
+  assert(Sx.sexpr_size(J.items(J.field(agoda, "facts"))) == 2);
+  assert(Sx.sexpr_size(J.items(J.field(result, "possible_cross_provider_matches"))) == 1);
+  let conflict = candidates(result, "booking", "conflict");
+  reason(conflict, "conflicting_listing_facts");
+  assert(J.kind(J.field(conflict, "listing")) == "null");
+  reason(candidates(result, "booking", "subject"), "possible_subject_identity");
+  reason(candidates(result, "booking", "far"), "outside_radius");
+  reason(candidates(result, "booking", "hostel"), "excluded_type");
+  reason(candidates(result, "booking", "unknown"), "distance_unknown");
+  reason(candidates(result, "booking", "not-comp"), "excluded_provider_identity");
+  reason(candidates(result, "booking", "bad-url-1"), "conflicting_provider_url");
+  reason(candidates(result, "booking", "bad-url-2"), "conflicting_provider_url");
+  let cap = J.replace(fixture_policy(), "max_candidates", J.integer(1));
+  let limited = Discovery.run(fixture_subject(), cap, facts());
+  assert(Sx.sexpr_size(J.items(J.field(limited, "candidates"))) ==
+    Sx.sexpr_size(J.items(J.field(result, "candidates"))));
+  let a = candidates(limited, "agoda", "111");
+  let b = candidates(limited, "booking", "111");
+  let aid = sx_text(J.field(a, "candidate_id"));
+  let bid = sx_text(J.field(b, "candidate_id"));
+  # The fixture distance difference rounds both into the same score band.
+  assert(sx_text(J.field(a, "score")) == sx_text(J.field(b, "score")));
+  if Str.compare(aid, bid) < 0 {
+    assert(sx_text(J.field(a, "rank")) == "1");
+    reason(b, "candidate_limit");
+  } else {
+    assert(sx_text(J.field(b, "rank")) == "1");
+    reason(a, "candidate_limit");
+  }
+  return result;
+}
+
+fn fixtures() -> sexpr {
+  return J.parse(r!"""[
+    {"kind":"provider-observation/v1","provider":"booking","operation":"candidates",
+     "provenance":{"qualification":"fictional-frozen-html","fixture_id":"booking-candidates",
+       "source_url":"https://booking.example/fixtures/candidates","observed_at":"2026-11-26T10:00:00+00:00",
+       "extractor":"fictional-fixture"},
+     "properties":[
+       {"property_id":"opaque-b","name":"Ice Hotel","latitude":0,"longitude":180,"property_type":"hotel",
+        "url":"https://booking.example/property/opaque-b","offers":[{"amount_minor":5100}]},
+       {"property_id":"sparse","name":null,"url":"https://booking.example/property/sparse","offers":[]},
+       {"property_id":"half-coordinate","name":"Half Coordinate","latitude":0,
+        "url":"https://booking.example/property/half-coordinate","offers":[]}
+     ]}
+  ]""");
+}
+
+fn fixture_test() -> sexpr {
+  let artifact = Discovery.from_observations(fixture_subject(), fixture_policy(), fixtures());
+  let candidate = candidates(artifact, "booking", "opaque-b");
+  assert(J.kind(J.get(J.field(candidate, "listing"), "offers")) == "missing");
+  assert(sx_text(J.field(candidate, "status")) == "eligible");
+  let evidence_key = sx_text(J.get(sx_head(J.items(J.field(candidate, "facts"))), "evidence_ref"));
+  let provenance = J.field(J.field(artifact, "fixture_evidence"), evidence_key);
+  assert(sx_text(J.field(provenance, "observed_at")) == "2026-11-26T10:00:00Z");
+  assert(sx_text(J.field(provenance, "qualification")) == "fictional-frozen-html");
+  assert(Sx.sexpr_size(J.items(J.field(artifact, "unusable_listings"))) == 1);
+  reason(candidates(artifact, "booking", "half-coordinate"), "distance_unknown");
+  return artifact;
+}
+
+fn links() -> sexpr {
+  let a = Property.candidate_id("agoda", "111");
+  let b = Property.candidate_id("booking", "111");
+  return J.parse("[{\"candidate_id\":\"$a\",\"property_id\":\"ice\"},{\"candidate_id\":\"$b\",\"property_id\":\"ice\"}]");
+}
+
+fn guests() -> sexpr {
+  return J.parse(r!"""[{"id":"pair","rooms":1,"adults":2,"child_ages":[]}]""");
+}
+
+fn planner_row(comp: sexpr) -> sexpr {
+  let (normalized_guests, properties) = Inputs.competitors(comp, "test: ");
+  let cfg = J.parse(r!"""{"property":{"currency":"EUR"},"search":{"booker_country":"FR","locale":"fr-FR"}}""");
+  let sources = J.parse(r!"""["booking"]""");
+  let guest_ids = J.parse(r!"""["pair"]""");
+  let stays = J.parse("[2]");
+  let search = J.field(cfg, "search");
+  let id = Plan.identify(cfg, search, sources, properties, guest_ids, stays, normalized_guests);
+  let array_guests = J.field(comp, "guest_configurations");
+  let plan = record<Plan.Plan>{config_value: cfg, id: sx_string(id), start: Civil.date("2026-12-01"), horizon: 1,
+    sources: J.items(sources), properties: properties, guests: J.items(array_guests), stays: J.items(stays),
+    joint_weights: sx_cons(sx_cons(J.integer(1), sx_nil()), sx_nil()),
+    num_sources: 1, num_properties: Sx.sexpr_size(properties), num_guests: 1, num_stays: 1};
+  return Plan.row_value(plan, 0);
+}
+
+fn fixture_offer(row: sexpr) -> sexpr {
+  let offer = J.parse(r!"""{"room_name":"Double","rate_plan":"Flexible","meal":"none","cancellation":"flexible",
+    "currency":"EUR","availability":"available","price_basis":"stay_total","amount_minor":12345,
+    "taxes_fees":{"inclusion":"included","components":[]}}""");
+  return J.replace(offer, "allocation", J.field(J.field(row, "guest_configuration"), "allocation"));
+}
+
+fn row_observation(row: sexpr, offers: sexpr) -> sexpr {
+  var observed = J.parse(r!"""{"kind":"caravansary.observation@1","observation_id":"fictional-quote",
+    "complete":true,"outcome":"priced","adapter_version":"fictional-fixture@1","extractor_version":"test",
+    "observed_at":"2026-11-26T09:00:00+00:00","received_at":"2026-11-26T10:00:00Z","ingested_at":"2026-11-26T11:00:00Z"}""");
+  observed = J.replace(observed, "request_context", J.field(row, "request_context"));
+  observed = J.replace(observed, "cell_key", J.field(row, "cell_key"));
+  observed = J.replace(observed, "provider_property_id", J.field(row, "provider_property_id"));
+  return J.replace(observed, "offers", offers);
+}
+
+fn projection_test(artifact: sexpr, fixture: sexpr) {
+  let empty = J.array(sx_nil());
+  let unlinked = Projection.competitors(artifact, guests(), empty);
+  let row0 = planner_row(unlinked);
+  assert(sx_text(J.field(row0, "status")) == "unsupported");
+  let link = links();
+  let linked = Projection.competitors(artifact, guests(), link);
+  assert(Sx.sexpr_size(J.items(J.field(linked, "properties"))) == 1);
+  let row = planner_row(linked);
+  assert(sx_text(J.field(row, "status")) == "pending");
+  assert(sx_text(J.field(row, "competitor_id")) == "ice");
+  assert(J.kind(J.field(row, "provider_url")) == "null");
+  let offer = fixture_offer(row);
+  let tax = J.parse(r!"""{"inclusion":"included","components":[{"inclusion":"unknown","name":"city tax"}]}""");
+  let uncertain = J.replace(offer, "taxes_fees", tax);
+  let quotes = J.array(sx_cons(offer, sx_cons(uncertain, sx_cons(offer, sx_nil()))));
+  let observation = row_observation(row, quotes);
+  reject(Projection.observation(artifact, link, row0, observation), "pending");
+  reject(Projection.observation(artifact, empty, row, observation), "verified");
+  let wrong = J.replace(observation, "cell_key", sx_string("different-cell"));
+  reject(Projection.observation(artifact, link, row, wrong), "cell_key");
+  let wrong_identity = J.replace(observation, "provider_property_id", sx_string("another-listing"));
+  reject(Projection.observation(artifact, link, row, wrong_identity), "provider_property_id");
+  let wrong_context = J.replace(J.field(observation, "request_context"), "locale", sx_string("en-GB"));
+  reject(Projection.observation(artifact, link, row,
+    J.replace(observation, "request_context", wrong_context)), "request_context");
+  let failed = J.replace(observation, "outcome", sx_string("failed"));
+  reject(Projection.observation(artifact, link, row, failed), "priced evidence only");
+  let unavailable = J.replace(J.replace(observation, "outcome", sx_string("unavailable")), "offers", empty);
+  reject(Projection.observation(artifact, link, row, unavailable), "priced evidence only");
+  let canonical = checked(Projection.observation(artifact, link, row, observation));
+  assert(sx_text(J.field(canonical, "observed_at")) == "2026-11-26T09:00:00Z");
+  let output = checked(Comparables.select(artifact, link, row, observation, "fixture"));
+  assert(Sx.sexpr_size(J.items(output)) == 1);
+  let comparable = sx_head(J.items(output));
+  assert(sx_text(J.field(comparable, "amount_minor")) == "12345");
+  assert(sx_text(J.field(comparable, "property_id")) == "ice");
+  assert(Sx.sexpr_size(sx_tail(J.field(comparable, "scope"))) == 10);
+  assert(sx_text(J.field(J.field(comparable, "scope"), "price_basis")) == "stay_total");
+  let unknown = row_observation(row, J.array(sx_cons(uncertain, sx_nil())));
+  assert(J.render(checked(Comparables.select(artifact, link, row, unknown, "fixture"))) == "[]");
+  let partial = J.replace(observation, "complete", J.boolean(false));
+  assert(J.render(checked(Comparables.select(artifact, link, row, partial, "fixture"))) == "[]");
+  let zero = J.replace(offer, "amount_minor", J.integer(0));
+  assert(J.render(checked(Comparables.select(artifact, link, row,
+    row_observation(row, J.array(sx_cons(zero, sx_nil()))), "fixture"))) == "[]");
+  let average = J.replace(offer, "price_basis", sx_string("nightly_average"));
+  let calculation = J.parse(r!"""{"formula":"total / nights","original_total":{"amount_minor":24690},"rounding":"exact"}""");
+  let derived = J.replace(average, "derived_average", calculation);
+  assert(J.render(checked(Comparables.select(artifact, link, row,
+    row_observation(row, J.array(sx_cons(derived, sx_nil()))), "fixture"))) == "[]");
+  reject(Comparables.select(fixture, empty, row, observation, "observed"), "cannot qualify");
+}
+
+fn invalid_test(mode: string) {
+  if mode == "latitude" { ignore(Geo.coordinate(sx_string("90.00000000001"), 90, "latitude")); }
+  if mode == "coordinate" { ignore(Geo.position(J.parse(r!"""{"latitude":0}"""), "listing")); }
+  if mode == "provider_error" {
+    let failed = J.parse(r!"""[{"kind":"provider-error/v1","code":"denied"}]""");
+    ignore(Discovery.from_observations(fixture_subject(), fixture_policy(), failed));
+  }
+  if mode == "verify_excluded" {
+    let id = Property.candidate_id("booking", "unknown");
+    let invalid = J.parse("[{\"candidate_id\":\"$id\",\"property_id\":\"ice\"}]");
+    ignore(Projection.competitors(artifact_test(), guests(), invalid));
+  }
+  if mode == "verify_duplicate_provider" {
+    let source = J.parse(r!"""[
+      {"provider":"booking","provider_property_id":"a","name":"First Quay","latitude":0,"longitude":180},
+      {"provider":"booking","provider_property_id":"b","name":"Second Quay","latitude":0,"longitude":180}
+    ]""");
+    let a = Property.candidate_id("booking", "a");
+    let b = Property.candidate_id("booking", "b");
+    let duplicate = J.parse("[{\"candidate_id\":\"$a\",\"property_id\":\"ice\"},{\"candidate_id\":\"$b\",\"property_id\":\"ice\"}]");
+    ignore(Projection.competitors(Discovery.run(fixture_subject(), fixture_policy(), source), guests(), duplicate));
+  }
+  tool_fail("unexpected success");
+}
+
+fn main() -> i64 {
+  if argc() > 1 {
+    if arg(1) == "geo" { geo_test(); return 0; }
+    if arg(1) == "artifact" { ignore(artifact_test()); return 0; }
+    if arg(1) == "fixture" { ignore(fixture_test()); return 0; }
+    if arg(1) == "projection" { projection_test(artifact_test(), fixture_test()); return 0; }
+    invalid_test(arg(1));
+    return 0;
+  }
+  geo_test();
+  let discovery = artifact_test();
+  let fixture = fixture_test();
+  projection_test(discovery, fixture);
+  return 0;
+}

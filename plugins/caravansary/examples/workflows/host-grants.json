@@ -1,0 +1,38 @@
+{
+  "kind": "caravansary.host-grants@1",
+  "grants": [
+    {
+      "source": "booking_search",
+      "fixture": "booking-candidates",
+      "path": "../providers/booking-candidates.html",
+      "sha256": "ac656a56f28b33296687894876a0226d902f4766ddb1d397364d73817e7d0090",
+      "operations": ["collect", "discover", "predict"],
+      "provider": "booking",
+      "provider_operation": "candidates",
+      "source_url": "https://booking.example/fixtures/candidates",
+      "observed_at": "2026-11-26T09:50:00Z"
+    },
+    {
+      "source": "agoda_search",
+      "fixture": "agoda-candidates",
+      "path": "../providers/agoda-candidates.html",
+      "sha256": "fe7718f44ee3b5cf6ceebe1896d26c95da7b6ce6df87a03d920874a20b95215d",
+      "operations": ["collect", "discover", "predict"],
+      "provider": "agoda",
+      "provider_operation": "candidates",
+      "source_url": "https://agoda.example/fixtures/candidates",
+      "observed_at": "2026-11-26T09:55:00Z"
+    },
+    {
+      "source": "booking_profile",
+      "fixture": "booking-profile",
+      "path": "../providers/booking-profile.html",
+      "sha256": "8abd871f29df3e7086525e006a6ffde8a1cc27e5339c377bc1768eb53ac03978",
+      "operations": ["collect", "scrape"],
+      "provider": "booking",
+      "provider_operation": "profile",
+      "source_url": "https://booking.example/fixtures/profile",
+      "observed_at": "2026-11-26T09:50:00Z"
+    }
+  ]
+}

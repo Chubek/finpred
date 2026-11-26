@@ -1,0 +1,174 @@
+# A verified link is host-supplied identity corroboration, NOT a provider,
+# file, or publication grant. Never extract these links from probe evidence.
+import plugins.caravansary.coverage.observation as Obs;
+import plugins.caravansary.planning.inputs as Inputs;
+import plugins.caravansary.planning.json as J;
+import plugins.caravansary.stdlib.property as Property;
+import std.sexpr.sexpr as Sx;
+
+macro fail { rule ($message:Expression) => expression { result_error(sx_string($message)) }; }
+
+fn artifact(discovery: sexpr) -> sexpr {
+  if sx_text(J.get(discovery, "kind")) != "caravansary.discovery@1" {
+    tool_fail("expected caravansary.discovery@1");
+  }
+  var body = sx_nil();
+  var rest = sx_tail(discovery);
+  while sx_kind(rest) == 3 {
+    let entry = sx_head(rest);
+    if sx_text(sx_head(entry)) != "discovery_id" { body = sx_cons(entry, body); }
+    rest = sx_tail(rest);
+  }
+  if Property.text(discovery, "discovery_id") != J.digest(J.object(body)) {
+    tool_fail("discovery_id does not match artifact");
+  }
+  return J.items(J.field(discovery, "candidates"));
+}
+
+fn eligible(value: sexpr) -> bool {
+  return sx_kind(value) != 0 && sx_text(J.field(value, "status")) == "eligible";
+}
+
+fn candidates_index(candidates: sexpr) -> sexpr {
+  var fields = sx_nil();
+  var rest = candidates;
+  while sx_kind(rest) == 3 {
+    let value = sx_head(rest);
+    let key = Property.text(value, "candidate_id");
+    if key != Property.candidate_id(Property.provider(value), Property.opaque_id(value, "provider_property_id")) {
+      tool_fail("candidate_id does not match provider identity");
+    }
+    fields = Property.pair(key, value, fields);
+    rest = sx_tail(rest);
+  }
+  return J.object_unique(fields, "duplicate candidate_id in discovery");
+}
+
+fn links_index(discovery: sexpr, candidates: sexpr, links: sexpr) -> sexpr {
+  let subject = Property.text(J.field(discovery, "subject"), "id");
+  let indexed = candidates_index(candidates);
+  var fields = sx_nil();
+  var used = sx_nil();
+  var rest = J.items(links);
+  if Sx.sexpr_size(rest) > Sx.sexpr_size(candidates) { tool_fail("too many verified links"); }
+  while sx_kind(rest) == 3 {
+    let link = sx_head(rest);
+    Inputs.object_fields(link, "candidate_id property_id", "", "verified link");
+    let key = Property.opaque_id(link, "candidate_id");
+    let property = Property.opaque_id(link, "property_id");
+    if property == subject || Inputs.starts_ascii_ci(property, "candidate:") {
+      tool_fail("verified link property_id cannot name the subject or the candidate namespace");
+    }
+    let value = J.get(indexed, key);
+    if !eligible(value) { tool_fail("verified link must identify one eligible candidate"); }
+    let unique = Property.provider_key(Property.provider(value), property);
+    used = Property.pair(unique, J.boolean(true), used);
+    fields = Property.pair(key, sx_string(property), fields);
+    rest = sx_tail(rest);
+  }
+  ignore(J.object_unique(used, "multiple verified links to one property and provider"));
+  return J.object_unique(fields, "duplicate verified link candidate");
+}
+
+fn mapping(value: sexpr, verified: bool) -> sexpr {
+  var status = "unverified";
+  if verified { status = "verified"; }
+  # A capture URL may be a local-fixture provenance identifier, an untrusted
+  # link, or scoped to a different operation. No URL is projected to a plan.
+  return J.object(Property.pair("mapping_status", sx_string(status),
+    Property.pair("provider_property_id", J.field(value, "provider_property_id"), sx_nil())));
+}
+
+fn property_value(id: sexpr, listing: sexpr, providers: sexpr) -> sexpr {
+  var fields = Property.pair("id", id, Property.pair("name", J.field(listing, "name"),
+    Property.pair("providers", providers, sx_nil())));
+  var rest = sx_tail(listing);
+  while sx_kind(rest) == 3 {
+    let entry = sx_head(rest);
+    let name = sx_text(sx_head(entry));
+    if name == "latitude" || name == "longitude" || name == "type" {
+      fields = sx_cons(entry, fields);
+    }
+    rest = sx_tail(rest);
+  }
+  return J.object(fields);
+}
+
+fn competitors(discovery: sexpr, guests: sexpr, verified_links: sexpr) -> sexpr {
+  let candidates = artifact(discovery);
+  let links = links_index(discovery, candidates, verified_links);
+  var properties = J.object(sx_nil());
+  var rest = candidates;
+  while sx_kind(rest) == 3 {
+    let value = sx_head(rest);
+    if eligible(value) {
+      let candidate = J.field(value, "candidate_id");
+      let linked = J.get(links, sx_text(candidate));
+      let source = Property.provider(value);
+      var id = candidate;
+      let verified = sx_kind(linked) != 0;
+      if verified { id = linked; }
+      let key = sx_text(id);
+      let prior = J.get(properties, key);
+      let link = mapping(value, verified);
+      var current = prior;
+      if sx_kind(prior) == 0 {
+        current = property_value(id, J.field(value, "listing"), J.object(Property.pair(source, link, sx_nil())));
+      } else {
+        current = J.replace(prior, "providers", J.replace(J.field(prior, "providers"), source, link));
+      }
+      properties = J.replace(properties, key, current);
+    }
+    rest = sx_tail(rest);
+  }
+  var values = sx_nil();
+  rest = sx_tail(properties);
+  while sx_kind(rest) == 3 {
+    values = sx_cons(J.pair_value(sx_head(rest)), values);
+    rest = sx_tail(rest);
+  }
+  let output = J.object(Property.pair("kind", sx_string("caravansary.competitors@1"),
+    Property.pair("guest_configurations", guests,
+    Property.pair("properties", J.array(Sx.sexpr_reverse(values)), sx_nil()))));
+  let (normalized, _properties) = Inputs.competitors(output, "discovery: ");
+  values = sx_nil();
+  rest = sx_tail(normalized);
+  while sx_kind(rest) == 3 {
+    values = sx_cons(J.pair_value(sx_head(rest)), values);
+    rest = sx_tail(rest);
+  }
+  return J.replace(output, "guest_configurations", J.array(Sx.sexpr_reverse(values)));
+}
+
+fn observation(discovery: sexpr, verified_links: sexpr, planner_row: sexpr,
+               supplied: sexpr) -> Result<sexpr, sexpr> {
+  let candidates = artifact(discovery);
+  let links = links_index(discovery, candidates, verified_links);
+  if sx_text(J.get(planner_row, "status")) != "pending" {
+    return fail!("observation projection requires a pending planner row");
+  }
+  let source = J.get(planner_row, "source");
+  let provider_id = J.get(planner_row, "provider_property_id");
+  let context = J.get(planner_row, "request_context");
+  let context_source = J.get(context, "source");
+  if sx_kind(source) != 2 || sx_kind(provider_id) != 2 ||
+      sx_kind(context_source) != 2 || sx_text(source) != sx_text(context_source) {
+    return fail!("planner row requires one exact provider identity and request source");
+  }
+  let candidate = Property.candidate_id(sx_text(source), sx_text(provider_id));
+  let property = J.get(links, candidate);
+  let competitor = J.get(planner_row, "competitor_id");
+  if sx_kind(property) != 2 || sx_kind(competitor) != 2 || sx_text(property) != sx_text(competitor) {
+    return fail!("planner row does not select an eligible explicitly verified candidate");
+  }
+  let cell = Obs.key(supplied)?;
+  let row_cell = J.get(planner_row, "cell_key");
+  if sx_kind(row_cell) != 2 || sx_text(cell) != sx_text(row_cell) {
+    return fail!("observation cell_key does not match the planner row");
+  }
+  if sx_text(J.get(supplied, "outcome")) != "priced" {
+    return fail!("discovery supports projection of supplied priced evidence only");
+  }
+  let order = Obs.validate(supplied, planner_row)?;
+  return result_ok(Obs.canonical(supplied, order));
+}

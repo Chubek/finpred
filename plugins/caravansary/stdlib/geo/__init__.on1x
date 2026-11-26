@@ -1,0 +1,106 @@
+# WGS84 position in integer microdegrees; distance uses the mean Earth radius,
+# not a route, catchment boundary, or ellipsoidal geodesic.
+import plugins.caravansary.planning.json as J;
+import std.Int as Int;
+
+extern fn caravansary_geo_distance_m(lat1: i64, lon1: i64, lat2: i64, lon2: i64) -> i64;
+
+fn coordinate(value: sexpr, bound: i64, where: string) -> i64 {
+  let kind = J.kind(value);
+  if kind != "string" && kind != "integer" && kind != "float" {
+    tool_fail("$where must be a WGS84 decimal coordinate");
+  }
+  let s = sx_text(value);
+  let n = text_len(s);
+  let invalid = "$where must be a WGS84 decimal coordinate";
+  if n == 0 || n > 128 { tool_fail(invalid); }
+  var pos = 0;
+  let sign = text_byte(s, 0);
+  let negative = sign == 45;
+  if negative || sign == 43 { pos = 1; }
+  let start = pos;
+  let whole = J.skip_digits(s, start);
+  if whole == start { tool_fail(invalid); }
+  pos = whole;
+  var frac = whole;
+  if pos < n && text_byte(s, pos) == 46 {
+    frac = pos + 1;
+    pos = J.skip_digits(s, frac);
+    if pos == frac { tool_fail(invalid); }
+  }
+  let end = pos;
+  var exponent = 0;
+  # The planning JSON parser may canonically spell a numeric value using
+  # exponent notation. Decimal *strings* must not use that notation.
+  if kind == "float" && pos < n && text_byte(s, pos) == 101 {
+    pos = pos + 1;
+    if pos >= n { tool_fail(invalid); }
+    let exp_negative = text_byte(s, pos) == 45;
+    if exp_negative || text_byte(s, pos) == 43 { pos = pos + 1; }
+    let exp_start = pos;
+    pos = J.skip_digits(s, exp_start);
+    if pos == exp_start || pos - exp_start > 3 { tool_fail(invalid); }
+    for i in exp_start .. pos { exponent = exponent * 10 + text_byte(s, i) - 48; }
+    if exp_negative { exponent = -exponent; }
+  }
+  if pos != n { tool_fail(invalid); }
+  let limit = bound * 1000000;
+  var units = 0;
+  var rounding = false;
+  var beyond = false;
+  for i in start .. end {
+    if i != whole || frac == whole {
+      let digit = text_byte(s, i) - 48;
+      var power = whole - i - 1 + exponent + 6;
+      if i >= frac { power = frac - i - 1 + exponent + 6; }
+      if digit != 0 {
+        if power >= 0 {
+          if power > 8 { tool_fail("$where is outside WGS84 bounds"); }
+          var u = digit;
+          for _ in 0 .. power { u = u * 10; }
+          units = units + u;
+        } else {
+          beyond = true;
+          if power == -1 && digit >= 5 { rounding = true; }
+        }
+      }
+    }
+  }
+  if units > limit || (units == limit && beyond) { tool_fail("$where is outside WGS84 bounds"); }
+  if rounding { units = units + 1; }
+  if negative { return -units; }
+  return units;
+}
+
+fn canonical_coordinate(units: i64) -> sexpr {
+  var absolute = units;
+  var sign = "";
+  if units < 0 { absolute = -units; sign = "-"; }
+  let whole = Int.to_string(absolute / 1000000);
+  let frac = Int.to_string(1000000 + absolute % 1000000);
+  return sx_string("$sign$whole.${text_slice(frac, 1, 7)}");
+}
+
+fn known(value: sexpr) -> bool { return J.kind(value) != "missing" && J.kind(value) != "null"; }
+
+fn position(value: sexpr, where: string) -> sexpr {
+  let lat = J.get(value, "latitude");
+  let lon = J.get(value, "longitude");
+  if !known(lat) && !known(lon) { return J.null_value(); }
+  if !known(lat) || !known(lon) { tool_fail("$where requires both latitude and longitude"); }
+  let y = coordinate(lat, 90, "$where.latitude");
+  var x = coordinate(lon, 180, "$where.longitude");
+  if x == 180000000 { x = -180000000; }
+  if y == 90000000 || y == -90000000 { x = 0; }
+  return J.object(sx_cons(J.pair("latitude", canonical_coordinate(y)),
+    sx_cons(J.pair("longitude", canonical_coordinate(x)), sx_nil())));
+}
+
+fn distance_m(left: sexpr, right: sexpr) -> sexpr {
+  if !known(left) || !known(right) { return J.null_value(); }
+  let lat1 = coordinate(J.field(left, "latitude"), 90, "latitude");
+  let lon1 = coordinate(J.field(left, "longitude"), 180, "longitude");
+  let lat2 = coordinate(J.field(right, "latitude"), 90, "latitude");
+  let lon2 = coordinate(J.field(right, "longitude"), 180, "longitude");
+  return J.integer(caravansary_geo_distance_m(lat1, lon1, lat2, lon2));
+}

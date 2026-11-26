@@ -1,0 +1,22 @@
+import frontend as Caravan;
+import std.io.TextIO as IO;
+
+fn call(source:buffer, name:string, arguments:string) -> string
+{
+  let (value,problem) = Caravan.call_market_function(source,name,arguments);
+  if problem != "" { tool_fail(problem); }
+  return value;
+}
+
+fn main() -> i64
+{
+  let source = buffer_new();
+  buffer_append(source, IO.basis_text_io_input_all("plugins/caravansary/examples/programming/bounded.caf"));
+  let predicate = call(source, "eligible", "[720,85]");
+  let nightly = call(source, "example_price", "[12500,-250]");
+  assert(predicate == "true");
+  assert(nightly == "12250");
+  println(predicate);
+  println(nightly);
+  return 0;
+}

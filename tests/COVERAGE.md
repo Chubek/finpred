@@ -17,6 +17,14 @@ and runs focused native checks, including the scheduler, the metrics `checks`
 PPX suite, and synthetic Booking responses. The legacy Python unit tests
 also run; no sandbox request is sent.
 
+**Caravansary market:** `make caravansary-market-test` exercises the real
+Probe and Elvi fixture adapters, protected input grants, discovery, pure
+pricing and historical backtests, recommendation replay, and persistent
+Kron/Daemon jobs. It checks a committed scheduled scrape against direct
+scrape bytes. See the
+[local qualification](../docs/caravansary/qualification.md) for the pins,
+commands, and unsupported live profiles.
+
 **Dragnet:** the frozen CSV, Crossref, public-feed and dispatcher tools
 removed at `b84e928` were restored alongside, not in place of, the current
 Elvi search host. `make dragnet-test` runs their retained coverage.

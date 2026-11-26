@@ -70,18 +70,18 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/pinned-toolchain
       - uses: ./.github/actions/schema-validator
-      - name: Install and verify Dragnet and private X11 dependencies
+      - name: Install and verify Caravansary, Dragnet and private X11 dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            pkg-config libcurl4-openssl-dev libxml2-dev libjansson-dev \
+            pkg-config libssl-dev libcurl4-openssl-dev libxml2-dev libjansson-dev \
             libx11-dev strace xvfb xauth xfonts-base
           pkg-config --atleast-version=7.85 libcurl
           pkg-config --modversion libcurl libxml-2.0 jansson x11
           strace -f -e trace=network -o "$RUNNER_TEMP/strace-probe" /usr/bin/true
           xvfb-run -a -s '-screen 0 1024x768x24' /usr/bin/true
-      - run: make
-      - run: make test-plugins
+      - run: CC=clang CXX=clang++ make
+      - run: CC=clang CXX=clang++ make test-plugins
 
   storage:
     name: Storage

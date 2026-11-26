@@ -1,0 +1,35 @@
+# Reference only. No capture, grant, job, or price recommendation.
+# Reported locality: Rome, Italy; civil timezone: Europe/Rome.
+# The market dialect has no timezone field. See README.md for sources.
+name = "Joe Litty Rooms - reference only";
+
+target {
+  id = "joe-litty-rooms-reference";
+  name = "Joe Litty Rooms";
+  address = "Via Giovanni Giolitti 255, 00185 Rome, Italy";
+  type = "unverified";
+  # Coarse Rome city point, not the property's coordinates.
+  latitude = "41.90";
+  longitude = "12.48";
+  currency = "EUR";
+}
+
+target_sources {
+  booking_profile_reference {
+    kind = "fixture";
+    fixture = "unbound-profile-reference";
+    extractor = "frozen";
+    profile_url = "https://www.booking.com/hotel/it/joe-litty-rooms.html";
+  }
+  unbound_candidates {
+    kind = "fixture";
+    fixture = "unbound-candidate-reference";
+    extractor = "frozen";
+  }
+}
+
+extractors { frozen { kind = "caravansary.fixture@1"; } }
+
+# Required schema placeholders, not a market search or pricing policy.
+discovery { sources = ["unbound_candidates"]; radius_m = 2500; max_candidates = 8; }
+pricing { currency = "EUR"; floor_minor = 1; ceiling_minor = 2; }

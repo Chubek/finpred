@@ -1,0 +1,152 @@
+import std.os.OS_FileSys as FS;
+import std.sexpr.sexpr as Sx;
+import plugins.caravansary.frontend as Frontend;
+import plugins.caravansary.discovery.discovery as Discovery;
+import plugins.caravansary.planning.civil as Civil;
+import plugins.caravansary.planning.json as Json;
+import plugins.caravansary.market_cli.files as Files;
+import plugins.caravansary.market_cli.grants as Grants;
+import plugins.caravansary.market_cli.artifacts as Artifacts;
+import plugins.caravansary.market_cli.probe_bridge as Probe;
+
+fn script(path: string, roots: sexpr) -> sexpr {
+  let resolved = Files.resolve(path,FS.basis_fs_cwd(),roots,"market script");
+  let text = Files.read_text(resolved,1048576,"market script");
+  let input = buffer_new();
+  buffer_append(input,text);
+  let (config,error) = Frontend.parse_market_script(input);
+  if error != "" { tool_fail(error); }
+  return Json.parse_at(config,"market script: ");
+}
+
+fn selected(config: sexpr, mode: string, only: string) -> sexpr {
+  if mode == "scrape" { return sx_cons(sx_string(only),sx_nil()); }
+  if mode == "discover" || mode == "predict" {
+    let policy = Json.field(config,"discovery");
+    return Json.items(Json.sorted_array(Json.field(policy,"sources"),false));
+  }
+  var ordered = sx_nil();
+  var rest = sx_tail(Json.field(config,"target_sources"));
+  while sx_kind(rest) == 3 {
+    ordered = sx_cons(sx_head(sx_head(rest)),ordered);
+    rest = sx_tail(rest);
+  }
+  return Sx.sexpr_reverse(ordered);
+}
+
+fn fixture_observation(grant: sexpr, html: string) -> sexpr {
+  let provider = Json.text(Json.field(grant,"provider"));
+  let fixture = Json.text(Json.field(grant,"fixture"));
+  let url = Json.text(Json.field(grant,"source_url"));
+  let time = Civil.timestamp(Json.text(Json.field(grant,"observed_at")),"host grant observed_at");
+  var fields = Artifacts.put(sx_nil(),"kind",sx_string("provider-request/v1"));
+  fields = Artifacts.put(fields,"mode",sx_string("fixture"));
+  fields = Artifacts.put(fields,"provider",sx_string(provider));
+  fields = Artifacts.put(fields,"operation",Json.field(grant,"provider_operation"));
+  fields = Artifacts.put(fields,"fixture_id",sx_string(fixture));
+  fields = Artifacts.put(fields,"source_url",sx_string(url));
+  let request = Json.object(Artifacts.put(fields,"observed_at",sx_string(Civil.utc_text(time))));
+  fields = Artifacts.put(sx_nil(),"provider",sx_string(provider));
+  fields = Artifacts.put(fields,"fixture_id",sx_string(fixture));
+  fields = Artifacts.put(fields,"source_url",sx_string(url));
+  let cap = Json.object(Artifacts.put(fields,"max_body_bytes",Json.integer(65536)));
+  fields = Artifacts.put(sx_nil(),"host_grant",cap);
+  fields = Artifacts.put(fields,"request",request);
+  let envelope = Json.object(Artifacts.put(fields,"html",sx_string(html)));
+  let raw = Probe.caravansary_market_probe_forward(Json.render(envelope));
+  let probe = Json.parse_at(raw,"offline fixture probe: ");
+  if sx_text(Json.field(probe,"kind")) != "provider-observation/v1" {
+    let code = Json.text(Json.field(probe,"code"));
+    let source = Json.text(Json.field(grant,"source"));
+    tool_fail("offline fixture probe failed for $source: $code");
+  }
+  let provenance = Json.field(probe,"provenance");
+  if sx_text(Json.field(probe,"provider")) != provider ||
+     sx_text(Json.field(probe,"operation")) != sx_text(Json.field(grant,"provider_operation")) ||
+     sx_text(Json.field(provenance,"qualification")) != "fictional-frozen-html" ||
+     sx_text(Json.field(provenance,"source_url")) != url ||
+     sx_text(Json.field(provenance,"fixture_id")) != fixture ||
+     sx_text(Json.field(provenance,"content_sha256")) != sx_text(Json.field(grant,"sha256")) ||
+     sx_text(Json.field(provenance,"observed_at")) != Civil.utc_text(time) {
+    tool_fail("offline fixture probe provenance does not match its approved scope");
+  }
+  return probe;
+}
+
+# Validate the entire selected grant set before opening any capture.
+fn collect(config: sexpr, mode: string, only: string, registry_path: string, roots: sexpr, now: i64)
+  -> (sexpr,sexpr) {
+  let (registry,parent) = Grants.load(registry_path,roots);
+  let declarations = Json.field(config,"target_sources");
+  let extractors = Json.field(config,"extractors");
+  var sources = selected(config,mode,only);
+  let count = Sx.sexpr_size(sources);
+  if count < 1 || count > 16 { tool_fail("market subcommand requires 1 to 16 selected fixture sources"); }
+  var authorized = sx_nil();
+  var seen = sx_nil();
+  while sx_kind(sources) == 3 {
+    let id = Json.text(sx_head(sources));
+    let declaration = Json.get(declarations,id);
+    if sx_kind(declaration) == 0 { tool_fail("market source is not declared: $id"); }
+    let extractor = Json.get(extractors,Json.text(Json.field(declaration,"extractor")));
+    if sx_text(Json.get(extractor,"kind")) != "caravansary.fixture@1" {
+      tool_fail("market source needs the supported fixture extractor: $id");
+    }
+    let grant = Grants.authorize(registry,mode,id,declaration,now);
+    authorized = sx_cons(grant,authorized);
+    seen = sx_cons(Json.pair(id,Json.boolean(true)),seen);
+    sources = sx_tail(sources);
+  }
+  ignore(Json.object_unique(seen,"duplicate selected market source"));
+  var captures = sx_nil();
+  var digests = sx_nil();
+  var rest = Sx.sexpr_reverse(authorized);
+  while sx_kind(rest) == 3 {
+    let grant = sx_head(rest);
+    let body = Grants.capture(grant,parent,roots);
+    let observation = fixture_observation(grant,body);
+    let source = Json.field(grant,"source");
+    let digest = Json.field(grant,"sha256");
+    let entry = Json.object(
+      sx_cons(Json.pair("capture_sha256",digest),
+      sx_cons(Json.pair("observation",observation),
+      sx_cons(Json.pair("source",source),sx_nil()))));
+    captures = sx_cons(entry,captures);
+    digests = sx_cons(Json.pair(sx_text(source),digest),digests);
+    rest = sx_tail(rest);
+  }
+  return (Json.array(Sx.sexpr_reverse(captures)),Json.object(digests));
+}
+
+fn subject(config: sexpr) -> sexpr {
+  let target = Json.field(config,"target");
+  let id = Json.field(target,"id");
+  var name = Json.get(target,"name");
+  if sx_kind(name) == 0 { name = Json.get(config,"name"); }
+  if sx_kind(name) == 0 { name = id; }
+  var fields = sx_cons(Json.pair("name",name),sx_cons(Json.pair("id",id),sx_nil()));
+  var rest = sx_tail(target);
+  while sx_kind(rest) == 3 {
+    let entry = sx_head(rest);
+    let key = sx_text(sx_head(entry));
+    if key == "latitude" || key == "longitude" || key == "type" || key == "address" {
+      fields = sx_cons(entry,fields);
+    }
+    rest = sx_tail(rest);
+  }
+  return Json.object(fields);
+}
+
+fn discover(config: sexpr, captures: sexpr) -> sexpr {
+  let declared = Json.field(config,"discovery");
+  let policy = Json.object(
+    sx_cons(Json.pair("radius_m",Json.field(declared,"radius_m")),
+    sx_cons(Json.pair("max_candidates",Json.field(declared,"max_candidates")),sx_nil())));
+  var rest = Json.items(captures);
+  var evidence = sx_nil();
+  while sx_kind(rest) == 3 {
+    evidence = sx_cons(Json.field(sx_head(rest),"observation"),evidence);
+    rest = sx_tail(rest);
+  }
+  return Discovery.from_observations(subject(config),policy,Json.array(Sx.sexpr_reverse(evidence)));
+}

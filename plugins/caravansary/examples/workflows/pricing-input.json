@@ -1,0 +1,65 @@
+{
+  "kind": "caravansary.market-pricing-input@1",
+  "policy": {
+    "scope": {
+      "currency": "GBP",
+      "checkin": "2026-12-01",
+      "checkout": "2026-12-02",
+      "guest_configuration": {"id":"couple","rooms":1,"adults":2,"child_ages":[],"allocation":[{"adults":2,"child_ages":[]}]},
+      "booker_country": "GB",
+      "locale": "en-GB",
+      "price_basis": "stay_total",
+      "taxes_fees_inclusion": "included",
+      "meal": "none",
+      "cancellation": "nonrefundable"
+    },
+    "min_properties": 3,
+    "max_age_seconds": 7200,
+    "quantile_bps": 5000,
+    "current_minor": 11500,
+    "max_move_minor": 1000
+  },
+  "verified_links": [
+    {"candidate_id":"candidate:d4f65d3c2e778161f2194014e91dc8e49337d79b4932575a290650fb4a7fa1eb","property_id":"canal-north"},
+    {"candidate_id":"candidate:44838a7293f2b011cc667d6294631bfc702f2b818c27d3e01c4f015d7f48f52a","property_id":"canal-willow"},
+    {"candidate_id":"candidate:7785e4f37859f782ba14e1005474d307ee66a5ea40ff57c12be5837ce02dc8d1","property_id":"canal-river"}
+  ],
+  "evidence": [
+    {
+      "planner_row": {
+        "source":"booking","provider_property_id":"north-canal","competitor_id":"canal-north","cell_key":"canal-fixture-north","status":"pending",
+        "request_context":{"source":"booking","currency":"GBP","checkin":"2026-12-01","checkout":"2026-12-02","guest_configuration":{"id":"couple","rooms":1,"adults":2,"child_ages":[],"allocation":[{"adults":2,"child_ages":[]}]},"booker_country":"GB","locale":"en-GB"}
+      },
+      "observation": {
+        "kind":"caravansary.observation@1","cell_key":"canal-fixture-north","observation_id":"canal-quote-north","provider_property_id":"north-canal",
+        "observed_at":"2026-11-26T09:51:00Z","received_at":"2026-11-26T09:51:01Z","ingested_at":"2026-11-26T09:51:02Z","adapter_version":"fixture-v1","extractor_version":"fixture-v1","complete":true,"outcome":"priced",
+        "request_context":{"source":"booking","currency":"GBP","checkin":"2026-12-01","checkout":"2026-12-02","guest_configuration":{"id":"couple","rooms":1,"adults":2,"child_ages":[],"allocation":[{"adults":2,"child_ages":[]}]},"booker_country":"GB","locale":"en-GB"},
+        "offers":[{"currency":"GBP","allocation":[{"adults":2,"child_ages":[]}],"availability":"available","room_name":"Fictional double","rate_plan":"Fixture basic","price_basis":"stay_total","amount_minor":13800,"meal":"none","cancellation":"nonrefundable","taxes_fees":{"inclusion":"included","components":[]}}]
+      }
+    },
+    {
+      "planner_row": {
+        "source":"booking","provider_property_id":"willow-court","competitor_id":"canal-willow","cell_key":"canal-fixture-willow","status":"pending",
+        "request_context":{"source":"booking","currency":"GBP","checkin":"2026-12-01","checkout":"2026-12-02","guest_configuration":{"id":"couple","rooms":1,"adults":2,"child_ages":[],"allocation":[{"adults":2,"child_ages":[]}]},"booker_country":"GB","locale":"en-GB"}
+      },
+      "observation": {
+        "kind":"caravansary.observation@1","cell_key":"canal-fixture-willow","observation_id":"canal-quote-willow","provider_property_id":"willow-court",
+        "observed_at":"2026-11-26T09:53:00Z","received_at":"2026-11-26T09:53:01Z","ingested_at":"2026-11-26T09:53:02Z","adapter_version":"fixture-v1","extractor_version":"fixture-v1","complete":true,"outcome":"priced",
+        "request_context":{"source":"booking","currency":"GBP","checkin":"2026-12-01","checkout":"2026-12-02","guest_configuration":{"id":"couple","rooms":1,"adults":2,"child_ages":[],"allocation":[{"adults":2,"child_ages":[]}]},"booker_country":"GB","locale":"en-GB"},
+        "offers":[{"currency":"GBP","allocation":[{"adults":2,"child_ages":[]}],"availability":"available","room_name":"Fictional double","rate_plan":"Fixture basic","price_basis":"stay_total","amount_minor":15400,"meal":"none","cancellation":"nonrefundable","taxes_fees":{"inclusion":"included","components":[]}}]
+      }
+    },
+    {
+      "planner_row": {
+        "source":"agoda","provider_property_id":"riverglass","competitor_id":"canal-river","cell_key":"canal-fixture-river","status":"pending",
+        "request_context":{"source":"agoda","currency":"GBP","checkin":"2026-12-01","checkout":"2026-12-02","guest_configuration":{"id":"couple","rooms":1,"adults":2,"child_ages":[],"allocation":[{"adults":2,"child_ages":[]}]},"booker_country":"GB","locale":"en-GB"}
+      },
+      "observation": {
+        "kind":"caravansary.observation@1","cell_key":"canal-fixture-river","observation_id":"canal-quote-river","provider_property_id":"riverglass",
+        "observed_at":"2026-11-26T09:55:00Z","received_at":"2026-11-26T09:55:01Z","ingested_at":"2026-11-26T09:55:02Z","adapter_version":"fixture-v1","extractor_version":"fixture-v1","complete":true,"outcome":"priced",
+        "request_context":{"source":"agoda","currency":"GBP","checkin":"2026-12-01","checkout":"2026-12-02","guest_configuration":{"id":"couple","rooms":1,"adults":2,"child_ages":[],"allocation":[{"adults":2,"child_ages":[]}]},"booker_country":"GB","locale":"en-GB"},
+        "offers":[{"currency":"GBP","allocation":[{"adults":2,"child_ages":[]}],"availability":"available","room_name":"Fictional double","rate_plan":"Fixture basic","price_basis":"stay_total","amount_minor":14400,"meal":"none","cancellation":"nonrefundable","taxes_fees":{"inclusion":"included","components":[]}}]
+      }
+    }
+  ]
+}

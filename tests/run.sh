@@ -18,14 +18,30 @@ checks() {
 
 caravansary_checks() {
   sh plugins/caravansary/frontend/generate-tables.sh --check
-  bin/caravansary build
-  for module in frontend planning coverage credentials booking metrics; do
+  sh plugins/caravansary/build.sh
+  for module in frontend programming planning coverage credentials booking metrics; do
     sh plugins/caravansary/build.sh "--check-$module"
   done
   python3 tests/caravansary_on1x.py
   for check in tests/check_caravansary*.py; do
     python3 "$check"
   done
+}
+
+caravansary_market_checks() {
+  on1xc=${ON1XC:-"$(finpred_mulib_build_dir "$ROOT")/on1xc"}
+  out=$(finpred_cli_output_dir "$ROOT")
+  export ON1XC="$on1xc" CC=clang CXX=clang++
+  sh plugins/caravansary/build.sh --market
+  sh plugins/caravansary/build.sh --check-review
+  sh plugins/caravansary/examples/providers/check.sh
+  sh plugins/caravansary/discovery/check.sh
+  sh plugins/caravansary/pricing/check.sh
+  FINPRED_BUILD_DIR="$out" sh plugins/caravansary/jobs/build.sh
+  python3 tests/caravansary_market.py --with-jobs
+  sh plugins/caravansary/examples/joe-litty-rooms/check.sh --reuse-market
+  python3 plugins/caravansary/jobs/test_jobs.py "$out/finpred-caravansary-jobs" \
+    --market "$out/finpred-caravansary-market"
 }
 
 require_tools() {
@@ -289,6 +305,7 @@ case "$suite" in
     ;;
   plugins)
     caravansary_checks
+    caravansary_market_checks
     require_tools strace
     checks sdk sdk_packages python_sdk sdk_data1 plugin_registry engines_cli scalar_registry \
       scalar_diagnostics_package yieldcraft_package dragnet_search
@@ -318,6 +335,7 @@ case "$suite" in
   dragnet-search) checks dragnet_search ;;
   forecast-score) checks forecast_scores ;;
   caravansary) caravansary_checks ;;
+  caravansary-market) caravansary_market_checks ;;
   *)
     echo "Unknown verification suite: $suite" >&2
     exit 2

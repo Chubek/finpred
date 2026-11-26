@@ -1,0 +1,20 @@
+from plugins.caravansary.stdlib.provider.api import Provider;
+from plugins.caravansary.stdlib.provider.extract import FixtureLayout, ProviderFacts, parse_fixture;
+from std.html import BasisHtml;
+from std.http.probe import ProbeParseError;
+
+fn booking_provider(operation: string) -> Provider<ProviderFacts> {
+  let host = "booking.example";
+  let layout = record<FixtureLayout>{
+    host: host, marker: "data-testid", card: "property-card", profile: "property-page",
+    empty: "no-properties", title: "title", alternate_title: "property-name",
+    link: "title-link", address: "address", offer: "price-and-discounted-price",
+    alternate_offer: "price-display", amenity: "amenity"
+  };
+  return record<Provider<ProviderFacts>>{
+    name: "booking", host: host,
+    parse: fn(document: BasisHtml) -> Result<ProviderFacts, ProbeParseError> {
+      return parse_fixture(document, layout, operation);
+    }
+  };
+}

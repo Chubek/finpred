@@ -15,6 +15,45 @@ the `std.llsynth` grammar tables. The
 [metrics tests](metrics/README.md#focused-native-checks) use the standard
 `checks` PPX for exact compile/evaluation assertions.
 
+The additive [market workflow](../../docs/caravansary/market.md) keeps
+provider extraction, candidate identity, comparable evidence, independent
+pricing, and scheduling as separate authority boundaries.
+
+## Run the market examples
+
+Build the pinned compiler first (see [INSTALL.md](../../INSTALL.md)), then
+run:
+
+```sh
+CC=clang CXX=clang++ make caravansary
+examples=plugins/caravansary/examples
+script="$examples/workflows/canal-market.caf"
+grants="$examples/workflows/host-grants.json"
+bin/caravansary discover "$script" --input-root "$examples" \
+  --host-grants "$grants" --as-of 2026-11-26T10:00:00Z
+bin/caravansary predict "$script" --input-root "$examples" \
+  --host-grants "$grants" --as-of 2026-11-26T10:00:00Z \
+  --pricing-input "$examples/workflows/pricing-input.json"
+make caravansary-market-test
+```
+
+These commands replay fictional Booking and Agoda HTML through native Probe.
+The second command uses separately supplied exact-stay evidence; omitting
+`--pricing-input` yields an abstention, not a price inferred from the page.
+`market-help` lists `scrape`, `collect`, `backtest`, `history`, and `explain`
+alongside `discover` and `predict`. They return versioned JSON, and market
+artifacts are explicitly not for publication.
+
+Other examples: [typed functions](examples/programming/README.md),
+[provider capture fixtures](examples/providers/README.md),
+[Joe Litty Rooms profile reference](examples/joe-litty-rooms/README.md), and
+[persistent scheduled Probe replay](examples/jobs/README.md). See the
+[jobs contract](jobs/README.md) for state ownership, clock and crash semantics.
+`daemon --state DIR --at UTC --once` supervises one due job; it is not a
+long-running background daemon. `schedule` takes the same profile and clock
+arguments as `jobs --state DIR schedule`. Deploy the fixed market and jobs
+sibling executables together in a trusted directory.
+
 CaravanScript files contain top-level fields and blocks, with no header or
 version declaration. To migrate an older script, replace its opening
 `caravan "Title" version … {` line with `name = "Title";` and remove the

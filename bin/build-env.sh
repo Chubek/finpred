@@ -7,5 +7,8 @@ finpred_build_env() {
 }
 
 finpred_mulib_build_dir() {
-  printf '%s/build/mulib/on1x\n' "$1"
+  case ${FINPRED_MULIB_BUILD_DIR:-} in
+    /*) realpath -m -- "$FINPRED_MULIB_BUILD_DIR" ;;
+    *) realpath -m -- "$1/${FINPRED_MULIB_BUILD_DIR:-build/mulib/on1x}" ;;
+  esac
 }

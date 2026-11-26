@@ -1,0 +1,108 @@
+import plugins.caravansary.coverage.clock as Clock;
+import plugins.caravansary.discovery.projection as Projection;
+import plugins.caravansary.planning.json as J;
+import plugins.caravansary.stdlib.property as Property;
+import std.String as Str;
+import std.sexpr.sexpr as Sx;
+
+macro fail { rule ($message:Expression) => expression { result_error(sx_string($message)) }; }
+
+fn strict_text(value: sexpr) -> bool {
+  if sx_kind(value) != 2 { return false; }
+  let label = Property.identity_text(value);
+  return label != "" && label != "unknown" && label != "unspecified" &&
+    label != "not reported" && label != "n/a";
+}
+
+fn minor_units(value: sexpr) -> bool {
+  if J.kind(value) != "integer" { return false; }
+  let text_value = sx_text(value);
+  let n = text_len(text_value);
+  return n > 0 && n <= 19 && text_byte(text_value, 0) >= 49 &&
+    (n < 19 || Str.compare(text_value, "9223372036854775807") <= 0);
+}
+
+fn usable_offer(offer: sexpr) -> bool {
+  if sx_text(J.get(offer, "availability")) != "available" || !minor_units(J.get(offer, "amount_minor")) {
+    return false;
+  }
+  let basis = sx_text(J.get(offer, "price_basis"));
+  if (basis != "stay_total" && basis != "nightly_average") || sx_kind(J.get(offer, "derived_average")) != 0 {
+    return false;
+  }
+  if !strict_text(J.get(offer, "meal")) || !strict_text(J.get(offer, "cancellation")) {
+    return false;
+  }
+  let taxes = J.field(offer, "taxes_fees");
+  if sx_text(J.get(taxes, "inclusion")) != "included" { return false; }
+  var components = J.items(J.field(taxes, "components"));
+  while sx_kind(components) == 3 {
+    if sx_text(J.get(sx_head(components), "inclusion")) != "included" { return false; }
+    components = sx_tail(components);
+  }
+  return true;
+}
+
+fn scope(context: sexpr, offer: sexpr) -> sexpr {
+  var fields = Property.pair("currency", J.field(context, "currency"), sx_nil());
+  fields = Property.pair("checkin", J.field(context, "checkin"), fields);
+  fields = Property.pair("checkout", J.field(context, "checkout"), fields);
+  fields = Property.pair("guest_configuration", J.field(context, "guest_configuration"), fields);
+  fields = Property.pair("booker_country", J.field(context, "booker_country"), fields);
+  fields = Property.pair("locale", J.field(context, "locale"), fields);
+  fields = Property.pair("price_basis", J.field(offer, "price_basis"), fields);
+  fields = Property.pair("taxes_fees_inclusion", J.field(J.field(offer, "taxes_fees"), "inclusion"), fields);
+  fields = Property.pair("meal", J.field(offer, "meal"), fields);
+  fields = Property.pair("cancellation", J.field(offer, "cancellation"), fields);
+  return J.object(fields);
+}
+
+fn select(discovery: sexpr, verified_links: sexpr, planner_row: sexpr, observation: sexpr,
+          qualification: string) -> Result<sexpr, sexpr> {
+  if qualification != "fixture" && qualification != "observed" {
+    return fail!("qualification must be fixture or observed");
+  }
+  if qualification == "observed" && sx_kind(J.get(discovery, "fixture_evidence")) != 0 {
+    return fail!("fixture discovery cannot qualify as observed market evidence");
+  }
+  let checked = Projection.observation(discovery, verified_links, planner_row, observation)?;
+  let context = J.field(checked, "request_context");
+  let observed = J.get(checked, "observed_at");
+  if sx_kind(observed) != 2 || sx_text(J.field(checked, "complete")) != "true" {
+    return result_ok(J.array(sx_nil()));
+  }
+  let encounter = Clock.parse(sx_text(observed), "observed_at")?;
+  let source = J.field(planner_row, "source");
+  let identity = J.field(planner_row, "provider_property_id");
+  let candidate_id = Property.candidate_id(sx_text(source), sx_text(identity));
+  var base = Property.pair("property_id", J.field(planner_row, "competitor_id"), sx_nil());
+  base = Property.pair("candidate_id", sx_string(candidate_id), base);
+  base = Property.pair("provider", source, base);
+  base = Property.pair("provider_property_id", identity, base);
+  base = Property.pair("observation_id", J.field(checked, "observation_id"), base);
+  base = Property.pair("observed_at", sx_string(Clock.utc_text(encounter)), base);
+  base = Property.pair("received_at", J.field(checked, "received_at"), base);
+  base = Property.pair("ingested_at", J.field(checked, "ingested_at"), base);
+  base = Property.pair("qualification", sx_string(qualification), base);
+  var rest = J.items(J.field(checked, "offers"));
+  var packed = sx_nil();
+  while sx_kind(rest) == 3 {
+    let offer = sx_head(rest);
+    if usable_offer(offer) {
+      let value = J.object(Property.pair("scope", scope(context, offer),
+        Property.pair("amount_minor", J.field(offer, "amount_minor"), base)));
+      packed = Property.pair(J.render(value), value, packed);
+    }
+    rest = sx_tail(rest);
+  }
+  rest = J.sort_count(packed, Sx.sexpr_size(packed), true, false);
+  var values = sx_nil();
+  var last = "";
+  while sx_kind(rest) == 3 {
+    let entry = sx_head(rest);
+    let key = sx_text(sx_head(entry));
+    if key != last { values = sx_cons(J.pair_value(entry), values); last = key; }
+    rest = sx_tail(rest);
+  }
+  return result_ok(J.array(Sx.sexpr_reverse(values)));
+}

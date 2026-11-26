@@ -1,0 +1,30 @@
+# Fixed descriptive weekly baseline for dated rooms-sold windows, not a
+# claim of seasonality, an annual effect, or a parameter fit to holdout data.
+from . import price_values as V, demand as Demand;
+
+fn window() -> i64 { return 28; }
+
+fn average(sum: i64, count: i64) -> i64 { return (sum + count / 2) / count; }
+
+# Inputs are 28 contiguous daily counts newest first. Returns the same-weekday
+# and all-days mean rounded nearest with ties up; -1 means invalid/missing.
+fn baselines(quantities: sexpr, last_day: i64, target_day: i64) -> (i64, i64) {
+  if last_day < window() || target_day <= last_day { return (-1, -1); }
+  var sum = 0;
+  var weekday_sum = 0;
+  var weekday_count = 0;
+  var rows = quantities;
+  for offset in 0 .. window() {
+    if sx_kind(rows) != 3 { return (-1, -1); }
+    let rooms = V.natural(sx_head(rows), Demand.rooms_cap());
+    if rooms < 0 { return (-1, -1); }
+    sum = sum + rooms;
+    if (target_day - last_day + offset) % 7 == 0 {
+      weekday_count = weekday_count + 1;
+      weekday_sum = weekday_sum + rooms;
+    }
+    rows = sx_tail(rows);
+  }
+  if sx_kind(rows) != 0 || weekday_count != 4 { return (-1, -1); }
+  return (average(weekday_sum, weekday_count), average(sum, window()));
+}

@@ -1,0 +1,175 @@
+import plugins.caravansary.planning.json as J;
+import plugins.caravansary.planning.host as Host;
+import plugins.caravansary.stdlib.provider.adapter as Adapter;
+from plugins.caravansary.stdlib.provider.api import Provider, FixtureGrant, FixtureIntent, run_provider;
+from std.html import BasisHtml, basis_html_xpath, basis_html_selection_count;
+from std.http.probe import ProbeParseError;
+import std.sexpr.sexpr as Sx;
+
+fn request(name: string, stem: string, operation: string) -> sexpr {
+  let input = J.parse("{\"kind\":\"provider-request/v1\",\"mode\":\"fixture\",\"observed_at\":\"2026-11-26T12:00:00Z\"}");
+  var value = J.replace(input, "provider", sx_string(name));
+  value = J.replace(value, "operation", sx_string(operation));
+  value = J.replace(value, "fixture_id", sx_string("${name}-$stem"));
+  return J.replace(value, "source_url", sx_string("https://${name}.example/fixtures/$stem"));
+}
+
+fn grant(name: string, stem: string, limit: i64) -> FixtureGrant {
+  return record<FixtureGrant>{
+    provider: name, fixture_id: "${name}-$stem", max_body_bytes: limit,
+    source_url: "https://${name}.example/fixtures/$stem"
+  };
+}
+
+fn fixture(name: string, stem: string) -> string {
+  return Host.caravansary_read_regular("plugins/caravansary/examples/providers/${name}-$stem.html",
+    false, 65536, "repository fixture");
+}
+
+fn check_error(request: sexpr, body: string, allow: FixtureGrant, code: string) {
+  let result = Adapter.run_fixture(request, body, allow);
+  assert(J.text(J.get(result, "kind")) == "provider-error/v1");
+  let actual = J.text(J.get(result, "code"));
+  if actual != code { tool_fail("expected $code, got $actual"); }
+}
+
+fn properties(result: sexpr, count: i64) -> sexpr {
+  if J.text(J.get(result, "kind")) != "provider-observation/v1" { tool_fail(J.render(result)); }
+  let values = J.items(J.get(result, "properties"));
+  assert(Sx.sexpr_size(values) == count);
+  return values;
+}
+
+fn exact_text(value: sexpr, key: string, expected: string) {
+  assert(J.text(J.get(value, key)) == expected);
+}
+
+fn cases() {
+  let req = request("booking", "candidates", "candidates");
+  let body = fixture("booking", "candidates");
+  let approve = grant("booking", "candidates", 65536);
+  let obs = Adapter.run_fixture(req, body, approve);
+  let fields = properties(obs, 2);
+  let first = sx_head(fields);
+  exact_text(first, "name", "North Canal & Garden House");
+  exact_text(first, "property_id", "north-canal");
+  exact_text(first, "url", "https://booking.example/hotel/fixture/north-canal");
+  exact_text(first, "latitude", "51.5031");
+  let price = sx_head(J.items(J.get(first, "offers")));
+  assert(J.int64(J.get(price, "amount_minor"), "price") == 12050);
+  assert(sx_kind(J.get(price, "availability")) == 0);
+  let second_price = sx_head(J.items(J.get(sx_head(sx_tail(fields)), "offers")));
+  assert(J.int64(J.get(second_price, "amount_minor"), "price") == 21500);
+  exact_text(second_price, "availability", "available");
+  let origin = J.get(obs, "provenance");
+  exact_text(origin, "content_sha256", Host.caravansary_sha256(body));
+  exact_text(origin, "qualification", "fictional-frozen-html");
+  exact_text(origin, "source_url", "https://booking.example/fixtures/candidates");
+  exact_text(origin, "fixture_id", "booking-candidates");
+  exact_text(origin, "observed_at", "2026-11-26T12:00:00Z");
+  exact_text(origin, "extractor", "booking-fixture/v1");
+
+  let declaration = "elvi booking\nhost booking.example\nhome https://booking.example/fixtures/candidates\nmode document\nartifacts capture\n";
+  let elvi = J.replace(req, "elvi_source", sx_string(declaration));
+  assert(J.render(Adapter.run_fixture(elvi, body, approve)) == J.render(obs));
+  check_error(elvi, body, grant("booking", "profile", 4096), "fixture-denied");
+  check_error(elvi, body, grant("agoda", "candidates", 4096), "fixture-denied");
+  check_error(elvi, body, grant("booking", "candidates", 1), "invalid-fixture-size");
+  check_error(elvi, body, grant("booking", "candidates", 65537), "fixture-denied");
+  check_error(J.replace(req, "credentials", sx_string("not a grant")), body, approve, "unsupported-request-field");
+  check_error(J.replace(req, "mode", sx_string("booking-demand-sandbox")), body, approve, "unsupported-mode");
+  check_error(J.replace(req, "mode", sx_string("live")), body, approve, "unsupported-mode");
+  check_error(J.replace(req, "observed_at", sx_string("2026-02-29T12:00:00Z")), body, approve, "invalid-observed-at");
+  check_error(J.replace(req, "source_url", sx_string("https://booking.example@bad.example/fixtures/candidates")),
+    body, approve, "invalid-request");
+  check_error(J.replace(req, "elvi_source", sx_string("bogus")), body, approve, "invalid-elvi");
+  let cookie = text_concat(declaration, "cookies provide{/not/read.txt}\n");
+  check_error(J.replace(req, "elvi_source", sx_string(cookie)), body, approve, "unsupported-authentication");
+  let wrong = "elvi booking\nhost booking.example\nhome https://booking.example/fixtures/profile\nmode document\nartifacts capture\n";
+  check_error(J.replace(req, "elvi_source", sx_string(wrong)), body, approve, "elvi-scope-mismatch");
+  check_error(req, "<p>New markup or consent page</p>", approve, "unrecognized-candidates");
+  let empty = Adapter.run_fixture(req, "<p data-testid='no-properties'>No matches</p>", approve);
+  assert(sx_kind(properties(empty, 0)) == 0);
+  let bad_link = "<article data-testid='property-card'><a data-testid='title-link' href='/../x'>Invalid</a></article>";
+  check_error(req, bad_link, approve, "candidate-links-missing-or-invalid");
+  let first_card = "<article data-testid='property-card' data-property-id='alpha'><a data-testid='title-link' href='/hotel/a'>Link</a><h2 data-testid='title'>Alpha</h2></article>";
+  let same_url = "<article data-testid='property-card' data-property-id='beta'><a data-testid='title-link' href='/hotel/a'>Link</a><h2 data-testid='title'>Beta</h2></article>";
+  check_error(req, text_concat(first_card, same_url), approve, "conflicting-property-identity");
+  let duplicate = Adapter.run_fixture(req, text_concat(first_card, first_card), approve);
+  assert(sx_kind(properties(duplicate, 1)) == 3);
+  let same_id = "<article data-testid='property-card' data-property-id='alpha'><a data-testid='title-link' href='/hotel/b'>Link</a><h2 data-testid='title'>Beta</h2></article>";
+  let conflicts = Adapter.run_fixture(req, text_concat(first_card, same_id), approve);
+  assert(sx_kind(properties(conflicts, 2)) == 3);
+}
+
+fn test_fixture(name: string, stem: string, operation: string, count: i64) -> sexpr {
+  let result = Adapter.run_fixture(request(name, stem, operation), fixture(name, stem), grant(name, stem, 65536));
+  return properties(result, count);
+}
+
+fn markup() {
+  let booking_profile = sx_head(test_fixture("booking", "profile", "profile", 1));
+  assert(Sx.sexpr_size(J.items(J.get(booking_profile, "amenities"))) == 2);
+  let profile_offers = J.items(J.get(booking_profile, "offers"));
+  exact_text(sx_head(sx_tail(profile_offers)), "availability", "unavailable");
+  assert(J.kind(J.get(sx_head(sx_tail(profile_offers)), "amount_minor")) == "null");
+  let booking_variant = sx_head(test_fixture("booking", "variant", "candidates", 1));
+  exact_text(booking_variant, "name", "Fennel House");
+  exact_text(booking_variant, "address", "6 Cloud Lane, Fictional Wharf");
+  let offer = sx_head(J.items(J.get(booking_variant, "offers")));
+  assert(J.int64(J.get(offer, "amount_minor"), "price") == 9050);
+  exact_text(offer, "price_basis", "nightly_average");
+
+  let agoda = test_fixture("agoda", "candidates", "candidates", 2);
+  exact_text(sx_head(agoda), "name", "Riverglass & Lantern");
+  exact_text(sx_head(agoda), "url", "https://agoda.example/riverglass/hotel/fictional-city.html");
+  assert(sx_kind(J.items(J.get(sx_head(sx_tail(agoda)), "offers"))) == 0);
+  let agoda_profile = sx_head(test_fixture("agoda", "profile", "profile", 1));
+  exact_text(agoda_profile, "name", "Riverglass & Lantern");
+  assert(J.int64(J.get(sx_head(J.items(J.get(agoda_profile, "offers"))), "amount_minor"), "price") == 12400);
+
+  let sparse = test_fixture("agoda", "sparse", "candidates", 3);
+  let partial = sx_head(sparse);
+  exact_text(partial, "property_id", "https://agoda.example/quiet-hill/hotel/fictional-city.html");
+  assert(J.kind(J.get(partial, "latitude")) == "null");
+  assert(sx_kind(J.get(partial, "longitude")) == 0);
+  assert(J.kind(J.get(partial, "property_type")) == "null");
+  let unknown_price = sx_head(J.items(J.get(partial, "offers")));
+  assert(J.kind(J.get(unknown_price, "currency")) == "null");
+  assert(J.kind(J.get(unknown_price, "amount_minor")) == "null");
+  assert(J.kind(J.get(unknown_price, "availability")) == "null");
+  assert(J.kind(J.get(unknown_price, "price_basis")) == "null");
+  let blank_name = sx_head(sx_tail(sparse));
+  assert(J.kind(J.get(blank_name, "name")) == "null");
+  assert(sx_kind(J.items(J.get(blank_name, "offers"))) == 0);
+  assert(sx_kind(J.get(sx_head(sx_tail(sx_tail(sparse))), "name")) == 0);
+}
+
+fn generic_execution() {
+  let parse = fn(document: BasisHtml) -> Result<i64, ProbeParseError> {
+    match basis_html_xpath(document, "//main") with {
+      Ok(nodes) => {
+        let (status, n) = basis_html_selection_count(nodes);
+        if status == 0 { return result_ok(n); }
+      },
+      Err(_) => {}
+    };
+    return result_error(record<ProbeParseError>{message: "no selection"});
+  };
+  let provider = record<Provider<i64>>{name: "booking", host: "booking.example", parse: parse};
+  let intent = record<FixtureIntent>{
+    fixture_id: "booking-profile", source_url: "https://booking.example/fixtures/profile",
+    elvi_source: ""
+  };
+  match run_provider(provider, intent, grant("booking", "profile", 65536), fixture("booking", "profile")) with {
+    Ok(number) => assert(number == 1),
+    Err(code) => tool_fail(code)
+  };
+}
+
+fn main() {
+  cases();
+  markup();
+  generic_execution();
+  println("provider fixtures: OK");
+}

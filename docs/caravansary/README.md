@@ -7,6 +7,8 @@ competitor observation matrix; pricing is a separate phase.
 
 * [CaravanScript and data contracts](contracts.md)
 * [CaravanScript offline coverage transformations](transformations.md)
+* [Market intelligence, pricing, and scheduling boundaries](market.md)
+* [Pinned dependencies and local qualification](qualification.md)
 * [Provider assessment, capacity, and pilot plan](feasibility.md)
 * [Pilot evidence template](pilot-record.md)
 * [Offline capacity calculator](capacity.py)

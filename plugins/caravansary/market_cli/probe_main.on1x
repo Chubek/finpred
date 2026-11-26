@@ -1,0 +1,22 @@
+import plugins.caravansary.planning.inputs as Inputs;
+import plugins.caravansary.planning.json as Json;
+import plugins.caravansary.stdlib.provider.adapter as Adapter;
+import plugins.caravansary.stdlib.provider.api as Provider;
+
+extern fn caravansary_market_probe_input() -> string;
+
+fn main() -> i64 {
+  let envelope = Json.parse_at(caravansary_market_probe_input(),"internal market probe: ");
+  Inputs.object_fields(envelope,"request host_grant html","","internal market probe");
+  let authority = Json.field(envelope,"host_grant");
+  Inputs.object_fields(authority,"provider fixture_id source_url max_body_bytes","","internal market probe grant");
+  let grant = record<Provider.FixtureGrant>{
+    provider:Json.text(Json.field(authority,"provider")),
+    fixture_id:Json.text(Json.field(authority,"fixture_id")),
+    source_url:Json.text(Json.field(authority,"source_url")),
+    max_body_bytes:Json.int64(Json.field(authority,"max_body_bytes"),"probe body limit")
+  };
+  let observation = Adapter.run_fixture(Json.field(envelope,"request"),Json.text(Json.field(envelope,"html")),grant);
+  println(Json.render(observation));
+  return 0;
+}

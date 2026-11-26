@@ -1,0 +1,166 @@
+from std.elvi import ElviProgram, basis_elvi_compile, basis_elvi_inspect;
+from std.elvi.document import BasisElviDocument, BasisElviDocumentMetadata, basis_elvi_document_from_hex;
+from std.html import BasisHtml;
+from std.http.probe import ProbeRequest, ProbeHost, FetchBackend, ProbeParseError,
+  ProbeArtifactPolicy, ProbeRunError, basis_http_probe_from_elvi, basis_http_probe_run;
+
+# A provider packages data and a typed parser, never request authority.
+record Provider < T > {
+  name: string,
+  host: string,
+  parse: fn(BasisHtml) -> Result<T, ProbeParseError>
+}
+
+record FixtureIntent {
+  fixture_id: string,
+  source_url: string,
+  elvi_source: string
+}
+
+# Constructed by the host after binding an independently selected regular file
+# to the same provider, ID and URL. This record itself performs no file I/O.
+record FixtureGrant {
+  provider: string,
+  fixture_id: string,
+  source_url: string,
+  max_body_bytes: i64
+}
+
+fn fixture_url(host: string, url: string) -> bool {
+  let prefix = text_concat("https://", host);
+  let split = text_len(prefix);
+  let n = text_len(url);
+  if n <= split + 1 || n > 512 || text_slice(url, 0, split) != prefix ||
+     text_byte(url, split) != 47 { return false; }
+  # This fixture dialect permits plain ASCII path segments only: no query,
+  # fragment, percent escapes, dot-segments, redirects or credentials.
+  var segment = 0;
+  for i in split + 1 .. n {
+    let b = text_byte(url, i);
+    if b == 47 {
+      if segment == 0 { return false; }
+      segment = 0;
+    } else {
+      if !((b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) ||
+           b == 45 || b == 95 || (b == 46 && segment > 0)) { return false; }
+      segment = segment + 1;
+    }
+  }
+  return segment > 0;
+}
+
+fn fixture_key(value: string) -> bool {
+  let n = text_len(value);
+  if n < 1 || n > 128 { return false; }
+  for i in 0 .. n {
+    let b = text_byte(value, i);
+    if !((b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) ||
+         (i > 0 && (b == 45 || b == 95))) { return false; }
+  }
+  return true;
+}
+
+fn fixture_id_valid(value: string) -> bool {
+  let n = text_len(value);
+  if n < 1 || n > 128 { return false; }
+  for i in 0 .. n {
+    let b = text_byte(value, i);
+    if !((b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) ||
+         b == 45 || b == 46 || b == 95) { return false; }
+  }
+  return true;
+}
+
+fn fixture_hex_digit(n: i64) -> i64 {
+  if n < 10 { return 48 + n; }
+  return 87 + n;
+}
+
+fn fixture_hex(html: string) -> string {
+  let out = buffer_new();
+  for i in 0 .. text_len(html) {
+    let byte = text_byte(html, i);
+    buffer_byte(out, fixture_hex_digit(byte / 16));
+    buffer_byte(out, fixture_hex_digit(byte % 16));
+  }
+  return buffer_text(out);
+}
+
+fn fixture_program(name: string, host: string, url: string, source: string) -> string {
+  if source != "" { return source; }
+  return "elvi $name\nhost $host\nhome $url\nmode document\nartifacts capture\n";
+}
+
+fn fixture_probe_error<T>(error: ProbeRunError) -> Result<T, string> {
+  return result_error(match error with {
+    ProbeDenied() => "fixture-denied",
+    ProbeUnsupportedCookies() => "unsupported-authentication",
+    ProbeParserFailure(detail) => detail["message"],
+    ProbeHtmlFailure(_) => "invalid-html",
+    ProbeInvalidDocument() => "invalid-capture",
+    ProbeCaptureFailure(_) => "fixture-capture-failed",
+    _ => "probe-failed"
+  });
+}
+
+# Typed Probe -> separately authorized, in-memory Elvi capture -> BasisHtml
+# -> provider parser. No live backend, artifact sink or publication exists.
+fn run_provider < T > (provider: Provider<T>, intent: FixtureIntent, grant: FixtureGrant, html: string)
+  -> Result<T, string>
+{
+  let name = provider["name"];
+  let host = provider["host"];
+  let url = intent["source_url"];
+  let id = intent["fixture_id"];
+  let size = text_len(html);
+  let limit = grant["max_body_bytes"];
+  if !fixture_url(host, url) || !fixture_id_valid(id) { return result_error("invalid-request"); }
+  if name != grant["provider"] || id != grant["fixture_id"] || url != grant["source_url"] {
+    return result_error("fixture-denied");
+  }
+  if limit < 1 || limit > 65536 { return result_error("fixture-denied"); }
+  if size < 1 || size > limit { return result_error("invalid-fixture-size"); }
+  let source = fixture_program(name, host, url, intent["elvi_source"]);
+  if text_len(source) > 65536 { return result_error("invalid-elvi"); }
+  for i in 0 .. text_len(source) {
+    if text_byte(source, i) == 0 { return result_error("invalid-elvi"); }
+  }
+  let program = match basis_elvi_compile(source) with {
+    Ok(compiled) => compiled, Err(_) => { return result_error("invalid-elvi"); }
+  };
+  let profile = match basis_elvi_inspect(program) with {
+    Ok(value) => value, Err(_) => { return result_error("invalid-elvi"); }
+  };
+  if profile["name"] != name || profile["host"] != host || profile["home"] != url {
+    return result_error("elvi-scope-mismatch");
+  }
+  let authorize = fn(request: ProbeRequest) -> bool {
+    return request["host"] == host && request["url"] == url && request["max_body_bytes"] == limit;
+  };
+  let capture = fn(declaration: ElviProgram, request: ProbeRequest) -> Result<BasisElviDocument, i64> {
+    if declaration["source"] != source || !authorize(request) || size > request["max_body_bytes"] {
+      return result_error(-1);
+    }
+    # The pinned value expects valid HTTPS-shaped metadata. These are synthetic
+    # fixture values, never exposed as evidence of TLS, HTTP, or a live fetch.
+    let metadata = record<BasisElviDocumentMetadata> {
+      status: 200, requested_url: url, effective_url: url,
+      content_type: "text/html; charset=utf-8", http_protocol: "HTTP/1.1", alpn: "",
+      tls_version: 772, certificate_verified: true, hostname_verified: true,
+      body_length: size, chunked: false, close_delimited: false
+    };
+    return basis_elvi_document_from_hex(metadata, fixture_hex(html));
+  };
+  let transport = record<ProbeHost> {
+    authorize: authorize, backend: record<FetchBackend>{capture: capture}
+  };
+  let probe = match basis_http_probe_from_elvi(program, limit,
+      variant<ProbeArtifactPolicy>(DiscardArtifacts, record {}), provider["parse"]) with {
+    Ok(value) => value,
+    Err(_) => { return result_error("unsupported-elvi-profile"); }
+  };
+  return match basis_http_probe_run(probe, transport) with {
+    Ok(run) => result_ok(run["result"]["value"]),
+    Err(error) => fixture_probe_error(error)
+  };
+}

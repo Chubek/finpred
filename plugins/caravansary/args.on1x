@@ -2,7 +2,7 @@ import std.environ as Env;
 
 fn usage() -> string
 {
-  return "Usage: bin/caravansary plan SCRIPT [--date YYYY-MM-DD] [--as-of UTC] [--input-root DIR ...]\n       bin/caravansary report SCRIPT [--date YYYY-MM-DD] [--as-of UTC] [--input-root DIR ...] [--observations FILE]\n       bin/caravansary pilot-booking SCRIPT --confirm-authorized [--date YYYY-MM-DD] [--input-root DIR ...]\n";
+  return "Usage: bin/caravansary plan SCRIPT [--date YYYY-MM-DD] [--as-of UTC] [--input-root DIR ...]\n       bin/caravansary report SCRIPT [--date YYYY-MM-DD] [--as-of UTC] [--input-root DIR ...] [--observations FILE]\n       bin/caravansary pilot-booking SCRIPT --confirm-authorized [--date YYYY-MM-DD] [--input-root DIR ...]\n       bin/caravansary market-help   # offline discovery, pricing, backtest and jobs\n";
 }
 
 fn bad(message:string)

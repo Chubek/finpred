@@ -1,0 +1,30 @@
+# Fictional references. This example runs only through the pure function API.
+name = "Harbor Lodging Review";
+target {
+  id = "harbor-lodging"; type = "hotel"; latitude = "51.5"; longitude = "-0.1";
+  currency = "GBP";
+}
+target_sources {
+  booking_alias {
+    kind = "fixture"; fixture = "booking-profile"; extractor = "frozen";
+    profile_url = "https://www.booking.com/hotel/gb/fictional-harbor-lodging.html";
+  }
+  agoda_alias {
+    kind = "fixture"; fixture = "agoda-profile"; extractor = "frozen";
+    profile_url = "https://www.agoda.com/fictional-harbor-lodging/hotel/london-gb.html";
+  }
+}
+extractors { frozen { kind = "caravansary.fixture@1"; } }
+discovery { sources = ["booking_alias", "agoda_alias"]; radius_m = 2000; max_candidates = 8; }
+pricing { currency = "GBP"; floor_minor = 8500; ceiling_minor = 29000; }
+modules {
+  rules {
+    fn nearby(distance_m: int, quality: int) -> bool {
+      return distance_m <= 1600 and quality >= 75;
+    }
+  }
+}
+functions {
+  fn eligible(distance_m: int, quality: int) -> bool { return rules.nearby(distance_m, quality); }
+  fn example_price(nightly_minor: int, adjustment: int) -> int { return nightly_minor + adjustment; }
+}

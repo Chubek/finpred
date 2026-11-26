@@ -1,0 +1,87 @@
+# Exact descriptive statistics for bounded nonnegative integer samples. All
+# samples must use a common unit. Quantiles are nearest rank, not interpolated.
+import std.sexpr.sexpr as Sx;
+from plugins.caravansary.planning import json as Json;
+from . import price_values as V;
+
+fn sample_cap() -> i64 { return 4096; }
+
+fn signed_distance(a: i64, b: i64) -> i64 {
+  if a >= b { return a - b; }
+  return b - a;
+}
+
+fn sorted(values: sexpr, n: i64) -> sexpr {
+  return Json.sort_count(values, n, false, true);
+}
+
+fn at(order: sexpr, index: i64) -> i64 {
+  var rest = order;
+  for _ in 0 .. index { rest = sx_tail(rest); }
+  return V.natural(sx_head(rest), 2 * V.money_cap());
+}
+
+fn rank(order: sexpr, n: i64, bps: i64) -> i64 {
+  var index = (n * bps + 9999) / 10000 - 1;
+  if index < 0 { index = 0; }
+  return at(order, index);
+}
+
+fn midpoint_median(order: sexpr, n: i64) -> i64 {
+  let lo = at(order, (n - 1) / 2);
+  let hi = at(order, n / 2);
+  return lo + (hi - lo) / 2;
+}
+
+fn diagnostics(order: sexpr, n: i64, bps: i64, total: i64) -> sexpr {
+  let middle_twice = at(order, (n - 1) / 2) + at(order, n / 2);
+  var deviations = sx_nil();
+  var rest = order;
+  while sx_kind(rest) == 3 {
+    let x = V.natural(sx_head(rest), V.money_cap());
+    deviations = sx_cons(Json.integer(signed_distance(2 * x, middle_twice)), deviations);
+    rest = sx_tail(rest);
+  }
+  var fields = sx_nil();
+  fields = V.put_int(fields, "count", n);
+  fields = V.put_int(fields, "sum", total);
+  fields = V.put_int(fields, "min", at(order, 0));
+  fields = V.put_int(fields, "max", at(order, n - 1));
+  fields = V.put_int(fields, "median_floor", middle_twice / 2);
+  fields = V.put_int(fields, "mad_floor", midpoint_median(sorted(deviations, n), n) / 2);
+  fields = V.put_int(fields, "quantile_bps", bps);
+  return V.put_int(fields, "quantile", rank(order, n, bps));
+}
+
+# Public: canonical JSON array of 1..4096 integers, each in [0, 10^12].
+# Median/MAD midpoint and flooring are deliberate; sum/count is an exact mean.
+fn describe(sample: sexpr, quantile_bps: i64) -> sexpr {
+  var fields = V.put_text(sx_nil(), "kind", "caravansary.statistics@1");
+  var reason = "";
+  if Json.kind(sample) != "array" || quantile_bps < 0 || quantile_bps > 10000 {
+    reason = "invalid_sample_or_quantile";
+  } else {
+    var rest = Json.items(sample);
+    var n = 0;
+    var total = 0;
+    while sx_kind(rest) == 3 && reason == "" {
+      let x = V.natural(sx_head(rest), V.money_cap());
+      if x < 0 { reason = "invalid_sample_value"; }
+      else {
+        n = n + 1;
+        if n > sample_cap() { reason = "sample_too_large"; }
+        else { total = total + x; }
+      }
+      rest = sx_tail(rest);
+    }
+    if reason == "" {
+      if n == 0 { reason = "empty_sample"; }
+      else {
+        fields = V.put_text(fields, "status", "ok");
+        return Json.object(V.put(fields, "summary", Json.object(diagnostics(sorted(Json.items(sample), n), n, quantile_bps, total))));
+      }
+    }
+  }
+  fields = V.put_text(fields, "status", "abstained");
+  return Json.object(V.put_text(fields, "reason", reason));
+}

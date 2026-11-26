@@ -1,0 +1,127 @@
+import std.String as Str;
+import std.sexpr.sexpr as Sx;
+import plugins.caravansary.planning.civil as Civil;
+import plugins.caravansary.planning.inputs as Inputs;
+import plugins.caravansary.planning.json as Json;
+import plugins.caravansary.market_cli.files as Files;
+
+fn limit() -> i64 { return 4194304; }
+
+fn print(value: sexpr) {
+  let text = Json.render(value);
+  if text_len(text) + 1 > limit() { tool_fail("market artifact exceeds output byte limit"); }
+  println(text);
+}
+
+fn produce(mode: string, now: string, status: string, inputs: sexpr, result: sexpr) -> sexpr {
+  var fields = put(sx_nil(),"as_of",sx_string(now));
+  fields = put(fields,"inputs",inputs);
+  fields = put(fields,"kind",sx_string("caravansary.market.$mode@1"));
+  fields = put(fields,"publication_allowed",Json.boolean(false));
+  fields = put(fields,"qualification",sx_string("fictional-offline-fixture"));
+  fields = put(fields,"result",result);
+  let body = Json.object(put(fields,"status",sx_string(status)));
+  return Json.replace(body,"artifact_digest",sx_string(Json.digest(body)));
+}
+
+fn put(fields: sexpr, name: string, value: sexpr) -> sexpr {
+  return sx_cons(Json.pair(name,value),fields);
+}
+
+fn check_kind(kind: string) {
+  if kind != "caravansary.market.discover@1" && kind != "caravansary.market.scrape@1" &&
+    kind != "caravansary.market.collect@1" && kind != "caravansary.market.predict@1" &&
+    kind != "caravansary.market.backtest@1" {
+    tool_fail("input is not a supported market artifact");
+  }
+}
+
+fn summary(value: sexpr) -> sexpr {
+  var fields = put(sx_nil(),"artifact_digest",Json.field(value,"artifact_digest"));
+  fields = put(fields,"as_of",Json.field(value,"as_of"));
+  fields = put(fields,"kind",Json.field(value,"kind"));
+  return Json.object(put(fields,"status",Json.field(value,"status")));
+}
+
+# Content integrity only. A digest is not a signature and a parsed artifact
+# cannot authorize transport, publication, scheduling, or another input.
+fn checked(path: string, roots: sexpr) -> (sexpr,i64) {
+  let value = Files.read_json(path,roots,limit(),"market artifact");
+  Inputs.object_fields(value,"artifact_digest as_of inputs kind publication_allowed qualification result status","","market artifact");
+  let kind = Json.text(Json.field(value,"kind"));
+  check_kind(kind);
+  let artifact_digest = Json.text(Json.field(value,"artifact_digest"));
+  let stamp = Json.text(Json.field(value,"as_of"));
+  let now = Civil.timestamp(stamp,"market artifact as_of");
+  let status = Json.text(Json.field(value,"status"));
+  if stamp != Civil.utc_text(now) || !Files.sha256_hex(artifact_digest) ||
+     (status != "completed" && status != "abstained") ||
+     Json.text(Json.field(value,"qualification")) != "fictional-offline-fixture" ||
+     sx_text(Json.field(value,"publication_allowed")) != "false" ||
+     Json.kind(Json.field(value,"publication_allowed")) != "boolean" ||
+     Json.kind(Json.field(value,"result")) != "object" ||
+     Json.kind(Json.field(value,"inputs")) != "object" {
+    tool_fail("invalid market artifact envelope");
+  }
+  var fields = sx_nil();
+  var rest = sx_tail(value);
+  while sx_kind(rest) == 3 {
+    let field = sx_head(rest);
+    if sx_text(sx_head(field)) != "artifact_digest" { fields = sx_cons(field,fields); }
+    rest = sx_tail(rest);
+  }
+  if Json.digest(Json.object(fields)) != artifact_digest { tool_fail("market artifact digest mismatch"); }
+  return (value,now);
+}
+
+fn explain(path: string, roots: sexpr) -> sexpr {
+  let (value,_now) = checked(path,roots);
+  var fields = put(sx_nil(),"artifact",summary(value));
+  fields = put(fields,"inputs",Json.field(value,"inputs"));
+  fields = put(fields,"integrity",sx_string("content-digest-only-not-authenticated"));
+  fields = put(fields,"kind",sx_string("caravansary.market.explain@1"));
+  fields = put(fields,"publication_allowed",Json.boolean(false));
+  fields = put(fields,"qualification",Json.field(value,"qualification"));
+  return Json.object(put(fields,"recorded_result",Json.field(value,"result")));
+}
+
+fn insert(ordered: sexpr, value: sexpr, time: i64) -> sexpr {
+  let digest = Json.text(Json.field(value,"artifact_digest"));
+  var later = ordered;
+  var before = sx_nil();
+  while sx_kind(later) == 3 {
+    let item = sx_head(later);
+    let other_time = Json.int64(sx_head(item),"internal artifact timestamp");
+    let other_digest = Json.text(Json.field(sx_head(sx_tail(item)),"artifact_digest"));
+    if digest == other_digest { tool_fail("history contains a duplicate market artifact"); }
+    if time < other_time || (time == other_time && Str.compare(digest,other_digest) < 0) { break; }
+    before = sx_cons(item,before);
+    later = sx_tail(later);
+  }
+  later = sx_cons(sx_cons(Json.integer(time),sx_cons(value,sx_nil())),later);
+  while sx_kind(before) == 3 {
+    later = sx_cons(sx_head(before),later);
+    before = sx_tail(before);
+  }
+  return later;
+}
+
+fn history(paths: sexpr, roots: sexpr) -> sexpr {
+  var rest = paths;
+  var summaries = sx_nil();
+  while sx_kind(rest) == 3 {
+    let (value,now) = checked(sx_text(sx_head(rest)),roots);
+    summaries = insert(summaries,summary(value),now);
+    rest = sx_tail(rest);
+  }
+  var ordered = sx_nil();
+  while sx_kind(summaries) == 3 {
+    ordered = sx_cons(sx_head(sx_tail(sx_head(summaries))),ordered);
+    summaries = sx_tail(summaries);
+  }
+  var fields = put(sx_nil(),"artifacts",Json.array(Sx.sexpr_reverse(ordered)));
+  fields = put(fields,"integrity",sx_string("content-digest-only-not-authenticated"));
+  fields = put(fields,"kind",sx_string("caravansary.market.history@1"));
+  fields = put(fields,"publication_allowed",Json.boolean(false));
+  return Json.object(put(fields,"qualification",sx_string("fictional-offline-fixture")));
+}

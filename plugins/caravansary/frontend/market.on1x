@@ -1,0 +1,273 @@
+import std.Int as Int;
+import std.sexpr as S;
+import frontend.schema as Schema;
+import frontend.text as Text;
+
+fn key(name: string) -> bool
+{
+  return Schema.member(" target target_sources extractors discovery pricing schedule functions modules ", name);
+}
+
+fn present(config: sexpr) -> bool
+{
+  var fields = config;
+  while sx_kind(fields) == 3
+  {
+    if key(sx_text(sx_head(sx_head(fields)))) { return true; }
+    fields = sx_tail(fields);
+  }
+  return false;
+}
+
+fn identifier(raw: string, hyphen: bool) -> bool
+{
+  if text_len(raw) == 0 || text_len(raw) > 64 || !Text.alpha(text_byte(raw, 0)) { return false; }
+  for i in 1 .. text_len(raw)
+  {
+    let c = text_byte(raw, i);
+    if !Text.alpha(c) && !Text.digit(c) && c != 95 && !(hyphen && c == 45) { return false; }
+  }
+  return true;
+}
+
+fn field_kind(role: string, name: string) -> string
+{
+  if role == "script"
+  {
+    if Schema.member(" target_sources extractors modules target discovery pricing schedule ", name) { return name; }
+    if name == "functions" { return "pure"; }
+  }
+  if role == "target_sources" { return "source_decl"; }
+  if role == "extractors" { return "extractor_decl"; }
+  if role == "modules" { return "pure"; }
+  if (role == "target" && Schema.member(" id name address type latitude longitude currency ", name))
+    || (role == "source_decl" && Schema.member(" kind fixture extractor profile_url ", name))
+    || (role == "extractor_decl" && name == "kind")
+    || (role == "discovery" && Schema.member(" sources radius_m max_candidates ", name))
+    || (role == "pricing" && Schema.member(" currency floor_minor ceiling_minor ", name))
+    || (role == "schedule" && Schema.member(" workflow every_seconds start_at ", name))
+  { return "field"; }
+  return "";
+}
+
+fn named(role: string) -> bool
+{
+  return role == "target_sources" || role == "extractors" || role == "modules";
+}
+
+fn id(value: sexpr, hyphen: bool) -> bool
+{
+  return Schema.tagged(value, "text") && identifier(Schema.atom(value), hyphen);
+}
+
+fn label(value: sexpr, maximum: i64) -> bool
+{
+  if !Schema.nonempty(value) { return false; }
+  let raw = Schema.atom(value);
+  if text_len(raw) > maximum { return false; }
+  for i in 0 .. text_len(raw)
+  {
+    let c = text_byte(raw, i);
+    if c < 32 || c == 127 || c == 255 { return false; }
+  }
+  return true;
+}
+
+fn coordinate(value: sexpr, bound: i64) -> bool
+{
+  if !Schema.tagged(value, "text") { return false; }
+  let raw = Schema.atom(value);
+  let n = text_len(raw);
+  if n == 0 || n > 32 { return false; }
+  var start = 0;
+  if text_byte(raw, 0) == 45 { start = 1; }
+  return start < n && Text.digit(text_byte(raw, start)) && Schema.decimal(raw, bound) == 0;
+}
+
+fn positive_bounded(value: sexpr, max: i64) -> bool
+{
+  return Schema.positive(value) && Text.bounded_nat(Schema.atom(value), max);
+}
+
+fn utc_seconds(value: sexpr) -> bool
+{
+  if !Schema.tagged(value, "text") { return false; }
+  let raw = Schema.atom(value);
+  if text_len(raw) != 20 || text_byte(raw, 10) != 84 || text_byte(raw, 13) != 58
+    || text_byte(raw, 16) != 58 || text_byte(raw, 19) != 90 { return false; }
+  if Schema.gregorian(text_slice(raw, 0, 10)) != 0 { return false; }
+  for i in 11 .. 19
+  {
+    if i != 13 && i != 16 && !Text.digit(text_byte(raw, i)) { return false; }
+  }
+  return Text.bounded_nat(text_slice(raw, 11, 13), 23)
+    && Text.bounded_nat(text_slice(raw, 14, 16), 59)
+    && Text.bounded_nat(text_slice(raw, 17, 19), 59);
+}
+
+fn begins(raw: string, prefix: string) -> bool
+{
+  let length = text_len(prefix);
+  return text_len(raw) >= length && text_slice(raw, 0, length) == prefix;
+}
+
+fn profile_slug(raw: string) -> bool
+{
+  let length = text_len(raw);
+  if length == 0 || length > 160 { return false; }
+  for i in 0 .. length
+  {
+    let c = text_byte(raw, i);
+    if !Text.alpha(c) && !Text.digit(c) && c != 45 && c != 95 { return false; }
+  }
+  return true;
+}
+
+fn profile_leaf(raw: string) -> bool
+{
+  let length = text_len(raw);
+  return length > 5 && text_slice(raw, length - 5, length) == ".html"
+    && profile_slug(text_slice(raw, 0, length - 5));
+}
+
+# Inert reference only. Match exact authorities and an intentionally narrow
+# set of property routes rather than trying to strip URL components.
+fn profile_url(value: sexpr) -> bool
+{
+  if !Schema.tagged(value, "text") { return false; }
+  let raw = Schema.atom(value);
+  if text_len(raw) > 512 { return false; }
+  let booking = "https://www.booking.com/hotel/";
+  if begins(raw, booking)
+  {
+    let path = Text.split(text_slice(raw, text_len(booking), text_len(raw)), 47);
+    if S.sexpr_size(path) != 2 { return false; }
+    let country = sx_text(sx_head(path));
+    return text_len(country) == 2 && Text.alpha(text_byte(country, 0)) && Text.alpha(text_byte(country, 1))
+      && Text.ascii_lower(country) == country && profile_leaf(sx_text(S.sexpr_nth(path, 1)));
+  }
+  let agoda = "https://www.agoda.com/";
+  if !begins(raw, agoda) { return false; }
+  var path = Text.split(text_slice(raw, text_len(agoda), text_len(raw)), 47);
+  if S.sexpr_size(path) == 4
+  {
+    let language = sx_text(sx_head(path));
+    if language != "en-gb" && language != "en-us" { return false; }
+    path = sx_tail(path);
+  }
+  return S.sexpr_size(path) == 3 && profile_slug(sx_text(sx_head(path)))
+    && sx_text(S.sexpr_nth(path, 1)) == "hotel" && profile_leaf(sx_text(S.sexpr_nth(path, 2)));
+}
+
+fn validate(config: sexpr) -> string
+{
+  var fields = config;
+  while sx_kind(fields) == 3
+  {
+    let name = sx_text(sx_head(sx_head(fields)));
+    if name != "name" && !key(name) { return "cannot mix legacy and market CaravanScript sections"; }
+    fields = sx_tail(fields);
+  }
+  var error = Schema.missing(config, "discovery extractors pricing target target_sources", "market script");
+  if error != "" { return error; }
+  if Schema.has(config, "name") && !label(Schema.get(config, "name"), 256)
+  { return "market name must be a nonempty label of at most 256 bytes without controls"; }
+
+  let target = Schema.get(config, "target");
+  error = Schema.missing(target, "currency id latitude longitude type", "target");
+  if error != "" { return error; }
+  if !id(Schema.get(target, "id"), true) { return "target.id must be an identifier"; }
+  if Schema.has(target, "name") && !label(Schema.get(target, "name"), 256)
+  { return "target.name must be a nonempty label of at most 256 bytes without controls"; }
+  if Schema.has(target, "address") && !label(Schema.get(target, "address"), 512)
+  { return "target.address must be a nonempty label of at most 512 bytes without controls"; }
+  if !label(Schema.get(target, "type"), 64)
+  { return "target.type must be a nonempty label of at most 64 bytes without controls"; }
+  if !coordinate(Schema.get(target, "latitude"), 90)
+  { return "target.latitude must be a WGS84 decimal string between -90 and 90"; }
+  if !coordinate(Schema.get(target, "longitude"), 180)
+  { return "target.longitude must be a WGS84 decimal string between -180 and 180"; }
+  let currency = Schema.get(target, "currency");
+  if !Schema.tagged(currency, "text") || !Schema.member(Schema.currencies(), Schema.atom(currency))
+  { return "target.currency must be an ISO 4217 alpha-3 code"; }
+
+  let extractors = Schema.get(config, "extractors");
+  if sx_kind(extractors) == 0 { return "extractors must declare at least one extractor"; }
+  var rest = extractors;
+  while sx_kind(rest) == 3
+  {
+    let kind = Schema.get(Schema.payload(sx_head(rest)), "kind");
+    if !Schema.tagged(kind, "text") || Schema.atom(kind) != "caravansary.fixture@1"
+    { return "extractor kind must be caravansary.fixture@1"; }
+    rest = sx_tail(rest);
+  }
+  let sources = Schema.get(config, "target_sources");
+  if sx_kind(sources) == 0 { return "target_sources must declare at least one source"; }
+  rest = sources;
+  while sx_kind(rest) == 3
+  {
+    let source = Schema.payload(sx_head(rest));
+    let kind = Schema.get(source, "kind");
+    if Schema.tagged(kind, "text") && Schema.atom(kind) == "native_profile"
+    { return "unsupported native profile source; use a host-authorized fixture"; }
+    error = Schema.missing(source, "extractor fixture kind", "target source");
+    if error != "" { return error; }
+    if !Schema.tagged(kind, "text") || Schema.atom(kind) != "fixture"
+    { return "target source kind must be fixture"; }
+    if Schema.has(source, "profile_url") && !profile_url(Schema.get(source, "profile_url"))
+    { return "profile_url must be a canonical Booking or Agoda HTTPS property URL without credentials, queries or fragments"; }
+    if !id(Schema.get(source, "fixture"), true) { return "fixture must be a registry identifier, not a path or URL"; }
+    let extractor = Schema.get(source, "extractor");
+    if !id(extractor, false) || !Schema.has(extractors, Schema.atom(extractor))
+    { return "target source must reference a declared extractor"; }
+    rest = sx_tail(rest);
+  }
+
+  let discovery = Schema.get(config, "discovery");
+  error = Schema.missing(discovery, "max_candidates radius_m sources", "discovery");
+  if error != "" { return error; }
+  let refs = Schema.get(discovery, "sources");
+  if Schema.tagged(refs, "array") && S.sexpr_size(sx_tail(refs)) > 64
+  { return "discovery.sources exceeds 64 references"; }
+  error = Schema.check_array(refs, "discovery.sources", "reference");
+  if error != "" { return error; }
+  rest = sx_tail(refs);
+  while sx_kind(rest) == 3
+  {
+    if !Schema.has(sources, Schema.atom(sx_head(rest))) { return "discovery.sources must reference declared target sources"; }
+    rest = sx_tail(rest);
+  }
+  if !positive_bounded(Schema.get(discovery, "radius_m"), 20000000)
+  { return "discovery.radius_m must be an integer between 1 and 20000000 metres"; }
+  if !positive_bounded(Schema.get(discovery, "max_candidates"), 1024)
+  { return "discovery.max_candidates must be an integer between 1 and 1024"; }
+
+  let pricing = Schema.get(config, "pricing");
+  error = Schema.missing(pricing, "ceiling_minor currency floor_minor", "pricing");
+  if error != "" { return error; }
+  let price_currency = Schema.get(pricing, "currency");
+  if !Schema.tagged(price_currency, "text") || Schema.atom(price_currency) != Schema.atom(currency)
+  { return "pricing.currency must match target.currency; implicit conversion is not supported"; }
+  let floor = Schema.get(pricing, "floor_minor");
+  let ceiling = Schema.get(pricing, "ceiling_minor");
+  if !positive_bounded(floor, Int.max_value()) || !positive_bounded(ceiling, Int.max_value())
+  { return "pricing bounds must be positive signed 64-bit integers in minor units"; }
+  let (_floor_ok, lower, _floor_end) = Int.scan(Schema.atom(floor), 0);
+  let (_ceiling_ok, upper, _ceiling_end) = Int.scan(Schema.atom(ceiling), 0);
+  if lower > upper { return "pricing.floor_minor must not exceed pricing.ceiling_minor"; }
+
+  if Schema.has(config, "schedule")
+  {
+    let schedule = Schema.get(config, "schedule");
+    error = Schema.missing(schedule, "every_seconds start_at workflow", "schedule");
+    if error != "" { return error; }
+    if !id(Schema.get(schedule, "workflow"), true) { return "schedule.workflow must be a registry identifier"; }
+    if !positive_bounded(Schema.get(schedule, "every_seconds"), 2147483647)
+    { return "schedule.every_seconds must be an integer between 1 and 2147483647"; }
+    if !utc_seconds(Schema.get(schedule, "start_at"))
+    { return "schedule.start_at must be a UTC RFC3339 timestamp at whole-second precision"; }
+  }
+  if Schema.has(config, "modules") && sx_kind(Schema.get(config, "modules")) == 0
+  { return "modules must declare at least one inline module"; }
+  return "";
+}

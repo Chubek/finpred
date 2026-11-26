@@ -1,5 +1,6 @@
-from frontend import parse_script;
+from frontend import parse_script, parse_script_syntax, parse_market_script, call_market_function;
 import std.String as String;
+import std.Int as Int;
 
 fn fixture() -> buffer
 {
@@ -62,9 +63,180 @@ fn invalid()
   assert(String.contains(err, "CaravanScript source must be UTF-8"));
 }
 
+fn legacy_bytes()
+{
+  let source = fixture();
+  # New market keywords were valid legacy function names before the expansion.
+  buffer_append(source, "transform {fn modules()->int {return 9;} emit n=modules();}");
+  let (text, err) = parse_script_syntax(source);
+  assert(err == "");
+  let expected = buffer_new();
+  buffer_append(expected, "{\"name\":\"Caravan \\ud83d\\ude00\",\"property\":{\"type\":\"hotel\",\"latitude\":\".5\",\"longitude\":\"-180.0\",");
+  buffer_append(expected, "\"timezone\":\"Europe/Paris\",\"currency\":\"EUR\",\"room_types\":[\"suite\"]},\"competitors\":\"unreadable.json\",");
+  buffer_append(expected, "\"sources\":[\"booking\"],\"search\":{\"horizon_days\":1,\"start\":\"2024-02-29\",\"guest_configurations\":[\"one_adult\"],");
+  buffer_append(expected, "\"stay_lengths\":[1],\"booker_country\":\"FR\",\"locale\":\"en-u-ca-gregory-x-acme\"},\"refresh\":{\"tick_seconds\":3600,");
+  buffer_append(expected, "\"weights\":\"unreadable.json\",\"max_age_seconds\":86400,\"booking_concurrency\":1,\"booking_requests_per_hour\":50},");
+  buffer_append(expected, "\"output\":{\"observations\":\"observations.jsonl\",\"coverage\":\"coverage.json\"},\"transform\":{\"functions\":[");
+  buffer_append(expected, "{\"name\":\"modules\",\"parameters\":[],\"return_type\":\"int\",\"expression\":[\"literal\",9]}],");
+  buffer_append(expected, "\"metrics\":[{\"name\":\"n\",\"expression\":[\"call\",\"modules\",[]]}]}}");
+  assert(text == buffer_text(expected));
+}
+
+fn market_fixture(fixture_id: string, discover: string, floor: string) -> buffer
+{
+  let source = buffer_new();
+  buffer_append(source, "name=\"Fictional fixture\"; target { id=\"subject\"; name=\"Fictional subject\"; address=\"1 Fictional Road\";");
+  buffer_append(source, " type=\"hotel\"; latitude=\"51.5\"; longitude=\"-0.1\"; currency=\"GBP\"; }\n");
+  buffer_append(source, "target_sources { probe { kind=\"fixture\"; fixture=\"");
+  buffer_append(source, fixture_id);
+  buffer_append(source, "\"; extractor=\"rates\"; } }\nextractors { rates { kind=\"caravansary.fixture@1\"; } }\n");
+  buffer_append(source, "discovery { sources=[\"");
+  buffer_append(source, discover);
+  buffer_append(source, "\"]; radius_m=2500; max_candidates=8; }\npricing { currency=\"GBP\"; floor_minor=");
+  buffer_append(source, floor);
+  buffer_append(source, "; ceiling_minor=30000; }\n");
+  return source;
+}
+
+fn reject_market(source: buffer, suffix: string, reason: string)
+{
+  buffer_append(source, suffix);
+  let (json, err) = parse_market_script(source);
+  assert(json == "");
+  assert(String.contains(err, reason));
+}
+
+fn example_market() -> buffer
+{
+  let source = market_fixture("sample_capture", "probe", "8500");
+  buffer_append(source, "schedule { workflow=\"offline_market\"; every_seconds=3600; start_at=\"2026-12-01T00:00:00Z\"; }\n");
+  buffer_append(source, "modules { flags { fn high(x:int)->bool { return math.scale(x) > 20; } }\n");
+  buffer_append(source, " math { fn scale(x:int)->int { return twice(x) + 1; } fn twice(n:int)->int { return n * 2; } } }\n");
+  buffer_append(source, "functions { fn guard(x:int, s:text)->bool { return flags.high(x) and s == \"\\u0000é\"; }\n");
+  buffer_append(source, "fn safe(flag:bool)->bool { return flag or math.twice(9223372036854775807) == 1; }\n");
+  buffer_append(source, "fn identity(x:int)->int { return x; } }\n");
+  return source;
+}
+
+fn call_result(source: buffer, name: string, args: string, expected: string)
+{
+  let (value, err) = call_market_function(source, name, args);
+  assert(err == "");
+  assert(value == expected);
+}
+
+fn call_error(source: buffer, name: string, args: string, reason: string)
+{
+  let (value, err) = call_market_function(source, name, args);
+  assert(value == "");
+  assert(String.contains(err, reason));
+}
+
+fn market_callable()
+{
+  let source = example_market();
+  let (json, err) = parse_market_script(source);
+  assert(err == "");
+  assert(String.contains(json, "\"target_sources\":{\"probe\":{\"kind\":\"fixture\",\"fixture\":\"sample_capture\",\"extractor\":\"rates\"}}"));
+  assert(String.contains(json, "\"name\":\"Fictional subject\",\"address\":\"1 Fictional Road\""));
+  assert(String.contains(json, "\"modules\":{\"flags\":{\"functions\":["));
+  assert(String.contains(json, "[\"call\",\"math.scale\",[[\"name\",\"x\"]]]"));
+  let (detected, detect_err) = parse_script(source);
+  assert(detect_err == "" && detected == json);
+  let (legacy, legacy_err) = parse_script_syntax(source);
+  assert(legacy == "" && String.contains(legacy_err, "requires the market host"));
+  call_result(source, "guard", "[10,\"\\u0000\\u00e9\"]", "true");
+  call_result(source, "math.scale", "[2]", "5");
+  call_result(source, "safe", "[true]", "true");
+  call_result(source, "identity", "[-9223372036854775808]", "-9223372036854775808");
+  call_error(source, "safe", "[false]", "integer overflow");
+  call_error(source, "identity", "[9223372036854775808]", "bounded int");
+  call_error(source, "identity", "[1.0]", "bounded int");
+  call_error(source, "guard", "[0,3]", "bounded text");
+  call_error(source, "math.twice", "[2,3]", "argument count");
+  call_error(source, "twice", "[2]", "unknown market function");
+}
+
+fn market_rejections()
+{
+  reject_market(market_fixture("../capture.json", "probe", "8500"), "", "registry identifier, not a path");
+  reject_market(market_fixture("authorized_fixture", "unknown", "8500"), "", "must reference declared target sources");
+  reject_market(market_fixture("authorized_fixture", "probe", "30001"), "", "must not exceed");
+  reject_market(market_fixture("authorized_fixture", "probe", "9223372036854775808"), "", "signed 64-bit integers");
+  reject_market(market_fixture("authorized_fixture", "probe", "8500"), "credentials { booking { cookies=\"never-read\"; } }",
+    "cannot mix legacy and market");
+  reject_market(market_fixture("authorized_fixture", "probe", "8500"),
+    "schedule { workflow=\"offline_market\"; every_seconds=10; start_at=\"2026-02-29T00:00:00Z\"; }",
+    "UTC RFC3339");
+  reject_market(market_fixture("authorized_fixture", "probe", "8500"),
+    "functions { fn f()->int { return total_cells(); } }", "report counters are not available");
+  reject_market(market_fixture("authorized_fixture", "probe", "8500"),
+    "functions { fn f()->int { return net.fetch(); } }", "unknown function net.fetch");
+  reject_market(market_fixture("authorized_fixture", "probe", "8500"),
+    "functions { fn f()->int { return true; } }", "return type must be int");
+  reject_market(market_fixture("authorized_fixture", "probe", "8500"),
+    "modules { a { fn f()->int {return b.g();} } b { fn g()->int {return a.f();} } }",
+    "recursive transform function");
+  reject_market(market_fixture("authorized_fixture", "probe", "8500"),
+    "modules { a { fn f()->int {return 1;} } a { fn f()->int {return 2;} } }",
+    "duplicate field or block in modules");
+}
+
+fn bounded_work()
+{
+  let source = market_fixture("sample_capture", "probe", "8500");
+  buffer_append(source, "functions { fn f0()->int {return 1;}");
+  for i in 1 .. 15
+  {
+    buffer_append(source, "fn f"); buffer_append(source, Int.to_string(i));
+    buffer_append(source, "()->int {return f"); buffer_append(source, Int.to_string(i - 1));
+    buffer_append(source, "()+f"); buffer_append(source, Int.to_string(i - 1));
+    buffer_append(source, "();}");
+  }
+  buffer_append(source, "}");
+  call_error(source, "f14", "[]", "step budget exceeded (10000)");
+}
+
+fn profile_script(kind: string, url: string) -> buffer
+{
+  let source = buffer_new();
+  buffer_append(source, "target { id=\"subject\"; type=\"hotel\"; latitude=\"51.5\"; longitude=\"-0.1\"; currency=\"GBP\"; }\n");
+  buffer_append(source, "target_sources { secondary {kind=\"fixture\"; fixture=\"fictional_agoda\"; extractor=\"rates\";");
+  buffer_append(source, "profile_url=\"https://www.agoda.com/en-gb/fictional-subject/hotel/london-gb.html\";}");
+  buffer_append(source, "probe { kind=\""); buffer_append(source, kind);
+  buffer_append(source, "\"; fixture=\"fictional_booking\"; extractor=\"rates\"; profile_url=\"");
+  buffer_append(source, url);
+  buffer_append(source, "\"; } }\nextractors { rates { kind=\"caravansary.fixture@1\"; } }\n");
+  buffer_append(source, "discovery { sources=[\"probe\",\"secondary\"]; radius_m=2500; max_candidates=8; }\n");
+  buffer_append(source, "pricing { currency=\"GBP\"; floor_minor=8500; ceiling_minor=30000; }\n");
+  return source;
+}
+
+fn inert_profiles()
+{
+  let (json, err) = parse_market_script(profile_script("fixture", "https://www.booking.com/hotel/gb/fictional-subject.html"));
+  assert(err == "");
+  assert(String.contains(json, "\"profile_url\":\"https://www.booking.com/hotel/gb/fictional-subject.html\""));
+  assert(String.contains(json, "\"profile_url\":\"https://www.agoda.com/en-gb/fictional-subject/hotel/london-gb.html\""));
+  reject_market(profile_script("native_profile", "https://www.booking.com/hotel/gb/fictional-subject.html"),
+    "", "unsupported native profile source");
+  reject_market(profile_script("fixture", "http://www.booking.com/hotel/gb/fictional-subject.html"), "", "canonical Booking or Agoda HTTPS");
+  reject_market(profile_script("fixture", "https://www.booking.com.evil/hotel/gb/fictional-subject.html"), "", "canonical Booking or Agoda HTTPS");
+  reject_market(profile_script("fixture", "https://user@www.booking.com/hotel/gb/fictional-subject.html"), "", "canonical Booking or Agoda HTTPS");
+  reject_market(profile_script("fixture", "https://www.booking.com:443/hotel/gb/fictional-subject.html"), "", "canonical Booking or Agoda HTTPS");
+  reject_market(profile_script("fixture", "https://www.booking.com/hotel/gb/fictional-subject.html?x=1"), "", "canonical Booking or Agoda HTTPS");
+  reject_market(profile_script("fixture", "https://www.booking.com/hotel/gb/fictional-subject.html#x"), "", "canonical Booking or Agoda HTTPS");
+  reject_market(profile_script("fixture", "https://www.agoda.com/%2F/hotel/london-gb.html"), "", "canonical Booking or Agoda HTTPS");
+}
+
 fn main()
 {
   valid();
   invalid();
+  legacy_bytes();
+  market_callable();
+  market_rejections();
+  bounded_work();
+  inert_profiles();
   println("CaravanScript native frontend: OK");
 }

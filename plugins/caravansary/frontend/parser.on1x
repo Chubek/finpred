@@ -2,6 +2,8 @@ import frontend.schema as Schema;
 import frontend.text as Text;
 import frontend.tokens as Tokens;
 import frontend.transform as Transform;
+import frontend.market as Market;
+import frontend.pure as Pure;
 
 fn scalar(input: Tokens.Stream, at: i64, out: buffer) -> (sexpr, string)
 {
@@ -51,17 +53,34 @@ fn statements(input: Tokens.Stream, start: i64, role: string, out: buffer) -> (s
 {
   var context = role;
   if role == "booking" || role == "agoda" { context = text_concat("credentials.", role); }
+  if role == "source_decl" { context = "target source"; }
+  if role == "extractor_decl" { context = "extractor"; }
   var i = start;
   var values = sx_nil();
+  var named_count = 0;
   buffer_append(out, "{");
   while i < input["count"] && Tokens.token(input, i) != "}"
   {
     let key = Tokens.token(input, i);
     if Schema.has(values, key)
     { return (sx_nil(), i, Tokens.error(input, i, text_concat("duplicate field or block in ", context))); }
-    let shape = Schema.field_kind(role, key);
+    var shape = Schema.field_kind(role, key);
+    if shape == "" { shape = Market.field_kind(role, key); }
     if shape == ""
     { return (sx_nil(), i, Tokens.error(input, i, text_concat("unknown field or block in ", context))); }
+    if Market.named(role)
+    {
+      if named_count == 64
+      { return (sx_nil(), i, Tokens.error(input, i, text_concat(context, " exceeds 64 declarations"))); }
+      named_count = named_count + 1;
+      if !Market.identifier(key, false)
+      { return (sx_nil(), i, Tokens.error(input, i, "expected a named block identifier of at most 64 bytes")); }
+      if role == "modules"
+      {
+        let name_error = Transform.pure_name_error(input, i, key);
+        if name_error != "" { return (sx_nil(), i, name_error); }
+      }
+    }
     if sx_kind(values) != 0 { buffer_append(out, ","); }
     Text.quoted_ascii(out, key);
     buffer_append(out, ":");
@@ -80,9 +99,9 @@ fn statements(input: Tokens.Stream, start: i64, role: string, out: buffer) -> (s
     {
       if Tokens.token(input, i + 1) != "{"
       { return (sx_nil(), i, Tokens.error(input, i + 1, "expected {")); }
-      if shape == "transform"
+      if shape == "transform" || shape == "pure"
       {
-        let (program, after, err) = Transform.declarations(input, i + 2);
+        let (program, after, err) = Transform.declarations(input, i + 2, shape == "pure");
         if err != "" { return (sx_nil(), after, err); }
         Transform.render(out, program);
         values = Schema.entry(values, key, program);
@@ -90,7 +109,9 @@ fn statements(input: Tokens.Stream, start: i64, role: string, out: buffer) -> (s
       }
       else
       {
-        let (body, after, err) = statements(input, i + 2, key, out);
+        var next_role = shape;
+        if shape == "block" { next_role = key; }
+        let (body, after, err) = statements(input, i + 2, next_role, out);
         if err != "" { return (sx_nil(), after, err); }
         values = Schema.entry(values, key, body);
         i = after;
@@ -102,29 +123,60 @@ fn statements(input: Tokens.Stream, start: i64, role: string, out: buffer) -> (s
   return (values, i + 1, "");
 }
 
-fn parse(source: buffer, check_transform: bool) -> (string, string)
+fn parse(source: buffer, mode: string) -> (string, sexpr, string)
 {
   let (input, syntax_error) = Tokens.stream(source);
-  if sx_kind(input["text"]) == 0 { return ("", syntax_error); }
+  if sx_kind(input["text"]) == 0 { return ("", sx_nil(), syntax_error); }
   let out = buffer_new();
   let (config, _, lowering_error) = statements(input, 0, "script", out);
-  if lowering_error != "" { return ("", lowering_error); }
-  if syntax_error != "" { return ("", syntax_error); }
+  if lowering_error != "" { return ("", sx_nil(), lowering_error); }
+  if syntax_error != "" { return ("", sx_nil(), syntax_error); }
+  if Market.present(config)
+  {
+    if mode == "legacy" { return ("", sx_nil(), "market CaravanScript requires the market host"); }
+    let config_error = Market.validate(config);
+    if config_error != "" { return ("", sx_nil(), config_error); }
+    let (linked, function_error) = Pure.link(config);
+    if function_error != "" { return ("", sx_nil(), function_error); }
+    return (buffer_text(out), linked, "");
+  }
+  if mode == "market" { return ("", sx_nil(), "expected market CaravanScript sections"); }
   let config_error = Schema.validate(config);
-  if config_error != "" { return ("", config_error); }
-  if check_transform && Schema.has(config, "transform")
+  if config_error != "" { return ("", sx_nil(), config_error); }
+  if mode != "legacy" && Schema.has(config, "transform")
   {
     let transform_error = Transform.check(Schema.get(config, "transform"));
-    if transform_error != "" { return ("", transform_error); }
+    if transform_error != "" { return ("", sx_nil(), transform_error); }
   }
-  return (buffer_text(out), "");
+  return (buffer_text(out), sx_nil(), "");
 }
 
 # Parse, validate, and statically check a script without loading its referenced
 # files or inspecting credentials. Diagnostics never include source excerpts.
-fn parse_script(source: buffer) -> (string, string) { return parse(source, true); }
+fn parse_script(source: buffer) -> (string, string)
+{
+  let (config, _, err) = parse(source, "either");
+  return (config, err);
+}
 
-# Hosts that consume a separate transform compiler's result should type-check
-# there instead. This entry point still checks syntax, the configuration
-# schema, integer/text literal bounds, and all parser resource limits.
-fn parse_script_syntax(source: buffer) -> (string, string) { return parse(source, false); }
+# Legacy metrics hosts may defer transform type checks to their compiler.
+# This entry point fails closed for market scripts.
+fn parse_script_syntax(source: buffer) -> (string, string)
+{
+  let (config, _, err) = parse(source, "legacy");
+  return (config, err);
+}
+
+fn parse_market_script(source: buffer) -> (string, string)
+{
+  let (config, _, err) = parse(source, "market");
+  return (config, err);
+}
+
+# Explicit pure invocation; a declaration is not an automatic workflow step.
+fn call_market_function(source: buffer, name: string, arguments_json: string) -> (string, string)
+{
+  let (_, linked, err) = parse(source, "market");
+  if err != "" { return ("", err); }
+  return Pure.call(linked, name, arguments_json);
+}

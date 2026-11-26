@@ -1,0 +1,114 @@
+# Chronological, fixed-model estimation and rolling-origin validation. No
+# report chooses a model from holdout scores or silently supplies sold-out demand.
+import std.sexpr.sexpr as Sx;
+from plugins.caravansary.planning import json as Json, civil as Civil;
+from . import price_values as V, demand as Demand, seasonality as Season, statistics as Stats;
+
+fn metadata(fields: sexpr, history: sexpr) -> sexpr {
+  var next = V.put_text(fields, "property_id", V.text(history, "property_id"));
+  next = V.put_text(next, "qualification", V.text(history, "qualification"));
+  next = V.put_text(next, "room_scope", V.text(history, "room_scope"));
+  return V.put_text(next, "metric", "first_party_rooms_sold");
+}
+
+fn report(fields: sexpr, status: string, reason: string) -> sexpr {
+  if reason == "" { return Json.object(V.put_text(fields, "status", status)); }
+  return Json.object(V.put_text(V.put_text(fields, "status", "abstained"), "reason", reason));
+}
+
+fn baselines(indexed: sexpr, decision_time: i64, target: i64, settling_days: i64) -> (i64, i64, i64) {
+  let through = V.utc_day(decision_time) - 1 - settling_days;
+  let training = Demand.trailing(indexed, through, decision_time, Season.window());
+  let (weekly, plain) = Season.baselines(training, through, target);
+  return (weekly, plain, through);
+}
+
+fn predict(history: sexpr, request: sexpr) -> sexpr {
+  var fields = V.put_text(sx_nil(), "kind", "caravansary.rooms-sold-forecast@1");
+  fields = V.put_text(fields, "methodology", "fixed-utc-weekday-vs-all-days-28d@1");
+  let (clock_ok, cutoff) = V.instant(V.text(request, "as_of"));
+  let target = Civil.date(V.text(request, "target_date"));
+  let settling_days = V.number(request, "settling_days", 30);
+  if V.text(request, "kind") != "caravansary.rooms-sold-forecast-request@1" ||
+      !clock_ok || target == 0 || target < V.utc_day(cutoff) ||
+      target - V.utc_day(cutoff) > 365 || settling_days < 0 {
+    return report(fields, "", "invalid_forecast_request");
+  }
+  let (indexed, error) = Demand.index(history);
+  if error != "" { return report(fields, "", error); }
+  fields = metadata(fields, history);
+  fields = V.put_text(fields, "as_of", Civil.utc_text(cutoff));
+  fields = V.put_text(fields, "target_date", Civil.date_text(target));
+  fields = V.put_int(fields, "settling_days", settling_days);
+  let (weekly, plain, through) = baselines(indexed, cutoff, target, settling_days);
+  if weekly < 0 { return report(fields, "", "incomplete_as_of_training_window"); }
+  fields = V.put_text(fields, "training_start", Civil.date_text(through - Season.window() + 1));
+  fields = V.put_text(fields, "training_end", Civil.date_text(through));
+  fields = V.put_int(fields, "weekly_mean_rooms", weekly);
+  return report(V.put_int(fields, "all_days_mean_rooms", plain), "forecasted", "");
+}
+
+fn backtest(history: sexpr, request: sexpr) -> sexpr {
+  var fields = V.put_text(sx_nil(), "kind", "caravansary.rooms-sold-backtest@1");
+  fields = V.put_text(fields, "methodology", "fixed-utc-weekday-vs-all-days-28d@1");
+  let (clock_ok, eval_at) = V.instant(V.text(request, "eval_as_of"));
+  let start = Civil.date(V.text(request, "start_date"));
+  let end = Civil.date(V.text(request, "end_date"));
+  let lead = V.number(request, "lead_days", 365);
+  let settling = V.number(request, "settling_days", 30);
+  if V.text(request, "kind") != "caravansary.rooms-sold-backtest-request@1" ||
+      !clock_ok || start == 0 || end < start || end - start >= 180 || lead < 0 ||
+      start <= lead || settling < 0 || end - lead > V.utc_day(eval_at) {
+    return report(fields, "", "invalid_backtest_request");
+  }
+  let (indexed, error) = Demand.index(history);
+  if error != "" { return report(fields, "", error); }
+  fields = metadata(fields, history);
+  fields = V.put_text(fields, "eval_as_of", Civil.utc_text(eval_at));
+  fields = V.put_text(fields, "start_date", Civil.date_text(start));
+  fields = V.put_text(fields, "end_date", Civil.date_text(end));
+  fields = V.put_int(fields, "lead_days", lead);
+  fields = V.put_int(fields, "settling_days", settling);
+  var folds = sx_nil();
+  var scored = 0;
+  var weekly_absolute = 0;
+  var plain_absolute = 0;
+  var unknown_actuals = 0;
+  var missing_training = 0;
+  for target in start .. end + 1 {
+    let decision = V.day_start(target - lead);
+    let (weekly, plain, through) = baselines(indexed, decision, target, settling);
+    var fold = V.put_text(sx_nil(), "target_date", Civil.date_text(target));
+    fold = V.put_text(fold, "decision_at", Civil.utc_text(decision));
+    if weekly < 0 {
+      fold = V.put_text(fold, "status", "incomplete_as_of_training_window");
+      missing_training = missing_training + 1;
+    } else {
+      fold = V.put_text(fold, "training_start", Civil.date_text(through - Season.window() + 1));
+      fold = V.put_text(fold, "training_end", Civil.date_text(through));
+      fold = V.put_int(fold, "weekly_mean_rooms", weekly);
+      fold = V.put_int(fold, "all_days_mean_rooms", plain);
+      let actual = Demand.actual(indexed, target, eval_at);
+      if actual < 0 {
+        fold = V.put_text(fold, "status", "actual_unavailable_as_of_evaluation");
+        unknown_actuals = unknown_actuals + 1;
+      } else {
+        fold = V.put_int(fold, "actual_rooms", actual);
+        fold = V.put_text(fold, "status", "scored");
+        weekly_absolute = weekly_absolute + Stats.signed_distance(weekly, actual);
+        plain_absolute = plain_absolute + Stats.signed_distance(plain, actual);
+        scored = scored + 1;
+      }
+    }
+    folds = sx_cons(Json.object(fold), folds);
+  }
+  fields = V.put(fields, "folds", Json.array(Sx.sexpr_reverse(folds)));
+  fields = V.put_int(fields, "requested_folds", end - start + 1);
+  fields = V.put_int(fields, "scored_folds", scored);
+  fields = V.put_int(fields, "folds_incomplete_training", missing_training);
+  fields = V.put_int(fields, "folds_actual_unavailable", unknown_actuals);
+  if scored == 0 { return report(fields, "", "no_scored_folds"); }
+  # Exact MAE: reported sum / scored_folds, over the same folds for each model.
+  fields = V.put_int(fields, "weekly_absolute_error_sum_rooms", weekly_absolute);
+  return report(V.put_int(fields, "all_days_absolute_error_sum_rooms", plain_absolute), "evaluated", "");
+}

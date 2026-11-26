@@ -1,0 +1,38 @@
+import plugins.caravansary.planning.civil as Civil;
+import plugins.caravansary.planning.inputs as Inputs;
+import plugins.caravansary.planning.json as Json;
+import plugins.caravansary.stdlib.forecast as Forecast;
+import plugins.caravansary.market_cli.artifacts as Artifacts;
+import plugins.caravansary.market_cli.files as Files;
+
+fn backtest(path: string, roots: sexpr, clock: string) -> sexpr {
+  let now = Civil.utc_text(Civil.timestamp(clock,"--as-of"));
+  let input = Files.read_json(path,roots,2097152,"market backtest input");
+  Inputs.object_fields(input,"kind history request","","market backtest input");
+  if Json.text(Json.field(input,"kind")) != "caravansary.market-backtest-input@1" {
+    tool_fail("expected caravansary.market-backtest-input@1");
+  }
+  let history = Json.field(input,"history");
+  Inputs.object_fields(history,"kind observations property_id qualification room_scope","","market rooms-sold history");
+  if Json.text(Json.field(history,"qualification")) != "fixture" {
+    tool_fail("market backtest only accepts explicitly qualified fictional first-party history");
+  }
+  var rest = Json.items(Json.field(history,"observations"));
+  var count = 0;
+  while sx_kind(rest) == 3 {
+    Inputs.object_fields(sx_head(rest),"stay_date available_at rooms_sold","","market rooms-sold observation");
+    count = count + 1;
+    if count > 1024 { tool_fail("market backtest supports at most 1024 observations"); }
+    rest = sx_tail(rest);
+  }
+  let supplied = Json.field(input,"request");
+  Inputs.object_fields(supplied,"start_date end_date lead_days settling_days","","market backtest request");
+  var fields = Artifacts.put(sx_tail(supplied),"kind",sx_string("caravansary.rooms-sold-backtest-request@1"));
+  fields = Artifacts.put(fields,"eval_as_of",sx_string(now));
+  let backtest = Forecast.backtest(history,Json.object(fields));
+  var status = "completed";
+  if sx_text(Json.field(backtest,"status")) != "evaluated" { status = "abstained"; }
+  let inputs = Json.object(Artifacts.put(sx_nil(),"backtest_input_digest",sx_string(Json.digest(input))));
+  let result = Json.object(Artifacts.put(sx_nil(),"backtest",backtest));
+  return Artifacts.produce("backtest",now,status,inputs,result);
+}

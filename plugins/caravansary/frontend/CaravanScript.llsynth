@@ -12,10 +12,16 @@
 'syntax: TopItems TopItem |
 .end
 .rule TopItem
-'syntax: Field | Block | "transform" "{" Declarations "}"
+'syntax: Field | Block | "transform" "{" Declarations "}" | MarketSection
 .end
 .rule Block
-'syntax: FieldName "{" Fields "}" | "credentials" "{" SourceBlocks "}"
+'syntax: PlainFieldName "{" Fields "}" | "credentials" "{" SourceBlocks "}"
+.end
+.rule MarketSection
+'syntax: "target_sources" "{" SourceBlocks "}" | "extractors" "{" SourceBlocks "}" | "functions" "{" Functions "}" | "modules" "{" ModuleBlocks "}"
+.end
+.rule ModuleBlocks
+'syntax: ModuleBlocks TransformName "{" Functions "}" |
 .end
 .rule SourceBlocks
 'syntax: SourceBlocks FieldName "{" Fields "}" |
@@ -29,6 +35,12 @@
 # Context-specific schema (including duplicates and required keys) is checked
 # by the frontend. These keywords are lexically distinct even in that context.
 .rule FieldName
+'syntax: PlainFieldName | MarketKeyword
+.end
+.rule MarketKeyword
+'syntax: "target_sources" | "extractors" | "functions" | "modules"
+.end
+.rule PlainFieldName
 'syntax: IDENT | "fn" | "emit" | "return" | "int" | "bool" | "text" | "true" | "false" | "not" | "and" | "or"
 .end
 .rule Value
@@ -48,13 +60,19 @@
 'syntax: Declarations Declaration |
 .end
 .rule Declaration
-'syntax: "fn" TransformName "(" Parameters ")" "->" TransformName "{" "return" Expression ";" "}" | "emit" TransformName "=" Expression ";"
+'syntax: Function | "emit" TransformName "=" Expression ";"
+.end
+.rule Functions
+'syntax: Functions Function |
+.end
+.rule Function
+'syntax: "fn" TransformName "(" Parameters ")" "->" TransformName "{" "return" Expression ";" "}"
 .end
 .rule TransformName
 'syntax: FieldName | "credentials" | "transform"
 .end
 .rule CallableName
-'syntax: IDENT | "credentials" | "transform"
+'syntax: IDENT | "credentials" | "transform" | MarketKeyword
 .end
 .rule Parameters
 'syntax: ParameterItems |
@@ -96,5 +114,5 @@
 'syntax: "-" Unary | "not" Unary | Primary
 .end
 .rule Primary
-'syntax: "(" Expression ")" | CallableName "(" Arguments ")" | CallableName | STRING | INTEGER | "true" | "false"
+'syntax: "(" Expression ")" | CallableName "(" Arguments ")" | CallableName "." CallableName "(" Arguments ")" | CallableName | STRING | INTEGER | "true" | "false"
 .end

@@ -1,0 +1,285 @@
+# Independent positioning from already normalized authorized evidence.
+# Pure decision aid: no host actions, grants, conversion, or publication.
+import std.String as Str;
+import std.sexpr.sexpr as Sx;
+from plugins.caravansary.planning import json as Json, civil as Civil;
+from . import price_values as V, statistics as Stats;
+
+fn evidence_cap() -> i64 { return 512; }
+
+fn qualification(q: string) -> bool { return q == "fixture" || q == "observed"; }
+
+fn explicit_term(s: string) -> bool {
+  var lo = 0;
+  var hi = text_len(s);
+  while lo < hi && text_byte(s, lo) <= 32 { lo = lo + 1; }
+  while hi > lo && text_byte(s, hi - 1) <= 32 { hi = hi - 1; }
+  if hi == lo || hi - lo > 1024 { return false; }
+  let folded = buffer_new();
+  for i in lo .. hi {
+    let c = text_byte(s, i);
+    if c >= 65 && c <= 90 { buffer_byte(folded, c + 32); }
+    else { buffer_byte(folded, c); }
+  }
+  let term = buffer_text(folded);
+  return term != "unknown" && term != "unspecified" && term != "mixed" && term != "any" && term != "*" &&
+    term != "not reported" && term != "n/a";
+}
+
+fn age_array(value: sexpr) -> bool {
+  if Json.kind(value) != "array" { return false; }
+  var count = 0;
+  var children = Json.items(value);
+  while sx_kind(children) == 3 {
+    count = count + 1;
+    if count > 4096 || V.natural(sx_head(children), 17) < 0 { return false; }
+    children = sx_tail(children);
+  }
+  return true;
+}
+
+# Keep the full planning guest object, not a label or total occupancy alone:
+# room allocations and ages can change price and eligibility.
+fn valid_guest(guest: sexpr) -> bool {
+  if Json.kind(guest) != "object" || Sx.sexpr_size(sx_tail(guest)) != 5 ||
+      !explicit_term(V.text(guest, "id")) { return false; }
+  let rooms = V.number(guest, "rooms", 1024);
+  let adults = V.number(guest, "adults", 10000);
+  let children = Json.get(guest, "child_ages");
+  let allocation = Json.get(guest, "allocation");
+  if rooms < 1 || adults < 1 || !age_array(children) || Json.kind(allocation) != "array" {
+    return false;
+  }
+  var allocated = Json.items(allocation);
+  var adult_total = 0;
+  var derived_ages = sx_nil();
+  var child_count = 0;
+  for _ in 0 .. rooms {
+    if sx_kind(allocated) != 3 { return false; }
+    let room = sx_head(allocated);
+    let adult_count = V.number(room, "adults", 10000);
+    let ages = Json.get(room, "child_ages");
+    if Json.kind(room) != "object" || Sx.sexpr_size(sx_tail(room)) != 2 ||
+        adult_count < 1 || !age_array(ages) { return false; }
+    adult_total = adult_total + adult_count;
+    if adult_total > adults { return false; }
+    var room_ages = Json.items(ages);
+    while sx_kind(room_ages) == 3 {
+      child_count = child_count + 1;
+      if child_count > 4096 { return false; }
+      derived_ages = sx_cons(sx_head(room_ages), derived_ages);
+      room_ages = sx_tail(room_ages);
+    }
+    allocated = sx_tail(allocated);
+  }
+  if sx_kind(allocated) != 0 || adult_total != adults || child_count != Sx.sexpr_size(Json.items(children)) {
+    return false;
+  }
+  return Json.render(Json.sorted_array(children, true)) == Json.render(Json.sorted_array(Json.array(derived_ages), true));
+}
+
+fn valid_scope(scope: sexpr) -> bool {
+  if Json.kind(scope) != "object" || Sx.sexpr_size(sx_tail(scope)) != 10 { return false; }
+  let checkin = Civil.date(V.text(scope, "checkin"));
+  let checkout = Civil.date(V.text(scope, "checkout"));
+  let basis = V.text(scope, "price_basis");
+  return V.currency(V.text(scope, "currency")) && checkin > 0 && checkout > checkin &&
+    valid_guest(Json.get(scope, "guest_configuration")) &&
+    explicit_term(V.text(scope, "booker_country")) && explicit_term(V.text(scope, "locale")) &&
+    (basis == "stay_total" || basis == "nightly_average") &&
+    V.text(scope, "taxes_fees_inclusion") == "included" &&
+    explicit_term(V.text(scope, "meal")) && explicit_term(V.text(scope, "cancellation"));
+}
+
+fn report(fields: sexpr, reason: string) -> sexpr {
+  if reason == "" { return Json.object(V.put_text(fields, "status", "recommended")); }
+  return Json.object(V.put_text(V.put_text(fields, "status", "abstained"), "reason", reason));
+}
+
+# Return only normalized facts used by the recommendation; rate observations
+# remain available to the caller in the source artifact.
+fn evidence(projection: sexpr, observed: i64, amount: i64) -> sexpr {
+  var fields = V.put_text(sx_nil(), "property_id", V.text(projection, "property_id"));
+  fields = V.put_text(fields, "candidate_id", V.text(projection, "candidate_id"));
+  fields = V.put_text(fields, "provider", V.text(projection, "provider"));
+  fields = V.put_text(fields, "provider_property_id", V.text(projection, "provider_property_id"));
+  fields = V.put_text(fields, "observation_id", V.text(projection, "observation_id"));
+  fields = V.put_text(fields, "observed_at", Civil.utc_text(observed));
+  let (ok_received, received) = V.instant(V.text(projection, "received_at"));
+  let (ok_ingested, ingested) = V.instant(V.text(projection, "ingested_at"));
+  assert(ok_received && ok_ingested);
+  fields = V.put_text(fields, "received_at", Civil.utc_text(received));
+  fields = V.put_text(fields, "ingested_at", Civil.utc_text(ingested));
+  return Json.object(V.put_int(fields, "amount_minor", amount));
+}
+
+fn summarize(comparables: sexpr, scope: sexpr, qual: string, subject: string, now: i64, max_age: i64) -> (sexpr, sexpr, string) {
+  var grouped = sx_nil();
+  var n = 0;
+  var good = 0;
+  var bad_shape = 0;
+  var bad_scope = 0;
+  var bad_qualification = 0;
+  var self = 0;
+  var not_known = 0;
+  var stale = 0;
+  let scope_key = Json.render(scope);
+  var items = Json.items(comparables);
+  while sx_kind(items) == 3 {
+    n = n + 1;
+    if n > evidence_cap() { return (sx_nil(), sx_nil(), "too_many_comparables"); }
+    let row = sx_head(items);
+    let property = V.text(row, "property_id");
+    let (has_observed, observed) = V.instant(V.text(row, "observed_at"));
+    let (has_received, received) = V.instant(V.text(row, "received_at"));
+    let (has_ingested, ingested) = V.instant(V.text(row, "ingested_at"));
+    let amount = V.number(row, "amount_minor", V.money_cap());
+    let row_scope = Json.get(row, "scope");
+    if property == "" || V.text(row, "candidate_id") == "" || V.text(row, "provider") == "" ||
+        V.text(row, "provider_property_id") == "" || V.text(row, "observation_id") == "" ||
+        !has_observed || !has_received || !has_ingested || observed > received || received > ingested || amount < 1 {
+      bad_shape = bad_shape + 1;
+    } else {
+      if property == subject { self = self + 1; }
+      else {
+        if V.text(row, "qualification") != qual { bad_qualification = bad_qualification + 1; }
+        else {
+          if Json.kind(row_scope) != "object" || Json.render(row_scope) != scope_key { bad_scope = bad_scope + 1; }
+          else {
+            if ingested > now { not_known = not_known + 1; }
+            else {
+              if now - observed > max_age { stale = stale + 1; }
+              else {
+                grouped = V.put(grouped, property, evidence(row, observed, amount));
+                good = good + 1;
+              }
+            }
+          }
+        }
+      }
+    }
+    items = sx_tail(items);
+  }
+
+  var sorted = Json.sort_count(grouped, good, true, false);
+  var selected = sx_nil();
+  var conflicts = 0;
+  var distinct = 0;
+  while sx_kind(sorted) == 3 {
+    let entry = sx_head(sorted);
+    let property = sx_text(sx_head(entry));
+    var best = Json.pair_value(entry);
+    let (_has_first, first) = V.instant(V.text(best, "observed_at"));
+    var best_time = first;
+    var best_amount = V.number(best, "amount_minor", V.money_cap());
+    var conflict = false;
+    sorted = sx_tail(sorted);
+    while sx_kind(sorted) == 3 && sx_text(sx_head(sx_head(sorted))) == property {
+      let alternative = Json.pair_value(sx_head(sorted));
+      let (_has_observed, observed) = V.instant(V.text(alternative, "observed_at"));
+      let amount = V.number(alternative, "amount_minor", V.money_cap());
+      if observed > best_time {
+        best = alternative;
+        best_time = observed;
+        best_amount = amount;
+        conflict = false;
+      } else {
+        if observed == best_time {
+          if amount != best_amount { conflict = true; }
+          else {
+            if Str.compare(Json.render(alternative), Json.render(best)) < 0 { best = alternative; }
+          }
+        }
+      }
+      sorted = sx_tail(sorted);
+    }
+    if conflict { conflicts = conflicts + 1; }
+    else { selected = sx_cons(best, selected); }
+    distinct = distinct + 1;
+  }
+  var counts = V.put_int(sx_nil(), "input", n);
+  counts = V.put_int(counts, "invalid_record", bad_shape);
+  counts = V.put_int(counts, "different_scope", bad_scope);
+  counts = V.put_int(counts, "different_qualification", bad_qualification);
+  counts = V.put_int(counts, "subject_property", self);
+  counts = V.put_int(counts, "not_yet_known", not_known);
+  counts = V.put_int(counts, "stale", stale);
+  counts = V.put_int(counts, "duplicate_rows", good - distinct);
+  counts = V.put_int(counts, "conflicting_properties", conflicts);
+  counts = V.put_int(counts, "selected_properties", distinct - conflicts);
+  return (Sx.sexpr_reverse(selected), Json.object(counts), "");
+}
+
+# Recommended price is the configured quantile clamped to the intersection of
+# the explicit bounds and maximum movement from current. A physical property
+# never votes twice, even when observed through multiple providers.
+fn position(comparables: sexpr, policy: sexpr) -> sexpr {
+  var fields = V.put_text(sx_nil(), "kind", "caravansary.position@1");
+  fields = V.put_text(fields, "methodology", "independent-nearest-rank-nightly@1");
+  if V.text(policy, "kind") != "caravansary.price-policy@1" { return report(fields, "invalid_policy_kind"); }
+  let qual = V.text(policy, "qualification");
+  let subject = V.text(policy, "subject_property_id");
+  let scope = Json.get(policy, "scope");
+  let (has_now, now) = V.instant(V.text(policy, "as_of"));
+  let min_properties = V.number(policy, "min_properties", evidence_cap());
+  let max_age = V.number(policy, "max_age_seconds", 31536000);
+  let quantile = V.number(policy, "quantile_bps", 10000);
+  let current = V.number(policy, "current_minor", V.money_cap());
+  let floor_minor = V.number(policy, "floor_minor", V.money_cap());
+  let ceiling_minor = V.number(policy, "ceiling_minor", V.money_cap());
+  let max_move = V.number(policy, "max_move_minor", V.money_cap());
+  if !has_now || !qualification(qual) || subject == "" || min_properties < 3 || max_age < 0 ||
+      quantile < 0 || current <= 0 || floor_minor <= 0 || ceiling_minor < floor_minor || max_move < 0 ||
+      !valid_scope(scope) {
+    return report(fields, "invalid_policy");
+  }
+  fields = V.put_text(fields, "qualification", qual);
+  fields = V.put_text(fields, "as_of", Civil.utc_text(now));
+  fields = V.put_text(fields, "subject_property_id", subject);
+  fields = V.put(fields, "scope", scope);
+  let checkin = Civil.date(V.text(scope, "checkin"));
+  let checkout = Civil.date(V.text(scope, "checkout"));
+  if checkin < V.utc_day(now) { return report(fields, "stay_already_started"); }
+  # No derived/nightly conversion: a one-night stay total is already the
+  # nightly amount; otherwise require a directly reported nightly average.
+  if V.text(scope, "price_basis") == "stay_total" && checkout != checkin + 1 {
+    return report(fields, "unsupported_price_basis");
+  }
+  if Json.kind(comparables) != "array" { return report(fields, "invalid_comparables"); }
+  var lower = current - max_move;
+  if lower < floor_minor { lower = floor_minor; }
+  var upper = current + max_move;
+  if upper > ceiling_minor { upper = ceiling_minor; }
+  if lower > upper { return report(fields, "incompatible_price_guardrails"); }
+
+  let (selected, counts, error) = summarize(comparables, scope, qual, subject, now, max_age * 1000000);
+  if error != "" { return report(fields, error); }
+  fields = V.put(fields, "counts", counts);
+  fields = V.put(fields, "evidence", Json.array(selected));
+  if V.number(counts, "selected_properties", evidence_cap()) < min_properties {
+    return report(fields, "insufficient_distinct_comparables");
+  }
+  var sample = sx_nil();
+  var rows = selected;
+  while sx_kind(rows) == 3 {
+    sample = sx_cons(Json.get(sx_head(rows), "amount_minor"), sample);
+    rows = sx_tail(rows);
+  }
+  let summary = Json.get(Stats.describe(Json.array(sample), quantile), "summary");
+  let target = V.number(summary, "quantile", V.money_cap());
+  var suggestion = target;
+  var clamp = "none";
+  if target < lower { suggestion = lower; clamp = "lower"; }
+  if target > upper { suggestion = upper; clamp = "upper"; }
+  var bounds = V.put_int(sx_nil(), "lower_minor", lower);
+  bounds = V.put_int(bounds, "upper_minor", upper);
+  bounds = V.put_int(bounds, "current_minor", current);
+  bounds = V.put_int(bounds, "max_move_minor", max_move);
+  bounds = V.put_int(bounds, "floor_minor", floor_minor);
+  bounds = V.put_int(bounds, "ceiling_minor", ceiling_minor);
+  fields = V.put(fields, "guardrails", Json.object(bounds));
+  fields = V.put(fields, "summary", summary);
+  fields = V.put_text(fields, "clamp", clamp);
+  fields = V.put_text(fields, "recommendation_unit", "nightly");
+  return report(V.put_int(fields, "recommended_minor", suggestion), "");
+}

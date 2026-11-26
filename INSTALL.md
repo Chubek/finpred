@@ -76,11 +76,22 @@ work before updating it. To use an external Git checkout, export its **absolute 
 
 ## 3. Build the compiler, then the application
 
+The pinned compiler needs a build-host Cephyr shared library for foreign ABI
+table generation. Install Clang, Clang++, llvm-ar, pkg-config and LibYAML
+development headers (`clang llvm pkg-config libyaml-dev` on Ubuntu), then provision the Cephyr
+headers with LibStone's dependency helper:
+
 ```sh
-make mulib                 # optionally set MULIB_JOBS
+bash third_party/mulib/on1x/third_party/libstone/scripts/get-deps.sh valijson nlohmann-json
+CC=clang CXX=clang++ make mulib   # optionally set MULIB_JOBS
 make
 ./bin/finpred selftest
 ```
+
+Use `CEPHYR_LIBRARY=/absolute/path/libcephyr.so` to use a compatible
+prebuilt library instead. If an existing CMake build root was initialized
+with a different compiler, set `FINPRED_MULIB_BUILD_DIR` to a fresh build
+directory for both the compiler build and its consumers.
 
 Expect `On1x scanner: LibStone ASDL+Aurocks generated frontend` during
 configuration and `selftest_ok=true` from the last command. The [build wrapper](bin/build.sh)

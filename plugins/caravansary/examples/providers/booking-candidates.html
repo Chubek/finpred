@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en"><head><title>Fictional Booking candidate capture</title></head><body>
+  <aside><a href="/about">Navigation (not a property)</a></aside>
+  <article data-testid="property-card" data-property-id="north-canal"
+           data-latitude="51.5031" data-longitude="-0.1034" data-property-type="hotel">
+    <h2 data-testid="title">North Canal &amp; Garden House</h2>
+    <a data-testid="title-link" href="/hotel/fixture/north-canal">Fictional details</a>
+    <p data-testid="address">17 Mist Wharf, Fictional Canal District</p>
+    <span data-testid="price-and-discounted-price" data-price-basis="nightly">GBP 120.50</span>
+    <span data-testid="amenity">Garden</span>
+  </article>
+  <article data-testid="property-card" data-property-id="willow-court"
+           data-latitude="51.5070" data-longitude="-0.1101" data-property-type="hotel">
+    <h2 data-testid="title">Willow Court Inn</h2>
+    <a data-testid="title-link" href="https://booking.example/hotel/fixture/willow-court">Fictional details</a>
+    <p data-testid="address">8 Willow Parade, Fictional Canal District</p>
+    <span data-testid="price-and-discounted-price" data-price-basis="stay_total"
+          data-availability="available" data-currency="GBP" data-amount-minor="21500">GBP 215</span>
+  </article>
+  <article data-testid="property-card" data-property-id="exterior-link">
+    <h2 data-testid="title">Not a bound property</h2>
+    <a data-testid="title-link" href="https://booking.example.invalid/hotel/fixture/offsite">Ignore this link</a>
+  </article>
+  <a data-testid="pagination-next" href="/fixtures/not-loaded">Next (not followed)</a>
+</body></html>

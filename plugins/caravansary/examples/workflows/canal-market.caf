@@ -1,0 +1,15 @@
+# Fictional candidate search, fixture profile and bounded positioning.
+# Declarations are not permissions. See host-grants.json in this directory.
+name = "Fictional Canal Market";
+target { id="canal-subject"; type="hotel"; latitude="51.5000"; longitude="-0.1000"; currency="GBP"; }
+target_sources {
+  agoda_search { kind="fixture"; fixture="agoda-candidates"; extractor="frozen"; }
+  booking_search { kind="fixture"; fixture="booking-candidates"; extractor="frozen"; }
+  booking_profile { kind="fixture"; fixture="booking-profile"; extractor="frozen"; }
+}
+extractors {
+  frozen { kind="caravansary.fixture@1"; }
+}
+discovery { sources=["booking_search","agoda_search"]; radius_m=2500; max_candidates=8; }
+pricing { currency="GBP"; floor_minor=8500; ceiling_minor=30000; }
+schedule { workflow="offline-market"; every_seconds=3600; start_at="2026-12-01T00:00:00Z"; }
