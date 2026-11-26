@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Plan a competitor observation matrix or report on an offline observation log."""
+"""Plan and report on competitor observations or run one approved sandbox probe."""
 
 import argparse
 from datetime import date, datetime, timedelta, timezone
 import hashlib
+from itertools import islice
 import json
 import os
 from pathlib import Path
@@ -12,12 +13,14 @@ import sys
 from zoneinfo import ZoneInfo
 
 if __package__:
-    from .caravansary_core import coverage as coverage_lib, credentials, inputs, scheduler, script
+    from .caravansary_core import booking_pilot, credentials, inputs, scheduler, script
+    from .caravansary_core import coverage as coverage_lib
 else:
     # Also support a standalone invocation and spec_from_file_location callers.
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     try:
-        from caravansary_core import coverage as coverage_lib, credentials, inputs, scheduler, script
+        from caravansary_core import booking_pilot, credentials, inputs, scheduler, script
+        from caravansary_core import coverage as coverage_lib
     finally:
         sys.path.pop(0)
 
@@ -217,22 +220,40 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     for name, help_text in (("plan", "emit initial matrix cells as JSON Lines"),
-                            ("report", "emit a coverage report as JSON")):
+                            ("report", "emit a coverage report as JSON"),
+                            ("pilot-booking", "perform one authorized Booking Demand API sandbox search")):
         command = commands.add_parser(name, help=help_text)
         command.add_argument("script", type=Path)
         command.add_argument("--date", type=_civil_arg, help="override the local civil date for 'today'")
-        command.add_argument("--as-of", type=_utc_arg, help="use a fixed UTC clock")
+        if name != "pilot-booking":
+            command.add_argument("--as-of", type=_utc_arg, help="use a fixed UTC clock")
         command.add_argument("--input-root", type=Path, action="append", default=[],
                              help="allow referenced inputs under this additional directory (repeatable)")
     commands.choices["report"].add_argument("--observations", type=Path,
                                            help="host-selected offline observation JSONL for this matrix")
+    commands.choices["pilot-booking"].add_argument(
+        "--confirm-authorized", action="store_true",
+        help="confirm that your partner account permits this one sandbox API request",
+    )
     args = parser.parse_args(argv)
     try:
-        now = _utc(args.as_of)
+        if args.command == "pilot-booking" and not args.confirm_authorized:
+            raise ValueError("pilot-booking requires --confirm-authorized before a sandbox request")
+        now = _utc(getattr(args, "as_of", None))
         config, rows = load_plan(args.script, args.date, now=now, input_roots=args.input_root)
         if args.command == "plan":
             for row in rows:
                 print(_json(row))
+        elif args.command == "pilot-booking":
+            cells = list(islice(rows, 2))
+            if len(cells) != 1:
+                raise ValueError("pilot-booking requires a script with exactly one matrix cell")
+            today = now.astimezone(ZoneInfo(config["property"]["timezone"])).date()
+            names = (booking_pilot.API_TOKEN, booking_pilot.AFFILIATE_ID)
+            environ = {name: os.environ.get(name) for name in names}
+            result = booking_pilot.run_sandbox(cells[0], today=today, environ=environ)
+            print(_json(result))
+            return int(result["outcome"] == "failed")
         else:
             rows = list(rows)
             refresh = config["refresh"]

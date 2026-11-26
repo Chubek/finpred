@@ -1,9 +1,10 @@
-# Caravansary: offline competitor coverage
+# Caravansary: competitor coverage
 
 Caravansary validates [CaravanScript v1](../../docs/caravansary/contracts.md),
 plans a competitor matrix, and reports freshness from an offline observation
-log. It is a standalone Python 3.10+ tool (stdlib and system IANA timezone data),
-not a FinPRED SDK-registered plugin. It makes no pricing recommendations.
+log. It also offers an explicit one-request Booking.com sandbox test. It is a
+standalone Python 3.10+ tool (stdlib and system IANA timezone data), not a FinPRED
+SDK-registered plugin. It makes no pricing recommendations.
 
 ## Run the offline example
 
@@ -42,8 +43,8 @@ that context with a non-secret identity.
 The host selects the script directory and may explicitly grant additional
 input roots via `--input-root`. Competitor and weight paths resolve relative to
 the script directory. Use a trusted, stable input tree; this is not an OS
-sandbox. The CLI writes only to stdout; it never opens the script's output
-paths or loads credentials. Keep secret or credential-bearing URLs out of
+sandbox. `plan` and `report` write only to stdout; they never open the script's
+output paths or load credentials. Keep secret or credential-bearing URLs out of
 competitor and observation data.
 
 ## Host integration
@@ -55,7 +56,7 @@ membership in the complete language subtag registry).
 returns an iterator; `load_plan(...)` additionally returns the parsed config.
 Treat returned config and cell dictionaries as read-only. The host can combine
 `coverage(...)` with the in-memory `Scheduler`; there is no daemon, shared
-request quota, network adapter, or historical store.
+request quota, production adapter, or historical store.
 
 The scheduler estimates capacity assuming one attempt per complete cell,
 excluding retries, pagination, latencies and failures. Satisfying its budget
@@ -122,13 +123,45 @@ general browser-export format, and no separate “MILK” format was identified 
 the repository. Keep cookie and `.env` files private, out of source control,
 and outside planner input roots and observation archives.
 
-## What still requires a live pilot
+## Run one Booking.com sandbox test
 
-There is no Booking.com or Agoda.com network adapter in this plugin.
-Credentials and verified mappings do not grant permission to collect or retain
-data. Written permission, representative property IDs, approved budgets,
-permitted retention and the [measured pilot](../../docs/caravansary/feasibility.md)
-remain required. No provider was contacted, and there is no appraised price,
-Yieldcraft handoff, or transformation language in this version. The host must
-enforce capture permission, retention expiry and provider-specific query
-restrictions before any future collection.
+Use an authorized Demand API partner account. In the
+[Affiliate Partner Centre](https://developers.booking.com/demand/docs/development-guide/authentication#generate-an-api-key),
+get an API token and Affiliate ID and have your secret store inject them into
+the process as `CARAVANSARY_BOOKING_API_TOKEN` and
+`CARAVANSARY_BOOKING_AFFILIATE_ID`. This command does not use the consumer
+website password, browser cookies, `.env`, or any CaravanScript credential
+declaration. Do not pass the API token on the command line.
+
+```sh
+python3 plugins/caravansary/caravansary.py pilot-booking \
+  plugins/caravansary/examples/booking-sandbox/pilot.crs \
+  --confirm-authorized
+```
+
+This sends one read-only
+[Demand API v3.3 search](https://developers.booking.com/demand/docs/open-api/3.3/demand-api/accommodations/accommodations/search)
+to the [official sandbox](https://developers.booking.com/demand/docs/getting-started/sandbox),
+not production. The supplied script requests a one-night stay today for two
+adults at the documented Hotel Orion test property. Use `--date YYYY-MM-DD` to
+choose a future check-in. A custom script must select exactly one verified
+Booking cell and a documented sandbox ID. The probe sends the dates, party,
+booker country and currency with the fixed `desktop` platform; the search
+endpoint has no locale input.
+
+The probe checks TLS and limits the response to 512 KiB, with a 10-second socket
+timeout. It does not follow redirects, retry, paginate, or make bookings. Its
+stdout summary contains the attempt count, times, HTTP status if received, and
+an outcome (`matched`, `no_match`, or `failed`). It never writes credentials,
+raw responses, prices, reports, or observation logs. `no_match` is not proof of
+unavailability. Even `matched` does not establish complete production coverage.
+
+## What still requires a production pilot
+
+There is no production adapter for Booking.com or Agoda.com. Credentials and
+verified mappings do not grant permission to collect or retain data. Written
+permission, representative property IDs, approved budgets, permitted retention
+and the [measured pilot](../../docs/caravansary/feasibility.md) remain required.
+There is no appraised price, Yieldcraft handoff, or transformation language.
+The host must enforce capture permission, retention expiry and provider-specific
+query restrictions before any production collection.

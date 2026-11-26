@@ -1,0 +1,15 @@
+{
+  "kind": "caravansary.competitors@1",
+  "guest_configurations": [
+    {"id": "two_adults", "rooms": 1, "adults": 2, "child_ages": []}
+  ],
+  "properties": [
+    {
+      "id": "orion-sandbox",
+      "name": "Demand API Sandbox Hotel Orion",
+      "providers": {
+        "booking": {"provider_property_id": "10507360", "mapping_status": "verified"}
+      }
+    }
+  ]
+}

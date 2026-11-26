@@ -9,6 +9,7 @@ implemented plugin or a claim of live collection. Requirement 1 is the
 * [Pilot evidence template](pilot-record.md)
 * [Offline capacity calculator](capacity.py)
 * [Illustrative script and input files](examples/riviera.crs)
+* [Booking.com sandbox smoke test](../../plugins/caravansary/README.md#run-one-bookingcom-sandbox-test)
 
 Milestone A remains **open**: no authorized provider access, representative
 property IDs, request budgets, or retention permission have been supplied.

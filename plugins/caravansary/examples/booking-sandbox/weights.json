@@ -1,0 +1,8 @@
+{
+  "kind": "caravansary.weights@1",
+  "source": "One documented test property for a sandbox smoke test",
+  "mode": "joint",
+  "weights": [
+    {"guest_configuration": "two_adults", "stay_length": 1, "weight": 1}
+  ]
+}

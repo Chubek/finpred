@@ -1,0 +1,19 @@
+caravan "Booking Demand API sandbox smoke test" version 1 {
+  property {
+    type = "hotel"; latitude = "52.37"; longitude = "4.90";
+    timezone = "Europe/Amsterdam"; currency = "EUR";
+    room_types = ["standard"];
+  }
+  competitors = "properties.json";
+  sources = ["booking"];
+  search {
+    horizon_days = 1; start = "today";
+    guest_configurations = ["two_adults"]; stay_lengths = [1];
+    booker_country = "NL"; locale = "nl-NL";
+  }
+  refresh {
+    tick_seconds = 3600; max_age_seconds = 86400; weights = "weights.json";
+    booking_requests_per_hour = 1; booking_concurrency = 1;
+  }
+  output { observations = "not-written.jsonl"; coverage = "not-written.json"; }
+}
