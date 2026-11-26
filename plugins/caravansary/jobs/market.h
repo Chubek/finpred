@@ -14,8 +14,9 @@ int job_market_check(const job_state *state, const char *manifest);
 int job_market_stage_open(const job_state *state, const char *path, job_market_stage *stage);
 void job_market_stage_close(const job_state *state, job_market_stage *stage);
 int job_market_exec(const job_state *state, const char *manifest);
+int job_joe_exec(const job_state *state, const char *source);
 int job_market_commit(const job_state *state, const job_market_stage *stage, uint64_t id,
-                      int64_t deadline);
+                      int64_t deadline, bool joe_prediction);
 int job_market_show(const job_state *state, uint64_t id, int64_t deadline);
 
 #endif

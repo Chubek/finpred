@@ -1,0 +1,36 @@
+{
+  "kind": "caravansary.joe-litty-rooms.input@1",
+  "algorithm": "median",
+  "policy": {
+    "kind": "caravansary.price-policy@1",
+    "subject_property_id": "joe-litty-rooms-reference",
+    "as_of": "2026-11-26T10:00:00Z",
+    "qualification": "fixture",
+    "scope": {
+      "currency": "EUR",
+      "checkin": "2026-12-04",
+      "checkout": "2026-12-05",
+      "guest_configuration": {
+        "id": "two-adults",
+        "rooms": 1,
+        "adults": 2,
+        "child_ages": [],
+        "allocation": [{"adults": 2, "child_ages": []}]
+      },
+      "booker_country": "IT",
+      "locale": "it-IT",
+      "price_basis": "stay_total",
+      "taxes_fees_inclusion": "included",
+      "meal": "none",
+      "cancellation": "nonrefundable"
+    },
+    "min_properties": 3,
+    "max_age_seconds": 86400,
+    "quantile_bps": 5000,
+    "current_minor": 12000,
+    "floor_minor": 8000,
+    "ceiling_minor": 20000,
+    "max_move_minor": 4000
+  },
+  "comparables": []
+}

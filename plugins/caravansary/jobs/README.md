@@ -20,7 +20,10 @@ Deploy the three siblings together: `finpred-caravansary-jobs`,
 Clang, glibc/POSIX file and process APIs, and libcrypto. Only the optional
 `market-scrape-v1` profile needs the built `finpred-caravansary-market` sibling
 and its packaged fixed siblings, such as `finpred-caravansary-market-probe-v1`
-(the fixture-only market build). The executable directory itself must not be
+(the fixture-only market build). The `joe-litty-rooms-v1` profile additionally
+needs `finpred-caravansary-jobs-runner-joe-v1` and `finpred-joe-litty-rooms-v1`.
+See the [property-specific CLI](../examples/joe-litty-rooms/README.md#property-specific-cli)
+for frozen prediction registration and replay. The executable directory itself must not be
 writable by group/other, even if sticky. Deploy into a trusted location where
 a different user cannot substitute the executables or any path component.
 `PATH` and request data do not resolve executables. Keep each deployed

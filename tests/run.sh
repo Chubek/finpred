@@ -33,12 +33,14 @@ caravansary_market_checks() {
   out=$(finpred_cli_output_dir "$ROOT")
   export ON1XC="$on1xc" CC=clang CXX=clang++
   sh plugins/caravansary/build.sh --market
+  sh plugins/caravansary/build.sh --joe-litty
   sh plugins/caravansary/build.sh --check-review
   sh plugins/caravansary/examples/providers/check.sh
   sh plugins/caravansary/discovery/check.sh
   sh plugins/caravansary/pricing/check.sh
   FINPRED_BUILD_DIR="$out" sh plugins/caravansary/jobs/build.sh
   python3 tests/caravansary_market.py --with-jobs
+  python3 tests/caravansary_joe_litty.py
   sh plugins/caravansary/examples/joe-litty-rooms/check.sh --reuse-market
   python3 plugins/caravansary/jobs/test_jobs.py "$out/finpred-caravansary-jobs" \
     --market "$out/finpred-caravansary-market"

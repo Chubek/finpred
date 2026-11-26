@@ -15,7 +15,8 @@
 
 enum { USAGE_ERROR = 2, UNCERTAIN = 3 };
 enum command { INVALID, INIT, SOURCE_ADD, SOURCE_SHOW, PROFILE_ADD, PROFILE_SHOW,
-               PROFILE_DISABLE, SCHEDULE, NEXT, DISPATCH, CANCEL, MARKET_PROFILE_ADD, RESULT_SHOW };
+               PROFILE_DISABLE, SCHEDULE, NEXT, DISPATCH, CANCEL, MARKET_PROFILE_ADD,
+               JOE_PROFILE_ADD, RESULT_SHOW };
 
 typedef struct {
     enum command command;
@@ -40,6 +41,7 @@ static void usage(FILE *out)
           "  source-show SOURCE\n"
           "  profile-add PROFILE SOURCE\n"
           "  market-profile-add PROFILE MANIFEST_SOURCE\n"
+          "  joe-profile-add PROFILE PREDICTION_SOURCE\n"
           "  profile-show PROFILE\n"
           "  profile-disable PROFILE\n"
           "  schedule PROFILE --at UTC (--once UTC | --every SECONDS)\n"
@@ -76,11 +78,13 @@ static request parse(int argc, char **argv)
         if (!strcmp(cmd, "profile-show")) r.command = PROFILE_SHOW;
         if (!strcmp(cmd, "profile-disable")) r.command = PROFILE_DISABLE;
     }
-    if (argc == 6 && (!strcmp(cmd, "profile-add") || !strcmp(cmd, "market-profile-add")) &&
+    if (argc == 6 && (!strcmp(cmd, "profile-add") || !strcmp(cmd, "market-profile-add") ||
+                      !strcmp(cmd, "joe-profile-add")) &&
         job_key(argv[4]) && job_key(argv[5])) {
         r.key = argv[4];
         r.source = argv[5];
-        r.command = !strcmp(cmd, "profile-add") ? PROFILE_ADD : MARKET_PROFILE_ADD;
+        r.command = !strcmp(cmd, "profile-add") ? PROFILE_ADD :
+            !strcmp(cmd, "joe-profile-add") ? JOE_PROFILE_ADD : MARKET_PROFILE_ADD;
     }
     if (argc == 5 && !strcmp(cmd, "cancel") && job_number(argv[4], &r.id) && r.id)
         r.command = CANCEL;
@@ -162,11 +166,12 @@ static int profile_command(const job_state *state, request r)
     bool active;
     const char *source = r.source;
     const char *runner = JOB_RUNNER;
-    if (r.command == PROFILE_ADD || r.command == MARKET_PROFILE_ADD) {
+    if (r.command == PROFILE_ADD || r.command == MARKET_PROFILE_ADD || r.command == JOE_PROFILE_ADD) {
         if (r.command == MARKET_PROFILE_ADD) {
             if (job_market_check(state, source) < 0) return error("validate market manifest and inputs");
             runner = JOB_MARKET_RUNNER;
         }
+        if (r.command == JOE_PROFILE_ADD) runner = JOB_JOE_RUNNER;
         change = job_profile_add(state, r.key, source, runner);
         if (change < 0) return error("add immutable profile");
         active = true;
@@ -200,6 +205,7 @@ typedef struct {
     job_state *state;
     job_market_stage *stage;
     bool market_allowed;
+    bool joe_allowed, joe_prediction;
     const char *result_status;
 } dispatch_host;
 
@@ -210,12 +216,15 @@ static int authorize_attempt(void *user, const basis_http_probe_invocation *invo
     if (interrupted || !invocation->scheduled || !invocation->occurrence_id ||
         invocation->deadline < 0 || invocation->deadline > JOB_LAST_CLOCK ||
         !job_resolves(host->state, keys)) return 0;
-    if (strcmp(keys->runner, JOB_MARKET_RUNNER)) return 1;
-    if (!host->market_allowed || host->stage->fd < 0) {
+    bool market = !strcmp(keys->runner, JOB_MARKET_RUNNER);
+    bool joe = !strcmp(keys->runner, JOB_JOE_RUNNER);
+    if (!market && !joe) return 1;
+    if ((market && !host->market_allowed) || (joe && !host->joe_allowed) || host->stage->fd < 0) {
         host->result_status = "unavailable";
         return 0;
     }
-    if (job_market_check(host->state, keys->probe) < 0) return 0;
+    if (market && job_market_check(host->state, keys->probe) < 0) return 0;
+    host->joe_prediction = joe;
     host->result_status = "not_committed";
     return 1;
 }
@@ -248,6 +257,12 @@ static int schedule_job(basis_kron_vm *vm, job_state *state, request r)
         if (job_sibling_path(JOB_MARKET_RUNNER_EXE, executable) < 0 ||
             job_sibling_path(JOB_MARKET_EXE, executable) < 0)
             return error("resolve trusted installed market runner and workflow");
+    }
+    if (!strcmp(keys.runner, JOB_JOE_RUNNER)) {
+        char executable[PATH_MAX];
+        if (job_sibling_path(JOB_JOE_RUNNER_EXE, executable) < 0 ||
+            job_sibling_path(JOB_JOE_EXE, executable) < 0)
+            return error("resolve trusted Joe Litty Rooms runner and predictor");
     }
     int rc = save_clock(state, r.clock);
     if (rc) return rc;
@@ -360,16 +375,18 @@ static int report_dispatch(basis_kron_dispatch_status status, const basis_kron_r
 
 static int dispatch_job(basis_kron_vm *vm, job_state *state, const char *path, int64_t clock)
 {
-    char executable[PATH_MAX], market_runner[PATH_MAX], market_executable[PATH_MAX];
+    char executable[PATH_MAX], market_runner[PATH_MAX], joe_runner[PATH_MAX], workflow[PATH_MAX];
     if (job_sibling_path(JOB_RUNNER_EXE, executable) < 0)
         return error("resolve trusted installed fixture runner");
     bool have_market_runner = job_sibling_path(JOB_MARKET_RUNNER_EXE, market_runner) == 0;
-    bool have_market = have_market_runner && job_sibling_path(JOB_MARKET_EXE, market_executable) == 0;
+    bool have_market = have_market_runner && job_sibling_path(JOB_MARKET_EXE, workflow) == 0;
+    bool have_joe_runner = job_sibling_path(JOB_JOE_RUNNER_EXE, joe_runner) == 0;
+    bool have_joe = have_joe_runner && job_sibling_path(JOB_JOE_EXE, workflow) == 0;
     job_market_stage stage = {.fd = -1};
     int64_t earliest;
     basis_kron_next_status next = basis_kron_next(vm, &earliest);
     if (next < 0) return error("check Kron deadline");
-    if (have_market && next == BASIS_KRON_READY && earliest <= clock &&
+    if ((have_market || have_joe) && next == BASIS_KRON_READY && earliest <= clock &&
         job_market_stage_open(state, path, &stage) < 0) return error("stage private workflow attempt");
     struct sigaction action = {.sa_handler = interrupt};
     if (sigemptyset(&action.sa_mask) < 0 || sigaction(SIGINT, &action, NULL) < 0 ||
@@ -386,13 +403,19 @@ static int dispatch_job(basis_kron_vm *vm, job_state *state, const char *path, i
     }
     int rc = save_clock(state, clock);
     if (!rc && !interrupted) {
-        const basis_daemon_runner runners[] = {{JOB_RUNNER, executable, path},
-            {JOB_MARKET_RUNNER, market_runner, stage.fd >= 0 ? stage.path : path}};
-        dispatch_host user = {state, &stage, have_market, NULL};
+        basis_daemon_runner runners[3] = {{JOB_RUNNER, executable, path}};
+        size_t count = 1;
+        const char *cwd = stage.fd >= 0 ? stage.path : path;
+        if (have_market_runner)
+            runners[count++] = (basis_daemon_runner){JOB_MARKET_RUNNER, market_runner, cwd};
+        if (have_joe_runner)
+            runners[count++] = (basis_daemon_runner){JOB_JOE_RUNNER, joe_runner, cwd};
+        dispatch_host user = {.state = state, .stage = &stage,
+                              .market_allowed = have_market, .joe_allowed = have_joe};
         const basis_http_probe_supervised_host host = {
-            owner, runners, have_market_runner ? 2u : 1u,
+            owner, runners, count,
             /* Reserve room for W6's bounded 5 s local Probe call and startup. */
-            {1000, have_market ? 7000u : 2000u, 100, 1000}, &user, authorize_attempt
+            {1000, (have_market || have_joe) ? 7000u : 2000u, 100, 1000}, &user, authorize_attempt
         };
         basis_http_probe_job_result attempt = {0};
         basis_kron_result result = {0};
@@ -408,7 +431,8 @@ static int dispatch_job(basis_kron_vm *vm, job_state *state, const char *path, i
         bool result_error = user.result_status && !strcmp(user.result_status, "unavailable");
         bool result_uncertain = false;
         if (status == BASIS_KRON_CONSUMED && result.disposition == BASIS_KRON_RAN && user.result_status) {
-            int committed = job_market_commit(state, &stage, result.id, result.deadline);
+            int committed = job_market_commit(state, &stage, result.id, result.deadline,
+                                              user.joe_prediction);
             if (committed < 0) {
                 (void)error("commit workflow artifact after consumed occurrence");
                 user.result_status = "failed";
@@ -437,7 +461,7 @@ static int ordinary(const char *path, request r)
     int rc;
     if (r.command == SOURCE_ADD || r.command == SOURCE_SHOW) rc = source_command(&state, r);
     else if (r.command == PROFILE_ADD || r.command == PROFILE_SHOW || r.command == PROFILE_DISABLE ||
-             r.command == MARKET_PROFILE_ADD)
+             r.command == MARKET_PROFILE_ADD || r.command == JOE_PROFILE_ADD)
         rc = profile_command(&state, r);
     else if (r.command == RESULT_SHOW)
         rc = job_market_show(&state, r.id, r.clock) < 0 ? error("read occurrence result") : 0;

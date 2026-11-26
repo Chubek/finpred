@@ -68,3 +68,50 @@ FINPRED_BUILD_DIR="${FINPRED_BUILD_DIR:-build/caravansary/W7/out}" \
 Its `booking.example` capture and resulting report have no connection to Joe
 Litty Rooms. Do not point its grants at `reference.caf` or treat a fixture
 result as an observation about this property.
+
+## Property-specific CLI
+
+```sh
+bin/joe-litty-rooms --help
+bin/joe-litty-rooms build          # Clang; build the pinned On1x compiler first
+sample=plugins/caravansary/examples/joe-litty-rooms/prediction.json
+bin/joe-litty-rooms predict "$sample" --algorithm lower-quartile
+```
+
+`prediction.json` is a **no-evidence fixture**. Its scope and guardrails are
+illustrations, not statements about the property. The example abstains and
+does not produce a price. Replace the inputs only with operator-approved,
+normalized quotes and policy. Each comparable supplies `property_id`
+(independently verified physical identity), `candidate_id`, `provider`,
+`provider_property_id`, `observation_id`, `observed_at`, `received_at`,
+`ingested_at`, `qualification`, `scope`, and `amount_minor`. Use the exact
+policy scope, including guest allocation, taxes and terms; for multiple
+nights, supply a directly reported `nightly_average`, not a `stay_total`.
+See [comparable admission](../../discovery/README.md#planner-and-pricing-handoff).
+The CLI validates the supplied data contract, not whether the prices were
+actually observed or whether the host has collection permission. The result is
+market positioning, not a demand forecast or a published rate.
+
+### Schedule a frozen prediction
+
+```sh
+parent=$(mktemp -d)
+state="$parent/state"
+bin/joe-litty-rooms init --state "$state"
+bin/joe-litty-rooms register --state "$state" DemoProfile DemoInput "$sample"
+bin/joe-litty-rooms kronize --state "$state" DemoProfile \
+  --at 2026-11-26T10:00:00Z --every 60
+bin/joe-litty-rooms daemon --state "$state" --once --at 2026-11-26T10:01:00Z
+bin/joe-litty-rooms jobs --state "$state" result-show 1 2026-11-26T10:01:00Z
+bin/joe-litty-rooms jobs --state "$state" cancel 1
+```
+
+Use the job ID returned by `kronize`. Each occurrence uses the registered
+algorithm, frozen evidence and saved pricing cutoff, regardless of the
+dispatch time. Registration first admits the source and then the profile;
+if the second step fails, the immutable source can remain registered.
+For ongoing dispatch, run `bin/joe-litty-rooms daemon --state "$state"`
+under a service manager. It stays in the foreground, emits JSON dispatch
+receipts, and stops on SIGINT or SIGTERM. Prefer a dedicated state directory;
+the daemon dispatches all due jobs in that directory. The jobs store enforces
+a nondecreasing UTC clock. See [jobs recovery semantics](../../jobs/README.md#replies-and-recovery).

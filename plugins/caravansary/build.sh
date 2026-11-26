@@ -30,10 +30,12 @@ case ${1:-} in
   --all)
     sh "$0"
     sh "$0" --market
+    sh "$0" --joe-litty
     FINPRED_BUILD_DIR=$(finpred_cli_output_dir "$ROOT")
     export FINPRED_BUILD_DIR
     exec sh "$ROOT/plugins/caravansary/jobs/build.sh" ;;
   --market) exec sh "$ROOT/plugins/caravansary/market_cli/build.sh" ;;
+  --joe-litty) entry=joe_litty/main; out="$(finpred_cli_output_dir "$ROOT")/finpred-joe-litty-rooms-v1" ;;
   --check-frontend) entry=frontend/tests/main ;;
   --check-programming) entry=examples/programming/main ;;
   --check-planning) entry=planning/check ;;
@@ -47,7 +49,7 @@ esac
 case "$entry" in
   frontend/tests/main|examples/programming/main) set -- ;;
   metrics/test_transform) set -- --stdppx checks ;;
-  planning/check|coverage/check|check_credentials|check_review)
+  planning/check|coverage/check|check_credentials|check_review|joe_litty/main)
     set -- --extra-c "$ROOT/plugins/caravansary/planning/host.c" --cflag=-lcrypto ;;
   *) set -- --extra-c "$ROOT/plugins/caravansary/planning/host.c" --cflag=-lcrypto \
             --extra-c "$ROOT/plugins/caravansary/booking_transport.c" --cflag=-lcurl ;;
@@ -61,7 +63,7 @@ python3 "$MULIB_ROOT/on1x/tools/on1x-build.py" "$ROOT/plugins/caravansary/$entry
   --cflag=-DON1X_DATA_MAX_TEXT=33554432u --cflag=-DON1X_DATA_MAX_POOL=268435456u \
   --cflag=-DON1X_DATA_MAX_NODES=2097152u \
   -I "$ROOT" -I "$ROOT/plugins/caravansary" -o "$stage" "$@"
-if [ "$entry" = main ]; then
+if [ "$entry" = main ] || [ "$entry" = joe_litty/main ]; then
   mv -fT -- "$stage" "$out"
 else
   (cd "$ROOT" && "$stage")

@@ -14,7 +14,7 @@ finpred_build_env "$ROOT"
 out=$(finpred_cli_output_dir "$ROOT")
 mkdir -p -- "$out"
 stage=$(mktemp -d -- "$out/.jobs-build.XXXXXXXX")
-trap 'rm -f -- "$stage/main" "$stage/runner" "$stage/market_runner"; rmdir -- "$stage"' EXIT
+trap 'rm -f -- "$stage/main" "$stage/runner" "$stage/market_runner" "$stage/joe_runner"; rmdir -- "$stage"' EXIT
 trap 'exit 1' HUP INT TERM
 
 build() {
@@ -27,10 +27,12 @@ build() {
 build main
 build runner
 build market_runner
+build joe_runner
 
 # Serial deploy; the runner's named ABI must remain immutable at this filename.
 exec 9>"$out/.jobs-build.lock"
 flock -x 9
 mv -fT -- "$stage/runner" "$out/finpred-caravansary-jobs-runner-v1"
 mv -fT -- "$stage/market_runner" "$out/finpred-caravansary-jobs-runner-market-v1"
+mv -fT -- "$stage/joe_runner" "$out/finpred-caravansary-jobs-runner-joe-v1"
 mv -fT -- "$stage/main" "$out/finpred-caravansary-jobs"

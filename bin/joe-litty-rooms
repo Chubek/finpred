@@ -1,0 +1,148 @@
+#!/bin/sh
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$ROOT/bin/paths.sh"
+
+usage() {
+  cat <<'EOF'
+Joe Litty Rooms — offline nightly-price recommendation and scheduled replay
+
+Usage:
+  bin/joe-litty-rooms predict INPUT.json [--algorithm NAME] [--as-of UTC]
+  bin/joe-litty-rooms algorithms
+  bin/joe-litty-rooms init --state DIR
+  bin/joe-litty-rooms register --state DIR PROFILE SOURCE INPUT.json
+  bin/joe-litty-rooms kronize --state DIR PROFILE --at UTC (--once UTC | --every SECONDS)
+  bin/joe-litty-rooms daemon --state DIR [--poll-seconds SECONDS]
+  bin/joe-litty-rooms daemon --state DIR --once [--at UTC]
+  bin/joe-litty-rooms jobs --state DIR COMMAND [ARGS...]
+  bin/joe-litty-rooms build
+  bin/joe-litty-rooms -h | --help
+
+Prediction:
+  predict         Run one burst using explicit, operator-approved normalized
+                  EUR evidence. Writes one digest-bound JSON artifact to
+                  stdout. Insufficient evidence returns an abstention (exit 0)
+                  with no nightly amount, not a guessed price.
+  --algorithm     median (50th percentile), lower-quartile (25th percentile),
+                  or percentile (quantile_bps from INPUT.json, 0–10000).
+                  All use the same guarded nearest-rank positioning method.
+                  By default use the algorithm in INPUT.json.
+  --as-of UTC     Override the evidence cutoff for this one run only.
+                  Otherwise use the saved policy time. Example:
+                  2026-11-26T10:00:00Z. No live rates are fetched.
+  INPUT.json      See plugins/caravansary/examples/joe-litty-rooms/prediction.json
+                  for the input schema and a no-evidence example.
+
+Persistence and supervision:
+  init            Create a new private state directory beneath a trusted parent.
+  register        Validate and freeze the exact input bytes as SOURCE; bind PROFILE
+                  to the built-in predictor. Choose fresh IDs to change inputs,
+                  cutoff or algorithm. Registration does not run a job.
+  kronize         Persist a named profile in Kron. --at is the admission clock.
+                  --once is an absolute deadline; --every starts after one
+                  interval (seconds). Alias: schedule. Nothing starts implicitly.
+  daemon          Run the foreground dispatcher until stopped (SIGINT/SIGTERM);
+                  it uses UTC wall time and sleeps 10 seconds between dispatches
+                  by default. --poll-seconds accepts 1–3600. Use your service
+                  manager to detach it or arrange restart. Use a dedicated DIR.
+  daemon --once   Supervise at most one due occurrence and exit. --at sets its
+                  clock for replay; use only with --once. Kron clocks must be
+                  nondecreasing, whole-second UTC timestamps with a trailing Z.
+  jobs            Inspect, revoke or cancel: next, profile-show PROFILE,
+                  profile-disable PROFILE, cancel ID, or result-show ID DEADLINE.
+                  Use the occurrence's original UTC deadline to read its result.
+  --state DIR     Absolute, owner-private state directory. No default state.
+                  The scheduler never refreshes stored evidence; repeating a
+                  job replays the same input, algorithm and policy clock.
+  build           Build the predictor and native jobs with Clang/Clang++.
+                  Requires the pinned On1x compiler (see INSTALL.md).
+  -h, --help      Show this help, without reading files or requiring a build.
+
+There is no provider access, booking, or automatic price publication.
+EOF
+}
+
+die() { printf 'joe-litty-rooms: %s\n' "$*" >&2; exit 2; }
+
+out=$(finpred_cli_output_dir "$ROOT")
+predictor="$out/finpred-joe-litty-rooms-v1"
+jobs="$ROOT/bin/caravansary"
+mode=${1:-}
+case "$mode" in
+  ''|-h|--help|help) usage; exit 0 ;;
+esac
+shift
+case ${1:-} in -h|--help) usage; exit 0 ;; esac
+
+case "$mode" in
+  algorithms)
+    [ "$#" -eq 0 ] || die 'algorithms takes no arguments'
+    printf '%s\n' median lower-quartile percentile ;;
+  build)
+    [ "$#" -eq 0 ] || die 'build takes no arguments'
+    sh "$ROOT/plugins/caravansary/build.sh" --joe-litty
+    FINPRED_BUILD_DIR="$out" exec sh "$ROOT/plugins/caravansary/jobs/build.sh" ;;
+  predict|once)
+    [ "$#" -ge 1 ] || die 'predict requires INPUT.json'
+    [ -x "$predictor" ] || die 'run bin/joe-litty-rooms build first'
+    exec "$predictor" predict "$@" ;;
+  init|register|kronize|schedule|daemon|jobs)
+    [ "$#" -ge 2 ] && [ "$1" = --state ] || die "$mode requires --state ABSOLUTE_DIR first"
+    state=$2
+    shift 2
+    case "$state" in /*) ;; *) die '--state requires an absolute directory' ;; esac
+    case "$mode" in
+      init)
+        [ "$#" -eq 0 ] || die 'init takes only --state DIR'
+        exec "$jobs" jobs --state "$state" init ;;
+      register)
+        [ "$#" -eq 3 ] || die 'register requires PROFILE SOURCE INPUT.json'
+        [ -x "$predictor" ] || die 'run bin/joe-litty-rooms build first'
+        for id in "$1" "$2"; do
+          case "$id" in ''|[!A-Za-z0-9]*|*[!A-Za-z0-9_-]*) die 'invalid profile or source ID' ;; esac
+          [ "${#id}" -le 63 ] || die 'profile and source IDs must be at most 63 bytes'
+        done
+        . "$ROOT/bin/build-env.sh"
+        finpred_build_env "$ROOT"
+        umask 077
+        file=$(mktemp "$TMPDIR/joe-litty-input.XXXXXXXX")
+        trap 'rm -f -- "$file"' EXIT
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        "$predictor" admit "$3" >"$file"
+        "$jobs" jobs --state "$state" source-add "$2" <"$file"
+        "$jobs" jobs --state "$state" joe-profile-add "$1" "$2" ;;
+      kronize|schedule)
+        exec "$jobs" jobs --state "$state" schedule "$@" ;;
+      jobs)
+        exec "$jobs" jobs --state "$state" "$@" ;;
+      daemon)
+        if [ "${1:-}" = --once ]; then
+          shift
+          case "$#" in
+            0) clock=$(date -u +%Y-%m-%dT%H:%M:%SZ) ;;
+            2) [ "$1" = --at ] || die 'expected --at UTC'; clock=$2 ;;
+            *) die 'daemon --once takes only optional --at UTC' ;;
+          esac
+          exec "$jobs" jobs --state "$state" dispatch --at "$clock"
+        fi
+        delay=10
+        if [ "$#" -ne 0 ]; then
+          [ "$#" -eq 2 ] && [ "$1" = --poll-seconds ] || die 'expected --poll-seconds SECONDS or --once'
+          delay=$2
+        fi
+        case "$delay" in ''|0*|*[!0-9]*) die '--poll-seconds must be an integer from 1 to 3600' ;; esac
+        [ "${#delay}" -le 4 ] && [ "$delay" -le 3600 ] || die '--poll-seconds must be 1–3600'
+        sleeper=
+        trap 'if [ -n "$sleeper" ]; then kill "$sleeper" 2>/dev/null || :; wait "$sleeper" 2>/dev/null || :; fi; exit 0' INT TERM
+        while :; do
+          "$jobs" jobs --state "$state" dispatch --at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          sleep "$delay" &
+          sleeper=$!
+          wait "$sleeper"
+          sleeper=
+        done ;;
+    esac ;;
+  *) die "unknown command: $mode (see --help)" ;;
+esac

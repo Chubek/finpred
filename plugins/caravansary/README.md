@@ -49,6 +49,8 @@ Other examples: [typed functions](examples/programming/README.md),
 [Joe Litty Rooms profile reference](examples/joe-litty-rooms/README.md), and
 [persistent scheduled Probe replay](examples/jobs/README.md). See the
 [jobs contract](jobs/README.md) for state ownership, clock and crash semantics.
+For this property, `bin/joe-litty-rooms --help` documents one-shot guarded
+pricing, algorithm selection, and scheduled prediction replay.
 `daemon --state DIR --at UTC --once` supervises one due job; it is not a
 long-running background daemon. `schedule` takes the same profile and clock
 arguments as `jobs --state DIR schedule`. Deploy the fixed market and jobs

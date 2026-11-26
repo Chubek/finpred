@@ -144,6 +144,7 @@ void job_market_stage_close(const job_state *state, job_market_stage *stage)
         unlinkat(input, "script.caf", 0);
         unlinkat(input, "grants.json", 0);
         unlinkat(input, "capture.html", 0);
+        unlinkat(input, "prediction.json", 0);
         close(input);
         unlinkat(stage->fd, "input", AT_REMOVEDIR);
     }
@@ -169,6 +170,45 @@ static int prepare_file(int dir, const char *name, const void *data, size_t size
     return rc < 0 ? fail(error) : closed;
 }
 
+static int redirect_reply(int dir)
+{
+    int fd = create_file(dir, "reply");
+    if (fd < 0) return -1;
+    int rc = dup2(fd, STDOUT_FILENO);
+    int error = errno;
+    close(fd);
+    if (rc < 0) return fail(error);
+    struct rlimit limit;
+    if (getrlimit(RLIMIT_FSIZE, &limit) < 0) return -1;
+    if (limit.rlim_cur <= RESULT_MAX) return 0;
+    limit.rlim_cur = RESULT_MAX;
+    return setrlimit(RLIMIT_FSIZE, &limit);
+}
+
+int job_joe_exec(const job_state *state, const char *source)
+{
+    char executable[PATH_MAX];
+    job_source info;
+    unsigned char *bytes = NULL;
+    if (job_sibling_path(JOB_JOE_EXE, executable) < 0 ||
+        job_source_bytes(state, source, &info, &bytes) < 0) return -1;
+    int dir = open(".", NOFOLLOW_DIR);
+    int input = -1;
+    if (dir >= 0 && mkdirat(dir, "input", 0700) == 0)
+        input = openat(dir, "input", NOFOLLOW_DIR);
+    if (input >= 0 && prepare_file(input, "prediction.json", bytes, info.bytes) == 0 &&
+        redirect_reply(dir) == 0) {
+        char *const args[] = {executable, "predict", "input/prediction.json", NULL};
+        char *const env[] = {"LC_ALL=C", "TZ=UTC", NULL};
+        execve(executable, args, env);
+    }
+    int error = errno;
+    free(bytes);
+    if (input >= 0) close(input);
+    if (dir >= 0) close(dir);
+    return fail(error);
+}
+
 int job_market_exec(const job_state *state, const char *manifest)
 {
     char executable[PATH_MAX];
@@ -188,7 +228,7 @@ int job_market_exec(const job_state *state, const char *manifest)
         "\"sha256\":\"%s\",\"source\":\"%s\",\"source_url\":\"%s\"}],"
         "\"kind\":\"caravansary.host-grants@1\"}\n",
         in.fixture, in.observed, in.provider, in.capture_digest, in.source, in.url);
-    int dir = -1, input = -1, reply = -1;
+    int dir = -1, input = -1;
     if (n < 0 || n >= (int)sizeof grants) { errno = EOVERFLOW; goto finished; }
     dir = open(".", NOFOLLOW_DIR);
     if (dir < 0 || mkdirat(dir, "input", 0700) < 0) goto finished;
@@ -197,14 +237,7 @@ int job_market_exec(const job_state *state, const char *manifest)
         prepare_file(input, "script.caf", in.script, in.script_size) < 0 ||
         prepare_file(input, "capture.html", in.capture, in.capture_size) < 0 ||
         prepare_file(input, "grants.json", grants, (size_t)n) < 0) goto finished;
-    reply = create_file(dir, "reply");
-    if (reply < 0 || dup2(reply, STDOUT_FILENO) < 0) goto finished;
-    struct rlimit limit;
-    if (getrlimit(RLIMIT_FSIZE, &limit) < 0) goto finished;
-    if (limit.rlim_cur > RESULT_MAX) {
-        limit.rlim_cur = RESULT_MAX;
-        if (setrlimit(RLIMIT_FSIZE, &limit) < 0) goto finished;
-    }
+    if (redirect_reply(dir) < 0) goto finished;
     /* The Supervisor still owns the exact same foreground child after exec.
      * No arbitrary arguments or executable are selected by the manifest. */
     char *const args[] = {executable, "scrape", "input/script.caf", "--source", in.source,
@@ -217,7 +250,6 @@ finished:
         int error = errno;
         if (dir >= 0) close(dir);
         if (input >= 0) close(input);
-        if (reply >= 0) close(reply);
         errno = error;
     }
     input_close(&in);
@@ -230,16 +262,17 @@ static void result_name(char name[64], uint64_t id, int64_t deadline)
 }
 
 int job_market_commit(const job_state *state, const job_market_stage *stage, uint64_t id,
-                      int64_t deadline)
+                      int64_t deadline, bool joe_prediction)
 {
     char *reply = malloc(RESULT_MAX + 1);
     if (!reply) return -1;
     size_t n;
     int rc = job_read_private(stage->fd, "reply", reply, RESULT_MAX + 1, &n);
+    const char *kind = joe_prediction ? "\"kind\":\"caravansary.joe-litty-rooms.prediction@1\""
+                                     : "\"kind\":\"caravansary.market.scrape@1\"";
     if (!rc && (n < 3 || reply[0] != '{' || reply[n - 2] != '}' || reply[n - 1] != '\n' ||
                 memchr(reply, 0, n) || memchr(reply, '\n', n - 1) ||
-                !memmem(reply, n, "\"kind\":\"caravansary.market.scrape@1\"",
-                        sizeof "\"kind\":\"caravansary.market.scrape@1\"" - 1)))
+                !memmem(reply, n, kind, strlen(kind))))
         rc = fail(EINVAL);
     if (!rc) {
         char name[64];

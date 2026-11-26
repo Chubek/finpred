@@ -425,7 +425,8 @@ static int read_profile(const job_state *state, const char *profile, basis_http_
     *digest_sep = 0;
     if (expected) strcpy(expected, digest_sep + 1);
     char *space = strchr(data + prefix_len, ' ');
-    if (!space || (strcmp(space + 1, JOB_RUNNER) && strcmp(space + 1, JOB_MARKET_RUNNER)))
+    if (!space || (strcmp(space + 1, JOB_RUNNER) && strcmp(space + 1, JOB_MARKET_RUNNER) &&
+                   strcmp(space + 1, JOB_JOE_RUNNER)))
         return fail(EINVAL);
     *space = 0;
     const char *source = data + prefix_len;
@@ -455,7 +456,8 @@ int job_profile_read(const job_state *state, const char *profile, basis_http_pro
 int job_profile_add(const job_state *state, const char *profile, const char *source, const char *runner)
 {
     job_source verified;
-    if (!job_key(profile) || (strcmp(runner, JOB_RUNNER) && strcmp(runner, JOB_MARKET_RUNNER)))
+    if (!job_key(profile) || (strcmp(runner, JOB_RUNNER) && strcmp(runner, JOB_MARKET_RUNNER) &&
+                             strcmp(runner, JOB_JOE_RUNNER)))
         return fail(EINVAL);
     if (job_source_read(state, source, &verified) < 0) return -1;
     char data[sizeof PROFILE_VERSION + 2 * BASIS_HTTP_PROBE_KEY_MAX + 68];

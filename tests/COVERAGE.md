@@ -24,6 +24,9 @@ Kron/Daemon jobs. It checks a committed scheduled scrape against direct
 scrape bytes. See the
 [local qualification](../docs/caravansary/qualification.md) for the pins,
 commands, and unsupported live profiles.
+The [Joe Litty Rooms CLI test](caravansary_joe_litty.py) also verifies distinct
+algorithm outputs, stale and future-evidence abstention, immutable input
+registration, and byte-for-byte scheduled prediction replay.
 
 **Dragnet:** the frozen CSV, Crossref, public-feed and dispatcher tools
 removed at `b84e928` were restored alongside, not in place of, the current

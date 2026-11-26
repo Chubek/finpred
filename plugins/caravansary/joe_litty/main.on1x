@@ -1,0 +1,95 @@
+import std.environ as Env;
+import plugins.caravansary.planning.host as Host;
+import plugins.caravansary.planning.inputs as Inputs;
+import plugins.caravansary.planning.json as Json;
+import plugins.caravansary.planning.civil as Civil;
+import plugins.caravansary.stdlib.price as Price;
+
+fn add(key:string,value:sexpr,fields:sexpr) -> sexpr
+{
+  return sx_cons(Json.pair(key,value),fields);
+}
+
+fn algorithm(policy:sexpr, name:string) -> sexpr
+{
+  if name == "percentile" { return policy; }
+  if name == "median" { return Json.replace(policy,"quantile_bps",Json.integer(5000)); }
+  if name == "lower-quartile" { return Json.replace(policy,"quantile_bps",Json.integer(2500)); }
+  tool_fail("joe-litty-rooms: expected --algorithm median, lower-quartile, or percentile");
+  return sx_nil();
+}
+
+fn prediction(raw:string, selection:string, instant:string) -> sexpr
+{
+  let input = Json.parse_at(raw,"Joe Litty Rooms pricing input: ");
+  Inputs.object_fields(input,"kind algorithm policy comparables","","Joe Litty Rooms pricing input");
+  if Json.text(Json.field(input,"kind")) != "caravansary.joe-litty-rooms.input@1"
+  { tool_fail("joe-litty-rooms: unsupported prediction input kind"); }
+  let declared = Json.text(Json.field(input,"algorithm"));
+  let comparables = Json.field(input,"comparables");
+  if Json.kind(comparables) != "array" { tool_fail("joe-litty-rooms: comparables must be an array"); }
+  let original = Json.field(input,"policy");
+  Inputs.object_fields(original,
+    "kind subject_property_id as_of qualification scope min_properties max_age_seconds quantile_bps current_minor floor_minor ceiling_minor max_move_minor",
+    "","Joe Litty Rooms pricing policy");
+  let scope = Json.field(original,"scope");
+  if Json.text(Json.field(original,"subject_property_id")) != "joe-litty-rooms-reference" ||
+     Json.text(Json.field(scope,"currency")) != "EUR"
+  { tool_fail("joe-litty-rooms: policy must select joe-litty-rooms-reference and EUR"); }
+  # Validate even the operator's saved settings before applying an override.
+  let stored = algorithm(original,declared);
+  ignore(Civil.timestamp(Json.text(Json.field(original,"as_of")),"saved pricing as_of"));
+  var effective = stored;
+  var name = declared;
+  if selection != "" { effective = algorithm(original,selection); name = selection; }
+  if instant != ""
+  { effective = Json.replace(effective,"as_of",sx_string(Civil.utc_text(Civil.timestamp(instant,"--as-of")))); }
+  let report = Price.position(comparables,effective);
+  let reason = Json.get(report,"reason");
+  if sx_kind(reason) == 2 && (sx_text(reason) == "invalid_policy" || sx_text(reason) == "invalid_policy_kind")
+  { tool_fail("joe-litty-rooms: invalid pricing policy (check scope and guardrails)"); }
+  var fields = add("kind",sx_string("caravansary.joe-litty-rooms.prediction@1"),sx_nil());
+  fields = add("algorithm",sx_string(name),fields);
+  fields = add("effective_policy_sha256",sx_string(Json.digest(effective)),fields);
+  fields = add("input_sha256",sx_string(Host.caravansary_sha256(raw)),fields);
+  fields = add("publication_allowed",Json.boolean(false),fields);
+  fields = add("position",report,fields);
+  let body = Json.object(fields);
+  return Json.replace(body,"artifact_digest",sx_string(Json.digest(body)));
+}
+
+fn main() -> i64
+{
+  let args = sx_tail(Env.argv());
+  if sx_kind(args) != 3 || sx_kind(sx_tail(args)) != 3
+  { tool_fail("joe-litty-rooms: expected a mode and prediction input"); }
+  let mode = sx_text(sx_head(args));
+  let path = sx_text(sx_head(sx_tail(args)));
+  if mode != "predict" && mode != "admit" { tool_fail("joe-litty-rooms: invalid prediction mode"); }
+  var rest = sx_tail(sx_tail(args));
+  var choice = "";
+  var clock = "";
+  while sx_kind(rest) == 3
+  {
+    let key = sx_text(sx_head(rest));
+    rest = sx_tail(rest);
+    if sx_kind(rest) != 3 { tool_fail("joe-litty-rooms: missing option value"); }
+    let value = sx_text(sx_head(rest));
+    rest = sx_tail(rest);
+    if (key == "--algorithm" && choice == "" || key == "--as-of" && clock == "") && value != ""
+    {
+      if key == "--algorithm" { choice = value; }
+      else { clock = value; }
+    }
+    else { tool_fail("joe-litty-rooms: unsupported or duplicate prediction option"); }
+  }
+  # Normalize scheduled input to the exact stored bytes: overrides are only
+  # allowed at the direct prediction boundary.
+  if mode == "admit" && (choice != "" || clock != "")
+  { tool_fail("joe-litty-rooms: configure scheduled algorithm and clock in the input file"); }
+  let raw = Host.caravansary_read_regular(path,false,1048576,"Joe Litty Rooms pricing input");
+  let result = prediction(raw,choice,clock);
+  if mode == "predict" { println(Json.render(result)); }
+  else { io_stdout(raw); }
+  return 0;
+}

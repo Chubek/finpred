@@ -12,6 +12,9 @@
 #define JOB_MARKET_RUNNER "market-scrape-v1"
 #define JOB_MARKET_RUNNER_EXE "finpred-caravansary-jobs-runner-market-v1"
 #define JOB_MARKET_EXE "finpred-caravansary-market"
+#define JOB_JOE_RUNNER "joe-litty-rooms-v1"
+#define JOB_JOE_RUNNER_EXE "finpred-caravansary-jobs-runner-joe-v1"
+#define JOB_JOE_EXE "finpred-joe-litty-rooms-v1"
 #define JOB_FIXTURE_MAX (1024u * 1024u)
 #define JOB_LAST_CLOCK INT64_C(253402300799)
 
