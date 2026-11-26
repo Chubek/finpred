@@ -70,7 +70,7 @@ make mulib           # builds the local On1x compiler + GrammarEmbed
 make                 # builds build/dev/finpred
 ./bin/finpred selftest
 make test            # full suite; see INSTALL.md for verification dependencies
-make caravansary-test  # offline competitor matrix and coverage
+make caravansary-test  # build and verify the On1x competitor matrix and coverage CLI
 make dragnet-search-test  # current offline Dragnet search and handoff
 make dragnet-test    # restored frozen CSV, Crossref, public feeds and dispatcher
 make native-test     # isolated C store review target

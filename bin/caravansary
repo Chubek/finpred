@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$ROOT/bin/build-env.sh"
+. "$ROOT/bin/paths.sh"
+out=$(finpred_cli_output_dir "$ROOT")/finpred-caravansary
+
+if [ "${1:-}" = build ]; then
+  if [ "$#" -ne 1 ]; then
+    echo 'caravansary: build takes no arguments' >&2
+    exit 2
+  fi
+  exec sh "$ROOT/plugins/caravansary/build.sh"
+fi
+if [ ! -x "$out" ]; then
+  echo 'caravansary: missing On1x executable; run bin/caravansary build' >&2
+  exit 2
+fi
+exec "$out" "$@"

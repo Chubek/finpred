@@ -9,6 +9,14 @@ The workflow uses independent compiler, pricing, forecasting, plugins, storage,
 and security jobs. `make test` runs those suites locally; a failed suite does
 not suppress independent suite results and prevents an aggregate success.
 
+**Caravansary:** `make caravansary-test` builds the On1x CLI and runs
+[differential replay](caravansary_on1x.py) against the Python reference,
+including matrix keys, report metrics and digests, file grants, and error
+paths. It also regenerates and compares the CaravanScript grammar tables
+and runs focused native checks, including the scheduler, the metrics `checks`
+PPX suite, and synthetic Booking responses. The legacy Python unit tests
+also run; no sandbox request is sent.
+
 **Dragnet:** the frozen CSV, Crossref, public-feed and dispatcher tools
 removed at `b84e928` were restored alongside, not in place of, the current
 Elvi search host. `make dragnet-test` runs their retained coverage.

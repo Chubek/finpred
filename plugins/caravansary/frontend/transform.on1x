@@ -1,0 +1,495 @@
+import std.Int as Int;
+import std.sexpr as S;
+import frontend.schema as Schema;
+import frontend.text as Text;
+import frontend.tokens as Tokens;
+
+# Internal forms are S-expression records of the checked language. Literal
+# nodes retain validated JSON spelling; rendering never interpolates values.
+record Expr { tree: sexpr, next: i64, depth: i64, nodes: i64, error: sexpr }
+
+fn pair(a: sexpr, b: sexpr) -> sexpr
+{
+  return sx_cons(a, sx_cons(b, sx_nil()));
+}
+
+fn triple(a: sexpr, b: sexpr, c: sexpr) -> sexpr
+{
+  return sx_cons(a, pair(b, c));
+}
+
+fn e_error(input: Tokens.Stream, at: i64, reason: string) -> Expr
+{
+  return record<Expr>{tree:sx_nil(), next:at, depth:0, nodes:0, error:sx_string(Tokens.error(input, at, reason))};
+}
+
+fn node(input: Tokens.Stream, tree: sexpr, at: i64, next: i64, depth: i64, nodes: i64) -> Expr
+{
+  if depth > 64 { return e_error(input, at, "transform expression exceeds depth 64"); }
+  if nodes > 4096 { return e_error(input, at, "transform exceeds 4096 expression nodes"); }
+  return record<Expr>{tree:tree, next:next, depth:depth, nodes:nodes, error:sx_nil()};
+}
+
+fn formal(raw: string) -> bool { return raw == "int" || raw == "bool" || raw == "text"; }
+
+fn name_error(input: Tokens.Stream, i: i64, raw: string) -> string
+{
+  if raw == "" || !Text.alpha(text_byte(raw, 0)) { return Tokens.error(input, i, "expected identifier"); }
+  if Schema.member(" fn emit return int bool text true false not and or ", raw)
+  { return Tokens.error(input, i, "reserved transform identifier"); }
+  return "";
+}
+
+fn precedence(raw: string) -> i64
+{
+  if raw == "or" { return 1; }
+  if raw == "and" { return 2; }
+  if raw == "==" || raw == "!=" { return 3; }
+  if raw == "<" || raw == "<=" || raw == ">" || raw == ">=" { return 4; }
+  if raw == "+" || raw == "-" { return 5; }
+  if raw == "*" { return 6; }
+  return 0;
+}
+
+fn maximum(a: i64, b: i64) -> i64
+{
+  if a > b { return a; }
+  return b;
+}
+
+fn operand(input: Tokens.Stream, i: i64, nesting: i64) -> Expr
+{
+  let raw = Tokens.token(input, i);
+  if raw == "" { return e_error(input, i, "expected transform expression"); }
+  if raw == "("
+  {
+    let inner = expression(input, i + 1, 1, nesting + 1);
+    if sx_kind(inner["error"]) != 0 { return inner; }
+    let at = inner["next"];
+    if Tokens.token(input, at) != ")" { return e_error(input, at, "expected )"); }
+    return node(input, inner["tree"], i, at + 1, inner["depth"], inner["nodes"]);
+  }
+  if raw == "-" || raw == "not"
+  {
+    let inner = expression(input, i + 1, 7, nesting + 1);
+    if sx_kind(inner["error"]) != 0 { return inner; }
+    return node(input, triple(sx_symbol("unary"), sx_string(raw), inner["tree"]),
+      i, inner["next"], inner["depth"] + 1, inner["nodes"] + 1);
+  }
+  let c = text_byte(raw, 0);
+  var kind = "";
+  if c == 34
+  {
+    let (decoded, ok) = Text.decode_string(raw);
+    if !ok { return e_error(input, i, "unpaired Unicode surrogate"); }
+    if text_len(decoded) > 4096 { return e_error(input, i, "transform text literal exceeds 4096 bytes"); }
+    kind = "text";
+  }
+  if Text.digit(c)
+  {
+    if text_len(raw) > 1 && c == 48 { return e_error(input, i, "integer cannot have leading zeros"); }
+    if !Text.bounded_nat(raw, 9223372036854775807)
+    { return e_error(input, i, "transform integer literal exceeds signed 64-bit range"); }
+    kind = "int";
+  }
+  if raw == "true" || raw == "false" { kind = "bool"; }
+  if kind != ""
+  {
+    return node(input, triple(sx_symbol("literal"), sx_string(kind), sx_string(raw)), i, i + 1, 1, 1);
+  }
+  let err = name_error(input, i, raw);
+  if err != "" { return record<Expr>{tree:sx_nil(), next:i, depth:0, nodes:0, error:sx_string(err)}; }
+  if Tokens.token(input, i + 1) != "("
+  { return node(input, pair(sx_symbol("name"), sx_string(raw)), i, i + 1, 1, 1); }
+  var at = i + 2;
+  var args = sx_nil();
+  var count = 0;
+  var depth = 0;
+  var nodes = 1;
+  while Tokens.token(input, at) != ")"
+  {
+    if count == 16 { return e_error(input, at, "transform list exceeds 16 items"); }
+    let arg = expression(input, at, 1, nesting + 1);
+    if sx_kind(arg["error"]) != 0 { return arg; }
+    args = sx_cons(arg["tree"], args);
+    count = count + 1;
+    depth = maximum(depth, arg["depth"]);
+    nodes = nodes + arg["nodes"];
+    at = arg["next"];
+    if Tokens.token(input, at) == ")" { break; }
+    if Tokens.token(input, at) != "," { return e_error(input, at, "expected , or )"); }
+    at = at + 1;
+  }
+  return node(input, triple(sx_symbol("call"), sx_string(raw), S.sexpr_reverse(args)),
+    i, at + 1, depth + 1, nodes);
+}
+
+fn expression(input: Tokens.Stream, start: i64, minimum: i64, nesting: i64) -> Expr
+{
+  if nesting > 128 { return e_error(input, start, "transform expression nesting exceeds 128"); }
+  var left = operand(input, start, nesting);
+  if sx_kind(left["error"]) != 0 { return left; }
+  while true
+  {
+    let at = left["next"];
+    let operator = Tokens.token(input, at);
+    let level = precedence(operator);
+    if level < minimum { return left; }
+    let right = expression(input, at + 1, level + 1, nesting + 1);
+    if sx_kind(right["error"]) != 0 { return right; }
+    let ast = sx_cons(sx_symbol("binary"), triple(sx_string(operator), left["tree"], right["tree"]));
+    left = node(input, ast, at, right["next"], maximum(left["depth"], right["depth"]) + 1,
+      left["nodes"] + right["nodes"] + 1);
+    if sx_kind(left["error"]) != 0 { return left; }
+    if (level == 3 || level == 4) && precedence(Tokens.token(input, left["next"])) == level
+    { return e_error(input, left["next"], "comparison chaining requires parentheses"); }
+  }
+  return left;
+}
+
+fn parameters(input: Tokens.Stream, start: i64) -> (sexpr, i64, string)
+{
+  var i = start;
+  var params = sx_nil();
+  var count = 0;
+  while Tokens.token(input, i) != ")"
+  {
+    if count == 16 { return (sx_nil(), i, Tokens.error(input, i, "transform list exceeds 16 items")); }
+    let name = Tokens.token(input, i);
+    let err = name_error(input, i, name);
+    if err != "" { return (sx_nil(), i, err); }
+    if Tokens.token(input, i + 1) != ":" { return (sx_nil(), i, Tokens.error(input, i + 1, "expected :")); }
+    let value = Tokens.token(input, i + 2);
+    if !formal(value) { return (sx_nil(), i + 2, Tokens.error(input, i + 2, "expected int, bool, or text")); }
+    params = Schema.entry(params, name, sx_string(value));
+    count = count + 1;
+    i = i + 3;
+    if Tokens.token(input, i) == ")" { break; }
+    if Tokens.token(input, i) != "," { return (sx_nil(), i, Tokens.error(input, i, "expected , or )")); }
+    i = i + 1;
+  }
+  return (S.sexpr_reverse(params), i + 1, "");
+}
+
+fn declarations(input: Tokens.Stream, start: i64) -> (sexpr, i64, string)
+{
+  var i = start;
+  var functions = sx_nil();
+  var metrics = sx_nil();
+  var fn_count = 0;
+  var metric_count = 0;
+  var nodes = 0;
+  while i < input["count"] && Tokens.token(input, i) != "}"
+  {
+    let keyword = Tokens.token(input, i);
+    let name = Tokens.token(input, i + 1);
+    let err = name_error(input, i + 1, name);
+    if err != "" { return (sx_nil(), i, err); }
+    var expression_at = i + 3;
+    var params = sx_nil();
+    var result = "";
+    if keyword == "fn"
+    {
+      if fn_count == 64 { return (sx_nil(), i, Tokens.error(input, i, "transform exceeds 64 functions")); }
+      fn_count = fn_count + 1;
+      if Tokens.token(input, i + 2) != "(" { return (sx_nil(), i, Tokens.error(input, i + 2, "expected (")); }
+      let (formal_params, after, param_error) = parameters(input, i + 3);
+      if param_error != "" { return (sx_nil(), after, param_error); }
+      params = formal_params;
+      if Tokens.token(input, after) != "->" { return (sx_nil(), after, Tokens.error(input, after, "expected ->")); }
+      result = Tokens.token(input, after + 1);
+      if !formal(result) { return (sx_nil(), after + 1, Tokens.error(input, after + 1, "expected int, bool, or text")); }
+      if Tokens.token(input, after + 2) != "{" { return (sx_nil(), after + 2, Tokens.error(input, after + 2, "expected {")); }
+      if Tokens.token(input, after + 3) != "return" { return (sx_nil(), after + 3, Tokens.error(input, after + 3, "expected return")); }
+      expression_at = after + 4;
+    }
+    else
+    {
+      if keyword != "emit" { return (sx_nil(), i, Tokens.error(input, i, "expected fn or emit in transform")); }
+      if metric_count == 64 { return (sx_nil(), i, Tokens.error(input, i, "transform exceeds 64 metrics")); }
+      metric_count = metric_count + 1;
+      if Tokens.token(input, i + 2) != "=" { return (sx_nil(), i, Tokens.error(input, i + 2, "expected =")); }
+    }
+    let expr = expression(input, expression_at, 1, 1);
+    if sx_kind(expr["error"]) != 0 { return (sx_nil(), expr["next"], sx_text(expr["error"])); }
+    nodes = nodes + expr["nodes"];
+    if nodes > 4096
+    { return (sx_nil(), expression_at, Tokens.error(input, expression_at, "transform exceeds 4096 expression nodes")); }
+    i = expr["next"];
+    if Tokens.token(input, i) != ";" { return (sx_nil(), i, Tokens.error(input, i, "expected ;")); }
+    i = i + 1;
+    if keyword == "fn"
+    {
+      if Tokens.token(input, i) != "}" { return (sx_nil(), i, Tokens.error(input, i, "expected }")); }
+      i = i + 1;
+      functions = Schema.entry(functions, name, triple(params, sx_string(result), expr["tree"]));
+    }
+    else { metrics = Schema.entry(metrics, name, expr["tree"]); }
+  }
+  if metric_count == 0
+  { return (sx_nil(), i, Tokens.error(input, i, "transform requires at least one emit")); }
+  return (pair(S.sexpr_reverse(functions), S.sexpr_reverse(metrics)), i + 1, "");
+}
+
+fn builtin(name: string) -> i64
+{
+  if name == "total_cells" { return 0; }
+  if name == "status_count" || name == "freshness_count" || name == "source_count" { return 1; }
+  if name == "source_status_count" { return 2; }
+  return - 1;
+}
+
+fn type_expression(ast: sexpr, scope: sexpr, functions: sexpr, calls: buffer) -> (string, string)
+{
+  let tag = sx_text(sx_head(ast));
+  let atom = sx_text(S.sexpr_nth(ast, 1));
+  if tag == "literal" { return (atom, ""); }
+  if tag == "name"
+  {
+    let value = Schema.get(scope, atom);
+    if sx_kind(value) == 0 { return ("", text_concat("unbound parameter ", atom)); }
+    return (sx_text(value), "");
+  }
+  let first = S.sexpr_nth(ast, 2);
+  if tag == "call"
+  {
+    let arity = builtin(atom);
+    var count = arity;
+    var params = sx_nil();
+    var result = "int";
+    if arity < 0
+    {
+      let function = Schema.get(functions, atom);
+      if sx_kind(function) == 0 { return ("", text_concat("unknown function ", atom)); }
+      params = sx_head(function);
+      count = S.sexpr_size(params);
+      result = sx_text(S.sexpr_nth(function, 1));
+      if buffer_len(calls) > 0 { buffer_append(calls, " "); }
+      buffer_append(calls, atom);
+    }
+    let given = S.sexpr_size(first);
+    if count != given
+    {
+      return ("", text_concat(atom, text_concat(" expects ", text_concat(Int.to_string(count),
+        text_concat(" arguments, got ", Int.to_string(given))))));
+    }
+    var args = first;
+    for i in 1 .. given + 1
+    {
+      let (actual, err) = type_expression(sx_head(args), scope, functions, calls);
+      if err != "" { return ("", err); }
+      var expected = "text";
+      if arity < 0
+      {
+        expected = sx_text(Schema.payload(sx_head(params)));
+        params = sx_tail(params);
+      }
+      if actual != expected
+      {
+        let out = buffer_new();
+        buffer_append(out, "argument "); buffer_append(out, Int.to_string(i));
+        buffer_append(out, " of "); buffer_append(out, atom); buffer_append(out, " expects ");
+        buffer_append(out, expected); buffer_append(out, ", got "); buffer_append(out, actual);
+        return ("", buffer_text(out));
+      }
+      args = sx_tail(args);
+    }
+    return (result, "");
+  }
+  let (left, left_err) = type_expression(first, scope, functions, calls);
+  if left_err != "" { return ("", left_err); }
+  if tag == "unary"
+  {
+    var expected = "int";
+    if atom == "not" { expected = "bool"; }
+    if left != expected
+    { return ("", text_concat(atom, text_concat(" requires operand type ", expected))); }
+    return (expected, "");
+  }
+  let (right, right_err) = type_expression(S.sexpr_nth(ast, 3), scope, functions, calls);
+  if right_err != "" { return ("", right_err); }
+  if atom == "==" || atom == "!="
+  {
+    if left != right { return ("", text_concat(atom, " requires operands of the same type")); }
+    return ("bool", "");
+  }
+  var result = "bool";
+  var expected = "int";
+  if atom == "or" || atom == "and" { expected = "bool"; }
+  if atom == "+" || atom == "-" || atom == "*" { result = "int"; }
+  if left != expected || right != expected
+  { return ("", text_concat(atom, text_concat(" requires ", text_concat(expected, " operands")))); }
+  return (result, "");
+}
+
+fn visit(name: string, graph: sexpr, visiting: sexpr, done: sexpr) -> (sexpr, string)
+{
+  if Text.contains(done, name) { return (done, ""); }
+  if Text.contains(visiting, name) { return (done, text_concat("recursive transform function ", name)); }
+  let path = sx_cons(sx_string(name), visiting);
+  var complete = done;
+  var rest = Schema.get(graph, name);
+  while sx_kind(rest) == 3
+  {
+    let called = sx_text(sx_head(rest));
+    let (next, err) = visit(called, graph, path, complete);
+    if err != "" { return (next, err); }
+    complete = next;
+    rest = sx_tail(rest);
+  }
+  return (sx_cons(sx_string(name), complete), "");
+}
+
+fn check(program: sexpr) -> string
+{
+  let functions = sx_head(program);
+  let metrics = S.sexpr_nth(program, 1);
+  var rest = functions;
+  var seen = sx_nil();
+  while sx_kind(rest) == 3
+  {
+    let item = sx_head(rest);
+    let name = sx_text(sx_head(item));
+    if builtin(name) >= 0 { return text_concat("transform function ", text_concat(name, " shadows a builtin")); }
+    if Text.contains(seen, name) { return text_concat("duplicate transform function ", name); }
+    seen = sx_cons(sx_head(item), seen);
+    var params = sx_head(Schema.payload(item));
+    var formal_names = sx_nil();
+    while sx_kind(params) == 3
+    {
+      let param = sx_head(sx_head(params));
+      let parameter = sx_text(param);
+      if Text.contains(formal_names, parameter)
+      { return text_concat("duplicate parameter ", text_concat(parameter, text_concat(" in transform function ", name))); }
+      formal_names = sx_cons(param, formal_names);
+      params = sx_tail(params);
+    }
+    rest = sx_tail(rest);
+  }
+  var graph = sx_nil();
+  rest = functions;
+  while sx_kind(rest) == 3
+  {
+    let item = sx_head(rest);
+    let name = sx_text(sx_head(item));
+    let declaration = Schema.payload(item);
+    let calls = buffer_new();
+    let context = text_concat("transform function ", text_concat(name, ": "));
+    let (actual, err) = type_expression(S.sexpr_nth(declaration, 2), sx_head(declaration), functions, calls);
+    if err != "" { return text_concat(context, err); }
+    let expected = sx_text(S.sexpr_nth(declaration, 1));
+    if actual != expected
+    { return text_concat(context, text_concat("return type must be ", text_concat(expected, text_concat(", got ", actual)))); }
+    var refs = sx_nil();
+    if buffer_len(calls) > 0 { refs = Text.split(buffer_text(calls), 32); }
+    graph = Schema.entry(graph, name, refs);
+    rest = sx_tail(rest);
+  }
+  rest = functions;
+  var complete = sx_nil();
+  while sx_kind(rest) == 3
+  {
+    let (next, err) = visit(sx_text(sx_head(sx_head(rest))), graph, sx_nil(), complete);
+    if err != "" { return err; }
+    complete = next;
+    rest = sx_tail(rest);
+  }
+  rest = metrics;
+  seen = sx_nil();
+  while sx_kind(rest) == 3
+  {
+    let item = sx_head(rest);
+    let name = sx_text(sx_head(item));
+    if Text.contains(seen, name) { return text_concat("duplicate transform metric ", name); }
+    seen = sx_cons(sx_head(item), seen);
+    let (_, err) = type_expression(Schema.payload(item), sx_nil(), functions, buffer_new());
+    if err != "" { return text_concat("transform metric ", text_concat(name, text_concat(": ", err))); }
+    rest = sx_tail(rest);
+  }
+  return "";
+}
+
+fn render_expression(out: buffer, ast: sexpr)
+{
+  let tag = sx_text(sx_head(ast));
+  buffer_append(out, "[");
+  Text.quoted_ascii(out, tag);
+  buffer_append(out, ",");
+  let atom = sx_text(S.sexpr_nth(ast, 1));
+  if tag == "literal" { buffer_append(out, sx_text(S.sexpr_nth(ast, 2))); }
+  else
+  {
+    Text.quoted_ascii(out, atom);
+    if tag != "name"
+    {
+      buffer_append(out, ",");
+      let child = S.sexpr_nth(ast, 2);
+      if tag == "call"
+      {
+        buffer_append(out, "[");
+        var args = child;
+        while sx_kind(args) == 3
+        {
+          render_expression(out, sx_head(args));
+          args = sx_tail(args);
+          if sx_kind(args) == 3 { buffer_append(out, ","); }
+        }
+        buffer_append(out, "]");
+      }
+      else { render_expression(out, child); }
+      if tag == "binary"
+      {
+        buffer_append(out, ",");
+        render_expression(out, S.sexpr_nth(ast, 3));
+      }
+    }
+  }
+  buffer_append(out, "]");
+}
+
+fn render(out: buffer, program: sexpr)
+{
+  buffer_append(out, "{\"functions\":[");
+  var functions = sx_head(program);
+  while sx_kind(functions) == 3
+  {
+    let item = sx_head(functions);
+    let fn_decl = Schema.payload(item);
+    buffer_append(out, "{\"name\":");
+    Text.quoted_ascii(out, sx_text(sx_head(item)));
+    buffer_append(out, ",\"parameters\":[");
+    var params = sx_head(fn_decl);
+    while sx_kind(params) == 3
+    {
+      let param = sx_head(params);
+      buffer_append(out, "[");
+      Text.quoted_ascii(out, sx_text(sx_head(param)));
+      buffer_append(out, ",");
+      Text.quoted_ascii(out, sx_text(Schema.payload(param)));
+      buffer_append(out, "]");
+      params = sx_tail(params);
+      if sx_kind(params) == 3 { buffer_append(out, ","); }
+    }
+    buffer_append(out, "],\"return_type\":");
+    Text.quoted_ascii(out, sx_text(S.sexpr_nth(fn_decl, 1)));
+    buffer_append(out, ",\"expression\":");
+    render_expression(out, S.sexpr_nth(fn_decl, 2));
+    buffer_append(out, "}");
+    functions = sx_tail(functions);
+    if sx_kind(functions) == 3 { buffer_append(out, ","); }
+  }
+  buffer_append(out, "],\"metrics\":[");
+  var metrics = S.sexpr_nth(program, 1);
+  while sx_kind(metrics) == 3
+  {
+    let item = sx_head(metrics);
+    buffer_append(out, "{\"name\":");
+    Text.quoted_ascii(out, sx_text(sx_head(item)));
+    buffer_append(out, ",\"expression\":");
+    render_expression(out, Schema.payload(item));
+    buffer_append(out, "}");
+    metrics = sx_tail(metrics);
+    if sx_kind(metrics) == 3 { buffer_append(out, ","); }
+  }
+  buffer_append(out, "]}");
+}

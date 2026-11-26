@@ -1,0 +1,100 @@
+.language "CaravanScript"
+.skip /[ \t\r\n\f\v]+/
+.skip /#[^\r\n]*/
+.token IDENT: String = /[A-Za-z][A-Za-z0-9_]*/
+.token INTEGER: String = /[0-9]+/
+.token STRING: String = /"([^"\\\x00-\x1f]|\\(["\\\/bfnrt]|u[0-9A-Fa-f]{4}))*"/
+
+.rule Script
+'syntax: TopItems EOF
+.end
+.rule TopItems
+'syntax: TopItems TopItem |
+.end
+.rule TopItem
+'syntax: Field | Block | "transform" "{" Declarations "}"
+.end
+.rule Block
+'syntax: FieldName "{" Fields "}" | "credentials" "{" SourceBlocks "}"
+.end
+.rule SourceBlocks
+'syntax: SourceBlocks FieldName "{" Fields "}" |
+.end
+.rule Fields
+'syntax: Fields Field |
+.end
+.rule Field
+'syntax: FieldName "=" Value ";"
+.end
+# Context-specific schema (including duplicates and required keys) is checked
+# by the frontend. These keywords are lexically distinct even in that context.
+.rule FieldName
+'syntax: IDENT | "fn" | "emit" | "return" | "int" | "bool" | "text" | "true" | "false" | "not" | "and" | "or"
+.end
+.rule Value
+'syntax: Scalar | "[" Array "]"
+.end
+.rule Array
+'syntax: ArrayItems |
+.end
+.rule ArrayItems
+'syntax: ArrayItems "," Scalar | Scalar
+.end
+.rule Scalar
+'syntax: INTEGER | STRING
+.end
+
+.rule Declarations
+'syntax: Declarations Declaration |
+.end
+.rule Declaration
+'syntax: "fn" TransformName "(" Parameters ")" "->" TransformName "{" "return" Expression ";" "}" | "emit" TransformName "=" Expression ";"
+.end
+.rule TransformName
+'syntax: FieldName | "credentials" | "transform"
+.end
+.rule CallableName
+'syntax: IDENT | "credentials" | "transform"
+.end
+.rule Parameters
+'syntax: ParameterItems |
+.end
+.rule ParameterItems
+'syntax: ParameterItems "," Parameter | Parameter
+.end
+.rule Parameter
+'syntax: TransformName ":" TransformName
+.end
+.rule Arguments
+'syntax: ArgumentItems |
+.end
+.rule ArgumentItems
+'syntax: ArgumentItems "," Expression | Expression
+.end
+.rule Expression
+'syntax: Disjunction
+.end
+.rule Disjunction
+'syntax: Disjunction "or" Conjunction | Conjunction
+.end
+.rule Conjunction
+'syntax: Conjunction "and" Equality | Equality
+.end
+.rule Equality
+'syntax: Order "==" Order | Order "!=" Order | Order
+.end
+.rule Order
+'syntax: Addition "<" Addition | Addition "<=" Addition | Addition ">" Addition | Addition ">=" Addition | Addition
+.end
+.rule Addition
+'syntax: Addition "+" Product | Addition "-" Product | Product
+.end
+.rule Product
+'syntax: Product "*" Unary | Unary
+.end
+.rule Unary
+'syntax: "-" Unary | "not" Unary | Primary
+.end
+.rule Primary
+'syntax: "(" Expression ")" | CallableName "(" Arguments ")" | CallableName | STRING | INTEGER | "true" | "false"
+.end

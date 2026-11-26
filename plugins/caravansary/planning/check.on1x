@@ -1,0 +1,85 @@
+from std.environ.environ import on1x_environ_arg as arg, basis_argc as argc;
+from . import json as Json, civil as Civil, plan as Plan, inputs as Inputs, paths as Paths;
+
+fn fixture() -> string {
+  # Frontend-equivalent input lets this test exercise the planning boundary
+  # independently. The digests are pinned legacy Python acquisition IDs.
+  return r!"""{
+    "name":"Riviera Hotel", "competitors":"riviera-comparables.json",
+    "sources":["booking","agoda"],
+    "property":{"currency":"EUR","latitude":"43.000000","longitude":"7.000000",
+                "room_types":["standard","suite"],"timezone":"Europe/Paris","type":"hotel"},
+    "search":{"booker_country":"FR","guest_configurations":["one_adult","two_adults"],
+              "horizon_days":365,"locale":"fr-FR","start":"today","stay_lengths":[1,2,3]},
+    "refresh":{"weights":"riviera-weights.json"}
+  }""";
+}
+
+fn selected_check(mode: string) {
+  if mode == "json" {
+    println(Json.render(Json.parse(arg(2))));
+    return;
+  }
+  if mode == "competitors" {
+    let (guests, properties) = Inputs.competitors(Json.parse(arg(2)), "");
+    println(Json.render(guests));
+    println(Json.render(Json.array(properties)));
+    return;
+  }
+  if mode == "path" {
+    var grants = sx_nil();
+    if argc() > 4 { grants = sx_cons(sx_string(arg(4)), grants); }
+    let (parent, roots) = Paths.roots(arg(2), grants);
+    let (doc, _origin) = Paths.input_json(parent, arg(3), roots);
+    println(Json.render(doc));
+    return;
+  }
+  if mode == "emit" {
+    let plan = Plan.load(fixture(), "docs/caravansary/examples/riviera.crs", sx_nil(),
+                         "2026-11-26", Civil.clock("2026-11-27T00:30:00Z"));
+    for index in 0 .. Plan.row_count(plan) { println(Plan.row_at(plan, index)); }
+    return;
+  }
+  tool_fail("unknown planning test case");
+}
+
+fn main() -> i64 {
+  if argc() > 1 { selected_check(arg(1)); return 0; }
+  let input = r!""" {"b":1e0,"a":["€","\ud83d\ude00",true,null,-0,-0.0],"z":1.2345} """;
+  let expected = r!"""{"a":["\u20ac","\ud83d\ude00",true,null,0,-0.0],"b":1.0,"z":1.2345}""";
+  assert(Json.render(Json.parse(input)) == expected);
+  # Near this power of two the nearest short decimal rounds to the wrong
+  # value; the adjacent short decimal must be tried to match Python bytes.
+  assert(Json.render(Json.parse("7.120236347223045e-307")) == "7.120236347223045e-307");
+  assert(Json.digest(Json.parse("null")) == "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b");
+  assert(Json.int64(Json.parse("-9223372036854775808"), "test") == -9223372036854775808);
+  assert(Civil.date("1900-02-29") == 0);
+  assert(Civil.date("2000-02-29") > 0);
+  assert(Civil.date_text(1) == "0001-01-01");
+  assert(Civil.date_text(Civil.max_day()) == "9999-12-31");
+  assert(Civil.clock("1969-12-31T23:59:59.999999Z") == -1);
+  assert(Civil.utc_text(-1) == "1969-12-31T23:59:59.999999Z");
+  assert(Civil.utc_text(Civil.clock("2040-02-29T12:23:56.5+00:00")) == "2040-02-29T12:23:56.500000Z");
+  assert(Civil.local_date("Europe/Paris", Civil.clock("2026-11-26T23:30:00Z")) == "2026-11-27");
+  let family = Json.parse(r!"""{"id":"famille","rooms":2,"adults":100000000000000000001,
+    "child_ages":[1,17,1],"allocation":[{"adults":100000000000000000000,"child_ages":[17,1]},
+                                       {"adults":1,"child_ages":[1]}]}""");
+  assert(Json.render(Inputs.guest(family, "sample")) == Json.render(family));
+  Inputs.provider_url(sx_string("HTTPS://[2001:db8::1]:443/é"), "sample");
+  Inputs.coordinate(sx_string("+000090.0000000000000000000000"), 90, "sample");
+  let config = fixture();
+  let path = "docs/caravansary/examples/riviera.crs";
+  let plan = Plan.load(config, path, sx_nil(), "2026-11-26", Civil.clock("2026-11-27T00:30:00Z"));
+  assert(Plan.row_count(plan) == 8760);
+  assert(Plan.config_id(plan) == "78af9a0abf954beb1ff7dfd9b5864b9ceddbfc3dc373eb262a451a06534eb472");
+  let first = Plan.row_value(plan, 0);
+  let last = Plan.row_value(plan, Plan.row_count(plan) - 1);
+  assert(Json.text(Json.field(first, "cell_key")) == "fe49003f4a74bc828c447d079755398d91a745429cb4755d2249fc122116d531");
+  assert(Json.text(Json.field(first, "reason")) == "mapping_missing");
+  assert(Json.text(Json.field(last, "source")) == "agoda");
+  assert(Json.text(Json.field(last, "checkin")) == "2027-11-25");
+  assert(Json.text(Json.field(last, "checkout")) == "2027-11-28");
+  let rolled = Plan.load(config, path, sx_nil(), "", Civil.clock("2026-11-26T23:30:00Z"));
+  assert(Plan.row_at(plan, 6) == Plan.row_at(rolled, 0));
+  return 0;
+}

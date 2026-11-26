@@ -1,0 +1,320 @@
+# Validation of decoded, adapter-supplied evidence. This code neither acquires
+# evidence nor confers authority, permission, or a retention policy on it.
+import plugins.caravansary.coverage.clock as Clock;
+import plugins.caravansary.coverage.values as J;
+import std.String as Str;
+
+record Order { received: i64, ingested: i64, observed: i64, id: sexpr }
+macro fail { rule ($message:Expression) => expression { result_error(sx_string($message)) }; }
+
+fn member(name: string, options: string) -> bool
+{
+  if name == "" || Str.contains(name, "|") { return false; }
+  return Str.contains(options, "|$name|");
+}
+
+# Required and optional names are internal | delimited constant sets.
+fn fields(value: sexpr, required: string, optional: string, field: string) -> Result<bool, sexpr>
+{
+  if !J.is_object(value) { return fail!("$field must be an object"); }
+  var missing = "";
+  var start = 1;
+  for end in 1 .. text_len(required)
+  {
+    if text_byte(required, end) == 124
+    {
+      let name = text_slice(required, start, end);
+      if !J.has(value, name)
+      {
+        if missing == "" { missing = name; }
+        else { missing = "$missing, $name"; }
+      }
+      start = end + 1;
+    }
+  }
+  if missing != "" { return fail!("$field is missing $missing"); }
+  var rest = sx_tail(value);
+  while !J.absent(rest)
+  {
+    let name = J.plain(sx_head(sx_head(rest)));
+    if !member(name, required) && !member(name, optional)
+    { return fail!("$field contains an unknown field"); }
+    rest = sx_tail(rest);
+  }
+  return result_ok(true);
+}
+
+fn nonempty(value: sexpr, field: string) -> Result<bool, sexpr>
+{
+  if !J.text(value) { return fail!("$field must be a nonempty string"); }
+  return result_ok(true);
+}
+
+fn reason(value: sexpr, field: string) -> Result<bool, sexpr>
+{
+  let s = J.plain(value);
+  let size = text_len(s);
+  if size >= 1 && size <= 48
+  {
+    var valid = true;
+    for i in 0 .. size
+    {
+      let c = text_byte(s, i);
+      if !(c >= 97 && c <= 122) && !(i > 0 && (Clock.digit(c) || c == 95))
+      { valid = false; }
+    }
+    if valid { return result_ok(true); }
+  }
+  return fail!("$field must be a lowercase ASCII reason code (1–48 characters)");
+}
+
+fn null_reason(value: sexpr, field: string) -> Result<bool, sexpr>
+{
+  let reason_name = "${field}_reason";
+  if J.is_null(J.get(value, field)) { return reason(J.get(value, reason_name), reason_name); }
+  if J.has(value, reason_name) { return fail!("$reason_name requires explicit null $field"); }
+  return result_ok(true);
+}
+
+fn decimal(s: string) -> bool
+{
+  let n = text_len(s);
+  if n == 0 { return false; }
+  var separator = false;
+  for i in 0 .. n
+  {
+    let c = text_byte(s, i);
+    if !Clock.digit(c)
+    {
+      if c != 46 || i == 0 || i == n - 1 || separator { return false; }
+      separator = true;
+    }
+  }
+  return true;
+}
+
+fn amount(v: sexpr, required: bool) -> Result<bool, sexpr>
+{
+  let minor = J.get(v, "amount_minor");
+  let exact = J.get(v, "amount_decimal");
+  if J.absent(minor) && J.absent(exact) && !required { return result_ok(true); }
+  if J.absent(minor) == J.absent(exact)
+  { return fail!("expected exactly one amount_minor or amount_decimal"); }
+  if !J.absent(minor)
+  {
+    if !J.is_integer(minor)
+    { return fail!("amount_minor must be a nonnegative integer"); }
+    if text_byte(sx_text(minor), 0) == 45
+    { return fail!("amount_minor must be a nonnegative integer"); }
+  }
+  else
+  {
+    if !decimal(J.plain(exact))
+    { return fail!("amount_decimal must be a nonnegative exact decimal string"); }
+  }
+  return result_ok(true);
+}
+
+fn inclusion(value: sexpr) -> bool
+{
+  return member(J.plain(value), "|excluded|included|mixed|unknown|");
+}
+
+fn taxes(v: sexpr) -> Result<bool, sexpr>
+{
+  fields(v, "|components|inclusion|", "|", "taxes_fees")?;
+  if !inclusion(J.get(v, "inclusion")) { return fail!("invalid taxes_fees inclusion state"); }
+  let components = J.get(v, "components");
+  if !J.is_array(components) { return fail!("taxes_fees.components must be an array"); }
+  var rest = sx_tail(components);
+  while !J.absent(rest)
+  {
+    let c = sx_head(rest);
+    fields(c, "|inclusion|name|", "|amount_minor|amount_decimal|", "tax/fee component")?;
+    nonempty(J.get(c, "name"), "tax/fee component name")?;
+    if !inclusion(J.get(c, "inclusion")) { return fail!("invalid tax/fee component inclusion state"); }
+    amount(c, false)?;
+    rest = sx_tail(rest);
+  }
+  return result_ok(true);
+}
+
+fn nightly(v: sexpr, context: sexpr) -> Result<bool, sexpr>
+{
+  if !J.is_array(v) { return fail!("nightly_itemized must be an array"); }
+  var rest = sx_tail(v);
+  if J.absent(rest) { return fail!("nightly_itemized must contain reported nights"); }
+  let checkin = Clock.civil_day(J.plain(J.get(context, "checkin")));
+  let checkout = Clock.civil_day(J.plain(J.get(context, "checkout")));
+  var previous = 0;
+  var count = 0;
+  while !J.absent(rest)
+  {
+    let item = sx_head(rest);
+    fields(item, "|date|", "|amount_minor|amount_decimal|", "nightly item")?;
+    amount(item, true)?;
+    let d = Clock.civil_day(J.plain(J.get(item, "date")));
+    if d == 0 { return fail!("nightly item date must be YYYY-MM-DD"); }
+    if d < checkin || d >= checkout || d <= previous
+    { return fail!("nightly item dates must be unique, ordered and within the stay"); }
+    previous = d;
+    count = count + 1;
+    rest = sx_tail(rest);
+  }
+  return result_ok(count == checkout - checkin);
+}
+
+fn description(v: sexpr, field: string) -> Result<bool, sexpr>
+{
+  null_reason(v, field)?;
+  let value = J.get(v, field);
+  if J.is_null(value) { return result_ok(true); }
+  return nonempty(value, field);
+}
+
+fn optional_text(v: sexpr, field: string) -> Result<bool, sexpr>
+{
+  if J.has(v, field) { return nonempty(J.get(v, field), field); }
+  return result_ok(true);
+}
+
+fn offer(v: sexpr, context: sexpr) -> Result<bool, sexpr>
+{
+  fields(v, "|allocation|availability|cancellation|currency|meal|price_basis|rate_plan|room_name|taxes_fees|",
+    "|amount_minor|amount_decimal|cancellation_reason|meal_reason|rate_plan_reason|room_name_reason|provider_offer_id|provider_room_id|source_text|raw_value|raw_locale|nightly_itemized|derived_average|",
+    "offer")?;
+  description(v, "cancellation")?;
+  description(v, "meal")?;
+  description(v, "rate_plan")?;
+  description(v, "room_name")?;
+  optional_text(v, "provider_offer_id")?;
+  optional_text(v, "provider_room_id")?;
+  optional_text(v, "raw_locale")?;
+  optional_text(v, "raw_value")?;
+  optional_text(v, "source_text")?;
+  if J.has(v, "raw_value") != J.has(v, "raw_locale")
+  { return fail!("raw_value and raw_locale must be supplied together"); }
+  if !J.same(J.get(v, "allocation"), J.get(J.get(context, "guest_configuration"), "allocation"))
+  { return fail!("offer allocation does not match the cell"); }
+  if !J.same(J.get(v, "currency"), J.get(context, "currency"))
+  { return fail!("offer currency does not match the cell"); }
+  let availability = J.plain(J.get(v, "availability"));
+  if !member(availability, "|available|unavailable|unknown|")
+  { return fail!("invalid offer availability"); }
+  let basis = J.plain(J.get(v, "price_basis"));
+  if !member(basis, "|stay_total|nightly_average|nightly_itemized|unknown|")
+  { return fail!("invalid price_basis"); }
+  amount(v, basis != "nightly_itemized")?;
+  taxes(J.get(v, "taxes_fees"))?;
+  var known = basis != "unknown";
+  if basis == "nightly_itemized" { known = nightly(J.get(v, "nightly_itemized"), context)?; }
+  else
+  {
+    if J.has(v, "nightly_itemized")
+    { return fail!("nightly_itemized entries require nightly_itemized price_basis"); }
+  }
+  let derived = J.get(v, "derived_average");
+  if !J.absent(derived)
+  {
+    if basis != "nightly_average"
+    { return fail!("derived_average requires nightly_average price_basis"); }
+    fields(derived, "|formula|original_total|rounding|", "|", "derived_average")?;
+    nonempty(J.get(derived, "formula"), "formula")?;
+    nonempty(J.get(derived, "rounding"), "rounding")?;
+    let total = J.get(derived, "original_total");
+    fields(total, "|", "|amount_minor|amount_decimal|", "original_total")?;
+    amount(total, true)?;
+  }
+  return result_ok(availability == "available" && known);
+}
+
+fn key(record_value: sexpr) -> Result<sexpr, sexpr>
+{
+  fields(record_value,
+    "|adapter_version|cell_key|complete|extractor_version|ingested_at|kind|observation_id|offers|outcome|provider_property_id|received_at|request_context|",
+    "|provider_property_id_reason|observed_at|observed_at_reason|authoritative|reason|source_url|capture_digest|capture_reference|",
+    "observation")?;
+  if J.plain(J.get(record_value, "kind")) != "caravansary.observation@1"
+  { return fail!("expected caravansary.observation@1 kind"); }
+  let cell = J.get(record_value, "cell_key");
+  nonempty(cell, "cell_key")?;
+  return result_ok(cell);
+}
+
+fn validate(v: sexpr, row: sexpr) -> Result<Order, sexpr>
+{
+  if J.absent(row) { return fail!("observation cell_key is not in the report matrix"); }
+  if J.plain(J.get(row, "status")) == "unsupported"
+  { return fail!("observations cannot target an unsupported cell"); }
+  if !J.same(J.get(v, "provider_property_id"), J.get(row, "provider_property_id"))
+  { return fail!("provider_property_id does not match the cell"); }
+  let context = J.get(row, "request_context");
+  if !J.same(J.get(v, "request_context"), context)
+  { return fail!("request_context does not match the exact cell"); }
+  let id = J.get(v, "observation_id");
+  nonempty(id, "observation_id")?;
+  nonempty(J.get(v, "adapter_version"), "adapter_version")?;
+  nonempty(J.get(v, "extractor_version"), "extractor_version")?;
+  optional_text(v, "source_url")?;
+  optional_text(v, "capture_digest")?;
+  optional_text(v, "capture_reference")?;
+  null_reason(v, "provider_property_id")?;
+  null_reason(v, "observed_at")?;
+  let received = Clock.parse(J.plain(J.get(v, "received_at")), "received_at")?;
+  let ingested = Clock.parse(J.plain(J.get(v, "ingested_at")), "ingested_at")?;
+  let observed_value = J.or_null(J.get(v, "observed_at"));
+  var observed = 0;
+  if !J.is_null(observed_value) { observed = Clock.parse(J.plain(observed_value), "observed_at")?; }
+  if received > ingested || observed > received
+  { return fail!("expected observed_at <= received_at <= ingested_at"); }
+  let complete = J.get(v, "complete");
+  let authority = J.get(v, "authoritative");
+  if !J.is_bool(complete) || (!J.absent(authority) && !J.is_bool(authority))
+  { return fail!("complete and authoritative must be booleans"); }
+  let items = J.get(v, "offers");
+  if !J.is_array(items) { return fail!("offers must be an array"); }
+  var rest = sx_tail(items);
+  var n = 0;
+  var qualified = false;
+  while !J.absent(rest)
+  {
+    n = n + 1;
+    let current = offer(sx_head(rest), context);
+    match current with
+    {
+      Ok(q) => { qualified = qualified || q; },
+      Err(message) => { return fail!(format("offer {}: {}", n, sx_text(message))); }
+    };
+    rest = sx_tail(rest);
+  }
+  let outcome = J.plain(J.get(v, "outcome"));
+  if outcome == "priced"
+  {
+    if !qualified { return fail!("priced requires at least one qualifying offer"); }
+  }
+  else
+  {
+    if outcome == "unavailable"
+    {
+      if !J.truth(complete) || !J.truth(authority) || !J.absent(sx_tail(items))
+      { return fail!("unavailable requires complete authority and no offers"); }
+    }
+    else
+    {
+      if outcome != "failed" { return fail!("outcome must be priced, unavailable or failed"); }
+      if J.truth(complete) { return fail!("failed observations cannot be complete"); }
+      reason(J.get(v, "reason"), "reason")?;
+    }
+  }
+  if outcome != "failed" && !J.is_null(J.or_null(J.get(v, "reason")))
+  { return fail!("reason is reserved for failed observations"); }
+  return result_ok(record<Order>{received: received, ingested: ingested, observed: observed, id: id});
+}
+
+fn canonical(v: sexpr, time: Order) -> sexpr
+{
+  let a = J.set(v, "received_at", J.ascii(Clock.utc_text(time["received"])));
+  let b = J.set(a, "ingested_at", J.ascii(Clock.utc_text(time["ingested"])));
+  if time["observed"] == 0 { return b; }
+  return J.set(b, "observed_at", J.ascii(Clock.utc_text(time["observed"])));
+}

@@ -1,0 +1,121 @@
+import plugins.caravansary.metrics.transform as M;
+import plugins.caravansary.metrics.counters as Counts;
+import plugins.caravansary.metrics.json_wire as J;
+import std.environ as Env;
+import std.Int as Int;
+import std.sexpr as S;
+import std.String as Str;
+
+fn compile(ast:string) -> M.Program
+{
+  let (error,program) = M.compile_transform(ast);
+  if error != "" { tool_fail(error); }
+  return program;
+}
+
+fn evaluate(ast:string, report:string, expected:string)
+{
+  let (error,metrics) = M.evaluate(compile(ast),report);
+  if error != "" { tool_fail(error); }
+  @checks("assert_eq",metrics,expected);
+}
+
+fn invalid(ast:string, expected:string)
+{
+  let (error,_) = M.compile_transform(ast);
+  if !Str.contains(error,expected) { tool_fail(text_concat("unexpected checker result: ",error)); }
+}
+
+fn failed(ast:string, report:string, expected:string)
+{
+  let (error,metrics) = M.evaluate(compile(ast),report);
+  if !Str.contains(error,expected) { tool_fail(text_concat("unexpected evaluation result: ",error)); }
+  @checks("assert_eq",metrics,"");
+}
+
+fn program(expression:string) -> string
+{
+  return text_concat(text_concat("{\"functions\":[],\"metrics\":[{\"name\":\"x\",\"expression\":",expression),"}]}");
+}
+
+fn nested() -> string
+{
+  let out = buffer_new();
+  buffer_append(out,"{\"functions\":[{\"name\":\"f0\",\"parameters\":[],\"return_type\":\"int\",\"expression\":[\"literal\",1]}");
+  for i in 1 .. 12
+  {
+    let name = Int.to_string(i);
+    let prev = Int.to_string(i-1);
+    buffer_append(out,",{\"name\":\"f");
+    buffer_append(out,name);
+    buffer_append(out,"\",\"parameters\":[],\"return_type\":\"int\",\"expression\":[\"binary\",\"+\",[\"call\",\"f");
+    buffer_append(out,prev);
+    buffer_append(out,"\",[]],[\"call\",\"f");
+    buffer_append(out,prev);
+    buffer_append(out,"\",[]]]}");
+  }
+  buffer_append(out,"],\"metrics\":[{\"name\":\"a\",\"expression\":[\"call\",\"f11\",[]]},{\"name\":\"b\",\"expression\":[\"call\",\"f11\",[]]}]}");
+  return buffer_text(out);
+}
+
+fn host_cell(source:string, status:string, fresh:string) -> sexpr
+{
+  return sx_cons(sx_symbol("object"),
+    sx_cons(J.pair(sx_string("source"),sx_string(source)),
+    sx_cons(J.pair(sx_string("status"),sx_string(status)),
+    sx_cons(J.pair(sx_string("freshness"),sx_string(fresh)),sx_nil()))));
+}
+
+fn main()
+{
+  let argv = sx_tail(Env.argv());
+  if sx_kind(argv) != 0
+  {
+    if S.sexpr_size(argv) != 2 { tool_fail("usage: test_transform [AST.json REPORT.json]"); }
+    let ast = tool_read_file(sx_text(sx_head(argv)));
+    let report = tool_read_file(sx_text(sx_head(sx_tail(argv))));
+    let (error,metrics) = M.evaluate(compile(ast),report);
+    if error != "" { tool_fail(error); }
+    println(metrics);
+    return;
+  }
+  let empty = "{\"cells\":[]}";
+  let fixture = "{\"functions\":[{\"name\":\"eligible\",\"parameters\":[[\"total\",\"int\"],[\"unsupported\",\"int\"]],\"return_type\":\"int\",\"expression\":[\"binary\",\"-\",[\"name\",\"total\"],[\"name\",\"unsupported\"]]}],\"metrics\":[{\"name\":\"expected_cells\",\"expression\":[\"call\",\"total_cells\",[]]},{\"name\":\"eligible_cells\",\"expression\":[\"call\",\"eligible\",[[\"call\",\"total_cells\",[]],[\"call\",\"status_count\",[[\"literal\",\"unsupported\"]]]]]},{\"name\":\"booking_unsupported\",\"expression\":[\"call\",\"source_status_count\",[[\"literal\",\"booking\"],[\"literal\",\"unsupported\"]]]},{\"name\":\"booking_cells\",\"expression\":[\"call\",\"source_count\",[[\"literal\",\"booking\"]]]},{\"name\":\"has_fresh_evidence\",\"expression\":[\"binary\",\">\",[\"call\",\"freshness_count\",[[\"literal\",\"fresh\"]]],[\"literal\",0]]},{\"name\":\"metric_scope\",\"expression\":[\"literal\",\"competitor coverage\"]}]}";
+  let cells = "{\"counts_by_status\":{\"unsupported\":100},\"cells\":[{\"source\":\"booking\",\"status\":\"unsupported\",\"freshness\":\"none\",\"extension\":[{\"weight\":36.17}]},{\"source\":\"agoda\",\"status\":\"priced\",\"freshness\":\"fresh\",\"extension\":null}]}";
+  let expected = "{\"expected_cells\":2,\"eligible_cells\":1,\"booking_unsupported\":1,\"booking_cells\":1,\"has_fresh_evidence\":true,\"metric_scope\":\"competitor coverage\"}";
+  evaluate(fixture,cells,expected);
+  let rows = sx_cons(sx_symbol("array"),sx_cons(host_cell("booking","unsupported","none"),
+    sx_cons(host_cell("agoda","priced","fresh"),sx_nil())));
+  let base = sx_cons(sx_symbol("object"),sx_cons(J.pair(sx_string("cells"),rows),sx_nil()));
+  let (error,metrics) = M.evaluate_report(compile(fixture),base);
+  @checks("assert_eq",error,"");
+  @checks("assert_eq",metrics,expected);
+  let booking = Counts.increment(Counts.empty(),Counts.label_index("booking","source"),
+    Counts.label_index("unsupported","status"),Counts.label_index("none","freshness"));
+  let counts = Counts.increment(booking,Counts.label_index("agoda","source"),
+    Counts.label_index("priced","status"),Counts.label_index("fresh","freshness"));
+  let (tally_error,tally_metrics) = M.evaluate_counts(compile(fixture),counts);
+  @checks("assert_eq",tally_error,"");
+  @checks("assert_eq",tally_metrics,expected);
+  evaluate(program("[\"binary\",\"==\",[\"literal\",\"\\u0000\\u00e9\\uD83D\\uDE42\"],[\"literal\",\"\\u0000é🙂\"]]"),empty,"{\"x\":true}");
+  evaluate(program("[\"literal\",\"café\\n\\u0000\"]"),empty,"{\"x\":\"café\\u000a\\u0000\"}");
+  evaluate(program("[\"binary\",\"or\",[\"literal\",true],[\"binary\",\">\",[\"call\",\"status_count\",[[\"literal\",\"PENDING\"]]],[\"literal\",0]]]"),empty,"{\"x\":true}");
+  evaluate(program("[\"binary\",\"and\",[\"literal\",false],[\"binary\",\">\",[\"call\",\"status_count\",[[\"literal\",\"PENDING\"]]],[\"literal\",0]]]"),empty,"{\"x\":false}");
+  evaluate(program("[\"binary\",\"-\",[\"unary\",\"-\",[\"literal\",9223372036854775807]],[\"literal\",1]]"),empty,"{\"x\":-9223372036854775808}");
+  evaluate(program("[\"binary\",\"*\",[\"literal\",0],[\"binary\",\"-\",[\"unary\",\"-\",[\"literal\",9223372036854775807]],[\"literal\",1]]]"),empty,"{\"x\":0}");
+  invalid(program("[\"binary\",\"==\",[\"literal\",true],[\"literal\",1]]"),"same type");
+  invalid(program("[\"literal\",1e0]"),"invalid transform literal");
+  invalid(program("[\"literal\",9223372036854775808]"),"integer literal");
+  invalid(program("[\"call\",\"total_cells\",false]"),"arguments");
+  invalid(program("[\"name\",\"parameter\"]"),"unbound parameter");
+  invalid("{\"functions\":[{\"name\":\"f\",\"parameters\":[],\"return_type\":\"int\",\"expression\":[\"call\",\"g\",[]]},{\"name\":\"g\",\"parameters\":[],\"return_type\":\"int\",\"expression\":[\"call\",\"f\",[]]}],\"metrics\":[{\"name\":\"x\",\"expression\":[\"literal\",0]}]}","recursive transform function");
+  invalid("{\"functions\":[{\"name\":\"f\",\"parameters\":[],\"return_type\":\"bool\",\"expression\":[\"literal\",0]}],\"metrics\":[{\"name\":\"x\",\"expression\":[\"literal\",0]}]}","return type must be bool");
+  failed(program("[\"call\",\"status_count\",[[\"literal\",\"PENDING\"]]]"),empty,"unknown status label");
+  failed(program("[\"binary\",\"+\",[\"literal\",9223372036854775807],[\"literal\",1]]"),empty,"integer overflow");
+  failed(program("[\"unary\",\"-\",[\"binary\",\"-\",[\"unary\",\"-\",[\"literal\",9223372036854775807]],[\"literal\",1]]]"),empty,"integer overflow");
+  failed(program("[\"binary\",\"*\",[\"unary\",\"-\",[\"literal\",9223372036854775807]],[\"unary\",\"-\",[\"literal\",2]]]"),empty,"integer overflow");
+  failed(fixture,"{\"cells\":[null]}","coverage cell must be an object");
+  failed(fixture,"{\"cells\":[{\"source\":42,\"status\":\"priced\",\"freshness\":\"fresh\"}]}","source label must be text");
+  failed(nested(),empty,"step budget");
+  println("caravansary On1x metrics: PASS");
+}

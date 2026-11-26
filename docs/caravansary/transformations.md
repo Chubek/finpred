@@ -119,7 +119,7 @@ member.
 Run the [Riviera metrics example](examples/riviera-metrics.crs):
 
 ```sh
-python3 plugins/caravansary/caravansary.py report \
+bin/caravansary report \
   docs/caravansary/examples/riviera-metrics.crs --as-of 2026-11-26T12:00:00Z
 ```
 

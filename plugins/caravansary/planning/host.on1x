@@ -1,0 +1,9 @@
+extern fn caravansary_realpath(path: string) -> string;
+extern fn caravansary_read_regular(path: string, canonical: bool, limit: i64, description: string) -> string;
+extern fn caravansary_has_zone(name: string) -> bool;
+extern fn caravansary_clock() -> i64;
+extern fn caravansary_local_date(zone: string, seconds: i64) -> string;
+extern fn caravansary_ipv6(address: string) -> bool;
+extern fn caravansary_parse_float(text: string) -> f64;
+extern fn caravansary_float_digits(value: f64) -> string;
+extern fn caravansary_sha256(text: string) -> string;

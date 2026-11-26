@@ -1,0 +1,57 @@
+# Exact Gregorian UTC clock shared by coverage replay and scheduling.
+# Zero is reserved for scheduler fields with no time.
+import plugins.caravansary.planning.civil as Civil;
+
+fn second() -> i64 { return 1000000; }
+fn day() -> i64 { return 86400000000; }
+fn latest() -> i64 { return (Civil.max_day() + 1) * day() - 1; }
+
+fn digit(c: i64) -> bool { return c >= 48 && c <= 57; }
+
+fn civil_day(s: string) -> i64 { return Civil.date(s); }
+
+fn invalid(field: string) -> Result<i64, sexpr>
+{
+  return result_error(sx_string("$field must be an RFC 3339 UTC timestamp"));
+}
+
+fn parse(s: string, field: string) -> Result<i64, sexpr>
+{
+  let n = text_len(s);
+  if n < 20 || n > 32 { return invalid(field); }
+  var stop = n - 1;
+  if text_byte(s, stop) != 90
+  {
+    if n < 25 || text_slice(s, n - 6, n) != "+00:00" { return invalid(field); }
+    stop = n - 6;
+  }
+  if stop < 19 || stop > 26 || text_byte(s, 10) != 84 ||
+    text_byte(s, 13) != 58 || text_byte(s, 16) != 58 { return invalid(field); }
+  let d = civil_day(text_slice(s, 0, 10));
+  let h = Civil.digits(s, 11, 13);
+  let m = Civil.digits(s, 14, 16);
+  let sec = Civil.digits(s, 17, 19);
+  if d == 0 || h < 0 || h >= 24 || m < 0 || m >= 60 || sec < 0 || sec >= 60
+  { return invalid(field); }
+  var frac = 0;
+  if stop != 19
+  {
+    if stop == 20 || text_byte(s, 19) != 46 { return invalid(field); }
+    frac = Civil.digits(s, 20, stop);
+    if frac < 0 { return invalid(field); }
+    for i in stop .. 26 { frac = frac * 10; }
+  }
+  return result_ok(d * day() + (h * 3600 + m * 60 + sec) * second() + frac);
+}
+
+fn utc_text(instant: i64) -> string
+{
+  return Civil.utc_text(instant - Civil.epoch_day() * day());
+}
+
+# A scheduler deadline above the valid UTC range will never be due.
+fn add_seconds(instant: i64, seconds: i64) -> i64
+{
+  if seconds > (latest() - instant) / second() { return latest() + 1; }
+  return instant + seconds * second();
+}

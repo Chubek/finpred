@@ -9,7 +9,7 @@ TUI_REVIEW_BUILD_DIR ?= build/poindexter-tui-review
 TEST_SUITES := compiler pricing forecasting plugins storage security
 TEST_TARGETS := $(addprefix test-,$(TEST_SUITES))
 
-.PHONY: all build mulib test $(TEST_TARGETS) caravansary-test dragnet dragnet-test dragnet-search-test forecast-score-test native-test poindexter poindexter-gui poindexter-gui-test poindexter-tui-review
+.PHONY: all build mulib test $(TEST_TARGETS) caravansary caravansary-test dragnet dragnet-test dragnet-search-test forecast-score-test native-test poindexter poindexter-gui poindexter-gui-test poindexter-tui-review
 
 all: build
 
@@ -34,6 +34,9 @@ $(TEST_TARGETS): test-%:
 test-storage: native-test
 
 test-plugins: poindexter-tui-review
+
+caravansary:
+	sh ./plugins/caravansary/build.sh
 
 caravansary-test:
 	./tests/run.sh caravansary

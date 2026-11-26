@@ -1,0 +1,130 @@
+import frontend.schema as Schema;
+import frontend.text as Text;
+import frontend.tokens as Tokens;
+import frontend.transform as Transform;
+
+fn scalar(input: Tokens.Stream, at: i64, out: buffer) -> (sexpr, string)
+{
+  let raw = Tokens.token(input, at);
+  if raw == "" { return (sx_nil(), Tokens.error(input, at, "expected a string or integer")); }
+  if text_byte(raw, 0) == 34
+  {
+    let (decoded, ok) = Text.decode_string(raw);
+    if !ok { return (sx_nil(), Tokens.error(input, at, "unpaired Unicode surrogate")); }
+    buffer_append(out, raw);
+    return (sx_cons(sx_symbol("text"), sx_cons(sx_string(decoded), sx_nil())), "");
+  }
+  if !Text.digit(text_byte(raw, 0)) { return (sx_nil(), Tokens.error(input, at, "expected a string or integer")); }
+  if text_len(raw) > 1 && text_byte(raw, 0) == 48
+  { return (sx_nil(), Tokens.error(input, at, "integer cannot have leading zeros")); }
+  if text_len(raw) > 4300 { return (sx_nil(), Tokens.error(input, at, "integer is too large")); }
+  buffer_append(out, raw);
+  return (sx_cons(sx_symbol("int"), sx_cons(sx_string(raw), sx_nil())), "");
+}
+
+fn value(input: Tokens.Stream, at: i64, out: buffer) -> (sexpr, i64, string)
+{
+  if Tokens.token(input, at) != "["
+  {
+    let (item, err) = scalar(input, at, out);
+    return (item, at + 1, err);
+  }
+  buffer_append(out, "[");
+  var i = at + 1;
+  var items = sx_nil();
+  while Tokens.token(input, i) != "]"
+  {
+    let (item, err) = scalar(input, i, out);
+    if err != "" { return (sx_nil(), i, err); }
+    items = sx_cons(item, items);
+    i = i + 1;
+    if Tokens.token(input, i) == "]" { break; }
+    if Tokens.token(input, i) != "," { return (sx_nil(), i, Tokens.error(input, i, "expected , or ]")); }
+    buffer_append(out, ",");
+    i = i + 1;
+  }
+  buffer_append(out, "]");
+  return (sx_cons(sx_symbol("array"), items), i + 1, "");
+}
+
+fn statements(input: Tokens.Stream, start: i64, role: string, out: buffer) -> (sexpr, i64, string)
+{
+  var context = role;
+  if role == "booking" || role == "agoda" { context = text_concat("credentials.", role); }
+  var i = start;
+  var values = sx_nil();
+  buffer_append(out, "{");
+  while i < input["count"] && Tokens.token(input, i) != "}"
+  {
+    let key = Tokens.token(input, i);
+    if Schema.has(values, key)
+    { return (sx_nil(), i, Tokens.error(input, i, text_concat("duplicate field or block in ", context))); }
+    let shape = Schema.field_kind(role, key);
+    if shape == ""
+    { return (sx_nil(), i, Tokens.error(input, i, text_concat("unknown field or block in ", context))); }
+    if sx_kind(values) != 0 { buffer_append(out, ","); }
+    Text.quoted_ascii(out, key);
+    buffer_append(out, ":");
+    if shape == "field"
+    {
+      if Tokens.token(input, i + 1) != "="
+      { return (sx_nil(), i, Tokens.error(input, i + 1, "expected =")); }
+      let (item, after, err) = value(input, i + 2, out);
+      if err != "" { return (sx_nil(), after, err); }
+      if Tokens.token(input, after) != ";"
+      { return (sx_nil(), after, Tokens.error(input, after, "expected ;")); }
+      values = Schema.entry(values, key, item);
+      i = after + 1;
+    }
+    else
+    {
+      if Tokens.token(input, i + 1) != "{"
+      { return (sx_nil(), i, Tokens.error(input, i + 1, "expected {")); }
+      if shape == "transform"
+      {
+        let (program, after, err) = Transform.declarations(input, i + 2);
+        if err != "" { return (sx_nil(), after, err); }
+        Transform.render(out, program);
+        values = Schema.entry(values, key, program);
+        i = after;
+      }
+      else
+      {
+        let (body, after, err) = statements(input, i + 2, key, out);
+        if err != "" { return (sx_nil(), after, err); }
+        values = Schema.entry(values, key, body);
+        i = after;
+      }
+    }
+  }
+  buffer_append(out, "}");
+  if role == "script" { return (values, i, ""); }
+  return (values, i + 1, "");
+}
+
+fn parse(source: buffer, check_transform: bool) -> (string, string)
+{
+  let (input, syntax_error) = Tokens.stream(source);
+  if sx_kind(input["text"]) == 0 { return ("", syntax_error); }
+  let out = buffer_new();
+  let (config, _, lowering_error) = statements(input, 0, "script", out);
+  if lowering_error != "" { return ("", lowering_error); }
+  if syntax_error != "" { return ("", syntax_error); }
+  let config_error = Schema.validate(config);
+  if config_error != "" { return ("", config_error); }
+  if check_transform && Schema.has(config, "transform")
+  {
+    let transform_error = Transform.check(Schema.get(config, "transform"));
+    if transform_error != "" { return ("", transform_error); }
+  }
+  return (buffer_text(out), "");
+}
+
+# Parse, validate, and statically check a script without loading its referenced
+# files or inspecting credentials. Diagnostics never include source excerpts.
+fn parse_script(source: buffer) -> (string, string) { return parse(source, true); }
+
+# Hosts that consume a separate transform compiler's result should type-check
+# there instead. This entry point still checks syntax, the configuration
+# schema, integer/text literal bounds, and all parser resource limits.
+fn parse_script_syntax(source: buffer) -> (string, string) { return parse(source, false); }

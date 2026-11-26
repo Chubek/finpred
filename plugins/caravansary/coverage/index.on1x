@@ -1,0 +1,107 @@
+# Persistent ordered index for matrix keys and observation/reservation IDs.
+# An association list would make large sparse replays quadratic.
+fn compare(a: string, b: string) -> i64
+{
+  if a == b { return 0; }
+  let na = text_len(a);
+  let nb = text_len(b);
+  var i = 0;
+  while i < na && i < nb
+  {
+    let x = text_byte(a, i);
+    let y = text_byte(b, i);
+    if x != y { return x - y; }
+    i = i + 1;
+  }
+  return na - nb;
+}
+
+fn entry(tree: sexpr) -> sexpr { return sx_head(tree); }
+fn left(tree: sexpr) -> sexpr { return sx_head(sx_tail(sx_tail(tree))); }
+fn right(tree: sexpr) -> sexpr { return sx_head(sx_tail(sx_tail(sx_tail(tree)))); }
+fn pair(key: sexpr, value: sexpr) -> sexpr { return sx_cons(key, sx_cons(value, sx_nil())); }
+fn levels(tree: sexpr) -> sexpr
+{
+  if sx_kind(tree) == 0 { return sx_nil(); }
+  return sx_head(sx_tail(tree));
+}
+fn height(tree: sexpr) -> i64
+{
+  var h = 0;
+  var rest = levels(tree);
+  while sx_kind(rest) != 0 { h = h + 1; rest = sx_tail(rest); }
+  return h;
+}
+fn node(e: sexpr, l: sexpr, r: sexpr) -> sexpr
+{
+  # A unary rank shares its tail with the taller child. This avoids adding
+  # transient text snapshots to the process-long runtime pool on each rotation.
+  var rank = levels(l);
+  if height(r) > height(l) { rank = levels(r); }
+  return sx_cons(e, sx_cons(sx_cons(sx_nil(), rank), sx_cons(l, sx_cons(r, sx_nil()))));
+}
+
+fn balance(e: sexpr, l: sexpr, r: sexpr) -> sexpr
+{
+  if height(l) > height(r) + 1
+  {
+    let ll = left(l);
+    let lr = right(l);
+    if height(ll) >= height(lr)
+    { return node(entry(l), ll, node(e, lr, r)); }
+    return node(entry(lr), node(entry(l), ll, left(lr)), node(e, right(lr), r));
+  }
+  if height(r) > height(l) + 1
+  {
+    let rl = left(r);
+    let rr = right(r);
+    if height(rr) >= height(rl)
+    { return node(entry(r), node(e, l, rl), rr); }
+    return node(entry(rl), node(e, l, left(rl)), node(entry(r), right(rl), rr));
+  }
+  return node(e, l, r);
+}
+
+fn put_atom(tree: sexpr, key: sexpr, value: sexpr) -> sexpr
+{
+  if sx_kind(tree) == 0 { return node(pair(key, value), sx_nil(), sx_nil()); }
+  let e = entry(tree);
+  let existing = sx_head(e);
+  let order = compare(sx_text(key), sx_text(existing));
+  if order < 0 { return balance(e, put_atom(left(tree), key, value), right(tree)); }
+  if order > 0 { return balance(e, left(tree), put_atom(right(tree), key, value)); }
+  return node(pair(existing, value), left(tree), right(tree));
+}
+
+fn put(tree: sexpr, key: string, value: sexpr) -> sexpr { return put_atom(tree, sx_string(key), value); }
+
+fn get(tree: sexpr, key: string) -> sexpr
+{
+  var t = tree;
+  while sx_kind(t) != 0
+  {
+    let e = entry(t);
+    let order = compare(key, sx_text(sx_head(e)));
+    if order == 0 { return sx_head(sx_tail(e)); }
+    if order < 0 { t = left(t); }
+    else { t = right(t); }
+  }
+  return sx_nil();
+}
+
+fn remove(tree: sexpr, key: string) -> sexpr
+{
+  if sx_kind(tree) == 0 { return tree; }
+  let e = entry(tree);
+  let order = compare(key, sx_text(sx_head(e)));
+  let l = left(tree);
+  let r = right(tree);
+  if order < 0 { return balance(e, remove(l, key), r); }
+  if order > 0 { return balance(e, l, remove(r, key)); }
+  if sx_kind(l) == 0 { return r; }
+  if sx_kind(r) == 0 { return l; }
+  var first = r;
+  while sx_kind(left(first)) != 0 { first = left(first); }
+  let successor = entry(first);
+  return balance(successor, l, remove(r, sx_text(sx_head(successor))));
+}

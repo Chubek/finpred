@@ -1,0 +1,70 @@
+from frontend import parse_script;
+import std.String as String;
+
+fn fixture() -> buffer
+{
+  let out = buffer_new();
+  buffer_append(out, "name = \"Caravan \\ud83d\\ude00\";\n");
+  buffer_append(out, "property {type=\"hotel\"; latitude=\".5\"; longitude=\"-180.0\"; ");
+  buffer_append(out, "timezone=\"Europe/Paris\"; currency=\"EUR\"; room_types=[\"suite\"];}\n");
+  buffer_append(out, "competitors=\"unreadable.json\"; sources=[\"booking\"];\n");
+  buffer_append(out, "search { horizon_days=1; start=\"2024-02-29\"; guest_configurations=[\"one_adult\"]; ");
+  buffer_append(out, "stay_lengths=[1]; booker_country=\"FR\"; locale=\"en-u-ca-gregory-x-acme\"; }\n");
+  buffer_append(out, "refresh { tick_seconds=3600; weights=\"unreadable.json\"; max_age_seconds=86400; ");
+  buffer_append(out, "booking_concurrency=1; booking_requests_per_hour=50; }\n");
+  buffer_append(out, "output { observations=\"observations.jsonl\"; coverage=\"coverage.json\"; }\n");
+  return out;
+}
+
+fn valid()
+{
+  let source = fixture();
+  buffer_append(source, "credentials { booking { environment=[\"KEY\"]; dotenv=\"not-read.env\"; } }\n");
+  buffer_append(source, "transform {\n");
+  buffer_append(source, "  emit score = flag(2 - 1 - 1) and not false or 1 + 2 * 3 == 7;\n");
+  buffer_append(source, "  fn flag(x:int)->bool { return x == 0; }\n");
+  buffer_append(source, "  emit unicode = \"\\u0000\\u00e9\\u1234\\ud83d\\ude00\";\n");
+  buffer_append(source, "}\n");
+  let before = buffer_len(source);
+  let (json, err) = parse_script(source);
+  assert(err == "");
+  assert(buffer_len(source) == before);
+  assert(String.contains(json, "\"name\":\"Caravan \\ud83d\\ude00\""));
+  assert(String.contains(json, "\"expression\":[\"binary\",\"or\",[\"binary\",\"and\""));
+  assert(String.contains(json, "[\"binary\",\"-\",[\"binary\",\"-\",[\"literal\",2],[\"literal\",1]],[\"literal\",1]]"));
+  assert(String.contains(json, "[\"binary\",\"+\",[\"literal\",1],[\"binary\",\"*\",[\"literal\",2],[\"literal\",3]]]"));
+  assert(String.contains(json, "\"expression\":[\"literal\",\"\\u0000\\u00e9\\u1234\\ud83d\\ude00\"]"));
+}
+
+fn reject_append(suffix: string, message: string)
+{
+  let source = fixture();
+  buffer_append(source, suffix);
+  let (json, err) = parse_script(source);
+  assert(json == "");
+  assert(String.contains(err, message));
+}
+
+fn invalid()
+{
+  reject_append("name=\"duplicate\";", "duplicate field or block in script");
+  reject_append("credentials { booking { cookies=\"not-read.json\"; environment=[\"KEY\"]; } }",
+    "must select exactly one credential mode");
+  reject_append("transform {emit x = 1 < 2 < 3;}", "comparison chaining requires parentheses");
+  reject_append("transform {emit x = \"\\ud800\";}", "unpaired Unicode surrogate");
+  reject_append("transform {emit x = 9223372036854775808;}", "signed 64-bit range");
+  reject_append("transform {emit x = source_count(1);}", "expects text, got int");
+  reject_append("transform {fn f()->int {return g();} fn g()->int {return f();} emit n=0;}",
+    "recursive transform function");
+
+  let (json, err) = parse_script(b!"#\xF4\x90\x80\x80");
+  assert(json == "");
+  assert(String.contains(err, "CaravanScript source must be UTF-8"));
+}
+
+fn main()
+{
+  valid();
+  invalid();
+  println("CaravanScript native frontend: OK");
+}

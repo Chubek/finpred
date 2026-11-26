@@ -1,0 +1,100 @@
+import std.environ as Env;
+
+fn usage() -> string
+{
+  return "Usage: bin/caravansary plan SCRIPT [--date YYYY-MM-DD] [--as-of UTC] [--input-root DIR ...]\n       bin/caravansary report SCRIPT [--date YYYY-MM-DD] [--as-of UTC] [--input-root DIR ...] [--observations FILE]\n       bin/caravansary pilot-booking SCRIPT --confirm-authorized [--date YYYY-MM-DD] [--input-root DIR ...]\n";
+}
+
+fn bad(message:string)
+{
+  tool_fail(format("caravansary: {}", message));
+}
+
+fn split_option(arg:string) -> (string,string,bool)
+{
+  let size = text_len(arg);
+  var i = 1;
+  while i < size
+  {
+    if text_byte(arg,i) == 61 { return (text_slice(arg,0,i),text_slice(arg,i+1,size),true); }
+    i = i + 1;
+  }
+  return (arg,"",false);
+}
+
+# mode, script, civil override, report clock, observations, input root paths
+fn read() -> (string,string,string,string,string,sexpr)
+{
+  let argv = sx_tail(Env.argv());
+  if sx_kind(argv) == 0 { bad("expected a subcommand (see --help)"); }
+  let mode = sx_text(sx_head(argv));
+  let flags = sx_tail(argv);
+  if mode == "--help" || mode == "-h"
+  {
+    return ("help","","","","",sx_nil());
+  }
+  if mode != "plan" && mode != "report" && mode != "pilot-booking"
+  { bad("unknown subcommand (see --help)"); }
+  var path = "";
+  var civil = "";
+  var clock = "";
+  var observations = "";
+  var roots = sx_nil();
+  var rest = flags;
+  var positional = false;
+  var confirmed = false;
+  while sx_kind(rest) == 3
+  {
+    let arg = sx_text(sx_head(rest));
+    rest = sx_tail(rest);
+    if !positional && (arg == "-h" || arg == "--help")
+    {
+      return ("help","","","","",sx_nil());
+    }
+    if !positional && arg == "--" { positional = true; }
+    else
+    {
+      if !positional && arg == "--confirm-authorized" && mode == "pilot-booking"
+      { confirmed = true; }
+      else
+      {
+        if !positional && text_len(arg) > 0 && text_byte(arg,0) == 45
+        {
+          let (flag,inline_value,attached) = split_option(arg);
+          if flag != "--date" && flag != "--as-of" && flag != "--input-root" && flag != "--observations"
+          { bad("unknown option (see --help)"); }
+          var value = inline_value;
+          if !attached
+          {
+            if sx_kind(rest) != 3 { bad("option requires a value"); }
+            value = sx_text(sx_head(rest));
+            rest = sx_tail(rest);
+            if text_len(value) > 0 && text_byte(value,0) == 45 { bad("option requires a value"); }
+          }
+          if value == "" { bad("option requires a nonempty value"); }
+          if flag == "--date" { civil = value; }
+          if flag == "--as-of"
+          {
+            if mode == "pilot-booking" { bad("--as-of is only available for plan and report"); }
+            clock = value;
+          }
+          if flag == "--input-root" { roots = sx_cons(sx_string(value),roots); }
+          if flag == "--observations"
+          {
+            if mode != "report" { bad("--observations is only available for report"); }
+            observations = value;
+          }
+        }
+        else
+        {
+          if path != "" || arg == "" { bad("expected exactly one script path"); }
+          path = arg;
+        }
+      }
+    }
+  }
+  if path == "" { bad("expected a script path"); }
+  if mode == "pilot-booking" && !confirmed
+  { bad("pilot-booking requires --confirm-authorized before a sandbox request"); }
+  return (mode,path,civil,clock,observations,roots);
+}

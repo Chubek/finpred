@@ -1,0 +1,283 @@
+# Pure CaravanScript metric interface. Both JSON arguments use the Python
+# schema. An empty first tuple field denotes success; never use an errored
+# Program. The host owns report decoration, identity digests and I/O.
+from . import json_wire as J, check as Check, counters as Counts;
+from .check import Program;
+import std.Int as Int;
+import std.collections.List as List;
+
+fn compile_json(ast_json:string) -> Result<Program,sexpr>
+{
+  let ast = J.parse(ast_json)?;
+  return Check.compile(ast);
+}
+
+fn compile_transform(ast_json:string) -> (string,Program)
+{
+  return match compile_json(ast_json) with
+  {
+    Ok(program) => ("",program),
+    Err(reason) => (sx_text(reason),Check.empty_program())
+  };
+}
+
+fn integer(n:i64) -> sexpr { return J.pair(sx_symbol("number"),sx_string(Int.to_string(n))); }
+
+fn number(v:sexpr) -> i64
+{
+  # Only checked integer literals and previously checked results reach here.
+  let (_ok,n,_end) = Int.scan(sx_text(J.at(v,1)),0);
+  return n;
+}
+
+fn boolean(v:bool) -> sexpr
+{
+  if v { return sx_symbol("true"); }
+  return sx_symbol("false");
+}
+
+fn apply_unary(op:string, v:sexpr) -> Result<sexpr,sexpr>
+{
+  if op == "not" { return result_ok(boolean(sx_text(v) == "false")); }
+  let n = number(v);
+  if n == Int.min_value() { return J.fail!("transform integer overflow: outside signed 64-bit range"); }
+  return result_ok(integer(-n));
+}
+
+fn apply_binary(op:string, left:sexpr, right:sexpr) -> Result<sexpr,sexpr>
+{
+  if op == "==" || op == "!="
+  {
+    var identical = false;
+    if J.tag(left,"number") { identical = number(left) == number(right); }
+    else { identical = sx_text(left) == sx_text(right); }
+    return result_ok(boolean(identical == (op == "==")));
+  }
+  let a = number(left);
+  let b = number(right);
+  let hi = Int.max_value();
+  let lo = Int.min_value();
+  match op with
+  {
+    "+" =>
+    {
+      if (b > 0 && a > hi-b) || (b < 0 && a < lo-b)
+      { return J.fail!("transform integer overflow: outside signed 64-bit range"); }
+      return result_ok(integer(a+b));
+    },
+    "-" =>
+    {
+      if (b > 0 && a < lo+b) || (b < 0 && a > hi+b)
+      { return J.fail!("transform integer overflow: outside signed 64-bit range"); }
+      return result_ok(integer(a-b));
+    },
+    "*" =>
+    {
+      if (a > 0 && ((b > 0 && a > hi/b) || (b < 0 && b < lo/a))) ||
+         (a < 0 && ((b > 0 && a < lo/b) || (b < 0 && a < hi/b)))
+      { return J.fail!("transform integer overflow: outside signed 64-bit range"); }
+      return result_ok(integer(a*b));
+    },
+    "<" => { return result_ok(boolean(a < b)); },
+    "<=" => { return result_ok(boolean(a <= b)); },
+    ">" => { return result_ok(boolean(a > b)); },
+    ">=" => { return result_ok(boolean(a >= b)); },
+    _ => { return J.fail!("unknown transform binary operator"); }
+  };
+}
+
+fn step(action:string, operand:sexpr, payload:sexpr) -> sexpr
+{
+  return sx_cons(sx_symbol(action),J.pair(operand,payload));
+}
+
+fn argument_scope(parameters:sexpr, arguments:sexpr) -> sexpr
+{
+  var params = parameters;
+  var args = arguments;
+  var scope = sx_nil();
+  while sx_kind(params) == 3
+  {
+    let pair = sx_tail(sx_head(params));
+    let name = J.plain(J.at(pair,0));
+    scope = sx_cons(J.pair(sx_string(name),sx_head(args)),scope);
+    params = sx_tail(params);
+    args = sx_tail(args);
+  }
+  return scope;
+}
+
+# Explicit LIFO continuations avoid recursion across calls and nested
+# expressions. A budget tick is charged only when entering a reached node.
+fn evaluate_expression(expr:sexpr, functions:sexpr, counts:Counts.Counts, budget:i64)
+  -> Result<(sexpr,i64),sexpr>
+{
+  var tasks = sx_cons(step("expr",expr,sx_nil()),sx_nil());
+  var values = sx_nil();
+  var remaining = budget;
+  while sx_kind(tasks) == 3
+  {
+    let task = sx_head(tasks);
+    tasks = sx_tail(tasks);
+    let action = sx_text(sx_head(task));
+    let operand = J.at(task,1);
+    let payload = J.at(task,2);
+    if action == "expr"
+    {
+      if remaining == 0 { return J.fail!("transform expression step budget exceeded (10000)"); }
+      remaining = remaining - 1;
+      let parts = sx_tail(operand);
+      let tag = J.plain(J.at(parts,0));
+      let second = J.at(parts,1);
+      if tag == "literal"
+      {
+        var value = second;
+        if J.tag(value,"number") { value = integer(number(value)); }
+        values = sx_cons(value,values);
+      }
+      if tag == "name"
+      {
+        values = sx_cons(J.field(payload,J.plain(second)),values);
+      }
+      if tag == "unary"
+      {
+        tasks = sx_cons(step("unary",second,sx_nil()),tasks);
+        tasks = sx_cons(step("expr",J.at(parts,2),payload),tasks);
+      }
+      if tag == "binary"
+      {
+        let left = J.at(parts,2);
+        let right = J.at(parts,3);
+        let op = J.plain(second);
+        if op == "and" || op == "or"
+        {
+          tasks = sx_cons(step("logical",second,J.pair(right,payload)),tasks);
+        }
+        else
+        {
+          tasks = sx_cons(step("binary",second,sx_nil()),tasks);
+          tasks = sx_cons(step("expr",right,payload),tasks);
+        }
+        tasks = sx_cons(step("expr",left,payload),tasks);
+      }
+      if tag == "call"
+      {
+        let args = sx_tail(J.at(parts,2));
+        tasks = sx_cons(step("invoke",second,args),tasks);
+        var reversed = List.basis_list_rev(args);
+        while sx_kind(reversed) == 3
+        {
+          tasks = sx_cons(step("expr",sx_head(reversed),payload),tasks);
+          reversed = sx_tail(reversed);
+        }
+      }
+    }
+    if action == "unary"
+    {
+      let value = apply_unary(J.plain(operand),sx_head(values))?;
+      values = sx_cons(value,sx_tail(values));
+    }
+    if action == "binary"
+    {
+      let right = sx_head(values);
+      let tail = sx_tail(values);
+      let left = sx_head(tail);
+      let value = apply_binary(J.plain(operand),left,right)?;
+      values = sx_cons(value,sx_tail(tail));
+    }
+    if action == "logical"
+    {
+      let op = J.plain(operand);
+      let left = sx_text(sx_head(values)) == "true";
+      if (op == "and" && left) || (op == "or" && !left)
+      {
+        values = sx_tail(values);
+        tasks = sx_cons(step("expr",J.at(payload,0),J.at(payload,1)),tasks);
+      }
+    }
+    if action == "invoke"
+    {
+      let name = J.plain(operand);
+      var arguments = sx_nil();
+      var arity = payload;
+      while sx_kind(arity) == 3
+      {
+        arguments = sx_cons(sx_head(values),arguments);
+        values = sx_tail(values);
+        arity = sx_tail(arity);
+      }
+      let decl = J.field(functions,name);
+      if sx_kind(decl) == 0
+      {
+        let value = Counts.get(counts,name,arguments)?;
+        values = sx_cons(integer(value),values);
+      }
+      else
+      {
+        let scope = argument_scope(sx_tail(J.get(decl,"parameters")),arguments);
+        tasks = sx_cons(step("expr",J.get(decl,"expression"),scope),tasks);
+      }
+    }
+  }
+  return result_ok((sx_head(values),remaining));
+}
+
+fn render_metrics(program:Program, counts:Counts.Counts) -> Result<sexpr,sexpr>
+{
+  let out = buffer_new();
+  buffer_append(out,"{");
+  var cursor = program["metrics"];
+  var remaining = 10000;
+  var first = true;
+  while sx_kind(cursor) == 3
+  {
+    let entry = sx_head(cursor);
+    let name = sx_text(sx_head(entry));
+    let (value,left) = evaluate_expression(J.at(entry,2),program["functions"],counts,remaining)?;
+    remaining = left;
+    if !first { buffer_append(out,","); }
+    first = false;
+    buffer_append(out,"\"");
+    buffer_append(out,name);
+    buffer_append(out,"\":");
+    if J.tag(value,"number") { buffer_append(out,sx_text(J.at(value,1))); }
+    else { buffer_append(out,sx_text(value)); }
+    cursor = sx_tail(cursor);
+  }
+  buffer_append(out,"}");
+  return result_ok(sx_string(buffer_text(out)));
+}
+
+fn evaluate_json(program:Program, report_json:string) -> Result<sexpr,sexpr>
+{
+  return render_metrics(program,Counts.prepare(report_json)?);
+}
+
+fn output(result:Result<sexpr,sexpr>) -> (string,string)
+{
+  return match result with
+  {
+    Ok(metrics) => ("",sx_text(metrics)),
+    Err(reason) => (sx_text(reason),"")
+  };
+}
+
+fn evaluate_counts(program:Program, counts:Counts.Counts) -> (string,string)
+{
+  return output(render_metrics(program,counts));
+}
+
+fn evaluate(program:Program, report_json:string) -> (string,string)
+{
+  return output(evaluate_json(program,report_json));
+}
+
+fn evaluate_value(program:Program, report:sexpr) -> Result<sexpr,sexpr>
+{
+  return render_metrics(program,Counts.prepare_report(report)?);
+}
+
+fn evaluate_report(program:Program, report:sexpr) -> (string,string)
+{
+  return output(evaluate_value(program,report));
+}

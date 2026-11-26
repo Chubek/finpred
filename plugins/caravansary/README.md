@@ -3,9 +3,17 @@
 Caravansary validates [CaravanScript](../../docs/caravansary/contracts.md),
 plans a competitor matrix, and reports freshness from an offline observation
 log. An optional block adds [typed coverage metrics](../../docs/caravansary/transformations.md).
-Caravansary also offers an explicit one-request Booking.com sandbox test. It is a
-standalone Python 3.10+ tool (stdlib and system IANA timezone data), not a FinPRED
-SDK-registered plugin. It makes no pricing recommendations.
+The standalone On1x CLI is not a FinPRED SDK-registered plugin. It uses the
+system IANA timezone data and makes no pricing recommendations. Planning and
+reporting are offline; the explicitly authorized Booking sandbox command is
+the only network path.
+
+The build needs the pinned On1x C11 toolchain, OpenSSL development headers
+for SHA-256 replay identities, and libcurl ≥ 7.85 for the sandbox transport.
+The [CaravanScript frontend](frontend/README.md) documents how to regenerate
+the `std.llsynth` grammar tables. The
+[metrics tests](metrics/README.md#focused-native-checks) use the standard
+`checks` PPX for exact compile/evaluation assertions.
 
 CaravanScript files contain top-level fields and blocks, with no header or
 version declaration. To migrate an older script, replace its opening
@@ -16,9 +24,10 @@ New scripts may omit `name`.
 ## Run the offline example
 
 ```sh
+make caravansary                  # after make mulib, or with ON1XC set
 script=docs/caravansary/examples/riviera.crs
-python3 plugins/caravansary/caravansary.py plan "$script" --date 2026-11-26 > matrix.jsonl
-python3 plugins/caravansary/caravansary.py report "$script" --as-of 2026-11-26T12:00:00Z > coverage.json
+bin/caravansary plan "$script" --date 2026-11-26 > matrix.jsonl
+bin/caravansary report "$script" --as-of 2026-11-26T12:00:00Z > coverage.json
 make caravansary-test
 ```
 
@@ -32,8 +41,9 @@ verified mapping is initially `pending`, not an available quote.
 freshness, and per-source capacity estimates. To fold a frozen log, pass
 `report ... --observations /path/to/observation-log.jsonl`. A log may be sparse,
 but its records must refer to the selected matrix. Filter any authorized
-historical archive separately.
-`report` holds the matrix in memory.
+historical archive separately. The On1x CLI bounds each input file and holds
+the report in memory. Native JSON text materialized into On1x strings cannot
+contain embedded NUL characters.
 
 Use the [Riviera metrics script](../../docs/caravansary/examples/riviera-metrics.crs)
 to emit custom metrics. They appear under `transformation.metrics` with
@@ -62,7 +72,23 @@ competitor and observation data.
 
 ## Host integration
 
-Import `plugins.caravansary.caravansary` from the repository root. `parse(text)`
+For On1x hosts, the [frontend](frontend/README.md) compiles CaravanScript to a
+validated configuration. `plugins.caravansary.planning.plan` loads it with a
+script path and approved input roots. `row_count` and `row_value` expose the
+matrix as indexed rows, and `row_at` renders a single row as canonical JSON.
+`plugins.caravansary.coverage.coverage.report` folds host-supplied JSONL into
+the matrix. These interfaces use the immutable JSON tree from
+`plugins.caravansary.planning.json`.
+
+`plugins.caravansary.coverage.scheduler` returns state values for a serial
+caller to carry between `create`, `schedule` and `finish`. It never dispatches
+requests. Treat On1x host integration as serial: timezone conversion uses the
+process's POSIX timezone setting temporarily.
+
+### Python compatibility API
+
+Existing Python 3.10+ hosts can still import
+`plugins.caravansary.caravansary` from the repository root. `parse(text)`
 validates the script (including the structure of BCP 47 locale tags, not
 membership in the complete language subtag registry).
 `plan(path, on_date=None, *, now=None, input_roots=())`
@@ -115,7 +141,15 @@ A declaration cannot grant file access, read the process environment
 automatically, or authorize requests. Credential keys, paths, and values
 are not part of a matrix or coverage report.
 
-Call `resolve_credentials(config, source, *, environ=None, explicit=None,
+On1x hosts can import `plugins.caravansary.credentials` and call
+`resolve(config, source, environ, explicit, approved)`. Pass a validated
+configuration and host-filtered value objects. `approved` is an object keyed
+by provider, then `cookies` or `dotenv`, then the exact declared path; its leaf
+values are already approved UTF-8 text. The resolver returns `Result` with
+`mode`, `values`, and `cookies` fields on success. Keep those values out of
+logs and artifacts. On1x's text snapshots last for the host process lifetime.
+
+Python hosts can call `resolve_credentials(config, source, *, environ=None, explicit=None,
 approved_files=None)` from the host. Pass only the environment names and
 values approved for that provider, not the full process environment.
 `explicit` maps the declared reference names to host-supplied values.
@@ -147,7 +181,7 @@ website password, browser cookies, `.env`, or any CaravanScript credential
 declaration. Do not pass the API token on the command line.
 
 ```sh
-python3 plugins/caravansary/caravansary.py pilot-booking \
+bin/caravansary pilot-booking \
   plugins/caravansary/examples/booking-sandbox/pilot.crs \
   --confirm-authorized
 ```
@@ -162,8 +196,9 @@ Booking cell and a documented sandbox ID. The probe sends the dates, party,
 booker country and currency with the fixed `desktop` platform; the search
 endpoint has no locale input.
 
-The probe checks TLS and limits the response to 512 KiB, with a 10-second socket
-timeout. It does not follow redirects, retry, paginate, or make bookings. Its
+The probe verifies TLS and limits the response to 512 KiB, with a 10-second
+request deadline. It does not use a proxy, follow redirects, retry, paginate,
+or make bookings. Its
 stdout summary contains the attempt count, times, HTTP status if received, and
 an outcome (`matched`, `no_match`, or `failed`). It never writes credentials,
 raw responses, prices, reports, or observation logs. `no_match` is not proof of

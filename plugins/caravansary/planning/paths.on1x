@@ -1,0 +1,104 @@
+import std.String as Str;
+import std.sexpr.sexpr as Sx;
+import std.os.OS_FileSys as FS;
+import std.os.OS_Path as Path;
+from . import host as Host, json as Json;
+
+fn lexical_absolute(path: string) -> string {
+  let n = text_len(path);
+  var components = sx_nil();
+  var pos = 0;
+  while pos < n {
+    let start = pos;
+    while pos < n && text_byte(path, pos) != 47 { pos = pos + 1; }
+    if pos > start {
+      let component = text_slice(path, start, pos);
+      if component == ".." {
+        if sx_kind(components) == 3 { components = sx_tail(components); }
+      } else {
+        if component != "." { components = sx_cons(sx_string(component), components); }
+      }
+    }
+    pos = pos + 1;
+  }
+  let out = buffer_new();
+  buffer_byte(out, 47);
+  # POSIX normpath retains exactly two leading slashes. realpath, including the
+  # grant roots, gives ordinary absolute paths, so the lexical check denies it.
+  if n >= 2 && text_byte(path, 1) == 47 && (n == 2 || text_byte(path, 2) != 47) {
+    buffer_byte(out, 47);
+  }
+  var rest = Sx.sexpr_reverse(components);
+  while sx_kind(rest) == 3 {
+    buffer_append(out, sx_text(sx_head(rest)));
+    rest = sx_tail(rest);
+    if sx_kind(rest) == 3 { buffer_byte(out, 47); }
+  }
+  return buffer_text(out);
+}
+
+fn directory(path: string) -> string {
+  let result = Host.caravansary_realpath(path);
+  if result == "" || !FS.basis_fs_is_dir(result) {
+    tool_fail("host-approved input roots must be directories");
+  }
+  return result;
+}
+
+fn roots(script: string, inputs: sexpr) -> (string, sexpr) {
+  let cwd = FS.basis_fs_cwd();
+  # Resolve only the selected spelling's parent, not the script's symlink
+  # target. Selecting a script symlink does not grant the target's directory.
+  let parent = directory(Path.basis_path_dir(Path.basis_path_join(cwd, script)));
+  var approved = sx_cons(sx_string(parent), sx_nil());
+  var rest = inputs;
+  while sx_kind(rest) == 3 {
+    let grant = directory(Path.basis_path_join(cwd, Json.text(sx_head(rest))));
+    approved = sx_cons(sx_string(grant), approved);
+    rest = sx_tail(rest);
+  }
+  return (parent, approved);
+}
+
+fn contained(path: string, root: string) -> bool {
+  if text_len(path) >= 2 && text_byte(path, 1) == 47 { return false; }
+  if root == "/" || root == path { return true; }
+  let end = text_len(root);
+  return end < text_len(path) && text_byte(path, end) == 47 && Str.is_prefix(root, path);
+}
+
+fn authorize(path: string, roots: sexpr) {
+  var rest = roots;
+  while sx_kind(rest) == 3 {
+    if contained(path, sx_text(sx_head(rest))) { return; }
+    rest = sx_tail(rest);
+  }
+  tool_fail("referenced input is outside the host-approved directories");
+}
+
+fn input_path(parent: string, child: string, allowed: sexpr) -> string {
+  let requested = Path.basis_path_join(parent, child);
+  authorize(lexical_absolute(requested), allowed);
+  let resolved = Host.caravansary_realpath(requested);
+  if resolved == "" { tool_fail("referenced input must be a regular file"); }
+  authorize(resolved, allowed);
+  return resolved;
+}
+
+fn input_json(parent: string, child: string, allowed: sexpr) -> (sexpr, string) {
+  let path = input_path(parent, child, allowed);
+  let origin = "$path: ";
+  return (Json.parse_at(Host.caravansary_read_regular(path, true, 4 * 1024 * 1024, "referenced input"), origin), origin);
+}
+
+fn script_text(path: string) -> string {
+  let text = Host.caravansary_read_regular(path, false, 1024 * 1024, "script");
+  Json.validate_utf8(text, "CaravanScript source ");
+  return text;
+}
+
+fn observation_text(path: string) -> string {
+  let text = Host.caravansary_read_regular(path, false, 16 * 1024 * 1024, "observation log");
+  Json.validate_utf8(text, "observation log ");
+  return text;
+}

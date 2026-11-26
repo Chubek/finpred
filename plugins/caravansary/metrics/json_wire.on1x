@@ -1,0 +1,372 @@
+# Recoverable JSON boundary for the metrics module. The pinned stdlib does
+# not expose passable JSON views. Use immutable S-expressions for the AST;
+# report fields can be skipped without retaining a tree.
+import std.collections.List as List;
+import std.ppx.json as PpxJson;
+
+macro fail { rule ($message:Expression) => expression { result_error(sx_string($message)) }; }
+
+fn byte(s:string, i:i64) -> i64
+{
+  if i >= text_len(s) { return -1; }
+  return text_byte(s,i);
+}
+
+fn input_byte(s:buffer, i:i64) -> i64
+{
+  if i >= buffer_len(s) { return -1; }
+  return u8_to_i64(buffer_at(s,i));
+}
+
+fn space(s:buffer, start:i64) -> i64
+{
+  var i = start;
+  loop
+  {
+    let c = input_byte(s,i);
+    if c != 32 && c != 9 && c != 10 && c != 13 { break; }
+    i = i + 1;
+  }
+  return i;
+}
+
+fn raw(s:buffer, start:i64, end:i64) -> string
+{
+  let out = buffer_new();
+  for i in start .. end { buffer_push(out,buffer_at(s,i)); }
+  return buffer_text(out);
+}
+
+fn word(s:buffer, start:i64, value:string) -> bool
+{
+  for i in 0 .. text_len(value)
+  {
+    if input_byte(s,start+i) != text_byte(value,i) { return false; }
+  }
+  return true;
+}
+
+fn digit(c:i64) -> bool { return c >= 48 && c <= 57; }
+
+fn hex(c:i64) -> i64
+{
+  if digit(c) { return c - 48; }
+  if c >= 65 && c <= 70 { return c - 55; }
+  if c >= 97 && c <= 102 { return c - 87; }
+  return -1;
+}
+
+fn hex4(a:i64, b:i64, c:i64, d:i64) -> i64
+{
+  let h0 = hex(a);
+  let h1 = hex(b);
+  let h2 = hex(c);
+  let h3 = hex(d);
+  if h0 < 0 || h1 < 0 || h2 < 0 || h3 < 0 { return -1; }
+  return h0 * 4096 + h1 * 256 + h2 * 16 + h3;
+}
+
+fn code4(s:string, start:i64) -> i64
+{
+  return hex4(byte(s,start),byte(s,start+1),byte(s,start+2),byte(s,start+3));
+}
+
+fn input_code4(s:buffer, start:i64) -> i64
+{
+  return hex4(input_byte(s,start),input_byte(s,start+1),input_byte(s,start+2),input_byte(s,start+3));
+}
+
+fn utf8_decode(lead:i64, second:i64, third:i64, fourth:i64, start:i64) -> (i64,i64)
+{
+  var size = 2;
+  var code = lead - 192;
+  var minimum = 128;
+  if lead >= 224 { size = 3; code = lead - 224; minimum = 2048; }
+  if lead >= 240 { size = 4; code = lead - 240; minimum = 65536; }
+  if lead < 194 || lead > 244 { return (-1,start); }
+  let bytes = array[second,third,fourth];
+  for i in 0 .. (size-1)
+  {
+    let next = bytes[i];
+    if next < 128 || next > 191 { return (-1,start); }
+    code = code * 64 + next - 128;
+  }
+  if code < minimum || code > 1114111 || (code >= 55296 && code <= 57343)
+  { return (-1,start); }
+  return (code,start+size);
+}
+
+fn utf8(s:string, start:i64) -> (i64,i64)
+{
+  let lead = byte(s,start);
+  if lead < 128 { return (lead,start+1); }
+  return utf8_decode(lead,byte(s,start+1),byte(s,start+2),byte(s,start+3),start);
+}
+
+fn input_utf8(s:buffer, start:i64, lead:i64) -> (i64,i64)
+{
+  return utf8_decode(lead,input_byte(s,start+1),input_byte(s,start+2),input_byte(s,start+3),start);
+}
+
+fn append_code(out:buffer, c:i64)
+{
+  if c < 32
+  {
+    let digits = "0123456789abcdef";
+    buffer_append(out,"\\u00");
+    buffer_byte(out,text_byte(digits,c / 16));
+    buffer_byte(out,text_byte(digits,c % 16));
+  }
+  else
+  {
+    if c == 34 || c == 92 { buffer_byte(out,92); }
+    PpxJson.ppx_json_utf8(out,c);
+  }
+}
+
+# Retain a canonical JSON spelling, including quotes. Escaped NUL survives
+# despite the C-string ABI, and alternate escape spellings compare equally.
+fn input_quoted(s:buffer, start:i64, keep:bool) -> Result<(sexpr,i64),sexpr>
+{
+  if input_byte(s,start) != 34 { return fail!("expected JSON string"); }
+  let out = buffer_new();
+  if keep { buffer_byte(out,34); }
+  var i = start + 1;
+  while i < buffer_len(s)
+  {
+    let c = input_byte(s,i);
+    if c == 34
+    {
+      if keep { buffer_byte(out,34); return result_ok((sx_string(buffer_text(out)),i+1)); }
+      return result_ok((sx_nil(),i+1));
+    }
+    if c < 32 { return fail!("invalid JSON string control byte"); }
+    var code = c;
+    if c == 92
+    {
+      let esc = input_byte(s,i+1);
+      i = i + 2;
+      if esc == 117
+      {
+        code = input_code4(s,i);
+        if code < 0 { return fail!("invalid JSON Unicode escape"); }
+        i = i + 4;
+        if code >= 55296 && code <= 56319
+        {
+          if input_byte(s,i) != 92 || input_byte(s,i+1) != 117
+          { return fail!("missing JSON low surrogate"); }
+          let low = input_code4(s,i+2);
+          if low < 56320 || low > 57343 { return fail!("invalid JSON low surrogate"); }
+          code = 65536 + (code - 55296) * 1024 + low - 56320;
+          i = i + 6;
+        }
+        else
+        {
+          if code >= 56320 && code <= 57343 { return fail!("unpaired JSON surrogate"); }
+        }
+      }
+      else
+      {
+        code = match esc with
+        {
+          34 | 47 | 92 => esc, 98 => 8, 102 => 12, 110 => 10,
+          114 => 13, 116 => 9, _ => -1
+        };
+        if code < 0 { return fail!("invalid JSON string escape"); }
+      }
+    }
+    else
+    {
+      if c < 128 { i = i + 1; }
+      else
+      {
+        let (decoded,end) = input_utf8(s,i,c);
+        if decoded < 0 { return fail!("invalid JSON UTF-8"); }
+        code = decoded;
+        i = end;
+      }
+    }
+    if keep { append_code(out,code); }
+  }
+  return fail!("unterminated JSON string");
+}
+
+fn quoted(source:string, start:i64, keep:bool) -> Result<(sexpr,i64),sexpr>
+{
+  let s = buffer_new();
+  buffer_append(s,source);
+  return input_quoted(s,start,keep);
+}
+
+fn string_value(v:sexpr) -> bool { return sx_kind(v) == 2; }
+
+# Used only for ASCII identifiers, structural tags and enum labels.
+fn plain(v:sexpr) -> string
+{
+  if !string_value(v) { return ""; }
+  let s = sx_text(v);
+  return text_slice(s,1,text_len(s)-1);
+}
+
+fn decoded_bytes(s:string) -> i64
+{
+  var i = 1;
+  var bytes = 0;
+  while i < text_len(s)-1
+  {
+    if byte(s,i) == 92
+    {
+      if byte(s,i+1) == 117 { i = i + 4; }
+      i = i + 1;
+    }
+    i = i + 1;
+    bytes = bytes + 1;
+  }
+  return bytes;
+}
+
+fn tag(v:sexpr, kind:string) -> bool
+{
+  return sx_kind(v) == 3 && sx_kind(sx_head(v)) == 1 && sx_text(sx_head(v)) == kind;
+}
+
+fn at(items:sexpr, n:i64) -> sexpr
+{
+  var rest = items;
+  for i in 0 .. n
+  {
+    if sx_kind(rest) != 3 { return sx_nil(); }
+    rest = sx_tail(rest);
+  }
+  if sx_kind(rest) != 3 { return sx_nil(); }
+  return sx_head(rest);
+}
+
+fn size(items:sexpr) -> i64
+{
+  var n = 0;
+  var rest = items;
+  while sx_kind(rest) == 3 { n = n + 1; rest = sx_tail(rest); }
+  return n;
+}
+
+fn pair(a:sexpr, b:sexpr) -> sexpr { return sx_cons(a,sx_cons(b,sx_nil())); }
+
+fn field(pairs:sexpr, key:string) -> sexpr
+{
+  var rest = pairs;
+  while sx_kind(rest) == 3
+  {
+    let pair = sx_head(rest);
+    if sx_text(sx_head(pair)) == key { return at(pair,1); }
+    rest = sx_tail(rest);
+  }
+  return sx_nil();
+}
+
+fn get(v:sexpr, key:string) -> sexpr
+{
+  if !tag(v,"object") { return sx_nil(); }
+  return field(sx_tail(v),text_concat(text_concat("\"",key),"\""));
+}
+
+fn number_end(s:buffer, start:i64) -> Result<i64,sexpr>
+{
+  var i = start;
+  if input_byte(s,i) == 45 { i = i + 1; }
+  if !digit(input_byte(s,i)) { return fail!("invalid JSON number"); }
+  if input_byte(s,i) == 48 { i = i + 1; }
+  else { while digit(input_byte(s,i)) { i = i + 1; } }
+  if input_byte(s,i) == 46
+  {
+    i = i + 1;
+    if !digit(input_byte(s,i)) { return fail!("invalid JSON fraction"); }
+    while digit(input_byte(s,i)) { i = i + 1; }
+  }
+  if input_byte(s,i) == 101 || input_byte(s,i) == 69
+  {
+    i = i + 1;
+    if input_byte(s,i) == 43 || input_byte(s,i) == 45 { i = i + 1; }
+    if !digit(input_byte(s,i)) { return fail!("invalid JSON exponent"); }
+    while digit(input_byte(s,i)) { i = i + 1; }
+  }
+  return result_ok(i);
+}
+
+fn read(s:buffer, start:i64, depth:i64, keep:bool) -> Result<(sexpr,i64),sexpr>
+{
+  if depth > 140 { return fail!("JSON nesting exceeds 140 levels"); }
+  var i = space(s,start);
+  let c = input_byte(s,i);
+  if c == 34
+  {
+    let (value,end) = input_quoted(s,i,keep)?;
+    return result_ok((value,end));
+  }
+  if c == 45 || digit(c)
+  {
+    let end = number_end(s,i)?;
+    if keep { return result_ok((pair(sx_symbol("number"),sx_string(raw(s,i,end))),end)); }
+    return result_ok((sx_nil(),end));
+  }
+  if c == 123 || c == 91
+  {
+    var kind = "array";
+    if c == 123 { kind = "object"; }
+    let close = c + 2;
+    var items = sx_nil();
+    var n = 0;
+    i = space(s,i+1);
+    if input_byte(s,i) != close
+    {
+      loop
+      {
+        var key = "";
+        if c == 123
+        {
+          let (name,end) = input_quoted(s,i,keep)?;
+          if keep { key = sx_text(name); }
+          i = space(s,end);
+          if input_byte(s,i) != 58 { return fail!("expected JSON colon"); }
+          i = i + 1;
+        }
+        let (value,end) = read(s,i,depth+1,keep)?;
+        if keep
+        {
+          n = n + 1;
+          if n > 4096 { return fail!("JSON container exceeds 4096 items"); }
+          if c == 123
+          {
+            if sx_kind(field(items,key)) != 0 { return fail!("duplicate JSON object key"); }
+            items = sx_cons(pair(sx_string(key),value),items);
+          }
+          else { items = sx_cons(value,items); }
+        }
+        i = space(s,end);
+        if input_byte(s,i) == close { break; }
+        if input_byte(s,i) != 44 { return fail!("expected JSON comma or closing delimiter"); }
+        i = space(s,i+1);
+      }
+    }
+    if keep { return result_ok((sx_cons(sx_symbol(kind),List.basis_list_rev(items)),i+1)); }
+    return result_ok((sx_nil(),i+1));
+  }
+  var literal = "";
+  if c == 116 { literal = "true"; }
+  if c == 102 { literal = "false"; }
+  if c == 110 { literal = "null"; }
+  let end = i + text_len(literal);
+  if literal == "" || !word(s,i,literal)
+  { return fail!("invalid JSON value"); }
+  if keep { return result_ok((sx_symbol(literal),end)); }
+  return result_ok((sx_nil(),end));
+}
+
+fn parse(source:string) -> Result<sexpr,sexpr>
+{
+  let s = buffer_new();
+  buffer_append(s,source);
+  let (value,end) = read(s,0,0,true)?;
+  if space(s,end) != buffer_len(s) { return fail!("trailing JSON input"); }
+  return result_ok(value);
+}

@@ -1,0 +1,597 @@
+# In-memory, serial scheduler. It reserves work but never runs requests.
+# Transitions return the replacement state; validation errors leave the
+# caller's state unchanged. This is not a persistent or shared quota.
+import plugins.caravansary.coverage.clock as Clock;
+import plugins.caravansary.coverage.index as Index;
+import plugins.caravansary.coverage.values as J;
+import plugins.caravansary.planning.host as Host;
+import plugins.caravansary.planning.json as Json;
+import std.collections.List as List;
+import std.String as Str;
+
+macro fail { rule ($message:Expression) => expression { result_error(sx_string($message)) }; }
+
+record Limits { tick: i64, age: i64, minimum: i64, max_retries: i64, initial: i64, maximum: i64 }
+record History { oldest: sexpr, newest: sexpr, count: i64 }
+record Source { name: sexpr, budget: i64, concurrency: i64, active: i64, fairness: i64, hours: History }
+record State
+{
+  limits: Limits, first: Source, second: Source, cells: sexpr, active: sexpr,
+  next_id: i64, last_tick: i64, clock: i64
+}
+record Cell
+{
+  last_attempt: i64, last_success: i64, not_before: i64, retries: i64,
+  backoff: i64, active: bool
+}
+
+fn min(a: i64, b: i64) -> i64 { if a < b { return a; } return b; }
+fn max(a: i64, b: i64) -> i64 { if a > b { return a; } return b; }
+
+fn integer(v: sexpr, name: string, minimum: i64) -> Result<i64, sexpr>
+{
+  let (ok, n) = J.as_i64(v);
+  if !ok || n < minimum { return fail!("$name must be an integer >= $minimum"); }
+  return result_ok(n);
+}
+
+fn source(refresh: sexpr, name: sexpr) -> Result<Source, sexpr>
+{
+  let label = J.plain(name);
+  let empty = record<History>{oldest: sx_nil(), newest: sx_nil(), count: 0};
+  if J.absent(name)
+  {
+    return result_ok(record<Source>{name: name, budget: 0, concurrency: 0, active: 0, fairness: 0, hours: empty});
+  }
+  if label != "booking" && label != "agoda" { return fail!("invalid scheduler source: '$label'"); }
+  let budget_key = "${label}_requests_per_hour";
+  let concurrency_key = "${label}_concurrency";
+  let budget = integer(J.get(refresh, budget_key), budget_key, 1)?;
+  let concurrency = integer(J.get(refresh, concurrency_key), concurrency_key, 1)?;
+  return result_ok(record<Source>{name: name, budget: budget, concurrency: concurrency,
+    active: 0, fairness: 0, hours: empty});
+}
+
+fn create(refresh: sexpr, sources: sexpr, minimum_service_every: i64, max_retries: i64,
+  backoff_initial_seconds: i64, backoff_max_seconds: i64) -> Result<State, sexpr>
+{
+  let tick = integer(J.get(refresh, "tick_seconds"), "tick_seconds", 1)?;
+  let age = integer(J.get(refresh, "max_age_seconds"), "max_age_seconds", 1)?;
+  if minimum_service_every < 1 { return fail!("minimum_service_every must be an integer >= 1"); }
+  if max_retries < 0 { return fail!("max_retries must be an integer >= 0"); }
+  if backoff_initial_seconds < 1 { return fail!("backoff_initial_seconds must be an integer >= 1"); }
+  if backoff_max_seconds < backoff_initial_seconds
+  { return fail!("backoff_max_seconds must be an integer >= $backoff_initial_seconds"); }
+  if !J.is_array(sources) || J.absent(sx_tail(sources))
+  { return fail!("at least one source is required"); }
+  let items = sx_tail(sources);
+  let first = source(refresh, sx_head(items))?;
+  let tail = sx_tail(items);
+  var second_name = sx_nil();
+  if !J.absent(tail)
+  {
+    second_name = sx_head(tail);
+    if !J.absent(sx_tail(tail)) || J.same(first["name"], second_name)
+    { return fail!("invalid or duplicate scheduler source"); }
+  }
+  let second = source(refresh, second_name)?;
+  let limits = record<Limits>{tick: tick, age: age, minimum: minimum_service_every, max_retries: max_retries,
+    initial: backoff_initial_seconds, maximum: backoff_max_seconds};
+  return result_ok(record<State>{limits: limits, first: first, second: second, cells: sx_nil(),
+    active: sx_nil(), next_id: 1, last_tick: 0, clock: 0});
+}
+
+fn defaults(refresh: sexpr, sources: sexpr) -> Result<State, sexpr>
+{
+  return create(refresh, sources, 4, 2, 30, 3600);
+}
+
+fn split_rows(state: State, rows: sexpr) -> Result<(sexpr, sexpr), sexpr>
+{
+  if !J.is_array(rows) { return fail!("scheduler rows must be an array"); }
+  let first = J.plain(state["first"]["name"]);
+  let second = J.plain(state["second"]["name"]);
+  var one = sx_nil();
+  var two = sx_nil();
+  var seen = sx_nil();
+  var rest = sx_tail(rows);
+  while !J.absent(rest)
+  {
+    let row = sx_head(rest);
+    let name = J.plain(J.get(row, "source"));
+    if name != "" && (name == first || name == second)
+    {
+      let cell_key = J.get(row, "cell_key");
+      let key = J.plain(cell_key);
+      if key == "" || !J.absent(Index.get(seen, key))
+      { return fail!("invalid or duplicate scheduler cell key: '$key'"); }
+      seen = Index.put_atom(seen, cell_key, J.boolean(true));
+      let status = J.plain(J.get(row, "status"));
+      if status != "pending" && status != "priced" && status != "unavailable" &&
+        status != "failed" && status != "unsupported"
+      { return fail!("invalid scheduler status: '$status'"); }
+      if name == first { one = sx_cons(row, one); }
+      else { two = sx_cons(row, two); }
+    }
+    rest = sx_tail(rest);
+  }
+  return result_ok((List.basis_list_rev(one), List.basis_list_rev(two)));
+}
+
+# Compare nonnegative ratios without overflowing a cross product.
+fn ratio_le(a: i64, b: i64, c: i64, d: i64) -> bool
+{
+  var x = a;
+  var y = b;
+  var z = c;
+  var w = d;
+  var flipped = false;
+  loop
+  {
+    let l = x / y;
+    let r = z / w;
+    if l != r
+    {
+      if flipped { return l > r; }
+      return l < r;
+    }
+    let lr = x % y;
+    let rr = z % w;
+    if lr == 0 || rr == 0
+    {
+      if flipped { return rr == 0; }
+      return lr == 0;
+    }
+    x = y;
+    y = lr;
+    z = w;
+    w = rr;
+    flipped = !flipped;
+  }
+  return false;
+}
+
+fn capacity_source(limits: Limits, src: Source, rows: sexpr) -> sexpr
+{
+  let tick = limits["tick"];
+  let age = limits["age"];
+  let budget = src["budget"];
+  let concurrency = src["concurrency"];
+  let slots = min(budget, concurrency);
+  var eligible = 0;
+  var unsupported = 0;
+  var rest = rows;
+  while !J.absent(rest)
+  {
+    if J.plain(J.get(sx_head(rest), "status")) == "unsupported" { unsupported = unsupported + 1; }
+    else { eligible = eligible + 1; }
+    rest = sx_tail(rest);
+  }
+  let budget_ok = ratio_le(eligible, budget, age, 3600);
+  let tick_ok = eligible == 0 || (tick <= age && ratio_le(eligible, slots, age, tick));
+  let hourly = f64_from_i64(eligible * 3600) / f64_from_i64(age);
+  var out = J.object(sx_nil());
+  out = J.set(out, "eligible_cells", J.integer(eligible));
+  out = J.set(out, "unsupported_cells", J.integer(unsupported));
+  out = J.set(out, "attempts_per_full_pass", J.integer(eligible));
+  out = J.set(out, "required_attempts_per_hour", Json.real(hourly));
+  out = J.set(out, "requests_per_hour", J.integer(budget));
+  out = J.set(out, "concurrency", J.integer(concurrency));
+  out = J.set(out, "max_attempts_per_tick", J.integer(slots));
+  out = J.set(out, "tick_seconds", J.integer(tick));
+  out = J.set(out, "max_age_seconds", J.integer(age));
+  out = J.set(out, "necessary_budget_condition_met", J.boolean(budget_ok));
+  out = J.set(out, "necessary_tick_condition_met", J.boolean(tick_ok));
+  out = J.set(out, "necessary_capacity_condition_met", J.boolean(budget_ok && tick_ok));
+  return out;
+}
+
+fn state_capacity(state: State, rows: sexpr) -> Result<sexpr, sexpr>
+{
+  let (one, two) = split_rows(state, rows)?;
+  let a = state["first"];
+  let b = state["second"];
+  var out = J.object(sx_nil());
+  out = J.set(out, sx_text(a["name"]), capacity_source(state["limits"], a, one));
+  if !J.absent(b["name"])
+  { out = J.set(out, sx_text(b["name"]), capacity_source(state["limits"], b, two)); }
+  return result_ok(out);
+}
+
+fn capacity(refresh: sexpr, sources: sexpr, rows: sexpr) -> Result<sexpr, sexpr>
+{
+  return state_capacity(defaults(refresh, sources)?, rows);
+}
+
+fn unpack_integer(v: sexpr) -> i64
+{
+  let (ok, n) = J.as_i64(v);
+  if !ok { tool_fail("invalid internal scheduler state"); }
+  return n;
+}
+
+fn expire(source_value: Source, instant: i64) -> Source
+{
+  let hours = source_value["hours"];
+  var front = hours["oldest"];
+  var back = hours["newest"];
+  var count = hours["count"];
+  let cutoff = instant - 3600 * Clock.second();
+  while count > 0
+  {
+    if J.absent(front)
+    {
+      front = List.basis_list_rev(back);
+      back = sx_nil();
+    }
+    if unpack_integer(sx_head(front)) > cutoff { break; }
+    front = sx_tail(front);
+    count = count - 1;
+  }
+  return record<Source>{name: source_value["name"], budget: source_value["budget"],
+    concurrency: source_value["concurrency"], active: source_value["active"], fairness: source_value["fairness"],
+    hours: record<History>{oldest: front, newest: back, count: count}};
+}
+
+fn slots(src: Source) -> i64
+{
+  return min(src["concurrency"] - src["active"], src["budget"] - src["hours"]["count"]);
+}
+
+fn clock(state: State, as_of: string) -> Result<i64, sexpr>
+{
+  let now = Clock.parse(as_of, "scheduler clock")?;
+  if now < state["clock"] { return fail!("scheduler clock cannot move backwards"); }
+  return result_ok(now);
+}
+
+fn unpack_cell(v: sexpr) -> Cell
+{
+  if J.absent(v) { return record<Cell>{last_attempt: 0, last_success: 0, not_before: 0, retries: 0,
+    backoff: 0, active: false}; }
+  let second = sx_tail(v);
+  let third = sx_tail(second);
+  let fourth = sx_tail(third);
+  let fifth = sx_tail(fourth);
+  return record<Cell>{last_attempt: unpack_integer(sx_head(v)),
+    last_success: unpack_integer(sx_head(second)), not_before: unpack_integer(sx_head(third)),
+    retries: unpack_integer(sx_head(fourth)), backoff: unpack_integer(sx_head(fifth)),
+    active: J.truth(sx_head(sx_tail(fifth)))};
+}
+
+fn pack_cell(c: Cell) -> sexpr
+{
+  return sx_cons(J.integer(c["last_attempt"]), sx_cons(J.integer(c["last_success"]),
+    sx_cons(J.integer(c["not_before"]), sx_cons(J.integer(c["retries"]),
+    sx_cons(J.integer(c["backoff"]), sx_cons(J.boolean(c["active"]), sx_nil()))))));
+}
+
+fn timestamp(v: sexpr, name: string) -> Result<i64, sexpr>
+{
+  if J.absent(v) || J.is_null(v) { return result_ok(0); }
+  return Clock.parse(J.plain(v), name);
+}
+
+fn receipt(row: sexpr, field: string) -> Result<i64, sexpr>
+{
+  let record_value = J.or_null(J.get(row, field));
+  if J.is_null(record_value) { return result_ok(0); }
+  return Clock.parse(J.plain(J.get(record_value, "received_at")), "received_at");
+}
+
+fn candidate(row: sexpr, state: State, now: i64) -> Result<sexpr, sexpr>
+{
+  if J.plain(J.get(row, "status")) == "unsupported" { return result_ok(sx_nil()); }
+  let key = J.plain(J.get(row, "cell_key"));
+  let local = unpack_cell(Index.get(state["cells"], key));
+  if local["active"] || local["not_before"] > now { return result_ok(sx_nil()); }
+  let success = max(local["last_success"], receipt(row, "latest_success")?);
+  let last_attempt = max(local["last_attempt"], receipt(row, "latest_attempt")?);
+  var due = timestamp(J.get(row, "next_due_at"), "next_due_at")?;
+  if success > 0 { due = max(due, Clock.add_seconds(success, state["limits"]["age"])); }
+  if due > now { return result_ok(sx_nil()); }
+  let weight = J.get(row, "weight");
+  let kind = Json.kind(weight);
+  var valid = false;
+  if kind == "integer" { valid = text_byte(sx_text(weight), 0) != 45; }
+  if kind == "float"
+  {
+    let value = Host.caravansary_parse_float(sx_text(weight));
+    valid = f64_is_finite(value) && value >= 0.0;
+  }
+  if !valid { return fail!("invalid scheduler weight for '$key'"); }
+  return result_ok(sx_cons(row, sx_cons(J.integer(due),
+    sx_cons(J.integer(max(last_attempt, success)), sx_cons(J.integer(success), sx_nil())))));
+}
+
+fn decimal_cmp(a: string, b: string) -> i64
+{
+  let n = text_len(a) - text_len(b);
+  if n != 0 { return n; }
+  return Index.compare(a, b);
+}
+
+fn double_decimal(s: string) -> string
+{
+  let out = buffer_new();
+  var carry = 0;
+  var i = text_len(s);
+  while i > 0
+  {
+    i = i - 1;
+    let v = 2 * (text_byte(s, i) - 48) + carry;
+    carry = v / 10;
+    buffer_byte(out, 48 + v % 10);
+  }
+  if carry > 0 { buffer_byte(out, 48 + carry); }
+  let rev = buffer_text(out);
+  let forward = buffer_new();
+  for p in 0 .. text_len(rev)
+  { buffer_byte(forward, text_byte(rev, text_len(rev) - 1 - p)); }
+  return buffer_text(forward);
+}
+
+# This fallback is only needed when conversion of an exact integer to
+# binary64 ties a floating point candidate. Do not break such ties via a
+# rounded integer-to-float conversion (Python compares the values exactly).
+fn exact_int_float(a: string, b: f64) -> i64
+{
+  if b < 9007199254740992.0
+  {
+    let floor = f64_to_i64(b);
+    let n = decimal_cmp(a, "$floor");
+    if n == 0 && f64_from_i64(floor) < b { return -1; }
+    return n;
+  }
+  let bits = f64_to_bits(b);
+  let power = bits / 4503599627370496 - 1023 - 52;
+  let significand = bits % 4503599627370496 + 4503599627370496;
+  var integer_text = "$significand";
+  for i in 0 .. power { integer_text = double_decimal(integer_text); }
+  return decimal_cmp(a, integer_text);
+}
+
+fn compare_weight(a: sexpr, b: sexpr) -> i64
+{
+  let x = sx_text(a);
+  let y = sx_text(b);
+  let xi = J.is_integer(a);
+  let yi = J.is_integer(b);
+  if xi && yi { return decimal_cmp(x, y); }
+  let xf = Host.caravansary_parse_float(x);
+  let yf = Host.caravansary_parse_float(y);
+  if xf < yf { return -1; }
+  if xf > yf { return 1; }
+  if xi { return exact_int_float(x, yf); }
+  if yi { return -exact_int_float(y, xf); }
+  return 0;
+}
+
+fn rank(a: sexpr, b: sexpr, weighted: bool) -> i64
+{
+  let x = sx_head(a);
+  let y = sx_head(b);
+  let ax = sx_tail(a);
+  let by = sx_tail(b);
+  if weighted
+  {
+    let w = compare_weight(J.get(x, "weight"), J.get(y, "weight"));
+    if w != 0 { return -w; }
+    let due = unpack_integer(sx_head(ax)) - unpack_integer(sx_head(by));
+    if due != 0 { return due; }
+  }
+  let aserved = sx_tail(ax);
+  let bserved = sx_tail(by);
+  let service = unpack_integer(sx_head(aserved)) - unpack_integer(sx_head(bserved));
+  if service != 0 { return service; }
+  let success = unpack_integer(sx_head(sx_tail(aserved))) - unpack_integer(sx_head(sx_tail(bserved)));
+  if success != 0 { return success; }
+  return Index.compare(J.plain(J.get(x, "cell_key")), J.plain(J.get(y, "cell_key")));
+}
+
+fn sort_rows(items: sexpr, count: i64, weighted: bool) -> sexpr
+{
+  if count < 2 { return items; }
+  var prefix = sx_nil();
+  var tail = items;
+  let mid = count / 2;
+  for i in 0 .. mid { prefix = sx_cons(sx_head(tail), prefix); tail = sx_tail(tail); }
+  var left = sort_rows(prefix, mid, weighted);
+  var right = sort_rows(tail, count - mid, weighted);
+  var reverse = sx_nil();
+  while !J.absent(left) && !J.absent(right)
+  {
+    if rank(sx_head(left), sx_head(right), weighted) <= 0
+    { reverse = sx_cons(sx_head(left), reverse); left = sx_tail(left); }
+    else { reverse = sx_cons(sx_head(right), reverse); right = sx_tail(right); }
+  }
+  var output = right;
+  if !J.absent(left) { output = left; }
+  while !J.absent(reverse)
+  {
+    output = sx_cons(sx_head(reverse), output);
+    reverse = sx_tail(reverse);
+  }
+  return output;
+}
+
+record Due { any: sexpr, positive: sexpr, count: i64 }
+
+fn due_rows(items: sexpr, state: State, now: i64, free: i64) -> Result<Due, sexpr>
+{
+  var rows = sx_nil();
+  var positive = sx_nil();
+  var n = 0;
+  var p = 0;
+  var rest = items;
+  while free > 0 && !J.absent(rest)
+  {
+    let row = sx_head(rest);
+    let selected = candidate(row, state, now)?;
+    if !J.absent(selected)
+    {
+      rows = sx_cons(selected, rows);
+      n = n + 1;
+      let weight = J.get(row, "weight");
+      if compare_weight(weight, J.integer(0)) > 0
+      { positive = sx_cons(selected, positive); p = p + 1; }
+    }
+    rest = sx_tail(rest);
+  }
+  return result_ok(record<Due>{any: sort_rows(rows, n, false),
+    positive: sort_rows(positive, p, true), count: min(free, n)});
+}
+
+record Selection { source: Source, cells: sexpr, active: sexpr, next_id: i64, rev: sexpr }
+
+fn skip_selected(queue: sexpr, selected: sexpr) -> sexpr
+{
+  var rest = queue;
+  while !J.absent(rest)
+  {
+    let key = J.plain(J.get(sx_head(sx_head(rest)), "cell_key"));
+    if J.absent(Index.get(selected, key)) { break; }
+    rest = sx_tail(rest);
+  }
+  return rest;
+}
+
+fn reserve(state: State, src: Source, due: Due, previous: Selection, now: i64) -> Selection
+{
+  var weighted = due["positive"];
+  var rotating = due["any"];
+  var active = previous["active"];
+  var cells = previous["cells"];
+  var next_id = previous["next_id"];
+  var rev = previous["rev"];
+  var fairness = src["fairness"];
+  var selected = sx_nil();
+  let count = due["count"];
+  let old_hours = src["hours"];
+  var newest = old_hours["newest"];
+  for i in 0 .. count
+  {
+    fairness = (fairness + 1) % state["limits"]["minimum"];
+    var choice = sx_nil();
+    if fairness > 0
+    {
+      weighted = skip_selected(weighted, selected);
+      if !J.absent(weighted)
+      {
+        choice = sx_head(weighted);
+        weighted = sx_tail(weighted);
+      }
+    }
+    if J.absent(choice)
+    {
+      rotating = skip_selected(rotating, selected);
+      choice = sx_head(rotating);
+      rotating = sx_tail(rotating);
+    }
+    let row = sx_head(choice);
+    let cell_key = J.get(row, "cell_key");
+    let key = sx_text(cell_key);
+    let local = unpack_cell(Index.get(cells, key));
+    selected = Index.put_atom(selected, cell_key, J.boolean(true));
+    cells = Index.put_atom(cells, cell_key, pack_cell(record<Cell>{last_attempt: now, last_success: local["last_success"],
+      not_before: local["not_before"], retries: local["retries"], backoff: local["backoff"], active: true}));
+    newest = sx_cons(J.integer(now), newest);
+    active = Index.put(active, "$next_id", sx_cons(src["name"], sx_cons(cell_key, sx_nil())));
+    rev = sx_cons(J.set(row, "reservation_id", J.integer(next_id)), rev);
+    next_id = next_id + 1;
+  }
+  let source_value = record<Source>{name: src["name"], budget: src["budget"], concurrency: src["concurrency"],
+    active: src["active"] + count, fairness: fairness,
+    hours: record<History>{oldest: old_hours["oldest"], newest: newest, count: old_hours["count"] + count}};
+  return record<Selection>{source: source_value, cells: cells, active: active, next_id: next_id, rev: rev};
+}
+
+# Spend no more than one tick, taking a trailing-hour budget and a concurrent
+# slot at reservation time. The returned reservations are a tagged JSON array.
+fn schedule(state: State, rows: sexpr, as_of: string) -> Result<(State, sexpr), sexpr>
+{
+  let now = clock(state, as_of)?;
+  let limits = state["limits"];
+  let prev = state["last_tick"];
+  if prev > 0 && now < Clock.add_seconds(prev, limits["tick"])
+  {
+    return result_ok((record<State>{limits: limits, first: state["first"], second: state["second"],
+      cells: state["cells"], active: state["active"], next_id: state["next_id"], last_tick: prev, clock: now},
+      J.array(sx_nil())));
+  }
+  let first = expire(state["first"], now);
+  let second = expire(state["second"], now);
+  let one = slots(first);
+  let two = slots(second);
+  var rows_one = sx_nil();
+  var rows_two = sx_nil();
+  if one > 0 || two > 0
+  {
+    let (a, b) = split_rows(state, rows)?;
+    rows_one = a;
+    rows_two = b;
+  }
+  let due_one = due_rows(rows_one, state, now, one)?;
+  let due_two = due_rows(rows_two, state, now, two)?;
+  if 9223372036854775807 - state["next_id"] - due_one["count"] < due_two["count"]
+  { return fail!("scheduler reservation ID range exhausted"); }
+  let seed = record<Selection>{source: first, cells: state["cells"], active: state["active"],
+    next_id: state["next_id"], rev: sx_nil()};
+  let a = reserve(state, first, due_one, seed, now);
+  let b = reserve(state, second, due_two, a, now);
+  return result_ok((record<State>{limits: limits, first: a["source"], second: b["source"],
+    cells: b["cells"], active: b["active"], next_id: b["next_id"], last_tick: now, clock: now},
+    J.array(List.basis_list_rev(b["rev"]))));
+}
+
+fn released(src: Source) -> Source
+{
+  return record<Source>{name: src["name"], budget: src["budget"], concurrency: src["concurrency"],
+    active: src["active"] - 1, fairness: src["fairness"], hours: src["hours"]};
+}
+
+# Finishing releases concurrency, not the issued attempt. Retryable failures
+# back off exponentially; a successful or ended chain resumes at normal age.
+fn finish(state: State, reservation_id: i64, as_of: string, success: bool, retryable: bool)
+  -> Result<State, sexpr>
+{
+  let now = clock(state, as_of)?;
+  let id = "$reservation_id";
+  let reservation = Index.get(state["active"], id);
+  if J.absent(reservation) { return fail!("unknown or finished reservation: $reservation_id"); }
+  let name = sx_head(reservation);
+  let cell_key = sx_head(sx_tail(reservation));
+  let key = sx_text(cell_key);
+  var first = state["first"];
+  var second = state["second"];
+  if J.same(name, first["name"]) { first = released(first); }
+  else { second = released(second); }
+  let limits = state["limits"];
+  let local = unpack_cell(Index.get(state["cells"], key));
+  var last_success = local["last_success"];
+  var delay = limits["age"];
+  var retries = 0;
+  var backoff = 0;
+  if success { last_success = now; }
+  else
+  {
+    let prior_backoff = local["backoff"];
+    if retryable && local["retries"] < limits["max_retries"]
+    {
+      retries = local["retries"] + 1;
+      backoff = limits["initial"];
+      if prior_backoff > 0
+      {
+        backoff = limits["maximum"];
+        if prior_backoff <= backoff / 2 { backoff = prior_backoff * 2; }
+      }
+      delay = backoff;
+    }
+    else { delay = max(delay, prior_backoff); }
+  }
+  let changed = record<Cell>{last_attempt: local["last_attempt"], last_success: last_success,
+    not_before: Clock.add_seconds(now, delay), retries: retries, backoff: backoff, active: false};
+  return result_ok(record<State>{limits: limits, first: first, second: second,
+    cells: Index.put_atom(state["cells"], cell_key, pack_cell(changed)), active: Index.remove(state["active"], id),
+    next_id: state["next_id"], last_tick: state["last_tick"], clock: now});
+}

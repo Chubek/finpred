@@ -1,0 +1,97 @@
+import std.llsynth as L;
+import std.llsynth.llsynth as Image;
+import frontend.tables as Tables;
+import frontend.text as Text;
+
+record Stream { text: sexpr, spans: sexpr, count: i64, eof_offset: i64 }
+
+# The nominal record holds immutable atoms, so pack span endpoints into
+# three NUL-free base-128 digits. Source and spans never escape the frontend.
+fn push_span(out: buffer, n: i64)
+{
+  buffer_byte(out, 1 + n % 128);
+  buffer_byte(out, 1 + n / 128 % 128);
+  buffer_byte(out, 1 + n / 16384);
+}
+
+fn span(input: Stream, n: i64) -> i64
+{
+  let raw = sx_text(input["spans"]);
+  let i = n * 3;
+  return text_byte(raw, i) - 1
+    + 128 * (text_byte(raw, i + 1) - 1)
+    + 16384 * (text_byte(raw, i + 2) - 1);
+}
+
+fn stream(source: buffer) -> (Stream, string)
+{
+  let spans = buffer_new();
+  let empty = record<Stream>{text:sx_nil(), spans:sx_nil(), count:0, eof_offset:0};
+  let length = buffer_len(source);
+  if length > 1048576 { return (empty, "CaravanScript exceeds 1048576 bytes"); }
+  let utf8 = Text.utf8(source);
+  if utf8 != length
+  { return (empty, Text.diagnostic(source, utf8, "CaravanScript source must be UTF-8 text without raw NUL")); }
+  let tables = Tables.basis_llsynth_tables();
+  let (status, offset) = L.recognize(tables, source);
+  var syntax_error = "";
+  if status != 0
+  {
+    var reason = "unexpected token in CaravanScript";
+    if status == 1
+    {
+      reason = "unexpected character in CaravanScript";
+      if offset < length && Text.byte_at(source, offset) == 34 { reason = "invalid JSON string"; }
+    }
+    if status == 3 { reason = "invalid CaravanScript grammar tables"; }
+    if status == 4 { reason = "CaravanScript syntax work limit exceeded"; }
+    syntax_error = Text.diagnostic(source, offset, reason);
+    if status != 2 { return (empty, syntax_error); }
+  }
+
+  # Replay with the same synthesized DFA. std.llsynth's public recognizer
+  # does not expose token spans or run semantic actions. On a grammar error,
+  # keep just the rejected prefix and its last token for a specific diagnostic.
+  let states = Image.llsynth_word(tables, 1);
+  let productions = Image.llsynth_word(tables, 3);
+  let max_token = Image.llsynth_word(tables, 4);
+  var pos = 0;
+  var count = 0;
+  var budget = 4194304;
+  while pos < length && pos <= offset
+  {
+    let (kind, end, remaining) = Image.llsynth_scan(tables, 5 + productions * 2, states,
+      max_token, source, pos, length, budget);
+    if kind < 0 || end <= pos
+    { return (empty, Text.diagnostic(source, pos, "failed to replay accepted CaravanScript")); }
+    if kind > 0
+    {
+      push_span(spans, pos);
+      push_span(spans, end);
+      count = count + 1;
+    }
+    pos = end;
+    budget = remaining;
+  }
+  return (record<Stream>{text:sx_string(buffer_text(source)),
+    spans:sx_string(buffer_text(spans)), count:count, eof_offset:offset}, syntax_error);
+}
+
+fn offset(input: Stream, at: i64) -> i64
+{
+  if at >= input["count"] { return input["eof_offset"]; }
+  return span(input, at * 2);
+}
+
+fn token(input: Stream, at: i64) -> string
+{
+  if at >= input["count"] { return ""; }
+  return text_slice(sx_text(input["text"]), offset(input, at), span(input, at * 2 + 1));
+}
+
+fn error(input: Stream, at: i64, reason: string) -> string
+{
+  let source = buffer_new();
+  buffer_append(source, sx_text(input["text"]));
+  return Text.diagnostic(source, offset(input, at), reason);
+}

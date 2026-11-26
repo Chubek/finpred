@@ -17,6 +17,12 @@ checks() {
 }
 
 caravansary_checks() {
+  sh plugins/caravansary/frontend/generate-tables.sh --check
+  bin/caravansary build
+  for module in frontend planning coverage credentials booking metrics; do
+    sh plugins/caravansary/build.sh "--check-$module"
+  done
+  python3 tests/caravansary_on1x.py
   for check in tests/check_caravansary*.py; do
     python3 "$check"
   done
