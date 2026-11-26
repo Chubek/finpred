@@ -1,0 +1,22 @@
+caravan "Riviera Hotel" version 1 {
+  property {
+    type = "hotel"; latitude = "43.000000"; longitude = "7.000000";
+    timezone = "Europe/Paris"; currency = "EUR";
+    room_types = ["standard", "suite"];
+  }
+  competitors = "riviera-comparables.json";
+  sources = ["booking", "agoda"];
+  search {
+    horizon_days = 365; start = "today";
+    guest_configurations = ["one_adult", "two_adults"];
+    stay_lengths = [1, 2, 3];
+    booker_country = "FR"; locale = "fr-FR";
+  }
+  refresh {
+    tick_seconds = 3600; weights = "riviera-weights.json";
+    max_age_seconds = 86400; booking_requests_per_hour = 100;
+    agoda_requests_per_hour = 100; booking_concurrency = 1;
+    agoda_concurrency = 1;
+  }
+  output { observations = "observations.jsonl"; coverage = "coverage.json"; }
+}

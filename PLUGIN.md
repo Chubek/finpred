@@ -39,6 +39,13 @@ also works for readers outside On1x. Digests bind bytes, not publisher
 identity; consumers validate data for their own domain and choose their own
 destinations. The reader is not a dynamically registered SDK Source.
 
+## Caravansary: plan and replay a competitor matrix
+
+[Caravansary](plugins/caravansary/README.md) is a standalone Python host,
+not a registered FinPRED SDK Source. It validates CaravanScript and offline
+inputs, emits the expected matrix, and folds a host-selected observation log
+into a coverage report. It does not query providers or invoke pricing.
+
 ## Yieldcraft: call the strategy from On1x
 
 ```on1x

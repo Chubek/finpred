@@ -70,6 +70,7 @@ make mulib           # builds the local On1x compiler + GrammarEmbed
 make                 # builds build/dev/finpred
 ./bin/finpred selftest
 make test            # full suite; see INSTALL.md for verification dependencies
+make caravansary-test  # offline competitor matrix and coverage
 make dragnet-search-test  # current offline Dragnet search and handoff
 make dragnet-test    # restored frozen CSV, Crossref, public feeds and dispatcher
 make native-test     # isolated C store review target
@@ -95,6 +96,7 @@ deterministic bundles and relocation checks.
 | **SDK** | [`source/sdk/`](source/sdk/) — trusted, statically linked versioned handler descriptors, callable ports and capability checks |
 | **Core price prediction** | [`source/core/price_prediction.c`](source/core/price_prediction.c) — MuLIB-backed forecasts from frozen price histories via [`finpred price-predict`](GUIDE.md#predict-prices-from-a-history) |
 | **Dragnet** | [`plugins/dragnet/`](plugins/dragnet/) — Elvi web acquisition, optional GPT analysis, and offline capture handoff to plugins and core consumers |
+| **Caravansary** | [`plugins/caravansary/`](plugins/caravansary/) — offline competitor observation planning, freshness scheduling, and coverage reporting |
 | **Forecast baselines** | [`plugins/forecast_baselines/`](plugins/forecast_baselines/) — moving-average and seasonal-naive monthly guest-night models; later actuals are used only to score issued forecasts |
 | **Poindexter** | [`plugins/poindexter/`](plugins/poindexter/) — verified market-positioning and contribution sheets, terminal spreadsheet and optional ImmGTK X11 frontend |
 | **Artifact store** | [`source/store/`](source/store/) — versioned immutable object/run evidence in a private cooperative store |

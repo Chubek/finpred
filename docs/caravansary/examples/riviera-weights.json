@@ -1,0 +1,13 @@
+{
+  "kind": "caravansary.weights@1",
+  "source": "illustrative assumptions; not observed booking data",
+  "mode": "joint",
+  "weights": [
+    {"guest_configuration": "one_adult", "stay_length": 1, "weight": 1},
+    {"guest_configuration": "one_adult", "stay_length": 2, "weight": 1},
+    {"guest_configuration": "one_adult", "stay_length": 3, "weight": 1},
+    {"guest_configuration": "two_adults", "stay_length": 1, "weight": 1},
+    {"guest_configuration": "two_adults", "stay_length": 2, "weight": 1},
+    {"guest_configuration": "two_adults", "stay_length": 3, "weight": 1}
+  ]
+}

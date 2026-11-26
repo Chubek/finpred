@@ -1,0 +1,23 @@
+{
+  "kind": "caravansary.competitors@1",
+  "guest_configurations": [
+    {"id": "one_adult", "rooms": 1, "adults": 1, "child_ages": []},
+    {"id": "two_adults", "rooms": 1, "adults": 2, "child_ages": []}
+  ],
+  "properties": [
+    {
+      "id": "example-1", "name": "Example Hotel One", "type": "hotel",
+      "providers": {
+        "booking": {"mapping_status": "missing"},
+        "agoda": {"mapping_status": "missing"}
+      }
+    },
+    {
+      "id": "example-2", "name": "Example Hotel Two", "type": "hotel",
+      "providers": {
+        "booking": {"mapping_status": "missing"},
+        "agoda": {"mapping_status": "missing"}
+      }
+    }
+  ]
+}

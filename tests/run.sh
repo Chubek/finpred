@@ -16,6 +16,12 @@ checks() {
   done
 }
 
+caravansary_checks() {
+  for check in tests/check_caravansary*.py; do
+    python3 "$check"
+  done
+}
+
 require_tools() {
   for tool in "$@"; do
     if ! command -v "$tool" >/dev/null; then
@@ -276,6 +282,7 @@ case "$suite" in
     checks fx_reference forecast_baselines forecast_cli forecast_graph forecast_scores forecast_vintages
     ;;
   plugins)
+    caravansary_checks
     require_tools strace
     checks sdk sdk_packages python_sdk sdk_data1 plugin_registry engines_cli scalar_registry \
       scalar_diagnostics_package yieldcraft_package dragnet_search
@@ -304,6 +311,7 @@ case "$suite" in
   dragnet-legacy) dragnet_legacy ;;
   dragnet-search) checks dragnet_search ;;
   forecast-score) checks forecast_scores ;;
+  caravansary) caravansary_checks ;;
   *)
     echo "Unknown verification suite: $suite" >&2
     exit 2
