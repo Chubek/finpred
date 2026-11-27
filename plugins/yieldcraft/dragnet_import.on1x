@@ -3,27 +3,32 @@
 import plugins.dragnet.dragnet_batch as Dragnet;
 import core.contracts as Contracts;
 import std.String as Str;
-
-fn project(batch:Dragnet.Batch) -> string {
-  if sx_text(batch["extraction"]) != "offer-csv-v1" {
+fn project(batch: Dragnet.Batch) -> string
+{
+  if sx_text(batch["extraction"]) != "offer-csv-v1"
+  {
     tool_fail("dragnet offers: expected offer-csv-v1 capture");
   }
   let out = buffer_new();
-  buffer_append(out,Contracts.offer_header());
+  buffer_append(out, Contracts.offer_header());
   var rest = batch["pages"];
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let p = Dragnet.page(sx_text(sx_head(rest)));
-    if p["pricing_claim"] {
+    if p["pricing_claim"]
+    {
       let row = sx_text(p["offer_csv"]);
       let offer = Contracts.offer_csv(row);
       let cutoff = sx_text(p["as_of"]);
       let learned = sx_text(offer["ingested_at"]);
       let received = sx_text(p["received_at"]);
-      if Str.compare(learned,cutoff) > 0 || (received != "" && learned != received) {
+      if Str.compare(learned,
+        cutoff) > 0 || (received != "" && learned != received)
+      {
         tool_fail("dragnet offers: invalid offer knowledge or receipt time");
       }
-      buffer_append(out,row);
-      buffer_append(out,"\n");
+      buffer_append(out, row);
+      buffer_append(out, "\n");
     }
     rest = sx_tail(rest);
   }

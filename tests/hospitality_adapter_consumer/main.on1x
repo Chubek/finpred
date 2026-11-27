@@ -6,53 +6,103 @@ import plugins.yieldcraft.entry as Y;
 import sdk.callable as SDK;
 import std.os.CommandLine as Env;
 import std.io.TextIO as IO;
-
-fn env(key:string) -> string { return Env.basis_command_line_get_env(key); }
-fn input(key:string) -> string { return IO.basis_text_io_input_all(env(key)); }
-
-fn request(first:string, second:string, cutoff:sexpr, work:i64) -> SDK.Request
+fn env(key: string) -> string
 {
-  return record<SDK.Request>{inputs:sx_cons(SDK.value_entry(1,first),
-    sx_cons(SDK.value_entry(1,second),sx_nil())),cutoff:cutoff,work:work};
+  return Env.basis_command_line_get_env(key);
+}
+
+fn input(key: string) -> string
+{
+  return IO.basis_text_io_input_all(env(key));
+}
+
+fn request(first: string,
+  second: string,
+  cutoff: sexpr,
+  work: i64) -> SDK.Request
+{
+  return record < SDK.Request >
+  {
+    inputs: sx_cons(SDK.value_entry(1,
+      first),
+      sx_cons(SDK.value_entry(1,
+      second),
+      sx_nil())), cutoff: cutoff, work: work
+  };
 }
 
 fn main() -> i64
 {
   let scenario_raw = input("GRAPH_SCENARIO");
   let scenario = C.scenario_csv(scenario_raw);
-  let valuation = C.valuation_csv(input("GRAPH_VALUATION"),scenario);
+  let valuation = C.valuation_csv(input("GRAPH_VALUATION"), scenario);
   let offers = input("GRAPH_OFFERS");
   let profile = env("GRAPH_PROFILE");
   let task = env("GRAPH_CASE");
   if task == "request_bounds"
   {
-    let normalized = H.normalize_call(request(scenario_raw,offers,scenario["decision_at"],1));
-    let late = H.normalize_call(request(scenario_raw,offers,sx_string("2026-11-20T09:59:59Z"),1));
+    let normalized = H.normalize_call(request(scenario_raw,
+      offers,
+      scenario["decision_at"],
+      1));
+    let late = H.normalize_call(request(scenario_raw,
+      offers,
+      sx_string("2026-11-20T09:59:59Z"),
+      1));
     if normalized["status"] != 0 || late["status"] != 5 || sx_kind(late["bytes"]) != 0
-    { tool_fail("adapter request cutoff not enforced"); }
-    let under = H.comparables_call(request(scenario_raw,sx_text(normalized["bytes"]),
-      scenario["decision_at"],scenario["search_budget"]-1));
+    {
+      tool_fail("adapter request cutoff not enforced");
+    }
+    let under = H.comparables_call(request(scenario_raw,
+      sx_text(normalized["bytes"]),
+      scenario["decision_at"],
+      scenario["search_budget"] - 1));
     if under["status"] != 4 || sx_kind(under["bytes"]) != 0
-    { tool_fail("adapter request budget not enforced"); }
+    {
+      tool_fail("adapter request budget not enforced");
+    }
     IO.basis_text_io_print("cutoff_and_work_ok=true\n");
     return 0;
   }
-  let normalized = H.normalize(scenario,offers);
-  let distribution = H.comparables(scenario,normalized);
-  let diagnostic = Sample.diagnose(scenario,distribution);
+  let normalized = H.normalize(scenario, offers);
+  let distribution = H.comparables(scenario, normalized);
+  let diagnostic = Sample.diagnose(scenario, distribution);
   if task == "intermediates"
   {
-    IO.basis_text_io_print(text_concat(distribution,diagnostic));
+    IO.basis_text_io_print(text_concat(distribution, diagnostic));
     return 0;
   }
   var sample = diagnostic;
-  if task == "bad_sample" { sample = "sample@1,0,0,0,0\n"; }
-  let candidate = H.recommendation_bytes(H.decide(scenario,valuation,distribution,sample,profile));
-  if !H.guardrails(scenario,valuation,candidate) { tool_fail("adapter guardrail rejected candidate"); }
-  let legacy = Y.recommend_profile(scenario,valuation,offers,profile,false,buffer_new());
-  if candidate != H.recommendation_bytes(legacy) { tool_fail("adapter differs from legacy"); }
-  IO.basis_text_io_print(JSON.recommendation(scenario,H.recommendation(candidate),
-    env("GRAPH_RUN"),env("GRAPH_SD"),env("GRAPH_OD"),env("GRAPH_VD"),env("GRAPH_TD"),
+  if task == "bad_sample"
+  {
+    sample = "sample@1,0,0,0,0\n";
+  }
+  let candidate = H.recommendation_bytes(H.decide(scenario,
+    valuation,
+    distribution,
+    sample,
+    profile));
+  if ! H.guardrails(scenario, valuation, candidate)
+  {
+    tool_fail("adapter guardrail rejected candidate");
+  }
+  let legacy = Y.recommend_profile(scenario,
+    valuation,
+    offers,
+    profile,
+    false,
+    buffer_new());
+  if candidate != H.recommendation_bytes(legacy)
+  {
+    tool_fail("adapter differs from legacy");
+  }
+  IO.basis_text_io_print(JSON.recommendation(scenario,
+    H.recommendation(candidate),
+    env("GRAPH_RUN"),
+    env("GRAPH_SD"),
+    env("GRAPH_OD"),
+    env("GRAPH_VD"),
+    env("GRAPH_TD"),
     "yieldcraft.percentile@1"));
   return 0;
 }

@@ -1,8 +1,8 @@
 # Keep the v6 recognizer separate: changing v7 cannot change v6 replay syntax.
 import automat.financial_graph as G;
 import std.collections.List as L;
-
-@GrammarEmbed("grammar",r!"""grammar ComposedOttomat :lexer<dfa> :parser<lalr1> {
+@GrammarEmbed("grammar",
+  r!"""grammar ComposedOttomat :lexer<dfa> :parser<lalr1> {
   token ATOM { [!-~]+ }
   token EOL { \n }
   rule TOP { 'ottomat' ' ' '7' <EOL> <effect> <fragment>+ }
@@ -18,39 +18,48 @@ import std.collections.List as L;
   rule wire { 'wire' ' ' <word> ' ' <word> <EOL> }
   rule word { <ATOM> | 'ottomat' | '7' | 'effect' | 'fragment' | 'input'
               | 'import' | 'let' | '=' | 'output' | 'emit' | 'wire' | 'end' }
-}""")
-fn grammar() {}
+}""") fn grammar()
+{
+}
 
 # Preserve generated terminal nodes, including their exact source byte ranges.
-fn reverse_terminals(tree:sexpr, acc:sexpr) -> sexpr
+fn reverse_terminals(tree: sexpr, acc: sexpr) -> sexpr
 {
-  let payload = G.at(tree,3);
-  if sx_kind(payload) == 2 { return sx_cons(tree,acc); }
+  let payload = G.at(tree, 3);
+  if sx_kind(payload) == 2
+  {
+    return sx_cons(tree, acc);
+  }
   var rest = payload;
   var result = acc;
   while sx_kind(rest) == 3
   {
-    result = reverse_terminals(sx_head(rest),result);
+    result = reverse_terminals(sx_head(rest), result);
     rest = sx_tail(rest);
   }
   return result;
 }
 
-fn parse(source:string) -> (i64,sexpr,i64)
+fn parse(source: string) ->(i64, sexpr, i64)
 {
-  let (status,tree,offset) = ComposedOttomat_parse(source);
-  if status != 0 { return (status,sx_nil(),offset); }
-  var tokens = L.basis_list_rev(reverse_terminals(tree,sx_nil()));
+  let(status, tree, offset) = ComposedOttomat_parse(source);
+  if status != 0
+  {
+    return (status, sx_nil(), offset);
+  }
+  var tokens = L.basis_list_rev(reverse_terminals(tree, sx_nil()));
   var words = sx_nil();
   var terminals = sx_nil();
   var lines = sx_nil();
   while sx_kind(tokens) == 3
   {
     let token = sx_head(tokens);
-    let word = G.at(token,3);
+    let word = G.at(token, 3);
     if sx_text(word) == "\n"
     {
-      lines = sx_cons(sx_cons(L.basis_list_rev(words),L.basis_list_rev(terminals)),lines);
+      lines = sx_cons(sx_cons(L.basis_list_rev(words),
+        L.basis_list_rev(terminals)),
+        lines);
       words = sx_nil();
       terminals = sx_nil();
     }
@@ -58,11 +67,11 @@ fn parse(source:string) -> (i64,sexpr,i64)
     {
       if sx_text(word) != " "
       {
-        words = sx_cons(word,words);
-        terminals = sx_cons(token,terminals);
+        words = sx_cons(word, words);
+        terminals = sx_cons(token, terminals);
       }
     }
     tokens = sx_tail(tokens);
   }
-  return (0,L.basis_list_rev(lines),offset);
+  return (0, L.basis_list_rev(lines), offset);
 }

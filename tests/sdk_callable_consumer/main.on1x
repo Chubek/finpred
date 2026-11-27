@@ -1,87 +1,228 @@
 import sdk.callable as SDK;
 import std.os.CommandLine as Env;
-
-fn digest() -> sexpr {
+fn digest() -> sexpr
+{
   return sx_string("blake3:0000000000000000000000000000000000000000000000000000000000000000");
 }
-fn port(name:string, unit:string, states:i64, limit:i64) -> SDK.Port {
-  return record<SDK.Port>{name:sx_string(name),kind:sx_string("test.value"),major:1,
-    unit:sx_string(unit),currency:sx_string("none"),states:states,max_bytes:limit};
+
+fn port(name: string, unit: string, states: i64, limit: i64) -> SDK.Port
+{
+  return record < SDK.Port >
+  {
+    name: sx_string(name), kind: sx_string("test.value"), major: 1, unit: sx_string(unit), currency: sx_string("none"), states: states, max_bytes: limit
+  };
 }
-fn pin(name:string, version:string) -> SDK.Pin {
+
+fn pin(name: string, version: string) -> SDK.Pin
+{
   var package_name = "tests.consumer";
-  if name == "second" { package_name = "tests.other"; }
-  return record<SDK.Pin>{package_name:sx_string(package_name),package_version:sx_string("1.0.0"),
-    handler_name:sx_string(name),handler_version:sx_string(version),abi:1,code_digest:digest(),policy_digest:digest()};
+  if name == "second"
+  {
+    package_name = "tests.other";
+  }
+  return record < SDK.Pin >
+  {
+    package_name: sx_string(package_name), package_version: sx_string("1.0.0"), handler_name: sx_string(name), handler_version: sx_string(version), abi: 1, code_digest: digest(), policy_digest: digest()
+  };
 }
-fn lookup(name:string) -> SDK.Descriptor {
-  if name != "echo" && name != "read" && name != "record" && name != "action"
-    && name != "wrong-output" && name != "empty-output" && name != "disabled" && name != "second"
-    && name != "duplicate" && name != "over-work" && name != "bad-role" { return SDK.unavailable(); }
+
+fn lookup(name: string) -> SDK.Descriptor
+{
+  if name != "echo" && name != "read" && name != "record" && name != "action" && name != "wrong-output" && name != "empty-output" && name != "disabled" && name != "second" && name != "duplicate" && name != "over-work" && name != "bad-role"
+  {
+    return SDK.unavailable();
+  }
   var effect = "pure";
-  if name == "read" || name == "record" || name == "action" { effect = name; }
+  if name == "read" || name == "record" || name == "action"
+  {
+    effect = name;
+  }
   var role = "Algorithm";
-  if name == "bad-role" { role = "Action"; }
-  let first = SDK.port_entry(port("input","count",1,20));
-  var inputs = sx_cons(first,sx_nil());
-  if name == "duplicate" { inputs = sx_cons(first,inputs); }
-  return record<SDK.Descriptor>{enabled:name != "disabled",pin:pin(name,"1"),role:sx_string(role),
-    mode:sx_string("analysis"),effect:sx_string(effect),inputs:inputs,
-    output:port("output","count",1,20),max_work:1};
+  if name == "bad-role"
+  {
+    role = "Action";
+  }
+  let first = SDK.port_entry(port("input", "count", 1, 20));
+  var inputs = sx_cons(first, sx_nil());
+  if name == "duplicate"
+  {
+    inputs = sx_cons(first, inputs);
+  }
+  return record < SDK.Descriptor >
+  {
+    enabled: name != "disabled", pin: pin(name,
+      "1"), role: sx_string(role), mode: sx_string("analysis"), effect: sx_string(effect), inputs: inputs, output: port("output",
+      "count",
+      1,
+      20), max_work: 1
+  };
 }
-fn call(p:SDK.Pin, request:SDK.Request) -> SDK.Outcome {
+
+fn call(p: SDK.Pin, request: SDK.Request) -> SDK.Outcome
+{
   let handler = sx_text(p["handler_name"]);
-  if handler == "wrong-output" { return SDK.success(2,"x"); }
-  if handler == "empty-output" { return SDK.success(1,""); }
-  if handler == "over-work" { return SDK.failure(4); }
-  if handler == "second" { return SDK.success(1,"y"); }
-  if handler != "echo" { tool_fail("denied handler ran"); }
-  return SDK.success(1,sx_text(SDK.value_bytes(sx_head(request["inputs"]))));
+  if handler == "wrong-output"
+  {
+    return SDK.success(2, "x");
+  }
+  if handler == "empty-output"
+  {
+    return SDK.success(1, "");
+  }
+  if handler == "over-work"
+  {
+    return SDK.failure(4);
+  }
+  if handler == "second"
+  {
+    return SDK.success(1, "y");
+  }
+  if handler != "echo"
+  {
+    tool_fail("denied handler ran");
+  }
+  return SDK.success(1, sx_text(SDK.value_bytes(sx_head(request["inputs"]))));
 }
-fn main() -> i64 {
+
+fn main() -> i64
+{
   let mode = Env.basis_command_line_get_env("CASE");
-  if mode == "connects" {
-    if !SDK.connects(port("out","count",1,10),port("in","count",3,20))
-      || SDK.connects(port("out","count",3,10),port("in","count",1,20))
-      || SDK.connects(port("out","cents",1,10),port("in","count",1,20))
-      || SDK.connects(port("out","count",1,21),port("in","count",1,20)) { return 90; }
+  if mode == "connects"
+  {
+    if ! SDK.connects(port("out",
+      "count",
+      1,
+      10),
+      port("in",
+      "count",
+      3,
+      20)) || SDK.connects(port("out",
+      "count",
+      3,
+      10),
+      port("in",
+      "count",
+      1,
+      20)) || SDK.connects(port("out",
+      "cents",
+      1,
+      10),
+      port("in",
+      "count",
+      1,
+      20)) || SDK.connects(port("out",
+      "count",
+      1,
+      21),
+      port("in",
+      "count",
+      1,
+      20))
+    {
+      return 90;
+    }
     return 0;
   }
   var name = mode;
   var cutoff = "2026-11-16T10:10:01Z";
-  var value = SDK.value_entry(1,"x");
+  var value = SDK.value_entry(1, "x");
   var version = "1";
   var work = 1;
   var run_mode = "analysis";
-  if mode == "bad-cutoff" { name = "echo"; cutoff = "2026-02-31T00:00:00Z"; }
-  if mode == "bad-state" { name = "echo"; value = SDK.value_entry(2,"x"); }
-  if mode == "big-value" { name = "echo"; value = SDK.value_entry(1,"123456789012345678901"); }
-  if mode == "wrong-pin" { name = "echo"; version = "2"; }
-  if mode == "wrong-abi" { name = "echo"; }
-  if mode == "wrong-policy" { name = "echo"; }
-  if mode == "wrong-mode" { name = "echo"; run_mode = "recommendation"; }
-  if mode == "bad-work" { name = "echo"; work = 2; }
-  if mode == "bad-arity" { name = "echo"; }
-  let d = SDK.resolve(name,run_mode,lookup);
-  if (name == "echo" && run_mode == "analysis") && !d["enabled"] { return 91; }
-  if (name == "read" || name == "record" || name == "action" || name == "disabled" || name == "duplicate") && d["enabled"] { return 92; }
-  var inputs = sx_cons(value,sx_nil());
-  if mode == "bad-arity" { inputs = sx_cons(value,inputs); }
-  let request = record<SDK.Request>{inputs:inputs,cutoff:sx_string(cutoff),work:work};
-  let expected_pin = pin(name,version);
-  var abi = 1;
-  if mode == "wrong-abi" { abi = 2; }
-  var policy = digest();
-  if mode == "wrong-policy" { policy = sx_string("blake3:1000000000000000000000000000000000000000000000000000000000000000"); }
-  let checked_pin = record<SDK.Pin>{package_name:expected_pin["package_name"],package_version:expected_pin["package_version"],
-    handler_name:expected_pin["handler_name"],handler_version:expected_pin["handler_version"],
-    abi:abi,code_digest:expected_pin["code_digest"],policy_digest:policy};
-  let result = SDK.invoke(checked_pin,run_mode,request,lookup,call);
-  if result["status"] == 0 {
-    var bytes = "x";
-    if mode == "second" { bytes = "y"; }
-    if result["state"] != 1 || sx_text(result["bytes"]) != bytes { return 93; }
+  if mode == "bad-cutoff"
+  {
+    name = "echo";
+    cutoff = "2026-02-31T00:00:00Z";
   }
-  else { if result["state"] != 0 || sx_kind(result["bytes"]) != 0 { return 94; } }
+  if mode == "bad-state"
+  {
+    name = "echo";
+    value = SDK.value_entry(2, "x");
+  }
+  if mode == "big-value"
+  {
+    name = "echo";
+    value = SDK.value_entry(1, "123456789012345678901");
+  }
+  if mode == "wrong-pin"
+  {
+    name = "echo";
+    version = "2";
+  }
+  if mode == "wrong-abi"
+  {
+    name = "echo";
+  }
+  if mode == "wrong-policy"
+  {
+    name = "echo";
+  }
+  if mode == "wrong-mode"
+  {
+    name = "echo";
+    run_mode = "recommendation";
+  }
+  if mode == "bad-work"
+  {
+    name = "echo";
+    work = 2;
+  }
+  if mode == "bad-arity"
+  {
+    name = "echo";
+  }
+  let d = SDK.resolve(name, run_mode, lookup);
+  if (name == "echo" && run_mode == "analysis") && ! d["enabled"]
+  {
+    return 91;
+  }
+  if (name == "read" || name == "record" || name == "action" || name == "disabled" || name == "duplicate") && d["enabled"]
+  {
+    return 92;
+  }
+  var inputs = sx_cons(value, sx_nil());
+  if mode == "bad-arity"
+  {
+    inputs = sx_cons(value, inputs);
+  }
+  let request = record < SDK.Request >
+  {
+    inputs: inputs, cutoff: sx_string(cutoff), work: work
+  };
+  let expected_pin = pin(name, version);
+  var abi = 1;
+  if mode == "wrong-abi"
+  {
+    abi = 2;
+  }
+  var policy = digest();
+  if mode == "wrong-policy"
+  {
+    policy = sx_string("blake3:1000000000000000000000000000000000000000000000000000000000000000");
+  }
+  let checked_pin = record < SDK.Pin >
+  {
+    package_name: expected_pin["package_name"], package_version: expected_pin["package_version"], handler_name: expected_pin["handler_name"], handler_version: expected_pin["handler_version"], abi: abi, code_digest: expected_pin["code_digest"], policy_digest: policy
+  };
+  let result = SDK.invoke(checked_pin, run_mode, request, lookup, call);
+  if result["status"] == 0
+  {
+    var bytes = "x";
+    if mode == "second"
+    {
+      bytes = "y";
+    }
+    if result["state"] != 1 || sx_text(result["bytes"]) != bytes
+    {
+      return 93;
+    }
+  }
+  else
+  {
+    if result["state"] != 0 || sx_kind(result["bytes"]) != 0
+    {
+      return 94;
+    }
+  }
   return result["status"];
 }

@@ -6,22 +6,33 @@ import frontend.transform as Transform;
 import plugins.caravansary.metrics.counters as Counts;
 import plugins.caravansary.metrics.json_wire as Wire;
 import plugins.caravansary.metrics.transform as Runtime;
-
 # Each dotted name has exactly two identifier segments. Unqualified calls from
 # an inline module resolve only inside that module; cross-module calls must be
 # dotted. Root functions may call other root functions unqualified.
 fn qualify(namespace: string, name: string) -> string
 {
-  if namespace == "" || String.contains(name, ".") { return name; }
+  if namespace == "" || String.contains(name, ".")
+  {
+    return name;
+  }
   return text_concat(namespace, text_concat(".", name));
 }
 
-fn link_expression(ast: sexpr, namespace: string, remaining: i64) -> (sexpr, i64)
+fn link_expression(ast: sexpr,
+  namespace: string,
+  remaining: i64) ->(sexpr,
+  i64)
 {
-  if remaining < 1 { return (sx_nil(), -1); }
+  if remaining < 1
+  {
+    return (sx_nil(), - 1);
+  }
   let tag = sx_head(ast);
   let kind = sx_text(tag);
-  if kind == "literal" || kind == "name" { return (ast, remaining - 1); }
+  if kind == "literal" || kind == "name"
+  {
+    return (ast, remaining - 1);
+  }
   let name = S.sexpr_nth(ast, 1);
   let child = S.sexpr_nth(ast, 2);
   if kind == "call"
@@ -31,39 +42,89 @@ fn link_expression(ast: sexpr, namespace: string, remaining: i64) -> (sexpr, i64
     var budget = remaining - 1;
     while sx_kind(args) == 3
     {
-      let (rewritten, left) = link_expression(sx_head(args), namespace, budget);
-      if left < 0 { return (sx_nil(), left); }
+      let(rewritten, left) = link_expression(sx_head(args), namespace, budget);
+      if left < 0
+      {
+        return (sx_nil(), left);
+      }
       output = sx_cons(rewritten, output);
       budget = left;
       args = sx_tail(args);
     }
-    return (Transform.triple(tag, sx_string(qualify(namespace, sx_text(name))), S.sexpr_reverse(output)), budget);
+    return (Transform.triple(tag,
+      sx_string(qualify(namespace,
+      sx_text(name))),
+      S.sexpr_reverse(output)),
+      budget);
   }
-  let (left, budget) = link_expression(child, namespace, remaining - 1);
-  if budget < 0 { return (sx_nil(), budget); }
-  if kind == "unary" { return (Transform.triple(tag, name, left), budget); }
-  let (right, leftover) = link_expression(S.sexpr_nth(ast, 3), namespace, budget);
-  if leftover < 0 { return (sx_nil(), leftover); }
+  let(left, budget) = link_expression(child, namespace, remaining - 1);
+  if budget < 0
+  {
+    return (sx_nil(), budget);
+  }
+  if kind == "unary"
+  {
+    return (Transform.triple(tag, name, left), budget);
+  }
+  let(right,
+    leftover) = link_expression(S.sexpr_nth(ast,
+    3),
+    namespace,
+    budget);
+  if leftover < 0
+  {
+    return (sx_nil(), leftover);
+  }
   return (sx_cons(tag, Transform.triple(name, left, right)), leftover);
 }
 
-fn add_functions(program: sexpr, namespace: string, functions: sexpr, count: i64, budget: i64)
-  -> (sexpr, i64, i64, string)
+fn add_functions(program: sexpr,
+  namespace: string,
+  functions: sexpr,
+  count: i64,
+  budget: i64) ->(sexpr,
+  i64,
+  i64,
+  string)
 {
-  if sx_kind(program) == 0 { return (functions, count, budget, ""); }
+  if sx_kind(program) == 0
+  {
+    return (functions, count, budget, "");
+  }
   var rest = sx_head(program);
   var output = functions;
   var total = count;
   var remaining = budget;
   while sx_kind(rest) == 3
   {
-    if total == 64 { return (sx_nil(), 0, 0, "market script exceeds 64 functions across all blocks"); }
+    if total == 64
+    {
+      return (sx_nil(),
+        0,
+        0,
+        "market script exceeds 64 functions across all blocks");
+    }
     let item = sx_head(rest);
     let name = qualify(namespace, sx_text(sx_head(item)));
     let declaration = Schema.payload(item);
-    let (expr, left) = link_expression(S.sexpr_nth(declaration, 2), namespace, remaining);
-    if left < 0 { return (sx_nil(), 0, 0, "market script exceeds 4096 expression nodes across all blocks"); }
-    output = Schema.entry(output, name, Transform.triple(sx_head(declaration), S.sexpr_nth(declaration, 1), expr));
+    let(expr,
+      left) = link_expression(S.sexpr_nth(declaration,
+      2),
+      namespace,
+      remaining);
+    if left < 0
+    {
+      return (sx_nil(),
+        0,
+        0,
+        "market script exceeds 4096 expression nodes across all blocks");
+    }
+    output = Schema.entry(output,
+      name,
+      Transform.triple(sx_head(declaration),
+      S.sexpr_nth(declaration,
+      1),
+      expr));
     remaining = left;
     total = total + 1;
     rest = sx_tail(rest);
@@ -71,10 +132,21 @@ fn add_functions(program: sexpr, namespace: string, functions: sexpr, count: i64
   return (output, total, remaining, "");
 }
 
-fn link(config: sexpr) -> (sexpr, string)
+fn link(config: sexpr) ->(sexpr, string)
 {
-  let (root, count, budget, root_error) = add_functions(Schema.get(config, "functions"), "", sx_nil(), 0, 4096);
-  if root_error != "" { return (sx_nil(), root_error); }
+  let(root,
+    count,
+    budget,
+    root_error) = add_functions(Schema.get(config,
+    "functions"),
+    "",
+    sx_nil(),
+    0,
+    4096);
+  if root_error != ""
+  {
+    return (sx_nil(), root_error);
+  }
   var modules = S.sexpr_reverse(Schema.get(config, "modules"));
   var functions = root;
   var remaining = budget;
@@ -82,8 +154,18 @@ fn link(config: sexpr) -> (sexpr, string)
   while sx_kind(modules) == 3
   {
     let item = sx_head(modules);
-    let (next, size, left, err) = add_functions(Schema.payload(item), sx_text(sx_head(item)), functions, total, remaining);
-    if err != "" { return (sx_nil(), err); }
+    let(next,
+      size,
+      left,
+      err) = add_functions(Schema.payload(item),
+      sx_text(sx_head(item)),
+      functions,
+      total,
+      remaining);
+    if err != ""
+    {
+      return (sx_nil(), err);
+    }
     functions = next;
     total = size;
     remaining = left;
@@ -93,48 +175,78 @@ fn link(config: sexpr) -> (sexpr, string)
   return (program, Transform.check_mode(program, true));
 }
 
-fn wire_text(raw: string) -> sexpr { return sx_string(text_concat("\"", text_concat(raw, "\""))); }
+fn wire_text(raw: string) -> sexpr
+{
+  return sx_string(text_concat("\"", text_concat(raw, "\"")));
+}
 
-fn wire_array(items: sexpr) -> sexpr { return sx_cons(sx_symbol("array"), items); }
+fn wire_array(items: sexpr) -> sexpr
+{
+  return sx_cons(sx_symbol("array"), items);
+}
 
 fn argument_type(value: sexpr) -> string
 {
-  if Wire.string_value(value) && Wire.decoded_bytes(sx_text(value)) <= 4096 { return "text"; }
-  if sx_kind(value) == 1 && (sx_text(value) == "true" || sx_text(value) == "false") { return "bool"; }
+  if Wire.string_value(value) && Wire.decoded_bytes(sx_text(value)) <= 4096
+  {
+    return "text";
+  }
+  if sx_kind(value) == 1 && (sx_text(value) == "true" || sx_text(value) == "false")
+  {
+    return "bool";
+  }
   if Wire.tag(value, "number")
   {
     let raw = sx_text(Wire.at(value, 1));
-    let (ok, _, end) = Int.scan(raw, 0);
-    if ok && end == text_len(raw) { return "int"; }
+    let(ok, _, end) = Int.scan(raw, 0);
+    if ok && end == text_len(raw)
+    {
+      return "int";
+    }
   }
   return "";
 }
 
-fn evaluate(program: sexpr, name: string, arguments_json: string) -> Result<sexpr,sexpr>
+fn evaluate(program: sexpr,
+  name: string,
+  arguments_json: string) -> Result < sexpr, sexpr >
 {
   let declaration = Schema.get(sx_head(program), name);
-  if sx_kind(declaration) == 0 { return result_error(sx_string("unknown market function")); }
+  if sx_kind(declaration) == 0
+  {
+    return result_error(sx_string("unknown market function"));
+  }
   if text_len(arguments_json) > 393313
-  { return result_error(sx_string("market function arguments exceed the JSON byte limit")); }
+  {
+    return result_error(sx_string("market function arguments exceed the JSON byte limit"));
+  }
   let arguments = Wire.parse(arguments_json)?;
-  if !Wire.tag(arguments, "array")
-  { return result_error(sx_string("market function arguments must be a JSON array")); }
+  if ! Wire.tag(arguments, "array")
+  {
+    return result_error(sx_string("market function arguments must be a JSON array"));
+  }
   var rest = sx_tail(arguments);
   var params = sx_head(declaration);
   if Wire.size(rest) != Wire.size(params)
-  { return result_error(sx_string("incorrect market function argument count")); }
+  {
+    return result_error(sx_string("incorrect market function argument count"));
+  }
   var reversed = sx_nil();
   while sx_kind(params) == 3
   {
     let input = sx_head(rest);
     let expected = sx_text(Schema.payload(sx_head(params)));
     if argument_type(input) != expected
-    { return result_error(sx_string(text_concat("market function argument must be bounded ", expected))); }
-    reversed = sx_cons(wire_array(Wire.pair(wire_text("literal"), input)), reversed);
+    {
+      return result_error(sx_string(text_concat("market function argument must be bounded ",
+        expected)));
+    }
+    reversed = sx_cons(wire_array(Wire.pair(wire_text("literal"),
+      input)),
+      reversed);
     params = sx_tail(params);
     rest = sx_tail(rest);
   }
-
   # The checked, linked AST uses the existing metrics wire/evaluator, not a
   # second expression VM. Every reachable call is statically resolved; the
   # evaluator's fallback to report counters cannot be reached.
@@ -146,23 +258,37 @@ fn evaluate(program: sexpr, name: string, arguments_json: string) -> Result<sexp
   while sx_kind(definitions) == 3
   {
     let fn_decl = sx_head(definitions);
-    table = Schema.entry(table, Wire.plain(Wire.get(fn_decl, "name")), fn_decl);
+    table = Schema.entry(table,
+      Wire.plain(Wire.get(fn_decl,
+      "name")),
+      fn_decl);
     definitions = sx_tail(definitions);
   }
-  let call = wire_array(Transform.triple(wire_text("call"), wire_text(name), wire_array(S.sexpr_reverse(reversed))));
-  let (result, _) = Runtime.evaluate_expression(call, table, Counts.empty(), 10000)?;
+  let call = wire_array(Transform.triple(wire_text("call"),
+    wire_text(name),
+    wire_array(S.sexpr_reverse(reversed))));
+  let(result,
+    _) = Runtime.evaluate_expression(call,
+    table,
+    Counts.empty(),
+    10000)?;
   return result_ok(result);
 }
 
-fn call(program: sexpr, name: string, arguments_json: string) -> (string, string)
+fn call(program: sexpr,
+  name: string,
+  arguments_json: string) ->(string,
+  string)
 {
   return match evaluate(program, name, arguments_json) with
   {
     Ok(value) =>
     {
-      if Wire.tag(value, "number") { return (sx_text(Wire.at(value, 1)), ""); }
+      if Wire.tag(value, "number")
+      {
+        return (sx_text(Wire.at(value, 1)), "");
+      }
       return (sx_text(value), "");
-    },
-    Err(err) => ("", sx_text(err))
+    }, Err(err) => ("", sx_text(err))
   };
 }

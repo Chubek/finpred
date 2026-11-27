@@ -6,181 +6,381 @@ import plugins.dragnet.guest_nights as Guest;
 import sdk.callable as SDK;
 import std.String as Str;
 import std.crypto.crypto as Crypto;
+record Training
+{
+  state: i64, rows: sexpr
+}
 
-record Training { state:i64, rows:sexpr }
-record Spec { issued:sexpr, target:sexpr, month:i64 }
+record Spec
+{
+  issued: sexpr, target: sexpr, month: i64
+}
 
-fn moving_average() -> string { return "forecast.moving-average-3@1"; }
-fn seasonal_naive() -> string { return "forecast.seasonal-naive-12@1"; }
-fn known(name:string) -> bool { return name == moving_average() || name == seasonal_naive(); }
-fn policy(name:string) -> string {
+fn moving_average() -> string
+{
+  return "forecast.moving-average-3@1";
+}
+
+fn seasonal_naive() -> string
+{
+  return "forecast.seasonal-naive-12@1";
+}
+
+fn known(name: string) -> bool
+{
+  return name == moving_average() || name == seasonal_naive();
+}
+
+fn policy(name: string) -> string
+{
   let common = "guest-nights-v1;monthly-utc;next-calendar-month;projection-cutoff-must-match;missing-no-imputation;no-interval;";
-  if name == moving_average() { return text_concat(common,"mean-of-three-months-before-issuance"); }
-  if name == seasonal_naive() { return text_concat(common,"same-calendar-month-as-target-minus-twelve"); }
+  if name == moving_average()
+  {
+    return text_concat(common, "mean-of-three-months-before-issuance");
+  }
+  if name == seasonal_naive()
+  {
+    return text_concat(common, "same-calendar-month-as-target-minus-twelve");
+  }
   return "";
 }
-fn digest(text:string) -> string {
-  let (status,hash) = Crypto.basis_crypto_blake3(text);
-  if status != 0 { return ""; }
+
+fn digest(text: string) -> string
+{
+  let(status, hash) = Crypto.basis_crypto_blake3(text);
+  if status != 0
+  {
+    return "";
+  }
   return "blake3:$hash";
 }
-fn port(name:string, kind:string, unit:string, states:i64, limit:i64) -> SDK.Port {
-  return record<SDK.Port>{name:sx_string(name),kind:sx_string(kind),major:1,
-    unit:sx_string(unit),currency:sx_string("none"),states:states,max_bytes:limit};
+
+fn port(name: string,
+  kind: string,
+  unit: string,
+  states: i64,
+  limit: i64) -> SDK.Port
+{
+  return record < SDK.Port >
+  {
+    name: sx_string(name), kind: sx_string(kind), major: 1, unit: sx_string(unit), currency: sx_string("none"), states: states, max_bytes: limit
+  };
 }
-fn training_port() -> SDK.Port {
-  return port("training",Guest.kind(),Guest.unit(),Guest.states(),Guest.max_bytes());
+
+fn training_port() -> SDK.Port
+{
+  return port("training",
+    Guest.kind(),
+    Guest.unit(),
+    Guest.states(),
+    Guest.max_bytes());
 }
-fn request_port() -> SDK.Port {
-  return port("request","analysis.guest-nights-forecast-request","calendar_month",1,128);
+
+fn request_port() -> SDK.Port
+{
+  return port("request",
+    "analysis.guest-nights-forecast-request",
+    "calendar_month",
+    1,
+    128);
 }
-fn forecast_port() -> SDK.Port {
-  return port("forecast","analysis.guest-nights-forecast",Guest.unit(),5,1024);
+
+fn forecast_port() -> SDK.Port
+{
+  return port("forecast",
+    "analysis.guest-nights-forecast",
+    Guest.unit(),
+    5,
+    1024);
 }
+
 # The linking host supplies the digest of its exact model code subject.
-fn descriptor(name:string, code:string) -> SDK.Descriptor {
-  if !known(name) || !SDK.valid_digest(sx_string(code)) { return SDK.unavailable(); }
-  let pin = record<SDK.Pin>{package_name:sx_string("forecast.baselines"),package_version:sx_string("1.0.0"),
-    handler_name:sx_string(name),handler_version:sx_string("1"),abi:1,
-    code_digest:sx_string(code),policy_digest:sx_string(digest(policy(name)))};
-  let inputs = sx_cons(SDK.port_entry(training_port()),sx_cons(SDK.port_entry(request_port()),sx_nil()));
-  return record<SDK.Descriptor>{enabled:true,pin:pin,role:sx_string("Model"),
-    mode:sx_string("analysis"),effect:sx_string("pure"),inputs:inputs,output:forecast_port(),max_work:1};
+fn descriptor(name: string, code: string) -> SDK.Descriptor
+{
+  if ! known(name) || ! SDK.valid_digest(sx_string(code))
+  {
+    return SDK.unavailable();
+  }
+  let pin = record < SDK.Pin >
+  {
+    package_name: sx_string("forecast.baselines"), package_version: sx_string("1.0.0"), handler_name: sx_string(name), handler_version: sx_string("1"), abi: 1, code_digest: sx_string(code), policy_digest: sx_string(digest(policy(name)))
+  };
+  let inputs = sx_cons(SDK.port_entry(training_port()),
+    sx_cons(SDK.port_entry(request_port()),
+    sx_nil()));
+  return record < SDK.Descriptor >
+  {
+    enabled: true, pin: pin, role: sx_string("Model"), mode: sx_string("analysis"), effect: sx_string("pure"), inputs: inputs, output: forecast_port(), max_work: 1
+  };
 }
 
-fn month(period:string) -> i64 {
-  if Date.date_days("$period-01") < 0 { return -1; }
-  return Guest.nat(text_slice(period,0,4),4) * 12
-    + Date.digit(period,5) * 10 + Date.digit(period,6) - 1;
+fn month(period: string) -> i64
+{
+  if Date.date_days("$period-01") < 0
+  {
+    return - 1;
+  }
+  return Guest.nat(text_slice(period,
+    0,
+    4),
+    4) * 12 + Date.digit(period,
+    5) * 10 + Date.digit(period,
+    6) - 1;
 }
-fn spec(bytes:string, cutoff:string) -> Spec {
-  let bad = record<Spec>{issued:sx_nil(),target:sx_nil(),month:-1};
-  let (a,issued) = Guest.quoted(bytes,0,"{\"issued_at\":\"",20);
-  let (b,target) = Guest.quoted(bytes,a,",\"target_month\":\"",7);
-  if b < 0 || Guest.after(bytes,b,",\"horizon_months\":1}\n") != text_len(bytes)
-    || !Date.utc_timestamp(issued) || !Date.utc_timestamp(cutoff) || Str.compare(cutoff,issued) > 0 { return bad; }
+
+fn spec(bytes: string, cutoff: string) -> Spec
+{
+  let bad = record < Spec >
+  {
+    issued: sx_nil(), target: sx_nil(), month: - 1
+  };
+  let(a, issued) = Guest.quoted(bytes, 0, "{\"issued_at\":\"", 20);
+  let(b, target) = Guest.quoted(bytes, a, ",\"target_month\":\"", 7);
+  if b < 0 || Guest.after(bytes,
+    b,
+    ",\"horizon_months\":1}\n") != text_len(bytes) || ! Date.utc_timestamp(issued) || ! Date.utc_timestamp(cutoff) || Str.compare(cutoff,
+    issued) > 0
+  {
+    return bad;
+  }
   let target_month = month(target);
-  if target_month < 0 || month(text_slice(issued,0,7)) + 1 != target_month { return bad; }
-  return record<Spec>{issued:sx_string(issued),target:sx_string(target),month:target_month};
+  if target_month < 0 || month(text_slice(issued, 0, 7)) + 1 != target_month
+  {
+    return bad;
+  }
+  return record < Spec >
+  {
+    issued: sx_string(issued), target: sx_string(target), month: target_month
+  };
 }
 
-fn invalid_training() -> Training { return record<Training>{state:0,rows:sx_nil()}; }
-fn training(bytes:string, cutoff:string) -> Training {
+fn invalid_training() -> Training
+{
+  return record < Training >
+  {
+    state: 0, rows: sx_nil()
+  };
+}
+
+fn training(bytes: string, cutoff: string) -> Training
+{
   let prefix = "{\"kind\":\"analysis.guest-nights-monthly\",\"version\":1,\"unit\":\"guest_nights\",\"currency\":null,\"pricing_input\":false";
   let dims = ",\"source_kind\":\"dragnet.eurostat-accommodation-nights@1\",\"source_series\":\"tour_occ_nim\",\"geography\":\"EU27_2020\",\"activity\":\"I551-I553\",\"residence\":\"TOTAL\"";
-  let (a,state) = Guest.quoted(bytes,Guest.after(bytes,Guest.after(bytes,0,prefix),dims),",\"state\":\"",9);
-  let (b,parent) = Guest.quoted(bytes,a,",\"parent\":\"",71);
-  let (c,updated) = Guest.quoted(bytes,b,",\"provider_updated_at\":\"",24);
-  let (d,observed) = Guest.quoted(bytes,c,",\"observed_at\":\"",20);
-  let (e,received) = Guest.quoted(bytes,d,",\"received_at\":\"",20);
-  let (f,ingested) = Guest.quoted(bytes,e,",\"ingested_at\":\"",20);
-  let (g,source_as_of) = Guest.quoted(bytes,f,",\"source_as_of\":\"",20);
-  let (h,input_cutoff) = Guest.quoted(bytes,g,",\"cutoff\":\"",20);
-  var at = Guest.after(bytes,h,",\"observations\":[");
+  let(a,
+    state) = Guest.quoted(bytes,
+    Guest.after(bytes,
+    Guest.after(bytes,
+    0,
+    prefix),
+    dims),
+    ",\"state\":\"",
+    9);
+  let(b, parent) = Guest.quoted(bytes, a, ",\"parent\":\"", 71);
+  let(c, updated) = Guest.quoted(bytes, b, ",\"provider_updated_at\":\"", 24);
+  let(d, observed) = Guest.quoted(bytes, c, ",\"observed_at\":\"", 20);
+  let(e, received) = Guest.quoted(bytes, d, ",\"received_at\":\"", 20);
+  let(f, ingested) = Guest.quoted(bytes, e, ",\"ingested_at\":\"", 20);
+  let(g, source_as_of) = Guest.quoted(bytes, f, ",\"source_as_of\":\"", 20);
+  let(h, input_cutoff) = Guest.quoted(bytes, g, ",\"cutoff\":\"", 20);
+  var at = Guest.after(bytes, h, ",\"observations\":[");
   let published = Guest.provider_clock(updated);
   let receipt = Guest.clock(received);
-  if at < 0 || (state != "available" && state != "partial") || !Guest.digest(parent)
-    || published < 0 || receipt < published || receipt - published > 10368000 || observed != received
-    || !Date.utc_timestamp(ingested) || !Date.utc_timestamp(source_as_of)
-    || Str.compare(received,ingested) > 0 || Str.compare(ingested,source_as_of) > 0
-    || Str.compare(source_as_of,cutoff) > 0 || input_cutoff != cutoff { return invalid_training(); }
+  if at < 0 || (state != "available" && state != "partial") || ! Guest.digest(parent) || published < 0 || receipt < published || receipt - published > 10368000 || observed != received || ! Date.utc_timestamp(ingested) || ! Date.utc_timestamp(source_as_of) || Str.compare(received,
+    ingested) > 0 || Str.compare(ingested,
+    source_as_of) > 0 || Str.compare(source_as_of,
+    cutoff) > 0 || input_cutoff != cutoff
+  {
+    return invalid_training();
+  }
   var rows = sx_nil();
-  var previous = -1;
+  var previous = - 1;
   var contiguous = true;
   var available = 0;
-  for i in 0 .. 3 {
-    let (j,period) = Guest.quoted(bytes,at,"{\"period\":\"",7);
+  for i in 0 .. 3
+  {
+    let(j, period) = Guest.quoted(bytes, at, "{\"period\":\"", 7);
     let index = month(period);
-    if j < 0 || index < 0 || index <= previous { return invalid_training(); }
+    if j < 0 || index < 0 || index <= previous
+    {
+      return invalid_training();
+    }
     let next = Guest.next_month(period);
     let end = Date.date_days("$next-01");
-    if end < 0 || end * 86400 > published { return invalid_training(); }
-    if i > 0 && index != previous + 1 { contiguous = false; }
-    let (k,presence) = Guest.quoted(bytes,j,",\"state\":\"",9);
-    let (l,value) = Guest.token(bytes,Guest.after(bytes,k,",\"nights\":"),44,12);
-    if l < 0 || (presence != "available" && presence != "unknown") { return invalid_training(); }
-    if presence == "available" {
-      if Guest.nat(value,12) < 0 { return invalid_training(); }
+    if end < 0 || end * 86400 > published
+    {
+      return invalid_training();
+    }
+    if i > 0 && index != previous + 1
+    {
+      contiguous = false;
+    }
+    let(k, presence) = Guest.quoted(bytes, j, ",\"state\":\"", 9);
+    let(l,
+      value) = Guest.token(bytes,
+      Guest.after(bytes,
+      k,
+      ",\"nights\":"),
+      44,
+      12);
+    if l < 0 || (presence != "available" && presence != "unknown")
+    {
+      return invalid_training();
+    }
+    if presence == "available"
+    {
+      if Guest.nat(value, 12) < 0
+      {
+        return invalid_training();
+      }
       available = available + 1;
-      rows = sx_cons(sx_cons(sx_string(F.num(index)),sx_cons(sx_string(value),sx_nil())),rows);
-    } else { if value != "null" { return invalid_training(); } }
-    let flags = Guest.after(bytes,l,",\"provider_flag\":");
-    var flag_end = Guest.after(bytes,flags,"null");
-    if flag_end < 0 {
-      let (m,flag) = Guest.quoted(bytes,flags,"\"",16);
-      if m < 0 || !Guest.valid_flag(flag) { return invalid_training(); }
+      rows = sx_cons(sx_cons(sx_string(F.num(index)),
+        sx_cons(sx_string(value),
+        sx_nil())),
+        rows);
+    }
+    else
+    {
+      if value != "null"
+      {
+        return invalid_training();
+      }
+    }
+    let flags = Guest.after(bytes, l, ",\"provider_flag\":");
+    var flag_end = Guest.after(bytes, flags, "null");
+    if flag_end < 0
+    {
+      let(m, flag) = Guest.quoted(bytes, flags, "\"", 16);
+      if m < 0 || ! Guest.valid_flag(flag)
+      {
+        return invalid_training();
+      }
       flag_end = m;
     }
-    at = Guest.after(bytes,flag_end,"}");
-    if at < 0 { return invalid_training(); }
-    if Guest.after(bytes,at,"]}\n") == text_len(bytes) {
+    at = Guest.after(bytes, flag_end, "}");
+    if at < 0
+    {
+      return invalid_training();
+    }
+    if Guest.after(bytes, at, "]}\n") == text_len(bytes)
+    {
       let full = available == 3 && contiguous;
-      if full != (state == "available") { return invalid_training(); }
+      if full != (state == "available")
+      {
+        return invalid_training();
+      }
       var code = 2;
-      if full { code = 1; }
-      return record<Training>{state:code,rows:rows};
+      if full
+      {
+        code = 1;
+      }
+      return record < Training >
+      {
+        state: code, rows: rows
+      };
     }
     previous = index;
-    at = Guest.after(bytes,at,",");
+    at = Guest.after(bytes, at, ",");
   }
   return invalid_training();
 }
-fn at_month(rows:sexpr, index:i64) -> i64 {
+
+fn at_month(rows: sexpr, index: i64) -> i64
+{
   let key = F.num(index);
   var rest = rows;
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let row = sx_head(rest);
-    if sx_text(sx_head(row)) == key { return Guest.nat(sx_text(sx_head(sx_tail(row))),12); }
+    if sx_text(sx_head(row)) == key
+    {
+      return Guest.nat(sx_text(sx_head(sx_tail(row))), 12);
+    }
     rest = sx_tail(rest);
   }
-  return -1;
+  return - 1;
 }
 
-fn call(pin:SDK.Pin, request:SDK.Request) -> SDK.Outcome {
+fn call(pin: SDK.Pin, request: SDK.Request) -> SDK.Outcome
+{
   let name = sx_text(pin["handler_name"]);
   let code = sx_text(pin["code_digest"]);
-  let own = descriptor(name,code);
-  if !own["enabled"] || !SDK.same_pin(own["pin"],pin)
-    || !SDK.valid_inputs(own["inputs"],request["inputs"]) { return SDK.failure(5); }
-  if request["work"] != 1 { return SDK.failure(4); }
+  let own = descriptor(name, code);
+  if ! own["enabled"] || ! SDK.same_pin(own["pin"],
+    pin) || ! SDK.valid_inputs(own["inputs"],
+    request["inputs"])
+  {
+    return SDK.failure(5);
+  }
+  if request["work"] != 1
+  {
+    return SDK.failure(4);
+  }
   let cutoff = sx_text(request["cutoff"]);
   let inputs = request["inputs"];
   let input = sx_head(inputs);
   let projection = sx_text(SDK.value_bytes(input));
-  let settings = spec(sx_text(SDK.value_bytes(sx_head(sx_tail(inputs)))),cutoff);
+  let settings = spec(sx_text(SDK.value_bytes(sx_head(sx_tail(inputs)))),
+    cutoff);
   let target_index = settings["month"];
-  if target_index < 0 { return SDK.failure(5); }
-  let parsed = training(projection,cutoff);
-  if parsed["state"] != SDK.value_state(input) { return SDK.failure(5); }
+  if target_index < 0
+  {
+    return SDK.failure(5);
+  }
+  let parsed = training(projection, cutoff);
+  if parsed["state"] != SDK.value_state(input)
+  {
+    return SDK.failure(5);
+  }
   let rows = parsed["rows"];
-  var numerator = -1;
+  var numerator = - 1;
   var denominator = 1;
-  if name == moving_average() {
-    let recent = at_month(rows,target_index - 2);
-    let middle = at_month(rows,target_index - 3);
-    let old = at_month(rows,target_index - 4);
+  if name == moving_average()
+  {
+    let recent = at_month(rows, target_index - 2);
+    let middle = at_month(rows, target_index - 3);
+    let old = at_month(rows, target_index - 4);
     # Three values of at most 999999999999 each cannot overflow i64.
-    if recent >= 0 && middle >= 0 && old >= 0 {
+    if recent >= 0 && middle >= 0 && old >= 0
+    {
       numerator = recent + middle + old;
-      if numerator % 3 == 0 { numerator = numerator / 3; }
-      else { denominator = 3; }
+      if numerator % 3 == 0
+      {
+        numerator = numerator / 3;
+      }
+      else
+      {
+        denominator = 3;
+      }
     }
-  } else { numerator = at_month(rows,target_index - 12); }
+  }
+  else
+  {
+    numerator = at_month(rows, target_index - 12);
+  }
   let policy_id = sx_text(pin["policy_digest"]);
   let issued = sx_text(settings["issued"]);
   let target = sx_text(settings["target"]);
   let training_id = digest(projection);
-  if training_id == "" { return SDK.failure(5); }
+  if training_id == ""
+  {
+    return SDK.failure(5);
+  }
   let out = buffer_new();
-  buffer_append(out,"{\"kind\":\"analysis.guest-nights-forecast\",\"version\":1,\"unit\":\"guest_nights\",\"currency\":null,\"pricing_input\":false");
-  buffer_append(out,",\"model\":\"$name\",\"code_digest\":\"$code\",\"policy_digest\":\"$policy_id\",\"training\":\"$training_id\"");
-  buffer_append(out,",\"issued_at\":\"$issued\",\"training_cutoff\":\"$cutoff\",\"target_month\":\"$target\",\"horizon_months\":1");
-  if numerator < 0 {
-    buffer_append(out,",\"state\":\"unknown\",\"reason\":\"insufficient_evidence\",\"estimate\":null,\"uncertainty\":\"unavailable\"}\n");
-    return SDK.success(4,buffer_text(out));
+  buffer_append(out,
+    "{\"kind\":\"analysis.guest-nights-forecast\",\"version\":1,\"unit\":\"guest_nights\",\"currency\":null,\"pricing_input\":false");
+  buffer_append(out,
+    ",\"model\":\"$name\",\"code_digest\":\"$code\",\"policy_digest\":\"$policy_id\",\"training\":\"$training_id\"");
+  buffer_append(out,
+    ",\"issued_at\":\"$issued\",\"training_cutoff\":\"$cutoff\",\"target_month\":\"$target\",\"horizon_months\":1");
+  if numerator < 0
+  {
+    buffer_append(out,
+      ",\"state\":\"unknown\",\"reason\":\"insufficient_evidence\",\"estimate\":null,\"uncertainty\":\"unavailable\"}\n");
+    return SDK.success(4, buffer_text(out));
   }
   let n = F.num(numerator);
   let d = F.num(denominator);
-  buffer_append(out,",\"state\":\"available\",\"reason\":null,\"estimate\":{\"numerator\":$n,\"denominator\":$d},\"uncertainty\":\"unavailable\"}\n");
-  return SDK.success(1,buffer_text(out));
+  buffer_append(out,
+    ",\"state\":\"available\",\"reason\":null,\"estimate\":{\"numerator\":$n,\"denominator\":$d},\"uncertainty\":\"unavailable\"}\n");
+  return SDK.success(1, buffer_text(out));
 }

@@ -7,53 +7,88 @@ import std.io.TextIO as IO;
 import std.os.CommandLine as Env;
 import std.collections.List as L;
 import core.format as F;
-
-fn print(text:string) { IO.basis_text_io_print(text); }
-fn env(key:string) -> string { return Env.basis_command_line_get_env(key); }
-fn file(key:string) -> string { return IO.basis_text_io_input_all(env(key)); }
-fn bind(key:string) -> SDK.Descriptor
+fn print(text: string)
 {
-  if env("CASE") == "disabled" && key == Host.sample_key() { return SDK.unavailable(); }
+  IO.basis_text_io_print(text);
+}
+
+fn env(key: string) -> string
+{
+  return Env.basis_command_line_get_env(key);
+}
+
+fn file(key: string) -> string
+{
+  return IO.basis_text_io_input_all(env(key));
+}
+
+fn bind(key: string) -> SDK.Descriptor
+{
+  if env("CASE") == "disabled" && key == Host.sample_key()
+  {
+    return SDK.unavailable();
+  }
   return Host.lookup(key);
 }
-fn forbid_call(pin:SDK.Pin, req:SDK.Request) -> SDK.Outcome
+
+fn forbid_call(pin: SDK.Pin, req: SDK.Request) -> SDK.Outcome
 {
   tool_fail("invalid graph reached a handler");
   return SDK.failure(1);
 }
-fn bundle_file(b:buffer, path:string)
+
+fn bundle_file(b: buffer, path: string)
 {
-  G.frame(b,path);
-  G.frame(b,IO.basis_text_io_input_all(text_concat(env("ROOT"),path)));
+  G.frame(b, path);
+  G.frame(b, IO.basis_text_io_input_all(text_concat(env("ROOT"), path)));
 }
+
 fn bundle_digest() -> string
 {
   let b = buffer_new();
-  G.frame(b,"finpred.hospitality-on1x-bundle@1");
-  bundle_file(b,"/plugins/yieldcraft/matcher.on1x");
-  bundle_file(b,"/plugins/yieldcraft/strategy.on1x");
-  bundle_file(b,"/source/algorithms/quantile.on1x");
-  bundle_file(b,"/plugins/yieldcraft/hospitality.on1x");
-  bundle_file(b,"/plugins/yieldcraft/hospitality_sample.on1x");
-  bundle_file(b,"/source/automat/runner.on1x");
-  bundle_file(b,"/source/core/contracts.on1x");
-  bundle_file(b,"/source/core/csv.on1x");
-  bundle_file(b,"/source/core/date.on1x");
-  bundle_file(b,"/source/core/money.on1x");
+  G.frame(b, "finpred.hospitality-on1x-bundle@1");
+  bundle_file(b, "/plugins/yieldcraft/matcher.on1x");
+  bundle_file(b, "/plugins/yieldcraft/strategy.on1x");
+  bundle_file(b, "/source/algorithms/quantile.on1x");
+  bundle_file(b, "/plugins/yieldcraft/hospitality.on1x");
+  bundle_file(b, "/plugins/yieldcraft/hospitality_sample.on1x");
+  bundle_file(b, "/source/automat/runner.on1x");
+  bundle_file(b, "/source/core/contracts.on1x");
+  bundle_file(b, "/source/core/csv.on1x");
+  bundle_file(b, "/source/core/date.on1x");
+  bundle_file(b, "/source/core/money.on1x");
   return G.digest(buffer_text(b));
 }
-fn changed_plan(g:G.Graph, task:string) -> G.Graph
+
+fn changed_plan(g: G.Graph, task: string) -> G.Graph
 {
   let nodes = g["nodes"];
   let inputs = g["inputs"];
   let outputs = g["outputs"];
-  if task == "shape" { return G.graph(sx_nil(),nodes,outputs); }
-  if task == "duplicate" { return G.graph(inputs,sx_cons(sx_head(nodes),nodes),outputs); }
-  if task == "reordered" { return G.graph(L.basis_list_rev(inputs),L.basis_list_rev(nodes),outputs); }
+  if task == "shape"
+  {
+    return G.graph(sx_nil(), nodes, outputs);
+  }
+  if task == "duplicate"
+  {
+    return G.graph(inputs, sx_cons(sx_head(nodes), nodes), outputs);
+  }
+  if task == "reordered"
+  {
+    return G.graph(L.basis_list_rev(inputs), L.basis_list_rev(nodes), outputs);
+  }
   if task == "memo"
   {
-    let n = G.lookup(nodes,"diagnostic");
-    return G.graph(inputs,sx_cons(G.node("extra",G.field(n,1),"pure",G.at(n,3)),nodes),outputs);
+    let n = G.lookup(nodes, "diagnostic");
+    return G.graph(inputs,
+      sx_cons(G.node("extra",
+      G.field(n,
+      1),
+      "pure",
+      G.at(n,
+      3)),
+      nodes),
+      outputs);
   }
   if task == "kind" || task == "major" || task == "unit"
   {
@@ -61,232 +96,491 @@ fn changed_plan(g:G.Graph, task:string) -> G.Graph
     var kind = p["kind"];
     var major = p["major"];
     var unit = p["unit"];
-    if task == "kind" { kind = sx_string("pricing.valuation"); }
-    if task == "major" { major = 2; }
-    if task == "unit" { unit = sx_string("minor_per_night"); }
-    let changed = record<SDK.Port>{name:p["name"],kind:kind,major:major,unit:unit,
-      currency:p["currency"],states:p["states"],max_bytes:p["max_bytes"]};
-    return G.graph(Host.prepend(changed,G.remove(inputs,"offers")),nodes,outputs);
+    if task == "kind"
+    {
+      kind = sx_string("pricing.valuation");
+    }
+    if task == "major"
+    {
+      major = 2;
+    }
+    if task == "unit"
+    {
+      unit = sx_string("minor_per_night");
+    }
+    let changed = record < SDK.Port >
+    {
+      name: p["name"], kind: kind, major: major, unit: unit, currency: p["currency"], states: p["states"], max_bytes: p["max_bytes"]
+    };
+    return G.graph(Host.prepend(changed,
+      G.remove(inputs,
+      "offers")),
+      nodes,
+      outputs);
   }
   if task == "denied" || task == "unknown"
   {
     let item = sx_head(nodes);
-    let id = G.field(item,0);
-    var key = G.field(item,1);
-    var effect = G.field(item,2);
-    if task == "denied" { effect = "action"; }
-    if task == "unknown" { key = "hospitality.missing@1"; }
-    return G.graph(inputs,sx_cons(G.node(id,key,effect,G.at(item,3)),sx_tail(nodes)),outputs);
+    let id = G.field(item, 0);
+    var key = G.field(item, 1);
+    var effect = G.field(item, 2);
+    if task == "denied"
+    {
+      effect = "action";
+    }
+    if task == "unknown"
+    {
+      key = "hospitality.missing@1";
+    }
+    return G.graph(inputs,
+      sx_cons(G.node(id,
+      key,
+      effect,
+      G.at(item,
+      3)),
+      sx_tail(nodes)),
+      outputs);
   }
   if task == "cycle" || task == "ref"
   {
     let id = "comparables";
     var producer = id;
-    if task == "ref" { producer = "absent"; }
-    let edges = sx_cons(G.edge("scenario","","scenario"),
-      sx_cons(G.edge("normalized",producer,"distribution"),sx_nil()));
-    return G.graph(inputs,sx_cons(G.node(id,Host.comparables_key(),"pure",edges),G.remove(nodes,id)),outputs);
+    if task == "ref"
+    {
+      producer = "absent";
+    }
+    let edges = sx_cons(G.edge("scenario",
+      "",
+      "scenario"),
+      sx_cons(G.edge("normalized",
+      producer,
+      "distribution"),
+      sx_nil()));
+    return G.graph(inputs,
+      sx_cons(G.node(id,
+      Host.comparables_key(),
+      "pure",
+      edges),
+      G.remove(nodes,
+      id)),
+      outputs);
   }
   return g;
 }
-fn tamper_parents(expected:sexpr, parent_digest:string) -> sexpr
+
+fn tamper_parents(expected: sexpr, parent_digest: string) -> sexpr
 {
   let entry = sx_head(expected);
-  if G.field(entry,0) == "guardrails"
+  if G.field(entry, 0) == "guardrails"
   {
-    let bytes = G.field(entry,2);
+    let bytes = G.field(entry, 2);
     var altered = bytes;
     let width = text_len(parent_digest);
     for i in 0 .. text_len(bytes) - width + 1
     {
-      if text_slice(bytes,i,i+width) == parent_digest
+      if text_slice(bytes, i, i + width) == parent_digest
       {
-        altered = text_concat(text_slice(bytes,0,i),
+        altered = text_concat(text_slice(bytes,
+          0,
+          i),
           text_concat("blake3:0000000000000000000000000000000000000000000000000000000000000000",
-          text_slice(bytes,i+width,text_len(bytes))));
+          text_slice(bytes,
+          i + width,
+          text_len(bytes))));
         break;
       }
     }
-    if bytes == altered { tool_fail("wrong-parent fixture did not change"); }
-    let changed = sx_cons(G.at(entry,0),sx_cons(sx_string(G.digest(altered)),sx_cons(sx_string(altered),sx_nil())));
-    return sx_cons(changed,sx_tail(expected));
+    if bytes == altered
+    {
+      tool_fail("wrong-parent fixture did not change");
+    }
+    let changed = sx_cons(G.at(entry,
+      0),
+      sx_cons(sx_string(G.digest(altered)),
+      sx_cons(sx_string(altered),
+      sx_nil())));
+    return sx_cons(changed, sx_tail(expected));
   }
-  return sx_cons(entry,tamper_parents(sx_tail(expected),parent_digest));
+  return sx_cons(entry, tamper_parents(sx_tail(expected), parent_digest));
 }
-fn report(result:Run.Result)
+
+fn report(result: Run.Result)
 {
-  print(text_concat(sx_text(result["status"]),"\n"));
-  if !SDK.same(result["status"],sx_string("ok")) { return; }
-  print(text_concat(sx_text(result["graph_digest"]),"\n"));
-  print(text_concat(F.num(result["invocations"]),"\n"));
-  let recommendation = G.lookup(result["outputs"],"recommendation");
-  if sx_kind(recommendation) != 0 { print(sx_text(SDK.value_bytes(G.at(recommendation,2)))); }
+  print(text_concat(sx_text(result["status"]), "\n"));
+  if ! SDK.same(result["status"], sx_string("ok"))
+  {
+    return;
+  }
+  print(text_concat(sx_text(result["graph_digest"]), "\n"));
+  print(text_concat(F.num(result["invocations"]), "\n"));
+  let recommendation = G.lookup(result["outputs"], "recommendation");
+  if sx_kind(recommendation) != 0
+  {
+    print(sx_text(SDK.value_bytes(G.at(recommendation, 2))));
+  }
   let out = buffer_new();
-  G.frame(out,sx_text(result["trace"]));
+  G.frame(out, sx_text(result["trace"]));
   var entries = result["artifacts"];
   while sx_kind(entries) == 3
   {
     let a = sx_head(entries);
-    G.frame(out,G.field(a,0)); G.frame(out,G.field(a,1)); G.frame(out,G.field(a,2));
+    G.frame(out, G.field(a, 0));
+    G.frame(out, G.field(a, 1));
+    G.frame(out, G.field(a, 2));
     entries = sx_tail(entries);
   }
   print(buffer_text(out));
 }
-fn empty_port(name:string) -> SDK.Port
+
+fn empty_port(name: string) -> SDK.Port
 {
-  return record<SDK.Port>{name:sx_string(name),kind:sx_string("test.ndjson"),major:1,
-    unit:sx_string("none"),currency:sx_string("none"),states:5,max_bytes:64};
+  return record < SDK.Port >
+  {
+    name: sx_string(name), kind: sx_string("test.ndjson"), major: 1, unit: sx_string("none"), currency: sx_string("none"), states: 5, max_bytes: 64
+  };
 }
-fn empty_lookup(key:string) -> SDK.Descriptor
+
+fn empty_lookup(key: string) -> SDK.Descriptor
 {
-  if key != "test.empty@1" && key != "test.consume@1" { return SDK.unavailable(); }
+  if key != "test.empty@1" && key != "test.consume@1"
+  {
+    return SDK.unavailable();
+  }
   let digest = sx_string(G.digest(key));
-  let pin = record<SDK.Pin>{package_name:sx_string("test"),package_version:sx_string("1"),
-    handler_name:sx_string(key),handler_version:sx_string("1"),abi:1,code_digest:digest,policy_digest:digest};
-  return record<SDK.Descriptor>{enabled:true,pin:pin,role:sx_string("Transformer"),mode:sx_string("analysis"),
-    effect:sx_string("pure"),inputs:Host.prepend(empty_port("input"),sx_nil()),output:empty_port("rows"),max_work:1};
+  let pin = record < SDK.Pin >
+  {
+    package_name: sx_string("test"), package_version: sx_string("1"), handler_name: sx_string(key), handler_version: sx_string("1"), abi: 1, code_digest: digest, policy_digest: digest
+  };
+  return record < SDK.Descriptor >
+  {
+    enabled: true, pin: pin, role: sx_string("Transformer"), mode: sx_string("analysis"), effect: sx_string("pure"), inputs: Host.prepend(empty_port("input"),
+      sx_nil()), output: empty_port("rows"), max_work: 1
+  };
 }
-fn empty_call(pin:SDK.Pin, req:SDK.Request) -> SDK.Outcome
+
+fn empty_call(pin: SDK.Pin, req: SDK.Request) -> SDK.Outcome
 {
-  if sx_text(pin["handler_name"]) != "test.empty@1" { tool_fail("empty input reached handler"); }
-  if env("CASE") == "empty-available" { return SDK.success(1,""); }
-  return SDK.success(4,"");
+  if sx_text(pin["handler_name"]) != "test.empty@1"
+  {
+    tool_fail("empty input reached handler");
+  }
+  if env("CASE") == "empty-available"
+  {
+    return SDK.success(1, "");
+  }
+  return SDK.success(4, "");
 }
-fn check_empty(task:string)
+
+fn check_empty(task: string)
 {
-  let roots = Host.prepend(empty_port("input"),sx_nil());
-  let bindings = sx_cons(G.edge("input","","input"),sx_nil());
+  let roots = Host.prepend(empty_port("input"), sx_nil());
+  let bindings = sx_cons(G.edge("input", "", "input"), sx_nil());
   var second_key = "test.empty@1";
   var second_bindings = bindings;
   if task == "empty-edge"
   {
     second_key = "test.consume@1";
-    second_bindings = sx_cons(G.edge("input","first","rows"),sx_nil());
+    second_bindings = sx_cons(G.edge("input", "first", "rows"), sx_nil());
   }
-  let graph = G.graph(roots,sx_cons(G.node("second",second_key,"pure",second_bindings),
-    sx_cons(G.node("first","test.empty@1","pure",bindings),sx_nil())),
-    sx_cons(G.output(empty_port("first_rows"),"first","rows"),
-    sx_cons(G.output(empty_port("second_rows"),"second","rows"),sx_nil())));
-  var inputs = sx_cons(Run.input("input",1,"{}\n"),sx_nil());
-  if task == "empty-root" { inputs = sx_cons(Run.input("input",4,""),sx_nil()); }
-  let ctx = record<Run.Context>{cutoff:sx_string("2026-11-20T10:00:00Z"),strategy_digest:sx_string(G.digest("test"))};
-  let result = Run.execute(graph,inputs,ctx,"analysis",2,empty_lookup,empty_call);
+  let graph = G.graph(roots,
+    sx_cons(G.node("second",
+    second_key,
+    "pure",
+    second_bindings),
+    sx_cons(G.node("first",
+    "test.empty@1",
+    "pure",
+    bindings),
+    sx_nil())),
+    sx_cons(G.output(empty_port("first_rows"),
+    "first",
+    "rows"),
+    sx_cons(G.output(empty_port("second_rows"),
+    "second",
+    "rows"),
+    sx_nil())));
+  var inputs = sx_cons(Run.input("input", 1, "{}\n"), sx_nil());
+  if task == "empty-root"
+  {
+    inputs = sx_cons(Run.input("input", 4, ""), sx_nil());
+  }
+  let ctx = record < Run.Context >
+  {
+    cutoff: sx_string("2026-11-20T10:00:00Z"), strategy_digest: sx_string(G.digest("test"))
+  };
+  let result = Run.execute(graph,
+    inputs,
+    ctx,
+    "analysis",
+    2,
+    empty_lookup,
+    empty_call);
   report(result);
   if sx_text(result["status"]) != "ok"
   {
     if sx_kind(result["artifacts"]) != 0 || sx_kind(result["outputs"]) != 0
-    { tool_fail("failed run exposed partial evidence"); }
+    {
+      tool_fail("failed run exposed partial evidence");
+    }
     return;
   }
-  if result["invocations"] != 1 { tool_fail("empty value was not memoized"); }
+  if result["invocations"] != 1
+  {
+    tool_fail("empty value was not memoized");
+  }
   var outputs = result["outputs"];
   while sx_kind(outputs) == 3
   {
-    let value = G.at(sx_head(outputs),2);
-    if SDK.value_state(value) != 4 || !SDK.same(SDK.value_bytes(value),sx_string(""))
-    { tool_fail("lost empty unknown output"); }
+    let value = G.at(sx_head(outputs), 2);
+    if SDK.value_state(value) != 4 || ! SDK.same(SDK.value_bytes(value),
+      sx_string(""))
+    {
+      tool_fail("lost empty unknown output");
+    }
     outputs = sx_tail(outputs);
   }
-  let replay = Run.replay(graph,inputs,ctx,"analysis",2,empty_lookup,empty_call,
-    result["graph_digest"],Run.expectation(result));
-  if !SDK.same(replay["status"],sx_string("ok")) { tool_fail("empty unknown replay failed"); }
+  let replay = Run.replay(graph,
+    inputs,
+    ctx,
+    "analysis",
+    2,
+    empty_lookup,
+    empty_call,
+    result["graph_digest"],
+    Run.expectation(result));
+  if ! SDK.same(replay["status"], sx_string("ok"))
+  {
+    tool_fail("empty unknown replay failed");
+  }
 }
-fn copy_port(p:SDK.Port, name:string, states:i64) -> SDK.Port
+
+fn copy_port(p: SDK.Port, name: string, states: i64) -> SDK.Port
 {
-  return record<SDK.Port>{name:sx_string(name),kind:p["kind"],major:p["major"],unit:p["unit"],
-    currency:p["currency"],states:states,max_bytes:p["max_bytes"]};
+  return record < SDK.Port >
+  {
+    name: sx_string(name), kind: p["kind"], major: p["major"], unit: p["unit"], currency: p["currency"], states: states, max_bytes: p["max_bytes"]
+  };
 }
-fn check_compose(task:string)
+
+fn check_compose(task: string)
 {
   let native = Host.native_graph();
   let origin = Host.lookup(Host.normalize_key())["output"];
-  var exported = copy_port(origin,"upstream",origin["states"]);
-  if task == "compose-type" { exported = copy_port(origin,"upstream",5); }
-  let target = copy_port(origin,"transfer",origin["states"]);
-  let left = G.graph(G.remove(native["inputs"],"valuation"),
-    sx_cons(G.lookup(native["nodes"],"normalizer"),sx_nil()),
-    sx_cons(G.output(exported,"normalizer",sx_text(origin["name"])),sx_nil()));
-  let right = G.graph(sx_cons(SDK.port_entry(target),sx_nil()),
-    sx_cons(G.node("copy","test.copy@1","pure",sx_cons(G.edge("transfer","","transfer"),sx_nil())),sx_nil()),
-    sx_cons(G.output(origin,"copy",sx_text(origin["name"])),sx_nil()));
-  var wiring = sx_cons(G.link("transfer","upstream"),sx_nil());
-  if task == "compose-duplicate" { wiring = sx_cons(sx_head(wiring),wiring); }
-  if task == "compose-reference" { wiring = sx_cons(G.link("transfer","missing"),sx_nil()); }
-  var budget = Host.budget()+1;
-  if task == "compose-budget" { budget = Host.lookup(Host.normalize_key())["max_work"]; }
-  let composed = G.compose(left,right,wiring,"recommendation",budget,compose_lookup);
+  var exported = copy_port(origin, "upstream", origin["states"]);
+  if task == "compose-type"
+  {
+    exported = copy_port(origin, "upstream", 5);
+  }
+  let target = copy_port(origin, "transfer", origin["states"]);
+  let left = G.graph(G.remove(native["inputs"],
+    "valuation"),
+    sx_cons(G.lookup(native["nodes"],
+    "normalizer"),
+    sx_nil()),
+    sx_cons(G.output(exported,
+    "normalizer",
+    sx_text(origin["name"])),
+    sx_nil()));
+  let right = G.graph(sx_cons(SDK.port_entry(target),
+    sx_nil()),
+    sx_cons(G.node("copy",
+    "test.copy@1",
+    "pure",
+    sx_cons(G.edge("transfer",
+    "",
+    "transfer"),
+    sx_nil())),
+    sx_nil()),
+    sx_cons(G.output(origin,
+    "copy",
+    sx_text(origin["name"])),
+    sx_nil()));
+  var wiring = sx_cons(G.link("transfer", "upstream"), sx_nil());
+  if task == "compose-duplicate"
+  {
+    wiring = sx_cons(sx_head(wiring), wiring);
+  }
+  if task == "compose-reference"
+  {
+    wiring = sx_cons(G.link("transfer", "missing"), sx_nil());
+  }
+  var budget = Host.budget() + 1;
+  if task == "compose-budget"
+  {
+    budget = Host.lookup(Host.normalize_key())["max_work"];
+  }
+  let composed = G.compose(left,
+    right,
+    wiring,
+    "recommendation",
+    budget,
+    compose_lookup);
   let status = sx_text(composed["status"]);
   print("$status\n");
-  if status != "ok" { return; }
+  if status != "ok"
+  {
+    return;
+  }
   let pins = composed["prepared"];
   let dig = sx_string(G.digest(sx_text(pins["canonical"])));
-  let ctx = record<Run.Context>{cutoff:sx_string("2026-11-20T10:00:00Z"),
-    strategy_digest:sx_string(G.digest("test composition"))};
-  let roots = sx_cons(Run.input("scenario",1,file("SCENARIO")),sx_cons(Run.input("offers",1,file("OFFERS")),sx_nil()));
-  let result = Run.execute_pinned(composed["graph"],roots,ctx,"recommendation",budget,compose_lookup,compose_call,dig);
-  if !SDK.same(result["status"],sx_string("ok")) || result["invocations"] != 2 { tool_fail("composed execution failed"); }
+  let ctx = record < Run.Context >
+  {
+    cutoff: sx_string("2026-11-20T10:00:00Z"), strategy_digest: sx_string(G.digest("test composition"))
+  };
+  let roots = sx_cons(Run.input("scenario",
+    1,
+    file("SCENARIO")),
+    sx_cons(Run.input("offers",
+    1,
+    file("OFFERS")),
+    sx_nil()));
+  let result = Run.execute_pinned(composed["graph"],
+    roots,
+    ctx,
+    "recommendation",
+    budget,
+    compose_lookup,
+    compose_call,
+    dig);
+  if ! SDK.same(result["status"],
+    sx_string("ok")) || result["invocations"] != 2
+  {
+    tool_fail("composed execution failed");
+  }
   let outputs = result["outputs"];
-  let copied = SDK.value_bytes(G.at(G.lookup(outputs,sx_text(origin["name"])),2));
-  let upstream = SDK.value_bytes(G.at(G.lookup(outputs,"upstream"),2));
-  if !SDK.same(copied,upstream) { tool_fail("composition lost typed output"); }
+  let copied = SDK.value_bytes(G.at(G.lookup(outputs,
+    sx_text(origin["name"])),
+    2));
+  let upstream = SDK.value_bytes(G.at(G.lookup(outputs, "upstream"), 2));
+  if ! SDK.same(copied, upstream)
+  {
+    tool_fail("composition lost typed output");
+  }
   print("joined\n");
 }
-fn compose_lookup(key:string) -> SDK.Descriptor
+
+fn compose_lookup(key: string) -> SDK.Descriptor
 {
   let producer = Host.lookup(Host.normalize_key());
-  if key != "test.copy@1" { return Host.lookup(key); }
+  if key != "test.copy@1"
+  {
+    return Host.lookup(key);
+  }
   let origin = producer["output"];
-  let signature = copy_port(origin,"transfer",origin["states"]);
+  let signature = copy_port(origin, "transfer", origin["states"]);
   let digest = sx_string(G.digest("test.copy@1"));
-  let pin = record<SDK.Pin>{package_name:sx_string("test"),package_version:sx_string("1"),
-    handler_name:sx_string(key),handler_version:sx_string("1"),abi:1,code_digest:digest,policy_digest:digest};
-  return record<SDK.Descriptor>{enabled:true,pin:pin,role:sx_string("Transformer"),mode:sx_string("recommendation"),
-    effect:sx_string("pure"),inputs:sx_cons(SDK.port_entry(signature),sx_nil()),output:origin,max_work:1};
+  let pin = record < SDK.Pin >
+  {
+    package_name: sx_string("test"), package_version: sx_string("1"), handler_name: sx_string(key), handler_version: sx_string("1"), abi: 1, code_digest: digest, policy_digest: digest
+  };
+  return record < SDK.Descriptor >
+  {
+    enabled: true, pin: pin, role: sx_string("Transformer"), mode: sx_string("recommendation"), effect: sx_string("pure"), inputs: sx_cons(SDK.port_entry(signature),
+      sx_nil()), output: origin, max_work: 1
+  };
 }
-fn compose_call(pin:SDK.Pin, req:SDK.Request) -> SDK.Outcome
+
+fn compose_call(pin: SDK.Pin, req: SDK.Request) -> SDK.Outcome
 {
-  if sx_text(pin["handler_name"]) != "test.copy@1" { return Host.call(pin,req); }
+  if sx_text(pin["handler_name"]) != "test.copy@1"
+  {
+    return Host.call(pin, req);
+  }
   let value = sx_head(req["inputs"]);
-  return SDK.success(SDK.value_state(value),sx_text(SDK.value_bytes(value)));
+  return SDK.success(SDK.value_state(value), sx_text(SDK.value_bytes(value)));
 }
-fn check_archive(task:string)
+
+fn check_archive(task: string)
 {
   let graph = Host.native_graph();
   var budget = Host.budget();
   if task == "archive-capture" || task == "archive-reordered"
   {
-    var roots = sx_cons(Run.input("scenario",1,file("SCENARIO")),
-      sx_cons(Run.input("offers",1,file("OFFERS")),sx_cons(Run.input("valuation",1,file("VALUATION")),sx_nil())));
-    if task == "archive-reordered" { roots = L.basis_list_rev(roots); }
-    let ctx = record<Run.Context>{cutoff:sx_string("2026-11-20T10:00:00Z"),
-      strategy_digest:Host.lookup(Host.decide_key())["pin"]["policy_digest"]};
-    let prepared = G.prepare(graph,"recommendation",budget,Host.lookup);
-    let captured = Archive.capture(graph,roots,ctx,"recommendation",budget,Host.lookup,Host.call,
+    var roots = sx_cons(Run.input("scenario",
+      1,
+      file("SCENARIO")),
+      sx_cons(Run.input("offers",
+      1,
+      file("OFFERS")),
+      sx_cons(Run.input("valuation",
+      1,
+      file("VALUATION")),
+      sx_nil())));
+    if task == "archive-reordered"
+    {
+      roots = L.basis_list_rev(roots);
+    }
+    let ctx = record < Run.Context >
+    {
+      cutoff: sx_string("2026-11-20T10:00:00Z"), strategy_digest: Host.lookup(Host.decide_key())["pin"]["policy_digest"]
+    };
+    let prepared = G.prepare(graph, "recommendation", budget, Host.lookup);
+    let captured = Archive.capture(graph,
+      roots,
+      ctx,
+      "recommendation",
+      budget,
+      Host.lookup,
+      Host.call,
       sx_string(G.digest(sx_text(prepared["canonical"]))));
-    if !SDK.same(captured["result"]["status"],sx_string("ok")) { tool_fail("capture failed"); }
-    print(text_concat(sx_text(captured["digest"]),"\n"));
+    if ! SDK.same(captured["result"]["status"], sx_string("ok"))
+    {
+      tool_fail("capture failed");
+    }
+    print(text_concat(sx_text(captured["digest"]), "\n"));
     print(sx_text(captured["bytes"]));
     return;
   }
   let raw = file("ARCHIVE");
   var approved = sx_string(env("APPROVED"));
-  if task == "archive-format" || task == "archive-inventory" { approved = sx_string(G.digest(raw)); }
+  if task == "archive-format" || task == "archive-inventory"
+  {
+    approved = sx_string(G.digest(raw));
+  }
   if task == "archive-replay"
   {
-    report(Archive.replay(graph,raw,approved,"recommendation",budget,Host.lookup,Host.call));
+    report(Archive.replay(graph,
+      raw,
+      approved,
+      "recommendation",
+      budget,
+      Host.lookup,
+      Host.call));
     return;
   }
   var mode = "recommendation";
   var given = graph;
-  if task == "archive-mode" { mode = "analysis"; }
-  if task == "archive-binding" { given = changed_plan(graph,"memo"); budget = budget+1; }
-  report(Archive.replay(given,raw,approved,mode,budget,Host.lookup,forbid_call));
+  if task == "archive-mode"
+  {
+    mode = "analysis";
+  }
+  if task == "archive-binding"
+  {
+    given = changed_plan(graph, "memo");
+    budget = budget + 1;
+  }
+  report(Archive.replay(given,
+    raw,
+    approved,
+    mode,
+    budget,
+    Host.lookup,
+    forbid_call));
 }
+
 fn main() -> i64
 {
   let task = env("CASE");
-  if text_len(task) >= 8 && text_slice(task,0,8) == "compose-" { check_compose(task); return 0; }
-  if text_len(task) >= 8 && text_slice(task,0,8) == "archive-" { check_archive(task); return 0; }
+  if text_len(task) >= 8 && text_slice(task, 0, 8) == "compose-"
+  {
+    check_compose(task);
+    return 0;
+  }
+  if text_len(task) >= 8 && text_slice(task, 0, 8) == "archive-"
+  {
+    check_archive(task);
+    return 0;
+  }
   if task == "empty-unknown" || task == "empty-available" || task == "empty-root" || task == "empty-edge"
   {
     check_empty(task);
@@ -294,37 +588,86 @@ fn main() -> i64
   }
   if task == "bundle"
   {
-    print(text_concat(bundle_digest(),"\n"));
+    print(text_concat(bundle_digest(), "\n"));
     return 0;
   }
-  if bundle_digest() != Host.code_digest() { tool_fail("hospitality source identity drift"); }
-  if task == "shape" || task == "duplicate" || task == "kind" || task == "unit" || task == "major"
-    || task == "denied" || task == "unknown" || task == "cycle" || task == "ref" || task == "disabled"
-    || task == "budget"
+  if bundle_digest() != Host.code_digest()
   {
-    let graph = changed_plan(Host.native_graph(),task);
+    tool_fail("hospitality source identity drift");
+  }
+  if task == "shape" || task == "duplicate" || task == "kind" || task == "unit" || task == "major" || task == "denied" || task == "unknown" || task == "cycle" || task == "ref" || task == "disabled" || task == "budget"
+  {
+    let graph = changed_plan(Host.native_graph(), task);
     var budget = Host.budget();
-    if task == "budget" { budget = budget - 1; }
-    let ctx = record<Run.Context>{cutoff:sx_nil(),strategy_digest:sx_nil()};
-    let result = Run.execute(graph,sx_nil(),ctx,"recommendation",budget,bind,forbid_call);
+    if task == "budget"
+    {
+      budget = budget - 1;
+    }
+    let ctx = record < Run.Context >
+    {
+      cutoff: sx_nil(), strategy_digest: sx_nil()
+    };
+    let result = Run.execute(graph,
+      sx_nil(),
+      ctx,
+      "recommendation",
+      budget,
+      bind,
+      forbid_call);
     report(result);
     return 0;
   }
-  let graph = changed_plan(Host.native_graph(),task);
-  let roots = sx_cons(Run.input("scenario",1,file("SCENARIO")),
-    sx_cons(Run.input("offers",1,file("OFFERS")),sx_cons(Run.input("valuation",1,file("VALUATION")),sx_nil())));
+  let graph = changed_plan(Host.native_graph(), task);
+  let roots = sx_cons(Run.input("scenario",
+    1,
+    file("SCENARIO")),
+    sx_cons(Run.input("offers",
+    1,
+    file("OFFERS")),
+    sx_cons(Run.input("valuation",
+    1,
+    file("VALUATION")),
+    sx_nil())));
   var cutoff = "2026-11-20T10:00:00Z";
-  if task == "cutoff" { cutoff = "2026-11-20T09:59:59Z"; }
+  if task == "cutoff"
+  {
+    cutoff = "2026-11-20T09:59:59Z";
+  }
   let strategy = Host.lookup(Host.decide_key())["pin"]["policy_digest"];
-  let ctx = record<Run.Context>{cutoff:sx_string(cutoff),strategy_digest:strategy};
-  let result = Run.execute(graph,roots,ctx,"recommendation",Host.budget()+1,bind,Host.call);
+  let ctx = record < Run.Context >
+  {
+    cutoff: sx_string(cutoff), strategy_digest: strategy
+  };
+  let result = Run.execute(graph,
+    roots,
+    ctx,
+    "recommendation",
+    Host.budget() + 1,
+    bind,
+    Host.call);
   if task == "replay" || task == "wrong-parent"
   {
-    if !SDK.same(result["status"],sx_string("ok")) { tool_fail("expected a successful graph"); }
+    if ! SDK.same(result["status"], sx_string("ok"))
+    {
+      tool_fail("expected a successful graph");
+    }
     var expected = Run.expectation(result);
-    if task == "wrong-parent" { expected = tamper_parents(expected,G.field(G.lookup(expected,"decision"),1)); }
-    report(Run.replay(graph,roots,ctx,"recommendation",Host.budget()+1,bind,Host.call,
-      result["graph_digest"],expected));
+    if task == "wrong-parent"
+    {
+      expected = tamper_parents(expected,
+        G.field(G.lookup(expected,
+        "decision"),
+        1));
+    }
+    report(Run.replay(graph,
+      roots,
+      ctx,
+      "recommendation",
+      Host.budget() + 1,
+      bind,
+      Host.call,
+      result["graph_digest"],
+      expected));
     return 0;
   }
   report(result);

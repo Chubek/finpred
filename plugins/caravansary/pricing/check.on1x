@@ -1,32 +1,42 @@
 import std.sexpr.sexpr as Sx;
 from plugins.caravansary.planning import json as Json, civil as Civil;
-from plugins.caravansary.stdlib import statistics as Stats, price_values as V, price as Price,
-  forecast as Forecast, revenue as Revenue;
-
-fn statistics() {
-  let (ok, clock) = V.instant("2026-03-08T01:02:03.00001+00:00");
-  assert(ok && clock == Civil.timestamp("2026-03-08T01:02:03.000010Z", "fixture"));
-  let (bad_clock, _) = V.instant("2026-02-29T00:00:00Z");
-  assert(!bad_clock);
+from plugins.caravansary.stdlib import statistics as Stats, price_values as V, price as Price, forecast as Forecast, revenue as Revenue;
+fn statistics()
+{
+  let(ok, clock) = V.instant("2026-03-08T01:02:03.00001+00:00");
+  assert(ok && clock == Civil.timestamp("2026-03-08T01:02:03.000010Z",
+    "fixture"));
+  let(bad_clock, _) = V.instant("2026-02-29T00:00:00Z");
+  assert(! bad_clock);
   let result = Stats.describe(Json.parse("[20,9,100,11]"), 7500);
   assert(Json.render(result) == r!"""{"kind":"caravansary.statistics@1","status":"ok","summary":{"count":4,"mad_floor":5,"max":100,"median_floor":15,"min":9,"quantile":20,"quantile_bps":7500,"sum":140}}""");
-  let extremes = Json.get(Stats.describe(Json.parse("[0,1000000000000]"), 10000), "summary");
+  let extremes = Json.get(Stats.describe(Json.parse("[0,1000000000000]"),
+    10000),
+    "summary");
   assert(V.number(extremes, "mad_floor", V.money_cap()) == 500000000000);
   assert(V.number(extremes, "quantile", V.money_cap()) == 1000000000000);
-  assert(V.text(Stats.describe(Json.parse("[20000000000000]"), 0), "reason") == "invalid_sample_value");
-  assert(V.text(Stats.describe(Json.parse("[1.0]"), 10000), "reason") == "invalid_sample_value");
-  assert(V.text(Stats.describe(Json.parse("[]"), 10000), "reason") == "empty_sample");
+  assert(V.text(Stats.describe(Json.parse("[20000000000000]"),
+    0),
+    "reason") == "invalid_sample_value");
+  assert(V.text(Stats.describe(Json.parse("[1.0]"),
+    10000),
+    "reason") == "invalid_sample_value");
+  assert(V.text(Stats.describe(Json.parse("[]"),
+    10000),
+    "reason") == "empty_sample");
 }
 
 # Every price, property and rate context below is fictional fixture evidence.
-fn scope() -> sexpr {
+fn scope() -> sexpr
+{
   return Json.parse(r!"""{"currency":"EUR","checkin":"2026-12-01","checkout":"2026-12-02",
     "guest_configuration":{"id":"two_adults","rooms":1,"adults":2,"child_ages":[],"allocation":[{"adults":2,"child_ages":[]}]},
     "booker_country":"FR","locale":"fr-FR",
     "price_basis":"stay_total","taxes_fees_inclusion":"included","meal":"room-only","cancellation":"refundable"}""");
 }
 
-fn policy() -> sexpr {
+fn policy() -> sexpr
+{
   let raw = Json.parse(r!"""{"kind":"caravansary.price-policy@1","qualification":"fixture",
     "as_of":"2026-11-26T00:00:00Z","subject_property_id":"Fixture-Subject","min_properties":3,
     "max_age_seconds":172800,"quantile_bps":5000,"current_minor":10000,"floor_minor":9000,
@@ -34,10 +44,17 @@ fn policy() -> sexpr {
   return Json.replace(raw, "scope", scope());
 }
 
-fn rate(id: string, observation: string, observed: string, amount: i64) -> sexpr {
+fn rate(id: string,
+  observation: string,
+  observed: string,
+  amount: i64) -> sexpr
+{
   var f = V.put_text(sx_nil(), "property_id", id);
   f = V.put_text(f, "candidate_id", text_concat("fixture-candidate-", id));
-  f = V.put_text(f, "provider_property_id", text_concat("fixture-property-", id));
+  f = V.put_text(f,
+    "provider_property_id",
+    text_concat("fixture-property-",
+    id));
   f = V.put_text(f, "provider", "fixture-provider");
   f = V.put_text(f, "observation_id", observation);
   f = V.put_text(f, "qualification", "fixture");
@@ -48,37 +65,77 @@ fn rate(id: string, observation: string, observed: string, amount: i64) -> sexpr
   return Json.object(V.put_int(f, "amount_minor", amount));
 }
 
-fn positioning() -> sexpr {
+fn positioning() -> sexpr
+{
   let earlier = "2026-11-24T12:00:00Z";
   let latest = "2026-11-25T12:00:00Z";
   let a = rate("A", "fixture-a", latest, 12000);
   let b = rate("B", "fixture-b", latest, 13000);
   let c = rate("C", "fixture-c", latest, 14000);
   let d = rate("D", "fixture-d", latest, 10);
-  let old_a = Json.replace(rate("A", "other-fixture-a", earlier, 100),
-                            "provider", sx_string("other-fixture-provider"));
-  let late = Json.replace(rate("F", "fixture-late-ingest", latest, 50),
-                           "ingested_at", sx_string("2026-11-26T00:00:00.000001Z"));
-  let mismatch = Json.replace(rate("G", "fixture-currency", latest, 50),
-                               "scope", Json.replace(scope(), "currency", sx_string("USD")));
-  let cross_qual = Json.replace(rate("H", "fixture-cross-qualification", latest, 50),
-                                 "qualification", sx_string("observed"));
+  let old_a = Json.replace(rate("A",
+    "other-fixture-a",
+    earlier,
+    100),
+    "provider",
+    sx_string("other-fixture-provider"));
+  let late = Json.replace(rate("F",
+    "fixture-late-ingest",
+    latest,
+    50),
+    "ingested_at",
+    sx_string("2026-11-26T00:00:00.000001Z"));
+  let mismatch = Json.replace(rate("G",
+    "fixture-currency",
+    latest,
+    50),
+    "scope",
+    Json.replace(scope(),
+    "currency",
+    sx_string("USD")));
+  let cross_qual = Json.replace(rate("H",
+    "fixture-cross-qualification",
+    latest,
+    50),
+    "qualification",
+    sx_string("observed"));
   let own = rate("Fixture-Subject", "fixture-self", latest, 50);
   let stale = rate("I", "fixture-stale", "2026-11-24T00:00:00Z", 50);
-  let too_old = Json.replace(stale, "observed_at", sx_string("2026-11-23T23:59:59.999999Z"));
-  let bad_clock = Json.replace(rate("J", "fixture-bad-order", latest, 50),
-                                "received_at", sx_string(earlier));
-  var rows = sx_cons(c, sx_cons(old_a, sx_cons(d, sx_cons(b, sx_cons(a, sx_nil())))));
+  let too_old = Json.replace(stale,
+    "observed_at",
+    sx_string("2026-11-23T23:59:59.999999Z"));
+  let bad_clock = Json.replace(rate("J",
+    "fixture-bad-order",
+    latest,
+    50),
+    "received_at",
+    sx_string(earlier));
+  var rows = sx_cons(c,
+    sx_cons(old_a,
+    sx_cons(d,
+    sx_cons(b,
+    sx_cons(a,
+    sx_nil())))));
   rows = sx_cons(rate("D", "fixture-conflict", latest, 20000), rows);
-  rows = sx_cons(late, sx_cons(mismatch, sx_cons(cross_qual, sx_cons(own, sx_cons(too_old, sx_cons(bad_clock, rows))))));
+  rows = sx_cons(late,
+    sx_cons(mismatch,
+    sx_cons(cross_qual,
+    sx_cons(own,
+    sx_cons(too_old,
+    sx_cons(bad_clock,
+    rows))))));
   let result = Price.position(Json.array(rows), policy());
   let counts = Json.get(result, "counts");
   assert(V.text(result, "status") == "recommended");
   assert(V.text(result, "recommendation_unit") == "nightly");
-  assert(V.text(result, "methodology") == "independent-nearest-rank-nightly@1");
+  assert(V.text(result,
+    "methodology") == "independent-nearest-rank-nightly@1");
   assert(V.text(result, "clamp") == "upper");
   assert(V.number(result, "recommended_minor", V.money_cap()) == 10250);
-  assert(V.number(Json.get(result, "summary"), "quantile", V.money_cap()) == 13000);
+  assert(V.number(Json.get(result,
+    "summary"),
+    "quantile",
+    V.money_cap()) == 13000);
   assert(V.number(counts, "selected_properties", 20) == 3);
   assert(V.number(counts, "duplicate_rows", 20) == 2);
   assert(V.number(counts, "conflicting_properties", 20) == 1);
@@ -88,41 +145,89 @@ fn positioning() -> sexpr {
   assert(V.number(counts, "subject_property", 20) == 1);
   assert(V.number(counts, "stale", 20) == 1);
   assert(V.number(counts, "invalid_record", 20) == 1);
-  assert(Json.render(result) == Json.render(Price.position(Json.array(Sx.sexpr_reverse(rows)), policy())));
+  assert(Json.render(result) == Json.render(Price.position(Json.array(Sx.sexpr_reverse(rows)),
+    policy())));
   let as_of_rows = sx_tail(rows);
   let as_of_result = Price.position(Json.array(as_of_rows), policy());
   assert(V.number(as_of_result, "recommended_minor", V.money_cap()) == 10250);
-  assert(Json.render(Json.get(as_of_result, "evidence")) == Json.render(Json.get(result, "evidence")));
-  let too_few = Price.position(Json.array(sx_cons(a, sx_cons(old_a, sx_cons(b, sx_nil())))), policy());
+  assert(Json.render(Json.get(as_of_result,
+    "evidence")) == Json.render(Json.get(result,
+    "evidence")));
+  let too_few = Price.position(Json.array(sx_cons(a,
+    sx_cons(old_a,
+    sx_cons(b,
+    sx_nil())))),
+    policy());
   assert(V.text(too_few, "reason") == "insufficient_distinct_comparables");
   assert(Json.kind(Json.get(too_few, "recommended_minor")) == "missing");
-  let disjoint = Price.position(Json.array(rows), Json.replace(policy(), "floor_minor", Json.integer(10300)));
+  let disjoint = Price.position(Json.array(rows),
+    Json.replace(policy(),
+    "floor_minor",
+    Json.integer(10300)));
   assert(V.text(disjoint, "reason") == "incompatible_price_guardrails");
-  let tax_scope = Json.replace(scope(), "taxes_fees_inclusion", sx_string("excluded"));
-  assert(V.text(Price.position(Json.array(rows), Json.replace(policy(), "scope", tax_scope)), "reason") == "invalid_policy");
-  let shallow_guest = Json.replace(scope(), "guest_configuration", sx_string("two_adults"));
-  assert(V.text(Price.position(Json.array(rows), Json.replace(policy(), "scope", shallow_guest)), "reason") == "invalid_policy");
-  let malformed_guest = Json.replace(Json.get(scope(), "guest_configuration"), "adults", Json.integer(1));
-  assert(!Price.valid_scope(Json.replace(scope(), "guest_configuration", malformed_guest)));
+  let tax_scope = Json.replace(scope(),
+    "taxes_fees_inclusion",
+    sx_string("excluded"));
+  assert(V.text(Price.position(Json.array(rows),
+    Json.replace(policy(),
+    "scope",
+    tax_scope)),
+    "reason") == "invalid_policy");
+  let shallow_guest = Json.replace(scope(),
+    "guest_configuration",
+    sx_string("two_adults"));
+  assert(V.text(Price.position(Json.array(rows),
+    Json.replace(policy(),
+    "scope",
+    shallow_guest)),
+    "reason") == "invalid_policy");
+  let malformed_guest = Json.replace(Json.get(scope(),
+    "guest_configuration"),
+    "adults",
+    Json.integer(1));
+  assert(! Price.valid_scope(Json.replace(scope(),
+    "guest_configuration",
+    malformed_guest)));
   let unknown_terms = Json.replace(scope(), "meal", sx_string(" UNKNOWN "));
-  assert(!Price.valid_scope(unknown_terms));
+  assert(! Price.valid_scope(unknown_terms));
   let multi_total = Json.replace(scope(), "checkout", sx_string("2026-12-03"));
-  let unsupported = Price.position(Json.array(rows), Json.replace(policy(), "scope", multi_total));
+  let unsupported = Price.position(Json.array(rows),
+    Json.replace(policy(),
+    "scope",
+    multi_total));
   assert(V.text(unsupported, "reason") == "unsupported_price_basis");
   assert(Json.kind(Json.get(unsupported, "recommended_minor")) == "missing");
-  let multi_nightly = Json.replace(multi_total, "price_basis", sx_string("nightly_average"));
-  let nightly_rows = sx_cons(Json.replace(a, "scope", multi_nightly),
-    sx_cons(Json.replace(b, "scope", multi_nightly), sx_cons(Json.replace(c, "scope", multi_nightly), sx_nil())));
-  let nightly = Price.position(Json.array(nightly_rows), Json.replace(policy(), "scope", multi_nightly));
+  let multi_nightly = Json.replace(multi_total,
+    "price_basis",
+    sx_string("nightly_average"));
+  let nightly_rows = sx_cons(Json.replace(a,
+    "scope",
+    multi_nightly),
+    sx_cons(Json.replace(b,
+    "scope",
+    multi_nightly),
+    sx_cons(Json.replace(c,
+    "scope",
+    multi_nightly),
+    sx_nil())));
+  let nightly = Price.position(Json.array(nightly_rows),
+    Json.replace(policy(),
+    "scope",
+    multi_nightly));
   assert(V.text(nightly, "recommendation_unit") == "nightly");
   assert(V.number(nightly, "recommended_minor", V.money_cap()) == 10250);
   # Boundary is inclusive (exactly max age): date alone cannot determine freshness.
-  let boundary = Price.position(Json.array(sx_cons(a, sx_cons(b, sx_cons(stale, sx_nil())))), policy());
+  let boundary = Price.position(Json.array(sx_cons(a,
+    sx_cons(b,
+    sx_cons(stale,
+    sx_nil())))),
+    policy());
   assert(V.text(boundary, "status") == "recommended");
   return result;
 }
 
-fn contribution(position: sexpr) {
+fn contribution(position: sexpr)
+{
   let raw = Json.parse(r!"""{"kind":"caravansary.first-party-contribution-input@1","provenance":"first_party",
     "qualification":"fixture","property_id":"Fixture-Subject","as_of":"2026-11-26T00:00:00+00:00",
     "assumptions_available_at":"2026-11-25T00:00:00Z","gross_stay_minor":10250,
@@ -131,70 +236,117 @@ fn contribution(position: sexpr) {
   let input = Json.replace(raw, "scope", scope());
   let result = Revenue.for_position(position, input);
   assert(V.text(result, "status") == "computed");
-  assert(V.number(result, "expected_contribution_minor", V.money_cap()) == 11750);
+  assert(V.number(result,
+    "expected_contribution_minor",
+    V.money_cap()) == 11750);
   assert(sx_text(Json.get(result, "linked_to_position")) == "true");
-  assert(V.text(Revenue.for_position(Json.replace(position, "recommendation_unit", sx_string("stay")), input), "reason") ==
-    "unsupported_position_unit");
-  assert(V.text(Revenue.for_position(position, Json.replace(input, "gross_stay_minor", Json.integer(10300))), "reason") ==
-    "scenario_does_not_match_position");
-  assert(V.text(Revenue.expected(Json.replace(input, "assumptions_available_at", sx_string("2026-11-26T00:00:01Z"))), "reason") ==
-    "assumptions_not_yet_available");
-  assert(V.text(Revenue.expected(Json.replace(input, "available_stays", Json.integer(2))), "reason") ==
-    "invalid_first_party_assumptions");
-  let negative = Json.replace(Json.replace(input, "expected_consumed_stays_milli", Json.integer(500)),
-                               "variable_cost_per_consumed_stay_minor", Json.integer(9001));
-  assert(Json.int64(Json.get(Revenue.expected(negative), "expected_contribution_minor"), "fixture") == -1);
+  assert(V.text(Revenue.for_position(Json.replace(position,
+    "recommendation_unit",
+    sx_string("stay")),
+    input),
+    "reason") == "unsupported_position_unit");
+  assert(V.text(Revenue.for_position(position,
+    Json.replace(input,
+    "gross_stay_minor",
+    Json.integer(10300))),
+    "reason") == "scenario_does_not_match_position");
+  assert(V.text(Revenue.expected(Json.replace(input,
+    "assumptions_available_at",
+    sx_string("2026-11-26T00:00:01Z"))),
+    "reason") == "assumptions_not_yet_available");
+  assert(V.text(Revenue.expected(Json.replace(input,
+    "available_stays",
+    Json.integer(2))),
+    "reason") == "invalid_first_party_assumptions");
+  let negative = Json.replace(Json.replace(input,
+    "expected_consumed_stays_milli",
+    Json.integer(500)),
+    "variable_cost_per_consumed_stay_minor",
+    Json.integer(9001));
+  assert(Json.int64(Json.get(Revenue.expected(negative),
+    "expected_contribution_minor"),
+    "fixture") == - 1);
 }
 
-fn rooms(stay: i64, posted: i64, value: i64) -> sexpr {
+fn rooms(stay: i64, posted: i64, value: i64) -> sexpr
+{
   var fields = V.put_text(sx_nil(), "stay_date", Civil.date_text(stay));
-  fields = V.put_text(fields, "available_at", Civil.utc_text(V.day_start(posted)));
+  fields = V.put_text(fields,
+    "available_at",
+    Civil.utc_text(V.day_start(posted)));
   return Json.object(V.put_int(fields, "rooms_sold", value));
 }
 
-fn series(start: i64, n: i64, skip: i64) -> sexpr {
+fn series(start: i64, n: i64, skip: i64) -> sexpr
+{
   var rows = sx_nil();
-  for offset in 0 .. n {
-    if offset != skip {
-      rows = sx_cons(rooms(start + offset, start + offset + 1, 10 + 10 * (offset % 7)), rows);
+  for offset in 0 .. n
+  {
+    if offset != skip
+    {
+      rows = sx_cons(rooms(start + offset,
+        start + offset + 1,
+        10 + 10 * (offset % 7)),
+        rows);
     }
   }
   return rows;
 }
 
-fn history(rows: sexpr) -> sexpr {
+fn history(rows: sexpr) -> sexpr
+{
   return Json.replace(Json.parse(r!"""{"kind":"caravansary.rooms-sold-history@1","qualification":"fixture",
-     "property_id":"Fixture-Subject","room_scope":"all_rooms"}"""), "observations", Json.array(rows));
+     "property_id":"Fixture-Subject","room_scope":"all_rooms"}"""),
+    "observations",
+    Json.array(rows));
 }
 
-fn forecasting() {
+fn forecasting()
+{
   let start = Civil.date("2026-01-01");
   var request = Json.parse(r!"""{"kind":"caravansary.rooms-sold-forecast-request@1","settling_days":0}""");
-  request = Json.replace(request, "as_of", sx_string(Civil.utc_text(V.day_start(start + 28))));
-  request = Json.replace(request, "target_date", sx_string(Civil.date_text(start + 30)));
-  let prior = series(start, 28, -1);
-  let longer = series(start, 40, -1);
+  request = Json.replace(request,
+    "as_of",
+    sx_string(Civil.utc_text(V.day_start(start + 28))));
+  request = Json.replace(request,
+    "target_date",
+    sx_string(Civil.date_text(start + 30)));
+  let prior = series(start, 28, - 1);
+  let longer = series(start, 40, - 1);
   let future_revision = rooms(start + 2, start + 41, 9999);
   let revised = sx_cons(future_revision, longer);
   let original_prediction = Forecast.predict(history(prior), request);
   assert(V.text(original_prediction, "status") == "forecasted");
   assert(V.number(original_prediction, "weekly_mean_rooms", 100) == 30);
   assert(V.number(original_prediction, "all_days_mean_rooms", 100) == 40);
-  assert(V.text(original_prediction, "training_end") == Civil.date_text(start + 27));
-  assert(Json.render(original_prediction) == Json.render(Forecast.predict(history(revised), request)));
+  assert(V.text(original_prediction,
+    "training_end") == Civil.date_text(start + 27));
+  assert(Json.render(original_prediction) == Json.render(Forecast.predict(history(revised),
+    request)));
   let missing = Forecast.predict(history(series(start, 40, 10)), request);
   assert(V.text(missing, "reason") == "incomplete_as_of_training_window");
   let conflict = sx_cons(rooms(start + 2, start + 3, 500), revised);
-  assert(V.text(Forecast.predict(history(conflict), request), "reason") == "incomplete_as_of_training_window");
+  assert(V.text(Forecast.predict(history(conflict),
+    request),
+    "reason") == "incomplete_as_of_training_window");
   let zero = sx_cons(rooms(start + 2, start + 28, 0), prior);
-  assert(V.text(Forecast.predict(history(zero), request), "status") == "forecasted");
+  assert(V.text(Forecast.predict(history(zero),
+    request),
+    "status") == "forecasted");
   let late = sx_cons(rooms(start + 27, start + 29, 70), series(start, 28, 27));
-  assert(V.text(Forecast.predict(history(late), request), "reason") == "incomplete_as_of_training_window");
-
+  assert(V.text(Forecast.predict(history(late),
+    request),
+    "reason") == "incomplete_as_of_training_window");
   var eval = Json.parse(r!"""{"kind":"caravansary.rooms-sold-backtest-request@1","lead_days":2,"settling_days":0}""");
-  eval = Json.replace(eval, "start_date", sx_string(Civil.date_text(start + 30)));
-  eval = Json.replace(eval, "end_date", sx_string(Civil.date_text(start + 32)));
-  eval = Json.replace(eval, "eval_as_of", sx_string(Civil.utc_text(V.day_start(start + 32))));
+  eval = Json.replace(eval,
+    "start_date",
+    sx_string(Civil.date_text(start + 30)));
+  eval = Json.replace(eval,
+    "end_date",
+    sx_string(Civil.date_text(start + 32)));
+  eval = Json.replace(eval,
+    "eval_as_of",
+    sx_string(Civil.utc_text(V.day_start(start + 32))));
   let report = Forecast.backtest(history(revised), eval);
   assert(V.text(report, "status") == "evaluated");
   assert(V.number(report, "scored_folds", 10) == 2);
@@ -202,14 +354,22 @@ fn forecasting() {
   assert(V.number(report, "all_days_absolute_error_sum_rooms", 1000) == 10);
   assert(V.number(report, "folds_actual_unavailable", 10) == 1);
   let folds = Json.items(Json.get(report, "folds"));
-  assert(V.text(sx_head(folds), "training_end") == Civil.date_text(start + 27));
-  assert(V.text(sx_head(sx_tail(sx_tail(folds))), "status") == "actual_unavailable_as_of_evaluation");
-  assert(Json.render(report) == Json.render(Forecast.backtest(history(Sx.sexpr_reverse(longer)), eval)));
-  let no_actuals = Json.replace(eval, "eval_as_of", sx_string(Civil.utc_text(V.day_start(start + 30))));
-  assert(V.text(Forecast.backtest(history(longer), no_actuals), "reason") == "no_scored_folds");
+  assert(V.text(sx_head(folds),
+    "training_end") == Civil.date_text(start + 27));
+  assert(V.text(sx_head(sx_tail(sx_tail(folds))),
+    "status") == "actual_unavailable_as_of_evaluation");
+  assert(Json.render(report) == Json.render(Forecast.backtest(history(Sx.sexpr_reverse(longer)),
+    eval)));
+  let no_actuals = Json.replace(eval,
+    "eval_as_of",
+    sx_string(Civil.utc_text(V.day_start(start + 30))));
+  assert(V.text(Forecast.backtest(history(longer),
+    no_actuals),
+    "reason") == "no_scored_folds");
 }
 
-fn main() -> i64 {
+fn main() -> i64
+{
   statistics();
   let position = positioning();
   contribution(position);

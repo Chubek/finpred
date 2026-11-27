@@ -10,35 +10,69 @@ import sdk.callable as SDK;
 import std.io.TextIO as IO;
 import std.os.CommandLine as Env;
 import core.format as F;
-fn env(key:string) -> string { return Env.basis_command_line_get_env(key); }
-fn file(key:string) -> string { return IO.basis_text_io_input_all(env(key)); }
-fn print(text:string) { IO.basis_text_io_print(text); }
-fn code_pin() -> string { return G.digest(text_concat("yieldcraft-mcp-bridge-sha256:",env("YC_BRIDGE_SHA256"))); }
-fn lookup(key:string) -> SDK.Descriptor
+fn env(key: string) -> string
 {
-  if key == Contribution.key() { return Contribution.descriptor(key,code_pin()); }
+  return Env.basis_command_line_get_env(key);
+}
+
+fn file(key: string) -> string
+{
+  return IO.basis_text_io_input_all(env(key));
+}
+
+fn print(text: string)
+{
+  IO.basis_text_io_print(text);
+}
+
+fn code_pin() -> string
+{
+  return G.digest(text_concat("yieldcraft-mcp-bridge-sha256:",
+    env("YC_BRIDGE_SHA256")));
+}
+
+fn lookup(key: string) -> SDK.Descriptor
+{
+  if key == Contribution.key()
+  {
+    return Contribution.descriptor(key, code_pin());
+  }
   return Host.lookup(key);
 }
-fn dispatch(pin:SDK.Pin, req:SDK.Request) -> SDK.Outcome
+
+fn dispatch(pin: SDK.Pin, req: SDK.Request) -> SDK.Outcome
 {
-  if sx_text(pin["handler_name"]) == Contribution.key() { return Contribution.invoke(code_pin(),pin,req); }
-  return Host.call(pin,req);
+  if sx_text(pin["handler_name"]) == Contribution.key()
+  {
+    return Contribution.invoke(code_pin(), pin, req);
+  }
+  return Host.call(pin, req);
 }
+
 fn main() -> i64
 {
   let compiler = env("YC_COMPILER_ID");
   let task = env("YC_TASK");
-  let budget = Host.budget()+Contribution.budget();
+  let budget = Host.budget() + Contribution.budget();
   if task == "replay"
   {
-    let result = OttRun.replay(file("YC_ARCHIVE"),sx_string(env("YC_EXPECTED")),"recommendation",budget,compiler,lookup,dispatch);
+    let result = OttRun.replay(file("YC_ARCHIVE"),
+      sx_string(env("YC_EXPECTED")),
+      "recommendation",
+      budget,
+      compiler,
+      lookup,
+      dispatch);
     let status = sx_text(result["status"]);
     print("$status\n");
-    if status == "ok" { print(text_concat(sx_text(result["graph_digest"]),"\n")); }
+    if status == "ok"
+    {
+      print(text_concat(sx_text(result["graph_digest"]), "\n"));
+    }
     return 0;
   }
   let source = file("YC_SOURCE");
-  let lowered = Ott.lower(source,"recommendation",budget,compiler,lookup);
+  let lowered = Ott.lower(source, "recommendation", budget, compiler, lookup);
   let status = sx_text(lowered["status"]);
   let line = lowered["line"];
   let col = lowered["column"];
@@ -47,30 +81,46 @@ fn main() -> i64
     print("$status $line $col\n");
     if status == "ok"
     {
-      print(text_concat(sx_text(lowered["graph_digest"]),"\n"));
-      print(text_concat(sx_text(lowered["source_digest"]),"\n"));
+      print(text_concat(sx_text(lowered["graph_digest"]), "\n"));
+      print(text_concat(sx_text(lowered["source_digest"]), "\n"));
     }
     return 0;
   }
-  if task != "capture" { tool_fail("unsupported MCP bridge task"); }
+  if task != "capture"
+  {
+    tool_fail("unsupported MCP bridge task");
+  }
   let count = SDK.nat(sx_string(env("YC_ROOT_COUNT")));
-  if count < 1 || count > 16 { tool_fail("invalid MCP bridge root count"); }
+  if count < 1 || count > 16
+  {
+    tool_fail("invalid MCP bridge root count");
+  }
   var roots = sx_nil();
   for i in 0 .. count
   {
     let suffix = F.num(i);
-    let name = env(text_concat("YC_NAME_",suffix));
-    let raw = file(text_concat("YC_FILE_",suffix));
-    roots = sx_cons(Run.input(name,1,raw),roots);
+    let name = env(text_concat("YC_NAME_", suffix));
+    let raw = file(text_concat("YC_FILE_", suffix));
+    roots = sx_cons(Run.input(name, 1, raw), roots);
   }
-  let ctx = record<Run.Context>{cutoff:sx_string(env("YC_CUTOFF")),strategy_digest:lowered["source_digest"]};
-  let captured = OttRun.capture(source,roots,ctx,"recommendation",budget,compiler,lookup,dispatch);
+  let ctx = record < Run.Context >
+  {
+    cutoff: sx_string(env("YC_CUTOFF")), strategy_digest: lowered["source_digest"]
+  };
+  let captured = OttRun.capture(source,
+    roots,
+    ctx,
+    "recommendation",
+    budget,
+    compiler,
+    lookup,
+    dispatch);
   let outcome = sx_text(captured["result"]["status"]);
   print("$outcome\n");
   if outcome == "ok"
   {
-    print(text_concat(sx_text(captured["digest"]),"\n"));
-    print(text_concat(sx_text(captured["result"]["graph_digest"]),"\n"));
+    print(text_concat(sx_text(captured["digest"]), "\n"));
+    print(text_concat(sx_text(captured["result"]["graph_digest"]), "\n"));
     print(sx_text(captured["bytes"]));
   }
   return 0;

@@ -3,41 +3,85 @@ import plugins.dragnet.fx_reference_change as Change;
 import std.crypto.crypto as Crypto;
 import std.os.CommandLine as Env;
 import std.io.TextIO as IO;
+fn env(key: string) -> string
+{
+  return Env.basis_command_line_get_env(key);
+}
 
-fn env(key:string) -> string { return Env.basis_command_line_get_env(key); }
-fn load(key:string) -> string { return IO.basis_text_io_input_all(env(key)); }
+fn load(key: string) -> string
+{
+  return IO.basis_text_io_input_all(env(key));
+}
 
-fn main() -> i64 {
+fn main() -> i64
+{
   let start = load("FX_START");
   let start_parent = env("FX_START_PARENT");
   let base = env("FX_BASE");
   let quote_currency = env("FX_QUOTE");
   let cutoff = env("FX_CUTOFF");
   let mode = env("FX_MODE");
-  if mode == "digest" {
-    let (status,hash) = Crypto.basis_crypto_blake3(start);
-    if status != 0 { return 99; }
+  if mode == "digest"
+  {
+    let(status, hash) = Crypto.basis_crypto_blake3(start);
+    if status != 0
+    {
+      return 99;
+    }
     println("blake3:$hash");
     return 0;
   }
-  if mode == "project" {
-    let output = FX.project(start,start_parent,cutoff,base,quote_currency);
-    if output["status"] == 0 { IO.basis_text_io_print(sx_text(output["bytes"])); }
-    else { if sx_kind(output["bytes"]) != 0 { return 98; } }
+  if mode == "project"
+  {
+    let output = FX.project(start, start_parent, cutoff, base, quote_currency);
+    if output["status"] == 0
+    {
+      IO.basis_text_io_print(sx_text(output["bytes"]));
+    }
+    else
+    {
+      if sx_kind(output["bytes"]) != 0
+      {
+        return 98;
+      }
+    }
     return output["status"];
   }
   var request_cutoff = sx_string(cutoff);
-  if mode == "bad-request" { request_cutoff = sx_nil(); }
-  let request = record<Change.Request>{base_currency:sx_string(base),quote_currency:sx_string(quote_currency),
-    start_date:sx_string(env("FX_START_DATE")),end_date:sx_string(env("FX_END_DATE")),cutoff:request_cutoff};
+  if mode == "bad-request"
+  {
+    request_cutoff = sx_nil();
+  }
+  let request = record < Change.Request >
+  {
+    base_currency: sx_string(base), quote_currency: sx_string(quote_currency), start_date: sx_string(env("FX_START_DATE")), end_date: sx_string(env("FX_END_DATE")), cutoff: request_cutoff
+  };
   let end = load("FX_END");
   let end_parent = env("FX_END_PARENT");
-  if mode == "verify" {
-    if Change.verifies(request,start,start_parent,end,end_parent,load("FX_ARTIFACT")) { return 0; }
+  if mode == "verify"
+  {
+    if Change.verifies(request,
+      start,
+      start_parent,
+      end,
+      end_parent,
+      load("FX_ARTIFACT"))
+    {
+      return 0;
+    }
     return 1;
   }
-  let output = Change.compare(request,start,start_parent,end,end_parent);
-  if output["status"] == 0 { IO.basis_text_io_print(sx_text(output["bytes"])); }
-  else { if sx_kind(output["bytes"]) != 0 { return 98; } }
+  let output = Change.compare(request, start, start_parent, end, end_parent);
+  if output["status"] == 0
+  {
+    IO.basis_text_io_print(sx_text(output["bytes"]));
+  }
+  else
+  {
+    if sx_kind(output["bytes"]) != 0
+    {
+      return 98;
+    }
+  }
   return output["status"];
 }

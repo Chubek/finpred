@@ -1,25 +1,42 @@
 import plugins.caravansary.booking as Booking;
 import plugins.caravansary.planning.json as Json;
-
 fn main() -> i64
 {
   let cell = Json.parse("{\"source\":\"booking\",\"status\":\"pending\",\"provider_property_id\":\"10507360\",\"request_context\":{\"booker_country\":\"NL\",\"currency\":\"EUR\",\"checkin\":\"2026-11-26\",\"checkout\":\"2026-11-27\",\"guest_configuration\":{\"adults\":2,\"rooms\":1,\"child_ages\":[],\"allocation\":[{\"adults\":2,\"child_ages\":[]}]}}}");
-  let query = Booking.request(cell,"2026-11-26");
+  let query = Booking.request(cell, "2026-11-26");
   let body = Json.render(query);
   assert(body == "{\"accommodations\":[10507360],\"booker\":{\"country\":\"nl\",\"platform\":\"desktop\"},\"checkin\":\"2026-11-26\",\"checkout\":\"2026-11-27\",\"currency\":\"EUR\",\"extras\":[\"products\",\"extra_charges\"],\"guests\":{\"allocation\":[{\"children\":[],\"number_of_adults\":2}],\"children\":[],\"number_of_adults\":2,\"number_of_rooms\":1}}");
-  assert(Booking.credentials_valid("fictitious-token+==","98765"));
-  assert(!Booking.credentials_valid("bad-token\r\nextra: header","98765"));
-  assert(!Booking.credentials_valid("fixture","00001"));
+  assert(Booking.credentials_valid("fictitious-token+==", "98765"));
+  assert(! Booking.credentials_valid("bad-token\r\nextra: header", "98765"));
+  assert(! Booking.credentials_valid("fixture", "00001"));
   let match_body = "{\"request_id\":\"not-retained\",\"data\":[{\"id\":10507360,\"currency\":{\"booker\":\"EUR\"},\"price\":{\"total\":{\"booker_currency\":123.75}},\"products\":[{\"id\":\"not-retained\"}]}],\"metadata\":{\"next_page\":\"do-not-follow\"}}";
-  let matched = Json.render(Booking.summarize(200,"",match_body,query));
+  let matched = Json.render(Booking.summarize(200, "", match_body, query));
   assert(matched == "{\"has_more\":true,\"http_status\":200,\"outcome\":\"matched\",\"products_reported\":1,\"total_in_requested_currency\":true}");
-  let no_match = Booking.summarize(200,"","{\"request_id\":\"fixture\",\"data\":[]}",query);
-  assert(Booking.field(no_match,"outcome") == "no_match");
-  let invalid = Booking.summarize(200,"","{\"request_id\":\"fixture\",\"data\":[],\"data\":[]}",query);
-  assert(Booking.field(invalid,"reason") == "invalid_response");
-  assert(Booking.field(Booking.summarize(200,"response_too_large","",query),"reason") == "response_too_large");
-  assert(Booking.field(Booking.summarize(302,"transport_error","",query),"reason") == "redirect_blocked");
-  assert(Booking.field(Booking.summarize(401,"transport_error","",query),"reason") == "authentication_failed");
+  let no_match = Booking.summarize(200,
+    "",
+    "{\"request_id\":\"fixture\",\"data\":[]}",
+    query);
+  assert(Booking.field(no_match, "outcome") == "no_match");
+  let invalid = Booking.summarize(200,
+    "",
+    "{\"request_id\":\"fixture\",\"data\":[],\"data\":[]}",
+    query);
+  assert(Booking.field(invalid, "reason") == "invalid_response");
+  assert(Booking.field(Booking.summarize(200,
+    "response_too_large",
+    "",
+    query),
+    "reason") == "response_too_large");
+  assert(Booking.field(Booking.summarize(302,
+    "transport_error",
+    "",
+    query),
+    "reason") == "redirect_blocked");
+  assert(Booking.field(Booking.summarize(401,
+    "transport_error",
+    "",
+    query),
+    "reason") == "authentication_failed");
   println("caravansary On1x sandbox policy: OK");
   return 0;
 }

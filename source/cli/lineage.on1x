@@ -2,56 +2,74 @@
 # or policy interpretation in place: see docs/RUN_FORMAT.md.
 import automat.graph as Graph;
 import core.format as F;
-
 fn field(out: buffer, name: string, value: string)
 {
-  buffer_append(out,name);
-  buffer_append(out,"=");
-  buffer_append(out,value);
-  buffer_append(out,"\n");
+  buffer_append(out, name);
+  buffer_append(out, "=");
+  buffer_append(out, value);
+  buffer_append(out, "\n");
 }
 
 fn strategy_version(profile: string) -> string
 {
-  if profile == "scenario" { return "yieldcraft.percentile@1"; }
-  return text_concat("yieldcraft.",text_concat(profile,"@1"));
+  if profile == "scenario"
+  {
+    return "yieldcraft.percentile@1";
+  }
+  return text_concat("yieldcraft.", text_concat(profile, "@1"));
 }
 
 # Frozen v1/v2 IDs use the historical host labels, not native engine identity.
-fn graph_version() -> string { return "yieldcraft.fixed-graph@1"; }
-fn recommendation_strategy() -> string { return "yieldcraft.percentile@1"; }
+fn graph_version() -> string
+{
+  return "yieldcraft.fixed-graph@1";
+}
+
+fn recommendation_strategy() -> string
+{
+  return "yieldcraft.percentile@1";
+}
 
 fn policy(out: buffer, profile: string)
 {
-  field(out,"engine","finpred.yieldcraft-engine@1");
-  field(out,"mode","recommendation");
-  field(out,"strategy",strategy_version(profile));
-  field(out,"graph",graph_version());
+  field(out, "engine", "finpred.yieldcraft-engine@1");
+  field(out, "mode", "recommendation");
+  field(out, "strategy", strategy_version(profile));
+  field(out, "graph", graph_version());
   for i in 0 .. 7
   {
     let n = Graph.node(i);
-    buffer_append(out,"node=");
-    buffer_append(out,F.num(n["id"])); buffer_append(out,",");
-    buffer_append(out,sx_text(n["family"])); buffer_append(out,",");
-    buffer_append(out,sx_text(n["accepts"])); buffer_append(out,",");
-    buffer_append(out,sx_text(n["produces"])); buffer_append(out,",");
-    buffer_append(out,sx_text(n["effect"])); buffer_append(out,"\n");
+    buffer_append(out, "node=");
+    buffer_append(out, F.num(n["id"]));
+    buffer_append(out, ",");
+    buffer_append(out, sx_text(n["family"]));
+    buffer_append(out, ",");
+    buffer_append(out, sx_text(n["accepts"]));
+    buffer_append(out, ",");
+    buffer_append(out, sx_text(n["produces"]));
+    buffer_append(out, ",");
+    buffer_append(out, sx_text(n["effect"]));
+    buffer_append(out, "\n");
   }
-  field(out,"model","none");
-  field(out,"matcher","yieldcraft.asof-whole-stay-property-min@1");
-  field(out,"quantile","yieldcraft.type7-stay-half-up-night-half-up@1");
-  field(out,"curve","yieldcraft.p40-p75-linear-quadratic-90d@1");
-  field(out,"shortcut","yieldcraft.p40-strict-saving@1");
-  field(out,"guardrail","yieldcraft.floor-cap-movement-intersection@1");
+  field(out, "model", "none");
+  field(out, "matcher", "yieldcraft.asof-whole-stay-property-min@1");
+  field(out, "quantile", "yieldcraft.type7-stay-half-up-night-half-up@1");
+  field(out, "curve", "yieldcraft.p40-p75-linear-quadratic-90d@1");
+  field(out, "shortcut", "yieldcraft.p40-strict-saving@1");
+  field(out, "guardrail", "yieldcraft.floor-cap-movement-intersection@1");
 }
 
-fn start(out: buffer, scenario: string, offers: string, valuation: string, strategy: string,
+fn start(out: buffer,
+  scenario: string,
+  offers: string,
+  valuation: string,
+  strategy: string,
   profile: string)
 {
-  buffer_append(out,"finpred-run-lineage@2\n");
-  policy(out,profile);
-  field(out,"raw_scenario",scenario);
-  field(out,"raw_offers",offers);
-  field(out,"raw_valuation",valuation);
-  field(out,"raw_strategy",strategy);
+  buffer_append(out, "finpred-run-lineage@2\n");
+  policy(out, profile);
+  field(out, "raw_scenario", scenario);
+  field(out, "raw_offers", offers);
+  field(out, "raw_valuation", valuation);
+  field(out, "raw_strategy", strategy);
 }

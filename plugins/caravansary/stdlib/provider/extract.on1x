@@ -2,257 +2,457 @@ import plugins.caravansary.planning.json as J;
 import plugins.caravansary.planning.inputs as Inputs;
 import plugins.caravansary.stdlib.provider.api as Api;
 import std.sexpr.sexpr as Sx;
-from std.html import BasisHtml, BasisHtmlNode, BasisHtmlSelection,
-  basis_html_xpath, basis_html_node_xpath, basis_html_node_parent, basis_html_node_name,
-  basis_html_node_text, basis_html_node_attr, basis_html_selection_count, basis_html_selection_get;
+from std.html import BasisHtml, BasisHtmlNode, BasisHtmlSelection, basis_html_xpath, basis_html_node_xpath, basis_html_node_parent, basis_html_node_name, basis_html_node_text, basis_html_node_attr, basis_html_selection_count, basis_html_selection_get;
 from std.http.probe import ProbeParseError;
-
-record ProviderFacts { properties: sexpr }
+record ProviderFacts
+{
+  properties: sexpr
+}
 
 # Selectors are fixed in the provider modules, not read from the HTML or CLI.
-record FixtureLayout {
-  host: string, marker: string, card: string, profile: string, empty: string,
-  title: string, alternate_title: string, link: string, address: string,
-  offer: string, alternate_offer: string, amenity: string
+record FixtureLayout
+{
+  host: string, marker: string, card: string, profile: string, empty: string, title: string, alternate_title: string, link: string, address: string, offer: string, alternate_offer: string, amenity: string
 }
 
-fn failure<T>(message: string) -> Result<T, ProbeParseError> {
-  return result_error(record<ProbeParseError>{message: message});
+fn failure < T > (message: string) -> Result < T, ProbeParseError >
+{
+  return result_error(record < ProbeParseError >
+  {
+    message: message
+  });
 }
 
-fn expression(prefix: string, layout: FixtureLayout, role: string) -> string {
+fn expression(prefix: string, layout: FixtureLayout, role: string) -> string
+{
   let marker = layout["marker"];
   return "${prefix}*[@$marker='$role']";
 }
 
-fn count(list: BasisHtmlSelection) -> Result<i64, ProbeParseError> {
-  let (status, n) = basis_html_selection_count(list);
-  if status != 0 { return failure("html-selection-failed"); }
+fn count(list: BasisHtmlSelection) -> Result < i64, ProbeParseError >
+{
+  let(status, n) = basis_html_selection_count(list);
+  if status != 0
+  {
+    return failure("html-selection-failed");
+  }
   return result_ok(n);
 }
 
-fn child_nodes(node: BasisHtmlNode, layout: FixtureLayout, role: string)
-  -> Result<BasisHtmlSelection, ProbeParseError>
+fn child_nodes(node: BasisHtmlNode,
+  layout: FixtureLayout,
+  role: string) -> Result < BasisHtmlSelection, ProbeParseError >
 {
-  return match basis_html_node_xpath(node, expression(".//", layout, role)) with {
+  return match basis_html_node_xpath(node,
+    expression(".//",
+    layout,
+    role)) with
+  {
     Ok(list) => result_ok(list), Err(_) => failure("html-selection-failed")
   };
 }
 
-fn node_at(list: BasisHtmlSelection, index: i64) -> Result<BasisHtmlNode, ProbeParseError> {
-  return match basis_html_selection_get(list, index) with {
+fn node_at(list: BasisHtmlSelection,
+  index: i64) -> Result < BasisHtmlNode, ProbeParseError >
+{
+  return match basis_html_selection_get(list, index) with
+  {
     Ok(node) => result_ok(node), Err(_) => failure("html-selection-failed")
   };
 }
 
 # status=0 successful singleton, 1 missing, 2 multiple; no arbitrary first pick.
-fn slot(node: BasisHtmlNode, layout: FixtureLayout, first: string, second: string)
-  -> Result<(i64, BasisHtmlNode), ProbeParseError>
+fn slot(node: BasisHtmlNode,
+  layout: FixtureLayout,
+  first: string,
+  second: string) -> Result < (i64,
+  BasisHtmlNode), ProbeParseError >
 {
   let list = child_nodes(node, layout, first)?;
   let n = count(list)?;
-  if n > 1 { return result_ok((2, node)); }
-  if second != "" {
+  if n > 1
+  {
+    return result_ok((2, node));
+  }
+  if second != ""
+  {
     let alt = child_nodes(node, layout, second)?;
     let m = count(alt)?;
-    if n + m > 1 { return result_ok((2, node)); }
-    if m == 1 {
+    if n + m > 1
+    {
+      return result_ok((2, node));
+    }
+    if m == 1
+    {
       let selected = node_at(alt, 0)?;
       return result_ok((0, selected));
     }
   }
-  if n == 0 { return result_ok((1, node)); }
+  if n == 0
+  {
+    return result_ok((1, node));
+  }
   let selected = node_at(list, 0)?;
   return result_ok((0, selected));
 }
 
-fn visible_text(node: BasisHtmlNode) -> Result<sexpr, ProbeParseError> {
-  let (status, raw) = basis_html_node_text(node);
-  if status != 0 { return failure("html-text-failed"); }
-  if text_len(raw) > 512 { return result_ok(J.null_value()); }
+fn visible_text(node: BasisHtmlNode) -> Result < sexpr, ProbeParseError >
+{
+  let(status, raw) = basis_html_node_text(node);
+  if status != 0
+  {
+    return failure("html-text-failed");
+  }
+  if text_len(raw) > 512
+  {
+    return result_ok(J.null_value());
+  }
   let out = buffer_new();
   var has_text = false;
   var pending_space = false;
   var pos = 0;
-  while pos < text_len(raw) {
-    let (code, end) = J.utf8(raw, pos, "provider visible text: ");
-    if Inputs.whitespace(code) {
-      if has_text { pending_space = true; }
-    } else {
-      if pending_space { buffer_byte(out, 32); }
+  while pos < text_len(raw)
+  {
+    let(code, end) = J.utf8(raw, pos, "provider visible text: ");
+    if Inputs.whitespace(code)
+    {
+      if has_text
+      {
+        pending_space = true;
+      }
+    }
+    else
+    {
+      if pending_space
+      {
+        buffer_byte(out, 32);
+      }
       buffer_append(out, text_slice(raw, pos, end));
       pending_space = false;
       has_text = true;
     }
     pos = end;
   }
-  if !has_text { return result_ok(J.null_value()); }
+  if ! has_text
+  {
+    return result_ok(J.null_value());
+  }
   return result_ok(sx_string(buffer_text(out)));
 }
 
-fn slot_text(status: i64, node: BasisHtmlNode) -> Result<sexpr, ProbeParseError> {
-  if status == 1 { return result_ok(sx_nil()); }
-  if status == 2 { return result_ok(J.null_value()); }
+fn slot_text(status: i64,
+  node: BasisHtmlNode) -> Result < sexpr, ProbeParseError >
+{
+  if status == 1
+  {
+    return result_ok(sx_nil());
+  }
+  if status == 2
+  {
+    return result_ok(J.null_value());
+  }
   return visible_text(node);
 }
 
-fn attr(node: BasisHtmlNode, key: string) -> Result<sexpr, ProbeParseError> {
-  let (status, raw) = basis_html_node_attr(node, key);
-  if status == -4 { return result_ok(sx_nil()); }
-  if status != 0 { return failure("html-attribute-failed"); }
-  if text_len(raw) == 0 || text_len(raw) > 512 { return result_ok(J.null_value()); }
+fn attr(node: BasisHtmlNode, key: string) -> Result < sexpr, ProbeParseError >
+{
+  let(status, raw) = basis_html_node_attr(node, key);
+  if status == - 4
+  {
+    return result_ok(sx_nil());
+  }
+  if status != 0
+  {
+    return failure("html-attribute-failed");
+  }
+  if text_len(raw) == 0 || text_len(raw) > 512
+  {
+    return result_ok(J.null_value());
+  }
   return result_ok(sx_string(raw));
 }
 
-fn field(fields: sexpr, key: string, value: sexpr) -> sexpr {
-  if sx_kind(value) == 0 { return fields; }
+fn field(fields: sexpr, key: string, value: sexpr) -> sexpr
+{
+  if sx_kind(value) == 0
+  {
+    return fields;
+  }
   return sx_cons(J.pair(key, value), fields);
 }
 
-fn digit(byte: i64) -> bool { return byte >= 48 && byte <= 57; }
+fn digit(byte: i64) -> bool
+{
+  return byte >= 48 && byte <= 57;
+}
 
 # Plain decimal, at most 8 fractional places. Compare exactly to the WGS84
 # bound; preserve the captured spelling rather than round through binary64.
-fn coordinate(raw: sexpr, bound: i64) -> sexpr {
-  if sx_kind(raw) != 2 { return raw; }
+fn coordinate(raw: sexpr, bound: i64) -> sexpr
+{
+  if sx_kind(raw) != 2
+  {
+    return raw;
+  }
   let value = sx_text(raw);
   let n = text_len(value);
-  if n > 13 { return J.null_value(); }
+  if n > 13
+  {
+    return J.null_value();
+  }
   var i = 0;
-  if text_byte(value, i) == 45 { i = i + 1; }
-  let begin = i;
-  var whole = 0;
-  while i < n && digit(text_byte(value, i)) {
-    whole = whole * 10 + text_byte(value, i) - 48;
-    if whole > bound || i - begin >= 3 { return J.null_value(); }
+  if text_byte(value, i) == 45
+  {
     i = i + 1;
   }
-  if i == begin || (i > begin + 1 && text_byte(value, begin) == 48) { return J.null_value(); }
-  if i == n { return raw; }
-  if text_byte(value, i) != 46 || n - i < 2 || n - i > 9 { return J.null_value(); }
-  for j in i + 1 .. n {
+  let begin = i;
+  var whole = 0;
+  while i < n && digit(text_byte(value, i))
+  {
+    whole = whole * 10 + text_byte(value, i) - 48;
+    if whole > bound || i - begin >= 3
+    {
+      return J.null_value();
+    }
+    i = i + 1;
+  }
+  if i == begin || (i > begin + 1 && text_byte(value, begin) == 48)
+  {
+    return J.null_value();
+  }
+  if i == n
+  {
+    return raw;
+  }
+  if text_byte(value, i) != 46 || n - i < 2 || n - i > 9
+  {
+    return J.null_value();
+  }
+  for j in i + 1 .. n
+  {
     let byte = text_byte(value, j);
-    if !digit(byte) || (whole == bound && byte != 48) { return J.null_value(); }
+    if ! digit(byte) || (whole == bound && byte != 48)
+    {
+      return J.null_value();
+    }
   }
   return raw;
 }
 
-fn unsigned(value: string) -> i64 {
+fn unsigned(value: string) -> i64
+{
   let n = text_len(value);
-  if n == 0 || n > 19 || (n > 1 && text_byte(value, 0) == 48) { return -1; }
+  if n == 0 || n > 19 || (n > 1 && text_byte(value, 0) == 48)
+  {
+    return - 1;
+  }
   var out = 0;
-  for i in 0 .. n {
+  for i in 0 .. n
+  {
     let d = text_byte(value, i) - 48;
-    if d < 0 || d > 9 || out > (9223372036854775807 - d) / 10 { return -1; }
+    if d < 0 || d > 9 || out > (9223372036854775807 - d) / 10
+    {
+      return - 1;
+    }
     out = out * 10 + d;
   }
   return out;
 }
 
-fn currency_scale(iso: string) -> i64 {
-  if iso == "USD" || iso == "SGD" || iso == "EUR" || iso == "GBP" { return 2; }
-  if iso == "JPY" { return 0; }
-  return -1;
+fn currency_scale(iso: string) -> i64
+{
+  if iso == "USD" || iso == "SGD" || iso == "EUR" || iso == "GBP"
+  {
+    return 2;
+  }
+  if iso == "JPY"
+  {
+    return 0;
+  }
+  return - 1;
 }
 
-fn displayed_price(raw: sexpr) -> (sexpr, sexpr) {
+fn displayed_price(raw: sexpr) ->(sexpr, sexpr)
+{
   let unknown = J.null_value();
-  if sx_kind(raw) != 2 { return (unknown, unknown); }
+  if sx_kind(raw) != 2
+  {
+    return (unknown, unknown);
+  }
   let value = sx_text(raw);
   let n = text_len(value);
-  if n < 5 || text_byte(value, 3) != 32 { return (unknown, unknown); }
+  if n < 5 || text_byte(value, 3) != 32
+  {
+    return (unknown, unknown);
+  }
   let iso = text_slice(value, 0, 3);
   let scale = currency_scale(iso);
-  if scale < 0 { return (unknown, unknown); }
+  if scale < 0
+  {
+    return (unknown, unknown);
+  }
   let currency = sx_string(iso);
   var dot = 4;
-  while dot < n && digit(text_byte(value, dot)) { dot = dot + 1; }
+  while dot < n && digit(text_byte(value, dot))
+  {
+    dot = dot + 1;
+  }
   let whole = unsigned(text_slice(value, 4, dot));
-  if whole < 0 { return (unknown, currency); }
-  if scale == 0 {
-    if dot != n { return (unknown, currency); }
+  if whole < 0
+  {
+    return (unknown, currency);
+  }
+  if scale == 0
+  {
+    if dot != n
+    {
+      return (unknown, currency);
+    }
     return (J.integer(whole), currency);
   }
   var frac = 0;
-  if dot < n {
-    if text_byte(value, dot) != 46 || n - dot < 2 || n - dot > 3 { return (unknown, currency); }
-    for i in dot + 1 .. n {
+  if dot < n
+  {
+    if text_byte(value, dot) != 46 || n - dot < 2 || n - dot > 3
+    {
+      return (unknown, currency);
+    }
+    for i in dot + 1 .. n
+    {
       let byte = text_byte(value, i);
-      if !digit(byte) { return (unknown, currency); }
+      if ! digit(byte)
+      {
+        return (unknown, currency);
+      }
       frac = frac * 10 + byte - 48;
     }
-    if n - dot == 2 { frac = frac * 10; }
+    if n - dot == 2
+    {
+      frac = frac * 10;
+    }
   }
-  if whole > (9223372036854775807 - frac) / 100 { return (unknown, currency); }
+  if whole > (9223372036854775807 - frac) / 100
+  {
+    return (unknown, currency);
+  }
   return (J.integer(100 * whole + frac), currency);
 }
 
-fn offer(node: BasisHtmlNode) -> Result<sexpr, ProbeParseError> {
+fn offer(node: BasisHtmlNode) -> Result < sexpr, ProbeParseError >
+{
   let raw_amount = attr(node, "data-amount-minor")?;
   let raw_currency = attr(node, "data-currency")?;
   let basis = attr(node, "data-price-basis")?;
   let availability = attr(node, "data-availability")?;
   var amount = raw_amount;
   var currency = raw_currency;
-  if sx_kind(raw_amount) == 0 && sx_kind(raw_currency) == 0 {
+  if sx_kind(raw_amount) == 0 && sx_kind(raw_currency) == 0
+  {
     let visible = visible_text(node)?;
-    let (display_amount, display_currency) = displayed_price(visible);
+    let(display_amount, display_currency) = displayed_price(visible);
     amount = display_amount;
     currency = display_currency;
-  } else {
-    if sx_kind(amount) == 2 {
+  }
+  else
+  {
+    if sx_kind(amount) == 2
+    {
       let minor = unsigned(sx_text(amount));
       amount = J.null_value();
-      if minor >= 0 { amount = J.integer(minor); }
+      if minor >= 0
+      {
+        amount = J.integer(minor);
+      }
     }
-    if sx_kind(currency) == 2 && currency_scale(sx_text(currency)) < 0 {
+    if sx_kind(currency) == 2 && currency_scale(sx_text(currency)) < 0
+    {
       currency = J.null_value();
     }
   }
   var fields = field(sx_nil(), "amount_minor", amount);
   fields = field(fields, "currency", currency);
-  if sx_kind(basis) == 2 {
+  if sx_kind(basis) == 2
+  {
     let raw = sx_text(basis);
-    if raw == "nightly" || raw == "nightly_average" || raw == "stay_total" {
+    if raw == "nightly" || raw == "nightly_average" || raw == "stay_total"
+    {
       fields = field(fields, "price_basis", basis);
-    } else { fields = field(fields, "price_basis", J.null_value()); }
-  } else { fields = field(fields, "price_basis", basis); }
-  if sx_kind(availability) == 2 {
+    }
+    else
+    {
+      fields = field(fields, "price_basis", J.null_value());
+    }
+  }
+  else
+  {
+    fields = field(fields, "price_basis", basis);
+  }
+  if sx_kind(availability) == 2
+  {
     let raw = sx_text(availability);
-    if raw == "available" || raw == "unavailable" {
+    if raw == "available" || raw == "unavailable"
+    {
       fields = field(fields, "availability", availability);
-    } else { fields = field(fields, "availability", J.null_value()); }
-  } else { fields = field(fields, "availability", availability); }
+    }
+    else
+    {
+      fields = field(fields, "availability", J.null_value());
+    }
+  }
+  else
+  {
+    fields = field(fields, "availability", availability);
+  }
   return result_ok(J.object(fields));
 }
 
-fn offers(node: BasisHtmlNode, layout: FixtureLayout) -> Result<sexpr, ProbeParseError> {
+fn offers(node: BasisHtmlNode,
+  layout: FixtureLayout) -> Result < sexpr, ProbeParseError >
+{
   let first = child_nodes(node, layout, layout["offer"])?;
   let second = child_nodes(node, layout, layout["alternate_offer"])?;
   let n = count(first)?;
   let m = count(second)?;
-  if n + m > 16 { return failure("too-many-offers"); }
+  if n + m > 16
+  {
+    return failure("too-many-offers");
+  }
   var rev = sx_nil();
   var i = 0;
   var j = 0;
   # Merge both supported markers in HTML document order.
-  while i < n || j < m {
-    if i < n && j < m {
+  while i < n || j < m
+  {
+    if i < n && j < m
+    {
       let a = node_at(first, i)?;
       let b = node_at(second, j)?;
-      if a["ordinal"] < b["ordinal"] {
+      if a["ordinal"] < b["ordinal"]
+      {
         let row = offer(a)?;
         rev = sx_cons(row, rev);
         i = i + 1;
-      } else {
+      }
+      else
+      {
         let row = offer(b)?;
         rev = sx_cons(row, rev);
         j = j + 1;
       }
-    } else {
+    }
+    else
+    {
       var selected = node;
-      if i < n { selected = node_at(first, i)?; i = i + 1; }
-      else { selected = node_at(second, j)?; j = j + 1; }
+      if i < n
+      {
+        selected = node_at(first, i)?;
+        i = i + 1;
+      }
+      else
+      {
+        selected = node_at(second, j)?;
+        j = j + 1;
+      }
       let row = offer(selected)?;
       rev = sx_cons(row, rev);
     }
@@ -260,82 +460,150 @@ fn offers(node: BasisHtmlNode, layout: FixtureLayout) -> Result<sexpr, ProbePars
   return result_ok(J.array(Sx.sexpr_reverse(rev)));
 }
 
-fn amenities(node: BasisHtmlNode, layout: FixtureLayout) -> Result<sexpr, ProbeParseError> {
+fn amenities(node: BasisHtmlNode,
+  layout: FixtureLayout) -> Result < sexpr, ProbeParseError >
+{
   let list = child_nodes(node, layout, layout["amenity"])?;
   let n = count(list)?;
-  if n == 0 { return result_ok(sx_nil()); }
-  if n > 32 { return failure("too-many-amenities"); }
+  if n == 0
+  {
+    return result_ok(sx_nil());
+  }
+  if n > 32
+  {
+    return failure("too-many-amenities");
+  }
   var rev = sx_nil();
-  for i in 0 .. n {
+  for i in 0 .. n
+  {
     let selected = node_at(list, i)?;
     let value = visible_text(selected)?;
-    if sx_kind(value) != 2 { return result_ok(J.null_value()); }
+    if sx_kind(value) != 2
+    {
+      return result_ok(J.null_value());
+    }
     var seen = false;
     var rest = rev;
-    while sx_kind(rest) == 3 {
-      if sx_text(sx_head(rest)) == sx_text(value) { seen = true; }
+    while sx_kind(rest) == 3
+    {
+      if sx_text(sx_head(rest)) == sx_text(value)
+      {
+        seen = true;
+      }
       rest = sx_tail(rest);
     }
-    if !seen { rev = sx_cons(value, rev); }
+    if ! seen
+    {
+      rev = sx_cons(value, rev);
+    }
   }
   return result_ok(J.array(Sx.sexpr_reverse(rev)));
 }
 
-fn url_from(node: BasisHtmlNode, layout: FixtureLayout) -> Result<string, ProbeParseError> {
-  let (status, tag) = basis_html_node_name(node);
-  if status != 0 { return failure("html-selection-failed"); }
-  if tag != "a" { return result_ok(""); }
+fn url_from(node: BasisHtmlNode,
+  layout: FixtureLayout) -> Result < string, ProbeParseError >
+{
+  let(status, tag) = basis_html_node_name(node);
+  if status != 0
+  {
+    return failure("html-selection-failed");
+  }
+  if tag != "a"
+  {
+    return result_ok("");
+  }
   let raw = attr(node, "href")?;
-  if sx_kind(raw) != 2 { return result_ok(""); }
+  if sx_kind(raw) != 2
+  {
+    return result_ok("");
+  }
   let href = sx_text(raw);
   let host = layout["host"];
   var normalized = href;
-  if text_byte(href, 0) == 47 { normalized = "https://$host$href"; }
+  if text_byte(href, 0) == 47
+  {
+    normalized = "https://$host$href";
+  }
   # Also bound URL-derived IDs to the discovery handoff's 256-byte max.
-  if text_len(normalized) > 256 || !Api.fixture_url(host, normalized) { return result_ok(""); }
+  if text_len(normalized) > 256 || ! Api.fixture_url(host, normalized)
+  {
+    return result_ok("");
+  }
   return result_ok(normalized);
 }
 
-fn property_url(node: BasisHtmlNode, layout: FixtureLayout, name_status: i64, name: BasisHtmlNode)
-  -> Result<string, ProbeParseError>
+fn property_url(node: BasisHtmlNode,
+  layout: FixtureLayout,
+  name_status: i64,
+  name: BasisHtmlNode) -> Result < string, ProbeParseError >
 {
-  let (status, link) = slot(node, layout, layout["link"], "")?;
-  if status == 0 { return url_from(link, layout); }
-  if status == 2 || name_status != 0 { return result_ok(""); }
+  let(status, link) = slot(node, layout, layout["link"], "")?;
+  if status == 0
+  {
+    return url_from(link, layout);
+  }
+  if status == 2 || name_status != 0
+  {
+    return result_ok("");
+  }
   # Some Agoda snapshots put the marker directly on the property anchor;
   # others put it immediately inside that anchor. Never pick unrelated links.
   let direct = url_from(name, layout)?;
-  if direct != "" { return result_ok(direct); }
-  return match basis_html_node_parent(name) with {
-    Ok(Some(parent)) => url_from(parent, layout),
-    Ok(None()) => result_ok(""),
-    Err(_) => failure("html-selection-failed")
+  if direct != ""
+  {
+    return result_ok(direct);
+  }
+  return match basis_html_node_parent(name) with
+  {
+    Ok(Some(parent)) => url_from(parent,
+      layout), Ok(None()) => result_ok(""), Err(_) => failure("html-selection-failed")
   };
 }
 
-fn property(node: BasisHtmlNode, layout: FixtureLayout) -> Result<sexpr, ProbeParseError> {
-  let (card_status, _) = slot(node, layout, layout["card"], layout["profile"])?;
-  if card_status != 1 { return failure("nested-property-markup"); }
-  let (name_status, name_node) = slot(node, layout, layout["title"], layout["alternate_title"])?;
+fn property(node: BasisHtmlNode,
+  layout: FixtureLayout) -> Result < sexpr, ProbeParseError >
+{
+  let(card_status, _) = slot(node, layout, layout["card"], layout["profile"])?;
+  if card_status != 1
+  {
+    return failure("nested-property-markup");
+  }
+  let(name_status,
+    name_node) = slot(node,
+    layout,
+    layout["title"],
+    layout["alternate_title"])?;
   let url = property_url(node, layout, name_status, name_node)?;
-  if url == "" { return result_ok(sx_nil()); }
+  if url == ""
+  {
+    return result_ok(sx_nil());
+  }
   let explicit_id = attr(node, "data-property-id")?;
   # Absent ID: use the exact canonical link as a provider-local identifier;
   # never manufacture a provider-assigned numeric ID or a cross-provider key.
   var id = url;
-  if sx_kind(explicit_id) != 0 {
-    if sx_kind(explicit_id) != 2 || !Api.fixture_key(sx_text(explicit_id)) {
+  if sx_kind(explicit_id) != 0
+  {
+    if sx_kind(explicit_id) != 2 || ! Api.fixture_key(sx_text(explicit_id))
+    {
       return result_ok(sx_nil());
     }
     id = sx_text(explicit_id);
   }
   let name = slot_text(name_status, name_node)?;
-  let (address_status, address_node) = slot(node, layout, layout["address"], "")?;
+  let(address_status,
+    address_node) = slot(node,
+    layout,
+    layout["address"],
+    "")?;
   let address = slot_text(address_status, address_node)?;
   let raw_lat = attr(node, "data-latitude")?;
   let raw_lon = attr(node, "data-longitude")?;
   var typ = attr(node, "data-property-type")?;
-  if sx_kind(typ) == 2 && !Api.fixture_key(sx_text(typ)) { typ = J.null_value(); }
+  if sx_kind(typ) == 2 && ! Api.fixture_key(sx_text(typ))
+  {
+    typ = J.null_value();
+  }
   let a = amenities(node, layout)?;
   let o = offers(node, layout)?;
   var fields = field(sx_nil(), "property_id", sx_string(id));
@@ -350,55 +618,93 @@ fn property(node: BasisHtmlNode, layout: FixtureLayout) -> Result<sexpr, ProbePa
   return result_ok(J.object(fields));
 }
 
-fn document_nodes(document: BasisHtml, layout: FixtureLayout, role: string)
-  -> Result<BasisHtmlSelection, ProbeParseError>
+fn document_nodes(document: BasisHtml,
+  layout: FixtureLayout,
+  role: string) -> Result < BasisHtmlSelection, ProbeParseError >
 {
-  return match basis_html_xpath(document, expression("//", layout, role)) with {
+  return match basis_html_xpath(document, expression("//", layout, role)) with
+  {
     Ok(list) => result_ok(list), Err(_) => failure("html-selection-failed")
   };
 }
 
-fn parse_fixture(document: BasisHtml, layout: FixtureLayout, operation: string)
-  -> Result<ProviderFacts, ProbeParseError>
+fn parse_fixture(document: BasisHtml,
+  layout: FixtureLayout,
+  operation: string) -> Result < ProviderFacts, ProbeParseError >
 {
-  if operation != "profile" && operation != "candidates" { return failure("unsupported-operation"); }
+  if operation != "profile" && operation != "candidates"
+  {
+    return failure("unsupported-operation");
+  }
   var role = layout["card"];
-  if operation == "profile" { role = layout["profile"]; }
+  if operation == "profile"
+  {
+    role = layout["profile"];
+  }
   let nodes = document_nodes(document, layout, role)?;
   let n = count(nodes)?;
-  if operation == "profile" {
-    if n != 1 { return failure("unrecognized-profile"); }
-  } else {
+  if operation == "profile"
+  {
+    if n != 1
+    {
+      return failure("unrecognized-profile");
+    }
+  }
+  else
+  {
     let empty = document_nodes(document, layout, layout["empty"])?;
     let empty_count = count(empty)?;
-    if empty_count > 1 || (empty_count == 1 && n != 0) || (n == 0 && empty_count != 1) {
+    if empty_count > 1 || (empty_count == 1 && n != 0) || (n == 0 && empty_count != 1)
+    {
       return failure("unrecognized-candidates");
     }
   }
-  if n > 32 { return failure("too-many-properties"); }
+  if n > 32
+  {
+    return failure("too-many-properties");
+  }
   var rev = sx_nil();
-  for i in 0 .. n {
+  for i in 0 .. n
+  {
     let selected = node_at(nodes, i)?;
     let row = property(selected, layout)?;
-    if sx_kind(row) != 0 {
+    if sx_kind(row) != 0
+    {
       let id = sx_text(J.get(row, "property_id"));
       let url = sx_text(J.get(row, "url"));
       var duplicate = false;
       var done = rev;
-      while sx_kind(done) == 3 {
+      while sx_kind(done) == 3
+      {
         let prior = sx_head(done);
         let same_id = sx_text(J.get(prior, "property_id")) == id;
         let same_url = sx_text(J.get(prior, "url")) == url;
-        if !same_id && same_url { return failure("conflicting-property-identity"); }
-        if same_id && same_url && J.render(prior) == J.render(row) {
+        if ! same_id && same_url
+        {
+          return failure("conflicting-property-identity");
+        }
+        if same_id && same_url && J.render(prior) == J.render(row)
+        {
           duplicate = true;
         }
         done = sx_tail(done);
       }
-      if !duplicate { rev = sx_cons(row, rev); }
+      if ! duplicate
+      {
+        rev = sx_cons(row, rev);
+      }
     }
   }
-  if operation == "profile" && sx_kind(rev) == 0 { return failure("profile-link-missing-or-invalid"); }
-  if n > 0 && sx_kind(rev) == 0 { return failure("candidate-links-missing-or-invalid"); }
-  return result_ok(record<ProviderFacts>{properties: J.array(Sx.sexpr_reverse(rev))});
+  if operation == "profile" && sx_kind(rev) == 0
+  {
+    return failure("profile-link-missing-or-invalid");
+  }
+  if n > 0 && sx_kind(rev) == 0
+  {
+    return failure("candidate-links-missing-or-invalid");
+  }
+  return result_ok(record < ProviderFacts >
+  {
+    properties: J.array(Sx.sexpr_reverse(rev))
+  });
 }

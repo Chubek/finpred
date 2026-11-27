@@ -1,81 +1,143 @@
 # Non-throwing reads of canonical planning.json trees. -1 or "" means
 # missing/invalid; neither is a valid value in the corresponding W4 inputs.
 from plugins.caravansary.planning import json as Json, civil as Civil;
-
-fn word(value: sexpr) -> string {
-  if Json.kind(value) != "string" { return ""; }
+fn word(value: sexpr) -> string
+{
+  if Json.kind(value) != "string"
+  {
+    return "";
+  }
   return sx_text(value);
 }
 
-fn text(obj: sexpr, key: string) -> string { return word(Json.get(obj, key)); }
+fn text(obj: sexpr, key: string) -> string
+{
+  return word(Json.get(obj, key));
+}
 
-fn natural(value: sexpr, cap: i64) -> i64 {
-  if cap < 0 || Json.kind(value) != "integer" { return -1; }
+fn natural(value: sexpr, cap: i64) -> i64
+{
+  if cap < 0 || Json.kind(value) != "integer"
+  {
+    return - 1;
+  }
   let s = sx_text(value);
   let count = text_len(s);
-  if count < 1 || count > 19 { return -1; }
+  if count < 1 || count > 19
+  {
+    return - 1;
+  }
   var n = 0;
-  for i in 0 .. count {
+  for i in 0 .. count
+  {
     let digit = text_byte(s, i) - 48;
-    if digit < 0 || digit > 9 || n > cap / 10 || (n == cap / 10 && digit > cap % 10) {
-      return -1;
+    if digit < 0 || digit > 9 || n > cap / 10 || (n == cap / 10 && digit > cap % 10)
+    {
+      return - 1;
     }
     n = n * 10 + digit;
   }
   return n;
 }
 
-fn number(obj: sexpr, key: string, cap: i64) -> i64 { return natural(Json.get(obj, key), cap); }
+fn number(obj: sexpr, key: string, cap: i64) -> i64
+{
+  return natural(Json.get(obj, key), cap);
+}
 
-fn money_cap() -> i64 { return 1000000000000; }
+fn money_cap() -> i64
+{
+  return 1000000000000;
+}
 
-fn currency(s: string) -> bool {
-  if text_len(s) != 3 { return false; }
-  for i in 0 .. 3 {
+fn currency(s: string) -> bool
+{
+  if text_len(s) != 3
+  {
+    return false;
+  }
+  for i in 0 .. 3
+  {
     let c = text_byte(s, i);
-    if c < 65 || c > 90 { return false; }
+    if c < 65 || c > 90
+    {
+      return false;
+    }
   }
   return true;
 }
 
 # Same validated UTC subset as planning.civil. This boundary returns invalid
 # rather than throwing so policy failures can always be recorded as abstentions.
-fn instant(s: string) -> (bool, i64) {
+fn instant(s: string) ->(bool, i64)
+{
   let n = text_len(s);
   var end = 0;
-  if n >= 20 && text_byte(s, n - 1) == 90 { end = n - 1; }
-  if n >= 25 && text_slice(s, n - 6, n) == "+00:00" { end = n - 6; }
-  if end < 19 || end > 26 ||
-      text_byte(s, 10) != 84 || text_byte(s, 13) != 58 || text_byte(s, 16) != 58 {
+  if n >= 20 && text_byte(s, n - 1) == 90
+  {
+    end = n - 1;
+  }
+  if n >= 25 && text_slice(s, n - 6, n) == "+00:00"
+  {
+    end = n - 6;
+  }
+  if end < 19 || end > 26 || text_byte(s,
+    10) != 84 || text_byte(s,
+    13) != 58 || text_byte(s,
+    16) != 58
+  {
     return (false, 0);
   }
   let day = Civil.date(text_slice(s, 0, 10));
   let h = Civil.digits(s, 11, 13);
   let m = Civil.digits(s, 14, 16);
   let sec = Civil.digits(s, 17, 19);
-  if day == 0 || h < 0 || h > 23 || m < 0 || m > 59 || sec < 0 || sec > 59 {
+  if day == 0 || h < 0 || h > 23 || m < 0 || m > 59 || sec < 0 || sec > 59
+  {
     return (false, 0);
   }
   var micros = 0;
-  if end != 19 {
-    if end < 21 || text_byte(s, 19) != 46 { return (false, 0); }
+  if end != 19
+  {
+    if end < 21 || text_byte(s, 19) != 46
+    {
+      return (false, 0);
+    }
     micros = Civil.digits(s, 20, end);
-    if micros < 0 { return (false, 0); }
-    for _ in end .. 26 { micros = micros * 10; }
+    if micros < 0
+    {
+      return (false, 0);
+    }
+    for _ in end .. 26
+    {
+      micros = micros * 10;
+    }
   }
-  return (true, (day - Civil.epoch_day()) * Civil.micros_per_day() +
-                ((h * 60 + m) * 60 + sec) * 1000000 + micros);
+  return (true,
+    (day - Civil.epoch_day()) * Civil.micros_per_day() + ((h * 60 + m) * 60 + sec) * 1000000 + micros);
 }
 
-fn utc_day(t: i64) -> i64 { return Civil.quotient_down(t, Civil.micros_per_day()) + Civil.epoch_day(); }
-fn day_start(day: i64) -> i64 { return (day - Civil.epoch_day()) * Civil.micros_per_day(); }
+fn utc_day(t: i64) -> i64
+{
+  return Civil.quotient_down(t, Civil.micros_per_day()) + Civil.epoch_day();
+}
 
-fn put(fields: sexpr, key: string, value: sexpr) -> sexpr {
+fn day_start(day: i64) -> i64
+{
+  return (day - Civil.epoch_day()) * Civil.micros_per_day();
+}
+
+fn put(fields: sexpr, key: string, value: sexpr) -> sexpr
+{
   return sx_cons(Json.pair(key, value), fields);
 }
-fn put_text(fields: sexpr, key: string, value: string) -> sexpr {
+
+fn put_text(fields: sexpr, key: string, value: string) -> sexpr
+{
   return put(fields, key, sx_string(value));
 }
-fn put_int(fields: sexpr, key: string, value: i64) -> sexpr {
+
+fn put_int(fields: sexpr, key: string, value: i64) -> sexpr
+{
   return put(fields, key, Json.integer(value));
 }

@@ -4,59 +4,80 @@ import automat.scalar_verify as V;
 import std.Int as Int;
 import std.io.TextIO as IO;
 import std.os.CommandLine as Env;
+fn line(s: string)
+{
+  IO.basis_text_io_print(s);
+  IO.basis_text_io_print("\n");
+}
 
-fn line(s:string) { IO.basis_text_io_print(s); IO.basis_text_io_print("\n"); }
-
-fn artifacts(entries:sexpr)
+fn artifacts(entries: sexpr)
 {
   var rest = entries;
   while sx_kind(rest) == 3
   {
     let pair = sx_head(rest);
     let tail = sx_tail(pair);
-    if sx_kind(sx_tail(tail)) != 0 { tool_fail("extra artifact field"); }
+    if sx_kind(sx_tail(tail)) != 0
+    {
+      tool_fail("extra artifact field");
+    }
     line(sx_text(sx_head(pair)));
     IO.basis_text_io_print(sx_text(sx_head(tail)));
     line("END");
     rest = sx_tail(rest);
   }
-  if sx_kind(rest) != 0 { tool_fail("improper artifact list"); }
+  if sx_kind(rest) != 0
+  {
+    tool_fail("improper artifact list");
+  }
 }
 
-fn outcome(r:D.Outcome)
+fn outcome(r: D.Outcome)
 {
   line(sx_text(r["status"]));
   line(Int.to_string(r["invocations"]));
   line(Int.to_string(r["memo_hits"]));
   if sx_text(r["status"]) == "ok"
   {
-    line(sx_text(r["value"])); line(sx_text(r["output_kind"])); line(sx_text(r["output_digest"]));
-    IO.basis_text_io_print(sx_text(r["trace"])); line("END");
+    line(sx_text(r["value"]));
+    line(sx_text(r["output_kind"]));
+    line(sx_text(r["output_digest"]));
+    IO.basis_text_io_print(sx_text(r["trace"]));
+    line("END");
     artifacts(r["artifacts"]);
   }
   else
   {
-    if sx_kind(r["value"]) != 0 || sx_kind(r["output_kind"]) != 0 ||
-       sx_kind(r["output_digest"]) != 0 || sx_kind(r["artifacts"]) != 0 ||
-       sx_text(r["trace"]) != "" { tool_fail("partial run evidence"); }
+    if sx_kind(r["value"]) != 0 || sx_kind(r["output_kind"]) != 0 || sx_kind(r["output_digest"]) != 0 || sx_kind(r["artifacts"]) != 0 || sx_text(r["trace"]) != ""
+    {
+      tool_fail("partial run evidence");
+    }
   }
   line("NEXT");
 }
 
-fn snapshot(s:M.Snapshot)
+fn snapshot(s: M.Snapshot)
 {
   line(sx_text(s["status"]));
   if sx_text(s["status"]) == "ok"
   {
     let id = sx_text(s["run_id"]);
     let manifest = sx_text(s["manifest"]);
-    if !V.verify(id,manifest,s["artifacts"]) { tool_fail("frozen verification failed"); }
-    line(id); IO.basis_text_io_print(manifest); line("END"); artifacts(s["artifacts"]);
+    if ! V.verify(id, manifest, s["artifacts"])
+    {
+      tool_fail("frozen verification failed");
+    }
+    line(id);
+    IO.basis_text_io_print(manifest);
+    line("END");
+    artifacts(s["artifacts"]);
   }
   else
   {
-    if sx_kind(s["run_id"]) != 0 || sx_kind(s["manifest"]) != 0 ||
-       sx_kind(s["artifacts"]) != 0 { tool_fail("partial snapshot"); }
+    if sx_kind(s["run_id"]) != 0 || sx_kind(s["manifest"]) != 0 || sx_kind(s["artifacts"]) != 0
+    {
+      tool_fail("partial snapshot");
+    }
   }
   line("NEXT");
 }
@@ -68,36 +89,65 @@ fn main() -> i64
   var budget = 6;
   var first = 17;
   var output = "f";
-  let a = D.node("a","maximum@1","first","second");
-  let b = D.node("b","maximum@1","first","second");
-  let c = D.node("c","maximum@1","second","first");
-  let d = D.node("d","minimum@1","first","second");
-  let e = D.node("e","distance@1","a","first");
-  let f = D.node("f","distance@1","b","first");
-  var nodes = sx_cons(a,sx_cons(b,sx_cons(c,sx_cons(d,sx_cons(e,sx_cons(f,sx_nil()))))));
-  if test == "equal" { first = 42; }
+  let a = D.node("a", "maximum@1", "first", "second");
+  let b = D.node("b", "maximum@1", "first", "second");
+  let c = D.node("c", "maximum@1", "second", "first");
+  let d = D.node("d", "minimum@1", "first", "second");
+  let e = D.node("e", "distance@1", "a", "first");
+  let f = D.node("f", "distance@1", "b", "first");
+  var nodes = sx_cons(a,
+    sx_cons(b,
+    sx_cons(c,
+    sx_cons(d,
+    sx_cons(e,
+    sx_cons(f,
+    sx_nil()))))));
+  if test == "equal"
+  {
+    first = 42;
+  }
   if test == "zero"
   {
-    first = 42; budget = 2; output = "b";
-    nodes = sx_cons(D.node("a","distance@1","first","second"),
-      sx_cons(D.node("b","distance@1","first","second"),sx_nil()));
+    first = 42;
+    budget = 2;
+    output = "b";
+    nodes = sx_cons(D.node("a",
+      "distance@1",
+      "first",
+      "second"),
+      sx_cons(D.node("b",
+      "distance@1",
+      "first",
+      "second"),
+      sx_nil()));
   }
-  if test == "denied" { mode = "execution"; }
-  if test == "budget" { budget = 5; }
+  if test == "denied"
+  {
+    mode = "execution";
+  }
+  if test == "budget"
+  {
+    budget = 5;
+  }
   if test == "limit"
   {
-    budget = 16; output = "p"; nodes = sx_nil();
+    budget = 16;
+    output = "p";
+    nodes = sx_nil();
     for j in 0 .. 16
     {
-      let id = text_slice("abcdefghijklmnop",15-j,16-j);
-      nodes = sx_cons(D.node(id,"maximum@1","first","second"),nodes);
+      let id = text_slice("abcdefghijklmnop", 15 - j, 16 - j);
+      nodes = sx_cons(D.node(id, "maximum@1", "first", "second"), nodes);
     }
   }
-  let plan = record<D.Plan>{version:sx_string("automat.scalar-dag@1"),nodes:nodes,output:sx_string(output)};
-  outcome(D.run(plan,mode,budget,first,42));
-  outcome(D.run_memoized(plan,mode,budget,first,42));
-  outcome(D.run_memoized(plan,mode,budget,first,42));
-  snapshot(M.freeze(plan,mode,budget,first,42));
-  snapshot(M.freeze_memoized(plan,mode,budget,first,42));
+  let plan = record < D.Plan >
+  {
+    version: sx_string("automat.scalar-dag@1"), nodes: nodes, output: sx_string(output)
+  };
+  outcome(D.run(plan, mode, budget, first, 42));
+  outcome(D.run_memoized(plan, mode, budget, first, 42));
+  outcome(D.run_memoized(plan, mode, budget, first, 42));
+  snapshot(M.freeze(plan, mode, budget, first, 42));
+  snapshot(M.freeze_memoized(plan, mode, budget, first, 42));
   return 0;
 }

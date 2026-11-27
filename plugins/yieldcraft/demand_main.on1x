@@ -4,54 +4,87 @@ import store.artifacts as Store;
 import std.environ as Env;
 import std.io.TextIO as IO;
 import std.os.OS_FileSys as FS;
-
-fn required(key:string) -> string
+fn required(key: string) -> string
 {
-  let (found,value) = Env.getenv(key);
-  if !found || value == "" { tool_fail("yieldcraft-demand: missing host argument"); }
+  let(found, value) = Env.getenv(key);
+  if ! found || value == ""
+  {
+    tool_fail("yieldcraft-demand: missing host argument");
+  }
   return value;
 }
 
-fn source(path:string, limit:i64) -> string
+fn source(path: string, limit: i64) -> string
 {
   let size = FS.basis_fs_file_size(path);
   if size < 1 || size > limit || FS.basis_fs_is_dir(path)
-  { tool_fail("yieldcraft-demand: input missing or outside byte limit"); }
+  {
+    tool_fail("yieldcraft-demand: input missing or outside byte limit");
+  }
   let raw = IO.basis_text_io_input_all(path);
-  if text_len(raw) != size { tool_fail("yieldcraft-demand: incomplete text input"); }
+  if text_len(raw) != size
+  {
+    tool_fail("yieldcraft-demand: incomplete text input");
+  }
   return raw;
 }
 
 fn main() -> i64
 {
   let mode = required("YIELDCRAFT_DEMAND_COMMAND");
-  let scenario = source(required("YIELDCRAFT_DEMAND_SCENARIO"),Demand.bytes_limit());
-  if mode == "scenario-digest" { println(Store.digest(scenario)); return 0; }
+  let scenario = source(required("YIELDCRAFT_DEMAND_SCENARIO"),
+    Demand.bytes_limit());
+  if mode == "scenario-digest"
+  {
+    println(Store.digest(scenario));
+    return 0;
+  }
   if mode == "panel" || mode == "panel-replay"
   {
-    let panel = source(required("YIELDCRAFT_DEMAND_EXPOSURE"),Panel.bytes_limit());
-    let result = Panel.estimate(scenario,panel);
+    let panel = source(required("YIELDCRAFT_DEMAND_EXPOSURE"),
+      Panel.bytes_limit());
+    let result = Panel.estimate(scenario, panel);
     let report = sx_text(result["report"]);
-    if mode == "panel" { IO.basis_text_io_print(report); return 0; }
-    if required("YIELDCRAFT_DEMAND_EXPECTED_ID") != sx_text(result["id"])
-      || report != source(required("YIELDCRAFT_DEMAND_FROZEN_EVIDENCE"),Panel.report_limit())
-    { tool_fail("yieldcraft-demand: panel replay identity or bytes differ"); }
+    if mode == "panel"
+    {
+      IO.basis_text_io_print(report);
+      return 0;
+    }
+    if required("YIELDCRAFT_DEMAND_EXPECTED_ID") != sx_text(result["id"]) || report != source(required("YIELDCRAFT_DEMAND_FROZEN_EVIDENCE"),
+      Panel.report_limit())
+    {
+      tool_fail("yieldcraft-demand: panel replay identity or bytes differ");
+    }
     println("demand_panel_replay_ok=true");
     return 0;
   }
   if mode != "estimate" && mode != "evidence" && mode != "replay"
-  { tool_fail("yieldcraft-demand: unknown mode"); }
-  let raw = source(required("YIELDCRAFT_DEMAND_EXPOSURE"),Demand.bytes_limit());
-  let fit = Demand.estimate(scenario,raw);
+  {
+    tool_fail("yieldcraft-demand: unknown mode");
+  }
+  let raw = source(required("YIELDCRAFT_DEMAND_EXPOSURE"),
+    Demand.bytes_limit());
+  let fit = Demand.estimate(scenario, raw);
   let demand = sx_text(fit["demand"]);
   let evidence = sx_text(fit["evidence"]);
-  if mode == "estimate" { IO.basis_text_io_print(demand); return 0; }
-  if mode == "evidence" { IO.basis_text_io_print(evidence); return 0; }
+  if mode == "estimate"
+  {
+    IO.basis_text_io_print(demand);
+    return 0;
+  }
+  if mode == "evidence"
+  {
+    IO.basis_text_io_print(evidence);
+    return 0;
+  }
   let id = required("YIELDCRAFT_DEMAND_EXPECTED_ID");
-  if id != text_concat("blake3:",sx_text(fit["id"]))
-    || source(required("YIELDCRAFT_DEMAND_FROZEN_SNAPSHOT"),Demand.bytes_limit()) != demand
-    || source(required("YIELDCRAFT_DEMAND_FROZEN_EVIDENCE"),32768) != evidence
-  { tool_fail("yieldcraft-demand: replay identity or bytes differ"); }
+  if id != text_concat("blake3:",
+    sx_text(fit["id"])) || source(required("YIELDCRAFT_DEMAND_FROZEN_SNAPSHOT"),
+    Demand.bytes_limit()) != demand || source(required("YIELDCRAFT_DEMAND_FROZEN_EVIDENCE"),
+    32768) != evidence
+  {
+    tool_fail("yieldcraft-demand: replay identity or bytes differ");
+  }
   println("demand_replay_ok=true");
   return 0;
 }

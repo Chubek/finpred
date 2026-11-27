@@ -1,59 +1,93 @@
 import automat.dag as D;
 import std.collections.List as L;
-
-record Decoded { valid:bool, plan:D.Plan, budget:i64, first:i64, second:i64, root:sexpr, hashes:sexpr }
+record Decoded
+{
+  valid: bool, plan: D.Plan, budget: i64, first: i64, second: i64, root: sexpr, hashes: sexpr
+}
 
 fn invalid() -> Decoded
 {
-  let empty = record<D.Plan>{version:sx_nil(),nodes:sx_nil(),output:sx_nil()};
-  return record<Decoded>{valid:false,plan:empty,budget:0,first:0,second:0,root:sx_nil(),hashes:sx_nil()};
+  let empty = record < D.Plan >
+  {
+    version: sx_nil(), nodes: sx_nil(), output: sx_nil()
+  };
+  return record < Decoded >
+  {
+    valid: false, plan: empty, budget: 0, first: 0, second: 0, root: sx_nil(), hashes: sx_nil()
+  };
 }
 
 # All fields require nonempty values, so "" also denotes a missing prefix.
-fn payload(line:string, prefix:string) -> string
+fn payload(line: string, prefix: string) -> string
 {
   let n = text_len(prefix);
-  if text_len(line) <= n { return ""; }
-  if text_slice(line,0,n) != prefix { return ""; }
-  return text_slice(line,n,text_len(line));
+  if text_len(line) <= n
+  {
+    return "";
+  }
+  if text_slice(line, 0, n) != prefix
+  {
+    return "";
+  }
+  return text_slice(line, n, text_len(line));
 }
 
-fn decimal(s:string, limit:i64) -> i64
+fn decimal(s: string, limit: i64) -> i64
 {
   let n = text_len(s);
-  if n == 0 || n > 13 { return 0-1; }
+  if n == 0 || n > 13
+  {
+    return 0 - 1;
+  }
   let zero = char_codepoint(#\0);
-  if n > 1 && text_byte(s,0) == zero { return 0-1; }
+  if n > 1 && text_byte(s, 0) == zero
+  {
+    return 0 - 1;
+  }
   var value = 0;
   for i in 0 .. n
   {
-    let c = text_byte(s,i);
-    if c < zero || c > char_codepoint(#\9) { return 0-1; }
-    let digit = c-zero;
-    if value > (limit-digit)/10 { return 0-1; }
-    value = value*10+digit;
+    let c = text_byte(s, i);
+    if c < zero || c > char_codepoint(#\9)
+    {
+      return 0 - 1;
+    }
+    let digit = c - zero;
+    if value > (limit - digit) / 10
+    {
+      return 0 - 1;
+    }
+    value = value * 10 + digit;
   }
   return value;
 }
 
-fn name_ok(s:string, operation:bool) -> bool
+fn name_ok(s: string, operation: bool) -> bool
 {
   let n = text_len(s);
-  if n == 0 || n > 32 { return false; }
+  if n == 0 || n > 32
+  {
+    return false;
+  }
   for i in 0 .. n
   {
-    let c = text_byte(s,i);
+    let c = text_byte(s, i);
     if c < char_codepoint(#\a) || c > char_codepoint(#\z)
     {
-      if !operation || i == 0 { return false; }
-      if c != char_codepoint(#\-) && c != char_codepoint(#\@)
-        && (c < char_codepoint(#\0) || c > char_codepoint(#\9)) { return false; }
+      if ! operation || i == 0
+      {
+        return false;
+      }
+      if c != char_codepoint(#\-) && c != char_codepoint(#\@) && (c < char_codepoint(#\0) || c > char_codepoint(#\9))
+      {
+        return false;
+      }
     }
   }
   return true;
 }
 
-fn declaration_with_select(s:string, select_allowed:bool) -> sexpr
+fn declaration_with_select(s: string, select_allowed: bool) -> sexpr
 {
   var fields = sx_nil();
   var count = 0;
@@ -61,99 +95,161 @@ fn declaration_with_select(s:string, select_allowed:bool) -> sexpr
   var separators = 3;
   for i in 0 .. text_len(s)
   {
-    if text_byte(s,i) == char_codepoint(#\,)
+    if text_byte(s, i) == char_codepoint(#\,)
     {
-      if count >= separators { return sx_nil(); }
-      let field = text_slice(s,start,i);
-      if !name_ok(field,count == 1) { return sx_nil(); }
+      if count >= separators
+      {
+        return sx_nil();
+      }
+      let field = text_slice(s, start, i);
+      if ! name_ok(field, count == 1)
+      {
+        return sx_nil();
+      }
       if count == 1 && field == "select@1"
       {
-        if !select_allowed { return sx_nil(); }
+        if ! select_allowed
+        {
+          return sx_nil();
+        }
         separators = 4;
       }
-      fields = sx_cons(sx_string(field),fields);
-      count = count+1;
-      start = i+1;
+      fields = sx_cons(sx_string(field), fields);
+      count = count + 1;
+      start = i + 1;
     }
   }
-  let last = text_slice(s,start,text_len(s));
-  if count != separators || !name_ok(last,false) { return sx_nil(); }
-  return L.basis_list_rev(sx_cons(sx_string(last),fields));
+  let last = text_slice(s, start, text_len(s));
+  if count != separators || ! name_ok(last, false)
+  {
+    return sx_nil();
+  }
+  return L.basis_list_rev(sx_cons(sx_string(last), fields));
 }
 
-fn declaration(s:string) -> sexpr
+fn declaration(s: string) -> sexpr
 {
-  return declaration_with_select(s,false);
+  return declaration_with_select(s, false);
 }
 
-fn hex_digest(s:string) -> bool
+fn hex_digest(s: string) -> bool
 {
-  if text_len(s) != 64 { return false; }
+  if text_len(s) != 64
+  {
+    return false;
+  }
   for i in 0 .. 64
   {
-    let c = text_byte(s,i);
-    if (c < char_codepoint(#\0) || c > char_codepoint(#\9))
-      && (c < char_codepoint(#\a) || c > char_codepoint(#\f)) { return false; }
+    let c = text_byte(s, i);
+    if (c < char_codepoint(#\0) || c > char_codepoint(#\9)) && (c < char_codepoint(#\a) || c > char_codepoint(#\f))
+    {
+      return false;
+    }
   }
   return true;
 }
 
-fn decode(raw:string) -> Decoded
+fn decode(raw: string) -> Decoded
 {
   let size = text_len(raw);
-  if size < 1 || size > 4096 { return invalid(); }
+  if size < 1 || size > 4096
+  {
+    return invalid();
+  }
   # Manifest offsets and limits are bytes; only printable ASCII and LF are allowed.
   let lf = char_codepoint(#\newline);
-  if text_byte(raw,size-1) != lf { return invalid(); }
+  if text_byte(raw, size - 1) != lf
+  {
+    return invalid();
+  }
   var lines = sx_nil();
   var count = 0;
   var start = 0;
   for i in 0 .. size
   {
-    let c = text_byte(raw,i);
+    let c = text_byte(raw, i);
     if c == lf
     {
-      if count >= 42 || i == start { return invalid(); }
-      lines = sx_cons(sx_string(text_slice(raw,start,i)),lines);
-      count = count+1;
-      start = i+1;
+      if count >= 42 || i == start
+      {
+        return invalid();
+      }
+      lines = sx_cons(sx_string(text_slice(raw, start, i)), lines);
+      count = count + 1;
+      start = i + 1;
     }
-    else { if c < char_codepoint(#\space) || c > char_codepoint(#\~) { return invalid(); } }
+    else
+    {
+      if c < char_codepoint(#\space) || c > char_codepoint(#\~)
+      {
+        return invalid();
+      }
+    }
   }
   # Seven header lines, N declarations, N+2 hashes and one root.
-  if count < 12 || count % 2 != 0 { return invalid(); }
-  let n = (count-10)/2;
+  if count < 12 || count % 2 != 0
+  {
+    return invalid();
+  }
+  let n = (count - 10) / 2;
   let ordered = L.basis_list_rev(lines);
-  let format = D.field(ordered,0);
-  let plan_line = D.field(ordered,1);
+  let format = D.field(ordered, 0);
+  let plan_line = D.field(ordered, 1);
   let v1 = format == "scalar-run@1" && plan_line == "plan=automat.scalar-dag@1";
   let v2 = format == "scalar-run@2" && plan_line == "plan=automat.scalar-dag@2";
   let v3 = format == "scalar-run@3" && plan_line == "plan=automat.scalar-dag@3";
-  if !v1 && !v2 && !v3 { return invalid(); }
+  if ! v1 && ! v2 && ! v3
+  {
+    return invalid();
+  }
   let select_allowed = v2 || v3;
-  if D.field(ordered,2) != "mode=analysis" { return invalid(); }
-  let budget = decimal(payload(D.field(ordered,3),"budget="),16);
-  let first = decimal(payload(D.field(ordered,4),"first="),1000000000000);
-  let second = decimal(payload(D.field(ordered,5),"second="),1000000000000);
-  let output = payload(D.field(ordered,6),"output=");
-  if budget < 1 || first < 0 || second < 0 || !name_ok(output,false) { return invalid(); }
+  if D.field(ordered, 2) != "mode=analysis"
+  {
+    return invalid();
+  }
+  let budget = decimal(payload(D.field(ordered, 3), "budget="), 16);
+  let first = decimal(payload(D.field(ordered, 4), "first="), 1000000000000);
+  let second = decimal(payload(D.field(ordered, 5), "second="), 1000000000000);
+  let output = payload(D.field(ordered, 6), "output=");
+  if budget < 1 || first < 0 || second < 0 || ! name_ok(output, false)
+  {
+    return invalid();
+  }
   var nodes = sx_nil();
   for i in 0 .. n
   {
-    let node = declaration_with_select(payload(D.field(ordered,7+i),"node="),select_allowed);
-    if sx_kind(node) != 3 { return invalid(); }
-    nodes = sx_cons(node,nodes);
+    let node = declaration_with_select(payload(D.field(ordered,
+      7 + i),
+      "node="),
+      select_allowed);
+    if sx_kind(node) != 3
+    {
+      return invalid();
+    }
+    nodes = sx_cons(node, nodes);
   }
   var hashes = sx_nil();
-  for i in 0 .. n+2
+  for i in 0 .. n + 2
   {
-    let hash = payload(D.field(ordered,7+n+i),"artifact=");
-    if !hex_digest(hash) { return invalid(); }
-    hashes = sx_cons(sx_string(hash),hashes);
+    let hash = payload(D.field(ordered, 7 + n + i), "artifact=");
+    if ! hex_digest(hash)
+    {
+      return invalid();
+    }
+    hashes = sx_cons(sx_string(hash), hashes);
   }
-  let root = payload(D.field(ordered,count-1),"root=");
-  if !hex_digest(root) { return invalid(); }
-  let plan = record<D.Plan>{version:sx_string(payload(plan_line,"plan=")),nodes:L.basis_list_rev(nodes),output:sx_string(output)};
-  return record<Decoded>{valid:true,plan:plan,budget:budget,first:first,second:second,
-    root:sx_string(root),hashes:L.basis_list_rev(hashes)};
+  let root = payload(D.field(ordered, count - 1), "root=");
+  if ! hex_digest(root)
+  {
+    return invalid();
+  }
+  let plan = record < D.Plan >
+  {
+    version: sx_string(payload(plan_line,
+      "plan=")), nodes: L.basis_list_rev(nodes), output: sx_string(output)
+  };
+  return record < Decoded >
+  {
+    valid: true, plan: plan, budget: budget, first: first, second: second, root: sx_string(root), hashes: L.basis_list_rev(hashes)
+  };
 }

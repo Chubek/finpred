@@ -1,82 +1,203 @@
 # Fixed-size byte slots avoid storing native pointers in worksheet cells.
 import std.collections.Array as A;
 import std.Int as Int;
+record Book
+{
+  bytes: i64, lengths: i64, state: i64, values: i64, height: i64, vars: i64, defined: i64, work: i64
+}
 
-record Book { bytes:i64, lengths:i64, state:i64, values:i64, height:i64, vars:i64, defined:i64, work:i64 }
-fn create() -> Book {
-  return record<Book>{bytes:A.basis_array_array(196608,0),lengths:A.basis_array_array(1024,0),
-    state:A.basis_array_array(1024,0),values:A.basis_array_array(1024,0),height:A.basis_array_array(1024,0),
-    vars:A.basis_array_array(26,0),defined:A.basis_array_array(26,0),work:A.basis_array_array(1,0)};
+fn create() -> Book
+{
+  return record < Book >
+  {
+    bytes: A.basis_array_array(196608,
+      0), lengths: A.basis_array_array(1024,
+      0), state: A.basis_array_array(1024,
+      0), values: A.basis_array_array(1024,
+      0), height: A.basis_array_array(1024,
+      0), vars: A.basis_array_array(26,
+      0), defined: A.basis_array_array(26,
+      0), work: A.basis_array_array(1,
+      0)
+  };
 }
-fn close(b:Book) {
-  A.basis_array_destroy(b["bytes"]); A.basis_array_destroy(b["lengths"]);
-  A.basis_array_destroy(b["state"]); A.basis_array_destroy(b["values"]); A.basis_array_destroy(b["height"]);
-  A.basis_array_destroy(b["vars"]); A.basis_array_destroy(b["defined"]); A.basis_array_destroy(b["work"]);
+
+fn close(b: Book)
+{
+  A.basis_array_destroy(b["bytes"]);
+  A.basis_array_destroy(b["lengths"]);
+  A.basis_array_destroy(b["state"]);
+  A.basis_array_destroy(b["values"]);
+  A.basis_array_destroy(b["height"]);
+  A.basis_array_destroy(b["vars"]);
+  A.basis_array_destroy(b["defined"]);
+  A.basis_array_destroy(b["work"]);
 }
-fn tick(b:Book) {
-  let n = A.basis_array_sub(b["work"],0);
-  if n >= 250000 { tool_fail("worksheet: evaluation budget exceeded"); }
-  A.basis_array_update(b["work"],0,n+1);
-}
-fn upper(c:i64) -> i64 { if c >= 97 && c <= 122 { return c-32; } return c; }
-fn byte(s:string,i:i64) -> i64 {
-  if i < 0 || i >= text_len(s) { return -1; } return text_byte(s,i);
-}
-fn skip(s:string,pos:i64) -> i64 {
-  var i=pos; while byte(s,i)==32 { i=i+1; } return i;
-}
-fn addr(s:string) -> i64 {
-  let col=upper(byte(s,0))-65;
-  if col<0 || col>=16 || text_len(s)<2 || text_len(s)>3 || byte(s,1)==48 { return -1; }
-  var row=0;
-  for i in 1 .. text_len(s) {
-    let d=byte(s,i)-48; if d<0 || d>9 { return -1; } row=row*10+d;
+
+fn tick(b: Book)
+{
+  let n = A.basis_array_sub(b["work"], 0);
+  if n >= 250000
+  {
+    tool_fail("worksheet: evaluation budget exceeded");
   }
-  if row<1 || row>64 { return -1; } return (row-1)*16+col;
+  A.basis_array_update(b["work"], 0, n + 1);
 }
-fn name(id:i64) -> string {
-  return text_concat(text_slice("ABCDEFGHIJKLMNOP",id%16,id%16+1),Int.to_string(id/16+1));
+
+fn upper(c: i64) -> i64
+{
+  if c >= 97 && c <= 122
+  {
+    return c - 32;
+  }
+  return c;
 }
-fn raw(b:Book,id:i64) -> string {
-  let n=A.basis_array_sub(b["lengths"],id);
-  let buf=buffer_new();
-  for i in 0 .. n { buffer_byte(buf,A.basis_array_sub(b["bytes"],id*192+i)); }
+
+fn byte(s: string, i: i64) -> i64
+{
+  if i < 0 || i >= text_len(s)
+  {
+    return - 1;
+  }
+  return text_byte(s, i);
+}
+
+fn skip(s: string, pos: i64) -> i64
+{
+  var i = pos;
+  while byte(s, i) == 32
+  {
+    i = i + 1;
+  }
+  return i;
+}
+
+fn addr(s: string) -> i64
+{
+  let col = upper(byte(s, 0)) - 65;
+  if col < 0 || col >= 16 || text_len(s) < 2 || text_len(s) > 3 || byte(s,
+    1) == 48
+  {
+    return - 1;
+  }
+  var row = 0;
+  for i in 1 .. text_len(s)
+  {
+    let d = byte(s, i) - 48;
+    if d < 0 || d > 9
+    {
+      return - 1;
+    }
+    row = row * 10 + d;
+  }
+  if row < 1 || row > 64
+  {
+    return - 1;
+  }
+  return (row - 1) * 16 + col;
+}
+
+fn name(id: i64) -> string
+{
+  return text_concat(text_slice("ABCDEFGHIJKLMNOP",
+    id % 16,
+    id % 16 + 1),
+    Int.to_string(id / 16 + 1));
+}
+
+fn raw(b: Book, id: i64) -> string
+{
+  let n = A.basis_array_sub(b["lengths"], id);
+  let buf = buffer_new();
+  for i in 0 .. n
+  {
+    buffer_byte(buf, A.basis_array_sub(b["bytes"], id * 192 + i));
+  }
   return buffer_text(buf);
 }
-fn set(b:Book,id:i64,s:string) {
-  if id<0 || id>=1024 || text_len(s)>192 { tool_fail("worksheet: invalid address or cell exceeds 192 bytes"); }
-  for i in 0 .. text_len(s) {
-    let c=byte(s,i); if c<32 || c>126 { tool_fail("worksheet: cells require printable ASCII"); }
-    A.basis_array_update(b["bytes"],id*192+i,c);
+
+fn set(b: Book, id: i64, s: string)
+{
+  if id < 0 || id >= 1024 || text_len(s) > 192
+  {
+    tool_fail("worksheet: invalid address or cell exceeds 192 bytes");
   }
-  A.basis_array_update(b["lengths"],id,text_len(s));
+  for i in 0 .. text_len(s)
+  {
+    let c = byte(s, i);
+    if c < 32 || c > 126
+    {
+      tool_fail("worksheet: cells require printable ASCII");
+    }
+    A.basis_array_update(b["bytes"], id * 192 + i, c);
+  }
+  A.basis_array_update(b["lengths"], id, text_len(s));
 }
-fn invalidate(b:Book) {
-  for i in 0 .. 1024 { A.basis_array_update(b["state"],i,0); }
+
+fn invalidate(b: Book)
+{
+  for i in 0 .. 1024
+  {
+    A.basis_array_update(b["state"], i, 0);
+  }
 }
-fn encode(b:Book) -> string {
-  let buf=buffer_new(); buffer_append(buf,"poindexter-workbook@1\n");
-  for i in 0 .. 1024 {
-    if A.basis_array_sub(b["lengths"],i)>0 {
-      buffer_append(buf,name(i)); buffer_byte(buf,9); buffer_append(buf,raw(b,i)); buffer_byte(buf,10);
+
+fn encode(b: Book) -> string
+{
+  let buf = buffer_new();
+  buffer_append(buf, "poindexter-workbook@1\n");
+  for i in 0 .. 1024
+  {
+    if A.basis_array_sub(b["lengths"], i) > 0
+    {
+      buffer_append(buf, name(i));
+      buffer_byte(buf, 9);
+      buffer_append(buf, raw(b, i));
+      buffer_byte(buf, 10);
     }
   }
   return buffer_text(buf);
 }
-fn load(b:Book,s:string) {
-  let hdr="poindexter-workbook@1\n";
-  if text_len(s)<text_len(hdr) || text_slice(s,0,text_len(hdr))!=hdr { tool_fail("worksheet: invalid workbook header"); }
-  var i=text_len(hdr);
-  while i<text_len(s) {
-    let start=i;
-    while byte(s,i)!=9 && i<start+4 && i<text_len(s) { i=i+1; }
-    if byte(s,i)!=9 { tool_fail("worksheet: malformed workbook address"); }
-    let id=addr(text_slice(s,start,i));
-    if id<0 { tool_fail("worksheet: invalid workbook address"); }
-    if A.basis_array_sub(b["lengths"],id)>0 { tool_fail("worksheet: duplicate cell"); }
-    i=i+1; let begin=i;
-    while byte(s,i)!=10 && i<text_len(s) && i<=begin+192 { i=i+1; }
-    if i==begin || byte(s,i)!=10 { tool_fail("worksheet: malformed workbook row"); }
-    set(b,id,text_slice(s,begin,i)); i=i+1;
+
+fn load(b: Book, s: string)
+{
+  let hdr = "poindexter-workbook@1\n";
+  if text_len(s) < text_len(hdr) || text_slice(s, 0, text_len(hdr)) != hdr
+  {
+    tool_fail("worksheet: invalid workbook header");
+  }
+  var i = text_len(hdr);
+  while i < text_len(s)
+  {
+    let start = i;
+    while byte(s, i) != 9 && i < start + 4 && i < text_len(s)
+    {
+      i = i + 1;
+    }
+    if byte(s, i) != 9
+    {
+      tool_fail("worksheet: malformed workbook address");
+    }
+    let id = addr(text_slice(s, start, i));
+    if id < 0
+    {
+      tool_fail("worksheet: invalid workbook address");
+    }
+    if A.basis_array_sub(b["lengths"], id) > 0
+    {
+      tool_fail("worksheet: duplicate cell");
+    }
+    i = i + 1;
+    let begin = i;
+    while byte(s, i) != 10 && i < text_len(s) && i <= begin + 192
+    {
+      i = i + 1;
+    }
+    if i == begin || byte(s, i) != 10
+    {
+      tool_fail("worksheet: malformed workbook row");
+    }
+    set(b, id, text_slice(s, begin, i));
+    i = i + 1;
   }
 }

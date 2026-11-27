@@ -5,36 +5,61 @@ import plugins.caravansary.stdlib.geo as Geo;
 import plugins.caravansary.stdlib.property as Property;
 import std.Int as Int;
 import std.sexpr.sexpr as Sx;
-
-fn object_values(value: sexpr) -> sexpr {
+fn object_values(value: sexpr) -> sexpr
+{
   var rest = sx_tail(value);
   var output = sx_nil();
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     output = sx_cons(J.pair_value(sx_head(rest)), output);
     rest = sx_tail(rest);
   }
   return J.array(Sx.sexpr_reverse(output));
 }
 
-fn normalization(data: sexpr) -> sexpr {
-  Inputs.object_fields(data, "radius_m", "min_score max_candidates excluded_types excluded_provider_ids", "discovery policy");
+fn normalization(data: sexpr) -> sexpr
+{
+  Inputs.object_fields(data,
+    "radius_m",
+    "min_score max_candidates excluded_types excluded_provider_ids",
+    "discovery policy");
   let radius = J.int64(J.field(data, "radius_m"), "radius_m");
-  if radius < 1 || radius > 20015115 { tool_fail("radius_m must be between 1 and 20015115"); }
+  if radius < 1 || radius > 20015115
+  {
+    tool_fail("radius_m must be between 1 and 20015115");
+  }
   var minimum = J.get(data, "min_score");
-  if !Geo.known(minimum) { minimum = J.integer(1); }
+  if ! Geo.known(minimum)
+  {
+    minimum = J.integer(1);
+  }
   let score = J.int64(minimum, "min_score");
-  if score < 0 || score > 100 { tool_fail("min_score must be between 0 and 100"); }
+  if score < 0 || score > 100
+  {
+    tool_fail("min_score must be between 0 and 100");
+  }
   var cap = J.get(data, "max_candidates");
-  if !Geo.known(cap) { cap = J.integer(256); }
+  if ! Geo.known(cap)
+  {
+    cap = J.integer(256);
+  }
   let count = J.int64(cap, "max_candidates");
-  if count < 1 || count > 1024 { tool_fail("max_candidates must be between 1 and 1024"); }
+  if count < 1 || count > 1024
+  {
+    tool_fail("max_candidates must be between 1 and 1024");
+  }
   let types = J.get(data, "excluded_types");
   let providers = J.get(data, "excluded_provider_ids");
   var type_fields = sx_nil();
-  if Geo.known(types) {
+  if Geo.known(types)
+  {
     var items = J.items(types);
-    if Sx.sexpr_size(items) > 256 { tool_fail("excluded_types supports at most 256 entries"); }
-    while sx_kind(items) == 3 {
+    if Sx.sexpr_size(items) > 256
+    {
+      tool_fail("excluded_types supports at most 256 entries");
+    }
+    while sx_kind(items) == 3
+    {
       ignore(Inputs.nonempty_text(sx_head(items), "excluded_types entry"));
       let item = Property.identity_text(sx_head(items));
       type_fields = Property.pair(item, sx_string(item), type_fields);
@@ -42,40 +67,69 @@ fn normalization(data: sexpr) -> sexpr {
     }
   }
   var provider_fields = sx_nil();
-  if Geo.known(providers) {
+  if Geo.known(providers)
+  {
     var items = J.items(providers);
-    if Sx.sexpr_size(items) > 256 { tool_fail("excluded_provider_ids supports at most 256 entries"); }
-    while sx_kind(items) == 3 {
+    if Sx.sexpr_size(items) > 256
+    {
+      tool_fail("excluded_provider_ids supports at most 256 entries");
+    }
+    while sx_kind(items) == 3
+    {
       let item = sx_head(items);
-      Inputs.object_fields(item, "provider provider_property_id", "", "excluded provider identity");
-      let key = Property.provider_key(Property.provider(item), Property.opaque_id(item, "provider_property_id"));
+      Inputs.object_fields(item,
+        "provider provider_property_id",
+        "",
+        "excluded provider identity");
+      let key = Property.provider_key(Property.provider(item),
+        Property.opaque_id(item,
+        "provider_property_id"));
       provider_fields = Property.pair(key, item, provider_fields);
       items = sx_tail(items);
     }
   }
-  return J.object(Property.pair("radius_m", J.integer(radius),
-    Property.pair("min_score", J.integer(score),
-    Property.pair("max_candidates", J.integer(count),
-    Property.pair("excluded_types", object_values(J.object_unique(type_fields, "duplicate excluded type")),
-    Property.pair("excluded_provider_ids", object_values(J.object_unique(provider_fields, "duplicate excluded provider identity")), sx_nil()))))));
+  return J.object(Property.pair("radius_m",
+    J.integer(radius),
+    Property.pair("min_score",
+    J.integer(score),
+    Property.pair("max_candidates",
+    J.integer(count),
+    Property.pair("excluded_types",
+    object_values(J.object_unique(type_fields,
+    "duplicate excluded type")),
+    Property.pair("excluded_provider_ids",
+    object_values(J.object_unique(provider_fields,
+    "duplicate excluded provider identity")),
+    sx_nil()))))));
 }
 
-fn subject(input: sexpr) -> sexpr {
-  Inputs.object_fields(input, "id name", "latitude longitude type address", "discovery subject");
+fn subject(input: sexpr) -> sexpr
+{
+  Inputs.object_fields(input,
+    "id name",
+    "latitude longitude type address",
+    "discovery subject");
   let metadata = Property.place(input, "subject");
   return J.replace(metadata, "id", sx_string(Property.opaque_id(input, "id")));
 }
 
-fn fact(input: sexpr) -> sexpr {
-  Inputs.object_fields(input, "provider provider_property_id name",
-    "latitude longitude type address url evidence_ref", "discovery fact");
+fn fact(input: sexpr) -> sexpr
+{
+  Inputs.object_fields(input,
+    "provider provider_property_id name",
+    "latitude longitude type address url evidence_ref",
+    "discovery fact");
   let source = Property.provider(input);
   let provider_id = Property.opaque_id(input, "provider_property_id");
   let metadata = Property.place(input, "listing fact");
-  var fields = Property.pair("provider", sx_string(source),
-    Property.pair("provider_property_id", sx_string(provider_id), sx_tail(metadata)));
+  var fields = Property.pair("provider",
+    sx_string(source),
+    Property.pair("provider_property_id",
+    sx_string(provider_id),
+    sx_tail(metadata)));
   let url = J.get(input, "url");
-  if Geo.known(url) {
+  if Geo.known(url)
+  {
     Inputs.provider_url(url, "listing URL");
     fields = Property.optional_text(input, "url", fields);
   }
@@ -83,35 +137,55 @@ fn fact(input: sexpr) -> sexpr {
   return J.object(fields);
 }
 
-fn without_reference(value: sexpr) -> sexpr {
+fn without_reference(value: sexpr) -> sexpr
+{
   var fields = sx_nil();
   var rest = sx_tail(value);
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let entry = sx_head(rest);
-    if sx_text(sx_head(entry)) != "evidence_ref" { fields = sx_cons(entry, fields); }
+    if sx_text(sx_head(entry)) != "evidence_ref"
+    {
+      fields = sx_cons(entry, fields);
+    }
     rest = sx_tail(rest);
   }
   return J.object(fields);
 }
 
-fn excluded_provider(exclusions: sexpr, source: sexpr, id: sexpr) -> bool {
+fn excluded_provider(exclusions: sexpr, source: sexpr, id: sexpr) -> bool
+{
   var rest = J.items(exclusions);
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let current = sx_head(rest);
-    if sx_text(J.field(current, "provider")) == sx_text(source) &&
-        sx_text(J.field(current, "provider_property_id")) == sx_text(id) { return true; }
+    if sx_text(J.field(current,
+      "provider")) == sx_text(source) && sx_text(J.field(current,
+      "provider_property_id")) == sx_text(id)
+    {
+      return true;
+    }
     rest = sx_tail(rest);
   }
   return false;
 }
 
-fn url_key(fact_value: sexpr) -> string {
+fn url_key(fact_value: sexpr) -> string
+{
   let url = J.get(fact_value, "url");
-  if !Geo.known(url) { return ""; }
+  if ! Geo.known(url)
+  {
+    return "";
+  }
   return Property.provider_key(Property.provider(fact_value), sx_text(url));
 }
 
-fn candidate(subject_value: sexpr, rules: sexpr, id: string, facts: sexpr, urls: sexpr) -> sexpr {
+fn candidate(subject_value: sexpr,
+  rules: sexpr,
+  id: string,
+  facts: sexpr,
+  urls: sexpr) -> sexpr
+{
   let current = sx_head(facts);
   let source = J.field(current, "provider");
   let provider_id = J.field(current, "provider_property_id");
@@ -122,46 +196,90 @@ fn candidate(subject_value: sexpr, rules: sexpr, id: string, facts: sexpr, urls:
   var rest = facts;
   var conflict = false;
   var conflicting_url = false;
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let detail = sx_head(rest);
-    if J.render(without_reference(detail)) != material_key { conflict = true; }
+    if J.render(without_reference(detail)) != material_key
+    {
+      conflict = true;
+    }
     let url = url_key(detail);
-    if url != "" && J.kind(J.get(urls, url)) == "boolean" { conflicting_url = true; }
+    if url != "" && J.kind(J.get(urls, url)) == "boolean"
+    {
+      conflicting_url = true;
+    }
     rest = sx_tail(rest);
   }
   var reasons = sx_nil();
-  if conflicting_url { reasons = sx_cons(sx_string("conflicting_provider_url"), reasons); }
-  if excluded_provider(J.field(rules, "excluded_provider_ids"), source, provider_id) {
+  if conflicting_url
+  {
+    reasons = sx_cons(sx_string("conflicting_provider_url"), reasons);
+  }
+  if excluded_provider(J.field(rules,
+    "excluded_provider_ids"),
+    source,
+    provider_id)
+  {
     reasons = sx_cons(sx_string("excluded_provider_identity"), reasons);
   }
   var signals = J.null_value();
   var distance = J.null_value();
   var score = J.null_value();
   var listing = J.null_value();
-  if conflict { reasons = sx_cons(sx_string("conflicting_listing_facts"), reasons); }
-  else {
+  if conflict
+  {
+    reasons = sx_cons(sx_string("conflicting_listing_facts"), reasons);
+  }
+  else
+  {
     listing = material;
     let listing_type = Property.identity_text(J.get(current, "type"));
-    if Inputs.contains_atom(J.items(J.field(rules, "excluded_types")), listing_type) {
+    if Inputs.contains_atom(J.items(J.field(rules,
+      "excluded_types")),
+      listing_type)
+    {
       reasons = sx_cons(sx_string("excluded_type"), reasons);
     }
-    distance = Geo.distance_m(Geo.position(subject_value, "subject"), Geo.position(current, "listing"));
+    distance = Geo.distance_m(Geo.position(subject_value,
+      "subject"),
+      Geo.position(current,
+      "listing"));
     signals = Property.corroborate(subject_value, current, distance);
-    if Property.possible_same(signals) { reasons = sx_cons(sx_string("possible_subject_identity"), reasons); }
-    if !Geo.known(distance) { reasons = sx_cons(sx_string("distance_unknown"), reasons); }
-    else {
+    if Property.possible_same(signals)
+    {
+      reasons = sx_cons(sx_string("possible_subject_identity"), reasons);
+    }
+    if ! Geo.known(distance)
+    {
+      reasons = sx_cons(sx_string("distance_unknown"), reasons);
+    }
+    else
+    {
       let metres = J.int64(distance, "distance_m");
-      if metres > radius { reasons = sx_cons(sx_string("outside_radius"), reasons); }
-      else {
+      if metres > radius
+      {
+        reasons = sx_cons(sx_string("outside_radius"), reasons);
+      }
+      else
+      {
         var points = 70 * (radius - metres) / radius;
-        if sx_text(J.field(signals, "type_exact")) == "true" { points = points + 30; }
+        if sx_text(J.field(signals, "type_exact")) == "true"
+        {
+          points = points + 30;
+        }
         score = J.integer(points);
-        if points < threshold { reasons = sx_cons(sx_string("below_min_score"), reasons); }
+        if points < threshold
+        {
+          reasons = sx_cons(sx_string("below_min_score"), reasons);
+        }
       }
     }
   }
   var status = "eligible";
-  if sx_kind(reasons) != 0 { status = "excluded"; }
+  if sx_kind(reasons) != 0
+  {
+    status = "excluded";
+  }
   var fields = Property.pair("candidate_id", sx_string(id), sx_nil());
   fields = Property.pair("provider", source, fields);
   fields = Property.pair("provider_property_id", provider_id, fields);
@@ -171,34 +289,65 @@ fn candidate(subject_value: sexpr, rules: sexpr, id: string, facts: sexpr, urls:
   fields = Property.pair("score", score, fields);
   fields = Property.pair("subject_signals", signals, fields);
   fields = Property.pair("status", sx_string(status), fields);
-  fields = Property.pair("reasons", J.sorted_array(J.array(reasons), false), fields);
+  fields = Property.pair("reasons",
+    J.sorted_array(J.array(reasons),
+    false),
+    fields);
   return J.object(fields);
 }
 
-fn compare_candidates(a: sexpr, b: sexpr) -> sexpr {
+fn compare_candidates(a: sexpr, b: sexpr) -> sexpr
+{
   let left = J.get(a, "listing");
   let right = J.get(b, "listing");
-  if !Geo.known(left) || !Geo.known(right) { return J.null_value(); }
-  if !Property.equal_text(left, right, "name") { return J.null_value(); }
-  let distance = Geo.distance_m(Geo.position(left, "listing"), Geo.position(right, "listing"));
+  if ! Geo.known(left) || ! Geo.known(right)
+  {
+    return J.null_value();
+  }
+  if ! Property.equal_text(left, right, "name")
+  {
+    return J.null_value();
+  }
+  let distance = Geo.distance_m(Geo.position(left,
+    "listing"),
+    Geo.position(right,
+    "listing"));
   let signals = Property.corroborate(left, right, distance);
-  if !Property.possible_same(signals) { return J.null_value(); }
-  return J.object(Property.pair("candidate_ids", J.array(sx_cons(J.field(a, "candidate_id"),
-    sx_cons(J.field(b, "candidate_id"), sx_nil()))),
-    Property.pair("distance_m", distance, Property.pair("signals", signals, sx_nil()))));
+  if ! Property.possible_same(signals)
+  {
+    return J.null_value();
+  }
+  return J.object(Property.pair("candidate_ids",
+    J.array(sx_cons(J.field(a,
+    "candidate_id"),
+    sx_cons(J.field(b,
+    "candidate_id"),
+    sx_nil()))),
+    Property.pair("distance_m",
+    distance,
+    Property.pair("signals",
+    signals,
+    sx_nil()))));
 }
 
-fn advisory(candidates: sexpr) -> sexpr {
+fn advisory(candidates: sexpr) -> sexpr
+{
   var pairs = sx_nil();
   var rest = candidates;
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let a = sx_head(rest);
     var other = sx_tail(rest);
-    while sx_kind(other) == 3 {
+    while sx_kind(other) == 3
+    {
       let b = sx_head(other);
-      if sx_text(J.field(a, "provider")) != sx_text(J.field(b, "provider")) {
+      if sx_text(J.field(a, "provider")) != sx_text(J.field(b, "provider"))
+      {
         let signals = compare_candidates(a, b);
-        if Geo.known(signals) { pairs = sx_cons(signals, pairs); }
+        if Geo.known(signals)
+        {
+          pairs = sx_cons(signals, pairs);
+        }
       }
       other = sx_tail(other);
     }
@@ -207,37 +356,51 @@ fn advisory(candidates: sexpr) -> sexpr {
   return J.array(Sx.sexpr_reverse(pairs));
 }
 
-fn apply_limit(candidates: sexpr, limit: i64) -> sexpr {
+fn apply_limit(candidates: sexpr, limit: i64) -> sexpr
+{
   var packed = sx_nil();
   var rest = candidates;
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let value = sx_head(rest);
-    if sx_text(J.field(value, "status")) == "eligible" {
+    if sx_text(J.field(value, "status")) == "eligible"
+    {
       let score = J.int64(J.field(value, "score"), "score");
       let id = J.field(value, "candidate_id");
-      packed = Property.pair("${Int.to_string(200 - score)} ${sx_text(id)}", id, packed);
+      packed = Property.pair("${Int.to_string(200 - score)} ${sx_text(id)}",
+        id,
+        packed);
     }
     rest = sx_tail(rest);
   }
   rest = J.sort_count(packed, Sx.sexpr_size(packed), true, false);
   var ranks = sx_nil();
   var rank = 0;
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     rank = rank + 1;
-    ranks = Property.pair(sx_text(J.pair_value(sx_head(rest))), J.integer(rank), ranks);
+    ranks = Property.pair(sx_text(J.pair_value(sx_head(rest))),
+      J.integer(rank),
+      ranks);
     rest = sx_tail(rest);
   }
   let by_id = J.object(ranks);
   var output = sx_nil();
   rest = candidates;
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     var value = sx_head(rest);
     let order = J.get(by_id, sx_text(J.field(value, "candidate_id")));
-    if sx_kind(order) != 0 {
+    if sx_kind(order) != 0
+    {
       value = J.replace(value, "rank", order);
-      if J.int64(order, "candidate rank") > limit {
+      if J.int64(order, "candidate rank") > limit
+      {
         value = J.replace(value, "status", sx_string("excluded"));
-        value = J.replace(value, "reasons", J.array(sx_cons(sx_string("candidate_limit"), sx_nil())));
+        value = J.replace(value,
+          "reasons",
+          J.array(sx_cons(sx_string("candidate_limit"),
+          sx_nil())));
       }
     }
     output = sx_cons(value, output);
@@ -246,22 +409,34 @@ fn apply_limit(candidates: sexpr, limit: i64) -> sexpr {
   return Sx.sexpr_reverse(output);
 }
 
-fn run(subject_input: sexpr, policy: sexpr, facts: sexpr) -> sexpr {
+fn run(subject_input: sexpr, policy: sexpr, facts: sexpr) -> sexpr
+{
   let target = subject(subject_input);
   let rules = normalization(policy);
   var packed = sx_nil();
   var urls = J.object(sx_nil());
   var rest = J.items(facts);
-  if Sx.sexpr_size(rest) > 256 { tool_fail("discovery supports at most 256 listing facts"); }
-  while sx_kind(rest) == 3 {
+  if Sx.sexpr_size(rest) > 256
+  {
+    tool_fail("discovery supports at most 256 listing facts");
+  }
+  while sx_kind(rest) == 3
+  {
     let normalized = fact(sx_head(rest));
-    let id = Property.candidate_id(J.text(J.field(normalized, "provider")),
-      J.text(J.field(normalized, "provider_property_id")));
+    let id = Property.candidate_id(J.text(J.field(normalized,
+      "provider")),
+      J.text(J.field(normalized,
+      "provider_property_id")));
     let url = url_key(normalized);
-    if url != "" {
+    if url != ""
+    {
       let current = J.get(urls, url);
-      if sx_kind(current) == 0 { urls = J.replace(urls, url, sx_string(id)); }
-      if sx_kind(current) == 2 && sx_text(current) != id {
+      if sx_kind(current) == 0
+      {
+        urls = J.replace(urls, url, sx_string(id));
+      }
+      if sx_kind(current) == 2 && sx_text(current) != id
+      {
         urls = J.replace(urls, url, J.boolean(true));
       }
     }
@@ -272,107 +447,172 @@ fn run(subject_input: sexpr, policy: sexpr, facts: sexpr) -> sexpr {
   }
   rest = J.sort_count(packed, Sx.sexpr_size(packed), true, false);
   var candidates = sx_nil();
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let key = sx_text(sx_head(sx_head(rest)));
     let id = text_slice(key, 0, 74);
     var details = sx_nil();
     var last = "";
-    while sx_kind(rest) == 3 {
+    while sx_kind(rest) == 3
+    {
       let entry = sx_head(rest);
       let current = sx_text(sx_head(entry));
-      if text_slice(current, 0, 74) != id { break; }
-      if current != last { details = sx_cons(J.pair_value(entry), details); last = current; }
+      if text_slice(current, 0, 74) != id
+      {
+        break;
+      }
+      if current != last
+      {
+        details = sx_cons(J.pair_value(entry), details);
+        last = current;
+      }
       rest = sx_tail(rest);
     }
-    candidates = sx_cons(candidate(target, rules, id, Sx.sexpr_reverse(details), urls), candidates);
+    candidates = sx_cons(candidate(target,
+      rules,
+      id,
+      Sx.sexpr_reverse(details),
+      urls),
+      candidates);
   }
   let ordered = apply_limit(Sx.sexpr_reverse(candidates),
-    J.int64(J.field(rules, "max_candidates"), "max_candidates"));
-  let payload = J.object(Property.pair("kind", sx_string("caravansary.discovery@1"),
-    Property.pair("subject", target, Property.pair("policy", rules,
-    Property.pair("candidates", J.array(ordered),
-    Property.pair("possible_cross_provider_matches", advisory(ordered), sx_nil()))))));
+    J.int64(J.field(rules,
+    "max_candidates"),
+    "max_candidates"));
+  let payload = J.object(Property.pair("kind",
+    sx_string("caravansary.discovery@1"),
+    Property.pair("subject",
+    target,
+    Property.pair("policy",
+    rules,
+    Property.pair("candidates",
+    J.array(ordered),
+    Property.pair("possible_cross_provider_matches",
+    advisory(ordered),
+    sx_nil()))))));
   return J.replace(payload, "discovery_id", sx_string(J.digest(payload)));
 }
 
-fn fixture_provenance(capture: sexpr, source: string, operation: string) -> sexpr {
+fn fixture_provenance(capture: sexpr,
+  source: string,
+  operation: string) -> sexpr
+{
   let provenance = J.field(capture, "provenance");
-  if Property.text(provenance, "qualification") != "fictional-frozen-html" {
+  if Property.text(provenance, "qualification") != "fictional-frozen-html"
+  {
     tool_fail("only fictional-frozen-html provider observations are implemented");
   }
   let fixture_id = Property.opaque_id(provenance, "fixture_id");
   let source_url = Property.text(provenance, "source_url");
-  if !Inputs.starts_ascii_ci(source_url, "https://$source.example/") {
+  if ! Inputs.starts_ascii_ci(source_url, "https://$source.example/")
+  {
     tool_fail("provider observation source must identify a fixture on the provider .example domain");
   }
   Inputs.provider_url(sx_string(source_url), "fixture source URL");
   let observed_at = Property.text(provenance, "observed_at");
   var instant = "";
-  match Clock.parse(observed_at, "observed_at") with {
-    Ok(value) => { instant = Clock.utc_text(value); },
-    Err(message) => { tool_fail(sx_text(message)); }
+  match Clock.parse(observed_at, "observed_at") with
+  {
+    Ok(value) =>
+    {
+      instant = Clock.utc_text(value);
+    }, Err(message) =>
+    {
+      tool_fail(sx_text(message));
+    }
   };
   var fields = Property.pair("provider", sx_string(source), sx_nil());
   fields = Property.pair("operation", sx_string(operation), fields);
-  fields = Property.pair("qualification", sx_string("fictional-frozen-html"), fields);
+  fields = Property.pair("qualification",
+    sx_string("fictional-frozen-html"),
+    fields);
   fields = Property.pair("fixture_id", sx_string(fixture_id), fields);
   fields = Property.pair("source_url", sx_string(source_url), fields);
   fields = Property.pair("observed_at", sx_string(instant), fields);
   fields = Property.optional_text(provenance, "content_sha256", fields);
-  fields = Property.pair("extractor", sx_string(Property.text(provenance, "extractor")), fields);
+  fields = Property.pair("extractor",
+    sx_string(Property.text(provenance,
+    "extractor")),
+    fields);
   return J.object(fields);
 }
 
-fn from_observations(subject_input: sexpr, policy: sexpr, captures: sexpr) -> sexpr {
+fn from_observations(subject_input: sexpr,
+  policy: sexpr,
+  captures: sexpr) -> sexpr
+{
   var rest = J.items(captures);
-  if Sx.sexpr_size(rest) > 256 { tool_fail("discovery supports at most 256 fixture observations"); }
+  if Sx.sexpr_size(rest) > 256
+  {
+    tool_fail("discovery supports at most 256 fixture observations");
+  }
   var evidence = J.object(sx_nil());
   var skipped = J.object(sx_nil());
   var facts = sx_nil();
   var count = 0;
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let capture = sx_head(rest);
-    if Property.text(capture, "kind") != "provider-observation/v1" {
+    if Property.text(capture, "kind") != "provider-observation/v1"
+    {
       tool_fail("discovery input is not a successful provider-observation/v1");
     }
     let source = Property.provider(capture);
     let operation = Property.text(capture, "operation");
-    if operation != "profile" && operation != "candidates" {
+    if operation != "profile" && operation != "candidates"
+    {
       tool_fail("unsupported provider observation operation");
     }
     let provenance = fixture_provenance(capture, source, operation);
     let reference = "fixture:${J.digest(provenance)}";
     evidence = J.replace(evidence, reference, provenance);
     var properties = J.items(J.field(capture, "properties"));
-    if operation == "profile" && Sx.sexpr_size(properties) != 1 {
+    if operation == "profile" && Sx.sexpr_size(properties) != 1
+    {
       tool_fail("provider profile must report exactly one property");
     }
-    while sx_kind(properties) == 3 {
+    while sx_kind(properties) == 3
+    {
       count = count + 1;
-      if count > 256 { tool_fail("discovery supports at most 256 fixture properties"); }
+      if count > 256
+      {
+        tool_fail("discovery supports at most 256 fixture properties");
+      }
       let listing = sx_head(properties);
       let provider_id = Property.opaque_id(listing, "property_id");
       let url = J.field(listing, "url");
       Inputs.provider_url(url, "listing URL");
-      if !Inputs.starts_ascii_ci(sx_text(url), "https://$source.example/") {
+      if ! Inputs.starts_ascii_ci(sx_text(url), "https://$source.example/")
+      {
         tool_fail("listing URL must identify a fixture on the provider .example domain");
       }
       let name = J.get(listing, "name");
       var fields = Property.pair("provider", sx_string(source), sx_nil());
-      fields = Property.pair("provider_property_id", sx_string(provider_id), fields);
+      fields = Property.pair("provider_property_id",
+        sx_string(provider_id),
+        fields);
       fields = Property.pair("evidence_ref", sx_string(reference), fields);
       fields = Property.pair("url", url, fields);
-      if !Geo.known(name) {
-        let row = J.object(Property.pair("reason", sx_string("name_unknown"), fields));
+      if ! Geo.known(name)
+      {
+        let row = J.object(Property.pair("reason",
+          sx_string("name_unknown"),
+          fields));
         skipped = J.replace(skipped, J.render(row), row);
-      } else {
+      }
+      else
+      {
         fields = Property.pair("name", name, fields);
         fields = Property.optional_text(listing, "address", fields);
         let category = J.get(listing, "property_type");
-        if Geo.known(category) { fields = Property.pair("type", category, fields); }
+        if Geo.known(category)
+        {
+          fields = Property.pair("type", category, fields);
+        }
         let lat = J.get(listing, "latitude");
         let lon = J.get(listing, "longitude");
-        if Geo.known(lat) && Geo.known(lon) {
+        if Geo.known(lat) && Geo.known(lon)
+        {
           fields = Property.pair("latitude", lat, fields);
           fields = Property.pair("longitude", lon, fields);
         }
@@ -384,14 +624,17 @@ fn from_observations(subject_input: sexpr, policy: sexpr, captures: sexpr) -> se
     }
     rest = sx_tail(rest);
   }
-
   let discovered = run(subject_input, policy, J.array(facts));
   var fields = Property.pair("fixture_evidence", evidence, sx_nil());
   fields = Property.pair("unusable_listings", object_values(skipped), fields);
   rest = sx_tail(discovered);
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let entry = sx_head(rest);
-    if sx_text(sx_head(entry)) != "discovery_id" { fields = sx_cons(entry, fields); }
+    if sx_text(sx_head(entry)) != "discovery_id"
+    {
+      fields = sx_cons(entry, fields);
+    }
     rest = sx_tail(rest);
   }
   let payload = J.object(fields);

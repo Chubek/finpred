@@ -4,21 +4,26 @@ import core.csv as CSV;
 import core.serialize as JSON;
 import plugins.yieldcraft.matcher as Match;
 import std.crypto.crypto as Crypto;
-
 fn offers_as_of(csv: string, scenario: C.Scenario) -> string
 {
   # Reuse the engine's whole-dataset header, row, byte and duplicate inventory
   # checks. Even malformed rows after the last eligible one invalidate the import.
-  let pool = Match.ingest(csv,scenario);
+  let pool = Match.ingest(csv, scenario);
   Match.destroy(pool);
-  let (status, digest) = Crypto.basis_crypto_blake3(csv);
-  if status != 0 || text_len(digest) != 64 { tool_fail("dragnet: BLAKE3 failed"); }
+  let(status, digest) = Crypto.basis_crypto_blake3(csv);
+  if status != 0 || text_len(digest) != 64
+  {
+    tool_fail("dragnet: BLAKE3 failed");
+  }
   let out = buffer_new();
   let lines = CSV.rows(csv);
   for i in 1 .. lines
   {
-    let offer = C.offer_csv(CSV.line(csv,i));
-    if C.eligible(offer,scenario) { buffer_append(out,JSON.offer(offer,digest)); }
+    let offer = C.offer_csv(CSV.line(csv, i));
+    if C.eligible(offer, scenario)
+    {
+      buffer_append(out, JSON.offer(offer, digest));
+    }
   }
   return buffer_text(out);
 }

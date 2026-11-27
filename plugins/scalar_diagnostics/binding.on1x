@@ -2,22 +2,29 @@
 import automat.dag as Dag;
 import sdk.registry as Registry;
 import plugins.scalar_diagnostics.midpoint as Midpoint;
-
-fn lookup(operation:string, mode:string) -> Dag.Descriptor
+fn lookup(operation: string, mode: string) -> Dag.Descriptor
 {
   let entry = Registry.scalar_entry(operation);
   # Lookup describes the analysis profile even when lowering will reject the
   # requested mode; the engine admits only analysis before any invocation.
-  if operation != "midpoint@1" || !Registry.admits(entry,"analysis")
-  { return Dag.no_binding(operation,mode); }
+  if operation != "midpoint@1" || ! Registry.admits(entry, "analysis")
+  {
+    return Dag.no_binding(operation, mode);
+  }
   let spec = Registry.resolve(entry);
-  return Dag.host_binary(operation,3,sx_text(spec["package"]),
-    sx_text(sx_head(spec["inputs"])),sx_text(spec["output"]));
+  return Dag.host_binary(operation,
+    3,
+    sx_text(spec["package"]),
+    sx_text(sx_head(spec["inputs"])),
+    sx_text(spec["output"]));
 }
 
-fn call(operation:string, left:i64, right:i64) -> i64
+fn call(operation: string, left: i64, right: i64) -> i64
 {
-  if operation == "midpoint@1" { return Midpoint.midpoint(left,right); }
+  if operation == "midpoint@1"
+  {
+    return Midpoint.midpoint(left, right);
+  }
   tool_fail("scalar diagnostics: no handler");
   return 0;
 }

@@ -101,7 +101,9 @@ replays the same synthesized DFA for byte spans and the On1x frontend lowers
 those tokens into configuration and a statically checked transform AST.
 
 The checked-in `tables.on1x` needs no generator when building or running a
-consumer. To regenerate it (or verify it without editing the checkout):
+consumer. Regeneration uses `on1xc fmt` with the project's `.on1xfmt`.
+Build the pinned toolchain with `make mulib` or set `ON1XC` to its compiler
+before regenerating or checking the tables:
 
 ```sh
 sh plugins/caravansary/frontend/generate-tables.sh

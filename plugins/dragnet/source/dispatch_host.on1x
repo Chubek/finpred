@@ -6,60 +6,98 @@ import core.format as F;
 import sdk.callable as SDK;
 import std.os.OS_FileSys as FS;
 import std.io.TextIO as IO;
-
-fn snapshot(slot:string, limit:i64) -> string
+fn snapshot(slot: string, limit: i64) -> string
 {
   let n = FS.basis_fs_file_size(slot);
   if FS.basis_fs_is_dir(slot) || n < 1 || n > limit
-  { tool_fail("dragnet dispatch: expected bounded descriptor snapshot"); }
+  {
+    tool_fail("dragnet dispatch: expected bounded descriptor snapshot");
+  }
   let bytes = IO.basis_text_io_input_all(slot);
-  if text_len(bytes) != n { tool_fail("dragnet dispatch: changed input"); }
+  if text_len(bytes) != n
+  {
+    tool_fail("dragnet dispatch: changed input");
+  }
   return bytes;
 }
 
 fn source_name() -> string
 {
-  let raw = snapshot("/proc/self/fd/3",128);
+  let raw = snapshot("/proc/self/fd/3", 128);
   let n = text_len(raw);
-  if n < 2 || text_byte(raw,n-1) != 10
-  { tool_fail("dragnet dispatch: invalid source selector"); }
-  for i in 0 .. (n - 1)
+  if n < 2 || text_byte(raw, n - 1) != 10
   {
-    let c = text_byte(raw,i);
-    if !((c >= 97 && c <= 122) || (c >= 48 && c <= 57) ||
-      c == 45 || c == 46 || c == 64 || c == 95)
-    { tool_fail("dragnet dispatch: invalid source selector"); }
+    tool_fail("dragnet dispatch: invalid source selector");
   }
-  return text_slice(raw,0,n-1);
+  for i in 0 ..(n - 1)
+  {
+    let c = text_byte(raw, i);
+    if !((c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c == 45 || c == 46 || c == 64 || c == 95)
+    {
+      tool_fail("dragnet dispatch: invalid source selector");
+    }
+  }
+  return text_slice(raw, 0, n - 1);
 }
 
-fn inputs(ports:sexpr, fd:i64, end:i64) -> sexpr
+fn inputs(ports: sexpr, fd: i64, end: i64) -> sexpr
 {
-  if sx_kind(ports) == 0 { return sx_nil(); }
-  if fd >= end { tool_fail("dragnet dispatch: incompatible descriptor layout"); }
+  if sx_kind(ports) == 0
+  {
+    return sx_nil();
+  }
+  if fd >= end
+  {
+    tool_fail("dragnet dispatch: incompatible descriptor layout");
+  }
   let port = SDK.decode_port(sx_head(ports));
   let number = F.num(fd);
-  let first = snapshot("/proc/self/fd/$number",port["max_bytes"]);
-  return Sources.value(first,inputs(sx_tail(ports),fd+1,end));
+  let first = snapshot("/proc/self/fd/$number", port["max_bytes"]);
+  return Sources.value(first, inputs(sx_tail(ports), fd + 1, end));
 }
 
-fn dispatch(source:string) -> Sources.SourceOutcome
+fn dispatch(source: string) -> Sources.SourceOutcome
 {
-  if source != Sources.public_key() {
-    let binding = Sources.legacy_binding(source,"analysis");
-    if !binding["enabled"] { tool_fail("dragnet dispatch: unknown or denied source"); }
-    return Sources.invoke_values(source,"analysis",inputs(binding["inputs"],4,9),"");
+  if source != Sources.public_key()
+  {
+    let binding = Sources.legacy_binding(source, "analysis");
+    if ! binding["enabled"]
+    {
+      tool_fail("dragnet dispatch: unknown or denied source");
+    }
+    return Sources.invoke_values(source,
+      "analysis",
+      inputs(binding["inputs"],
+      4,
+      9),
+      "");
   }
-  if !Sources.admitted(source,"analysis") { tool_fail("dragnet dispatch: unknown or denied source"); }
-  let as_of = snapshot("/proc/self/fd/7",21);
-  if text_len(as_of) != 21 || text_byte(as_of,20) != 10
-  { tool_fail("dragnet dispatch: malformed as-of timestamp"); }
+  if ! Sources.admitted(source, "analysis")
+  {
+    tool_fail("dragnet dispatch: unknown or denied source");
+  }
+  let as_of = snapshot("/proc/self/fd/7", 21);
+  if text_len(as_of) != 21 || text_byte(as_of, 20) != 10
+  {
+    tool_fail("dragnet dispatch: malformed as-of timestamp");
+  }
   let port = Sources.capture_port();
-  let capture = snapshot("/proc/self/fd/4",port["max_bytes"]);
-  let binding = Sources.feed_binding(capture,"analysis");
-  if !binding["enabled"] { tool_fail("dragnet dispatch: unknown or denied source"); }
-  let values = Sources.value(capture,inputs(sx_tail(binding["inputs"]),5,7));
-  return Sources.invoke_values(source,"analysis",values,text_slice(as_of,0,20));
+  let capture = snapshot("/proc/self/fd/4", port["max_bytes"]);
+  let binding = Sources.feed_binding(capture, "analysis");
+  if ! binding["enabled"]
+  {
+    tool_fail("dragnet dispatch: unknown or denied source");
+  }
+  let values = Sources.value(capture,
+    inputs(sx_tail(binding["inputs"]),
+    5,
+    7));
+  return Sources.invoke_values(source,
+    "analysis",
+    values,
+    text_slice(as_of,
+    0,
+    20));
 }
 
 fn main() -> i64

@@ -11,86 +11,122 @@ import plugins.caravansary.metrics.transform as Metrics;
 import frontend as Frontend;
 import std.environ as Env;
 import std.io.TextIO as IO;
-
-fn script_config(path:string) -> string
+fn script_config(path: string) -> string
 {
   let input = buffer_new();
-  buffer_append(input,Plan.script_text(path));
-  let (config,error) = Frontend.parse_script_syntax(input);
-  if error != "" { Args.bad(error); }
+  buffer_append(input, Plan.script_text(path));
+  let(config, error) = Frontend.parse_script_syntax(input);
+  if error != ""
+  {
+    Args.bad(error);
+  }
   return config;
 }
 
-fn require_json(result:Result<sexpr,sexpr>) -> sexpr
+fn require_json(result: Result < sexpr, sexpr >) -> sexpr
 {
   match result with
   {
-    Ok(value) => { return value; },
-    Err(reason) => { Args.bad(sx_text(reason)); }
+    Ok(value) =>
+    {
+      return value;
+    }, Err(reason) =>
+    {
+      Args.bad(sx_text(reason));
+    }
   };
   return sx_nil();
 }
 
-fn apply_metrics(base:sexpr, ast:sexpr, program:MetricTypes.Program) -> string
+fn apply_metrics(base: sexpr,
+  ast: sexpr,
+  program: MetricTypes.Program) -> string
 {
-  if sx_kind(ast) == 0 { return Json.render(base); }
-  let (error,metrics) = Metrics.evaluate_report(program,base);
-  if error != "" { Args.bad(error); }
+  if sx_kind(ast) == 0
+  {
+    return Json.render(base);
+  }
+  let(error, metrics) = Metrics.evaluate_report(program, base);
+  if error != ""
+  {
+    Args.bad(error);
+  }
   let base_text = Json.render(base);
-  let details = Json.object(
-    sx_cons(Json.pair("kind",sx_string("caravansary.transformation@1")),
-    sx_cons(Json.pair("program_digest",sx_string(Json.digest(ast))),
-    sx_cons(Json.pair("base_report_digest",sx_string(Host.caravansary_sha256(base_text))),
-    sx_cons(Json.pair("metrics",Json.parse(metrics)),sx_nil())))));
+  let details = Json.object(sx_cons(Json.pair("kind",
+    sx_string("caravansary.transformation@1")),
+    sx_cons(Json.pair("program_digest",
+    sx_string(Json.digest(ast))),
+    sx_cons(Json.pair("base_report_digest",
+    sx_string(Host.caravansary_sha256(base_text))),
+    sx_cons(Json.pair("metrics",
+    Json.parse(metrics)),
+    sx_nil())))));
   # In the fixed coverage@1 schema, `transformation` sorts after every base
   # member. Reuse the exact canonical bytes hashed above rather than
   # walking and escaping the whole matrix again.
   let out = buffer_new();
-  buffer_append(out,text_slice(base_text,0,text_len(base_text)-1));
-  buffer_append(out,",\"transformation\":");
-  Json.emit(out,details);
-  buffer_byte(out,125);
+  buffer_append(out, text_slice(base_text, 0, text_len(base_text) - 1));
+  buffer_append(out, ",\"transformation\":");
+  Json.emit(out, details);
+  buffer_byte(out, 125);
   return buffer_text(out);
 }
 
 fn main() -> i64
 {
-  let (mode,script,civil,clock,observations,roots) = Args.read();
+  let(mode, script, civil, clock, observations, roots) = Args.read();
   if mode == "help"
   {
     IO.basis_text_io_print(Args.usage());
     return 0;
   }
   if civil != "" && Civil.date(civil) == 0
-  { Args.bad("expected a Gregorian date in YYYY-MM-DD form"); }
+  {
+    Args.bad("expected a Gregorian date in YYYY-MM-DD form");
+  }
   let now = Plan.clock(clock);
   let config_text = script_config(script);
-  let ast = Json.get(Json.parse(config_text),"transform");
+  let ast = Json.get(Json.parse(config_text), "transform");
   var program = MetricTypes.empty_program();
   if sx_kind(ast) != 0
   {
-    let (error,compiled) = Metrics.compile_transform(Json.render(ast));
-    if error != "" { Args.bad(error); }
+    let(error, compiled) = Metrics.compile_transform(Json.render(ast));
+    if error != ""
+    {
+      Args.bad(error);
+    }
     program = compiled;
   }
-  let plan = Plan.load(config_text,script,roots,civil,now);
+  let plan = Plan.load(config_text, script, roots, civil, now);
   let count = Plan.row_count(plan);
   if mode == "plan"
   {
-    for i in 0 .. count { println(Plan.row_at(plan,i)); }
+    for i in 0 .. count
+    {
+      println(Plan.row_at(plan, i));
+    }
     return 0;
   }
   if mode == "pilot-booking"
   {
-    if count != 1 { Args.bad("pilot-booking requires a script with exactly one matrix cell"); }
-    let property = Json.field(Plan.config(plan),"property");
-    let today = Plan.local_date(Json.text(Json.field(property,"timezone")),now);
-    let query = Booking.request(Plan.row_value(plan,0),today);
-    let (_has_token,token) = Env.getenv("CARAVANSARY_BOOKING_API_TOKEN");
-    let (_has_affiliate,affiliate) = Env.getenv("CARAVANSARY_BOOKING_AFFILIATE_ID");
-    let probe = Booking.run(query,token,affiliate);
+    if count != 1
+    {
+      Args.bad("pilot-booking requires a script with exactly one matrix cell");
+    }
+    let property = Json.field(Plan.config(plan), "property");
+    let today = Plan.local_date(Json.text(Json.field(property,
+      "timezone")),
+      now);
+    let query = Booking.request(Plan.row_value(plan, 0), today);
+    let(_has_token, token) = Env.getenv("CARAVANSARY_BOOKING_API_TOKEN");
+    let(_has_affiliate,
+      affiliate) = Env.getenv("CARAVANSARY_BOOKING_AFFILIATE_ID");
+    let probe = Booking.run(query, token, affiliate);
     println(Json.render(probe));
-    if Booking.field(probe,"outcome") == "failed" { return 1; }
+    if Booking.field(probe, "outcome") == "failed"
+    {
+      return 1;
+    }
     return 0;
   }
   var cells = sx_nil();
@@ -98,17 +134,26 @@ fn main() -> i64
   while i > 0
   {
     i = i - 1;
-    cells = sx_cons(Plan.row_value(plan,i),cells);
+    cells = sx_cons(Plan.row_value(plan, i), cells);
   }
   let rows = Json.array(cells);
   let config = Plan.config(plan);
-  let refresh = Json.field(config,"refresh");
-  let sources = Json.field(config,"sources");
-  let capacity = require_json(Scheduler.capacity(refresh,sources,rows));
-  let max_age = Json.int64(Json.field(refresh,"max_age_seconds"),"max_age_seconds");
+  let refresh = Json.field(config, "refresh");
+  let sources = Json.field(config, "sources");
+  let capacity = require_json(Scheduler.capacity(refresh, sources, rows));
+  let max_age = Json.int64(Json.field(refresh,
+    "max_age_seconds"),
+    "max_age_seconds");
   var log = "";
-  if observations != "" { log = Plan.observation_text(observations); }
-  let base = require_json(Coverage.report(rows,log,Plan.utc_text(now),max_age,capacity));
-  println(apply_metrics(base,ast,program));
+  if observations != ""
+  {
+    log = Plan.observation_text(observations);
+  }
+  let base = require_json(Coverage.report(rows,
+    log,
+    Plan.utc_text(now),
+    max_age,
+    capacity));
+  println(apply_metrics(base, ast, program));
   return 0;
 }

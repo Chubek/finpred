@@ -7,113 +7,152 @@ import core.money as Money;
 import store.artifacts as Store;
 import std.String as Str;
 import yieldcraft.contribution as Base;
-
-fn selection(out:buffer,p:i64,n:i64,w:i64)
+fn selection(out: buffer, p: i64, n: i64, w: i64)
 {
   if p < 0
-  { buffer_append(out,"{\"action\":\"hold\",\"price_minor\":null,\"nominal_minor_milli\":0,\"worst_minor_milli\":0}"); }
+  {
+    buffer_append(out,
+      "{\"action\":\"hold\",\"price_minor\":null,\"nominal_minor_milli\":0,\"worst_minor_milli\":0}");
+  }
   else
   {
     let price = F.num(p);
     let nominal = F.num(n);
     let worst = F.num(w);
-    buffer_append(out,"{\"action\":\"offer\",\"price_minor\":$price,\"nominal_minor_milli\":$nominal,\"worst_minor_milli\":$worst}");
+    buffer_append(out,
+      "{\"action\":\"offer\",\"price_minor\":$price,\"nominal_minor_milli\":$nominal,\"worst_minor_milli\":$worst}");
   }
 }
 
-fn solve(scenario_raw:string,valuation_raw:string,demand_raw:string,stress_raw:string) -> string
+fn solve(scenario_raw: string,
+  valuation_raw: string,
+  demand_raw: string,
+  stress_raw: string) -> string
 {
   let limit = Base.bytes_limit();
   if text_len(scenario_raw) > limit || text_len(valuation_raw) > limit || text_len(stress_raw) > limit
-  { tool_fail("risk contribution: input exceeds byte limit"); }
+  {
+    tool_fail("risk contribution: input exceeds byte limit");
+  }
   let scenario = C.scenario_csv(scenario_raw);
-  let v = C.valuation_csv(valuation_raw,scenario);
+  let v = C.valuation_csv(valuation_raw, scenario);
   let sd = Store.digest(scenario_raw);
-  let evidence = Base.snapshot(scenario,sd,demand_raw);
+  let evidence = Base.snapshot(scenario, sd, demand_raw);
   let dd = Store.digest(demand_raw);
   let vd = Store.digest(valuation_raw);
   let stress_digest = Store.digest(stress_raw);
   let cost = evidence["cost"];
   let rows = CSV.rows(demand_raw);
   let cutoff = sx_text(scenario["decision_at"]);
-  if CSV.rows(stress_raw) != rows { tool_fail("risk contribution: stress grid must cover every price"); }
-  CSV.header(CSV.line(stress_raw,0),"pricing.demand-stress-input@1");
-  CSV.header(CSV.line(stress_raw,1),"demand_blake3,assumptions_as_of");
-  let meta = CSV.line(stress_raw,2);
-  CSV.require_width(meta,2);
-  let as_of = CSV.field(meta,1);
-  if CSV.field(meta,0) != dd || !Date.utc_timestamp(as_of)
-     || Str.compare(as_of,cutoff) > 0 || Str.compare(as_of,sx_text(evidence["ingested"])) < 0
-  { tool_fail("risk contribution: wrong demand digest or invalid assumption timestamp"); }
-  CSV.header(CSV.line(stress_raw,3),"price_minor,low_room_nights_milli,high_room_nights_milli");
+  if CSV.rows(stress_raw) != rows
+  {
+    tool_fail("risk contribution: stress grid must cover every price");
+  }
+  CSV.header(CSV.line(stress_raw, 0), "pricing.demand-stress-input@1");
+  CSV.header(CSV.line(stress_raw, 1), "demand_blake3,assumptions_as_of");
+  let meta = CSV.line(stress_raw, 2);
+  CSV.require_width(meta, 2);
+  let as_of = CSV.field(meta, 1);
+  if CSV.field(meta,
+    0) != dd || ! Date.utc_timestamp(as_of) || Str.compare(as_of,
+    cutoff) > 0 || Str.compare(as_of,
+    sx_text(evidence["ingested"])) < 0
+  {
+    tool_fail("risk contribution: wrong demand digest or invalid assumption timestamp");
+  }
+  CSV.header(CSV.line(stress_raw,
+    3),
+    "price_minor,low_room_nights_milli,high_room_nights_milli");
   let bounds = Base.bounds(v);
   let floor = bounds["floor"];
   let cap = bounds["cap"];
   let current = v["current_cents"];
   let candidates = buffer_new();
-  var last_price = -1;
+  var last_price = - 1;
   var last_nominal = 1000000;
   var last_low = last_nominal;
   var last_high = last_nominal;
-  var best_price = -1;
+  var best_price = - 1;
   var best_nominal = 0;
   var best_worst = 0;
   var best_distance = 0;
-  var nominal_price = -1;
+  var nominal_price = - 1;
   var nominal_score = 0;
   var nominal_worst = 0;
   var nominal_distance = 0;
   for i in 4 .. rows
   {
-    let row = CSV.line(demand_raw,i);
-    let stress = CSV.line(stress_raw,i);
-    CSV.require_width(row,2);
-    CSV.require_width(stress,3);
-    let price = Base.number(row,0);
-    let expected = Base.number(row,1);
-    let low = Base.number(stress,1);
-    let high = Base.number(stress,2);
-    if !Money.safe_nonnegative(price) || price <= last_price || expected > last_nominal
-      || Base.number(stress,0) != price || low > expected || expected > high || low > last_low || high > last_high
-    { tool_fail("risk contribution: incompatible or unordered prices or demand bounds"); }
+    let row = CSV.line(demand_raw, i);
+    let stress = CSV.line(stress_raw, i);
+    CSV.require_width(row, 2);
+    CSV.require_width(stress, 3);
+    let price = Base.number(row, 0);
+    let expected = Base.number(row, 1);
+    let low = Base.number(stress, 1);
+    let high = Base.number(stress, 2);
+    if ! Money.safe_nonnegative(price) || price <= last_price || expected > last_nominal || Base.number(stress,
+      0) != price || low > expected || expected > high || low > last_low || high > last_high
+    {
+      tool_fail("risk contribution: incompatible or unordered prices or demand bounds");
+    }
     last_price = price;
     last_nominal = expected;
     last_low = low;
     last_high = high;
-    let margin = price-cost;
-    let nominal = margin*expected;
-    var worst = margin*low;
-    if margin < 0 { worst = margin*high; }
-    let distance = Money.absolute_distance(price,current);
+    let margin = price - cost;
+    let nominal = margin * expected;
+    var worst = margin * low;
+    if margin < 0
+    {
+      worst = margin * high;
+    }
+    let distance = Money.absolute_distance(price, current);
     var feasible = "false";
     if price >= floor && price <= cap
     {
       feasible = "true";
       if worst > best_worst || (worst > 0 && worst == best_worst && distance < best_distance)
-      { best_price = price; best_nominal = nominal; best_worst = worst; best_distance = distance; }
+      {
+        best_price = price;
+        best_nominal = nominal;
+        best_worst = worst;
+        best_distance = distance;
+      }
       if nominal > nominal_score || (nominal > 0 && nominal == nominal_score && distance < nominal_distance)
-      { nominal_price = price; nominal_score = nominal; nominal_worst = worst; nominal_distance = distance; }
+      {
+        nominal_price = price;
+        nominal_score = nominal;
+        nominal_worst = worst;
+        nominal_distance = distance;
+      }
     }
-    if i > 4 { buffer_append(candidates,","); }
+    if i > 4
+    {
+      buffer_append(candidates, ",");
+    }
     let p = F.num(price);
     let l = F.num(low);
     let m = F.num(expected);
     let h = F.num(high);
     let n = F.num(nominal);
     let w = F.num(worst);
-    buffer_append(candidates,"{\"price_minor\":$p,\"low_room_nights_milli\":$l,\"nominal_room_nights_milli\":$m,\"high_room_nights_milli\":$h,\"nominal_minor_milli\":$n,\"worst_minor_milli\":$w,\"feasible\":$feasible}");
+    buffer_append(candidates,
+      "{\"price_minor\":$p,\"low_room_nights_milli\":$l,\"nominal_room_nights_milli\":$m,\"high_room_nights_milli\":$h,\"nominal_minor_milli\":$n,\"worst_minor_milli\":$w,\"feasible\":$feasible}");
   }
   let report = buffer_new();
   let c = F.num(cost);
   let f = F.num(floor);
   let u = F.num(cap);
   let list = buffer_text(candidates);
-  buffer_append(report,"{\"kind\":\"pricing.contribution-stress\",\"version\":1,\"published\":false,\"currency\":\"EUR\",\"price_basis\":\"room_night\",\"scale\":1000,\"comparison\":\"modeled_not_observed\",");
-  buffer_append(report,"\"scenario\":\"blake3:$sd\",\"valuation\":\"blake3:$vd\",\"demand\":\"blake3:$dd\",\"stress\":\"blake3:$stress_digest\",\"assumptions_as_of\":\"$as_of\",\"decision_at\":\"$cutoff\",");
-  buffer_append(report,"\"marginal_cost_minor\":$c,\"feasible_floor_minor\":$f,\"feasible_cap_minor\":$u,\"robust\":");
-  selection(report,best_price,best_nominal,best_worst);
-  buffer_append(report,",\"nominal\":");
-  selection(report,nominal_price,nominal_score,nominal_worst);
-  buffer_append(report,",\"candidates\":[$list]}\n");
+  buffer_append(report,
+    "{\"kind\":\"pricing.contribution-stress\",\"version\":1,\"published\":false,\"currency\":\"EUR\",\"price_basis\":\"room_night\",\"scale\":1000,\"comparison\":\"modeled_not_observed\",");
+  buffer_append(report,
+    "\"scenario\":\"blake3:$sd\",\"valuation\":\"blake3:$vd\",\"demand\":\"blake3:$dd\",\"stress\":\"blake3:$stress_digest\",\"assumptions_as_of\":\"$as_of\",\"decision_at\":\"$cutoff\",");
+  buffer_append(report,
+    "\"marginal_cost_minor\":$c,\"feasible_floor_minor\":$f,\"feasible_cap_minor\":$u,\"robust\":");
+  selection(report, best_price, best_nominal, best_worst);
+  buffer_append(report, ",\"nominal\":");
+  selection(report, nominal_price, nominal_score, nominal_worst);
+  buffer_append(report, ",\"candidates\":[$list]}\n");
   return buffer_text(report);
 }

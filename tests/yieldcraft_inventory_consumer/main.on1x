@@ -1,11 +1,13 @@
 import plugins.yieldcraft.inventory_pricing as Inventory;
 import std.environ as Env;
 import std.io.TextIO as IO;
-
 fn main() -> i64
 {
-  let (found,raw) = Env.getenv("YIELDCRAFT_INVENTORY_INPUT");
-  if !found { tool_fail("inventory consumer: missing input"); }
+  let(found, raw) = Env.getenv("YIELDCRAFT_INVENTORY_INPUT");
+  if ! found
+  {
+    tool_fail("inventory consumer: missing input");
+  }
   IO.basis_text_io_print(Inventory.solve(raw));
   return 0;
 }

@@ -3,53 +3,80 @@ import std.String as Str;
 import std.sexpr.sexpr as Sx;
 import std.Int as Int;
 from . import host as Host, json as Json;
-
-fn has_field_name(names: string, key: string) -> bool {
-  if key == "" || Str.contains(key, " ") { return false; }
+fn has_field_name(names: string, key: string) -> bool
+{
+  if key == "" || Str.contains(key, " ")
+  {
+    return false;
+  }
   return Str.contains(" $names ", " $key ");
 }
 
-fn object_fields(value: sexpr, required: string, optional: string, where: string) {
-  if Json.kind(value) != "object" { tool_fail("$where must be an object"); }
+fn object_fields(value: sexpr,
+  required: string,
+  optional: string,
+  where: string)
+{
+  if Json.kind(value) != "object"
+  {
+    tool_fail("$where must be an object");
+  }
   let n = text_len(required);
   var start = 0;
-  for i in 0 .. n + 1 {
-    if i == n || text_byte(required, i) == 32 {
-      if i > start {
+  for i in 0 .. n + 1
+  {
+    if i == n || text_byte(required, i) == 32
+    {
+      if i > start
+      {
         let key = text_slice(required, start, i);
-        if sx_kind(Json.get(value, key)) == 0 { tool_fail("$where is missing fields: $key"); }
+        if sx_kind(Json.get(value, key)) == 0
+        {
+          tool_fail("$where is missing fields: $key");
+        }
       }
       start = i + 1;
     }
   }
   var rest = sx_tail(value);
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let key = sx_text(sx_head(sx_head(rest)));
-    if !has_field_name(required, key) && !has_field_name(optional, key) {
+    if ! has_field_name(required, key) && ! has_field_name(optional, key)
+    {
       tool_fail("$where has unknown fields: $key");
     }
     rest = sx_tail(rest);
   }
 }
 
-fn array_items(value: sexpr, where: string) -> sexpr {
-  if Json.kind(value) != "array" { tool_fail("$where must be an array"); }
+fn array_items(value: sexpr, where: string) -> sexpr
+{
+  if Json.kind(value) != "array"
+  {
+    tool_fail("$where must be an array");
+  }
   return sx_tail(value);
 }
 
-fn whitespace(code: i64) -> bool {
-  return (code >= 9 && code <= 13) || (code >= 28 && code <= 32) ||
-    code == 133 || code == 160 || code == 5760 || (code >= 8192 && code <= 8202) ||
-    code == 8232 || code == 8233 || code == 8239 || code == 8287 || code == 12288;
+fn whitespace(code: i64) -> bool
+{
+  return (code >= 9 && code <= 13) || (code >= 28 && code <= 32) || code == 133 || code == 160 || code == 5760 || (code >= 8192 && code <= 8202) || code == 8232 || code == 8233 || code == 8239 || code == 8287 || code == 12288;
 }
 
-fn nonempty_text(value: sexpr, where: string) -> string {
-  if sx_kind(value) == 2 {
+fn nonempty_text(value: sexpr, where: string) -> string
+{
+  if sx_kind(value) == 2
+  {
     let s = sx_text(value);
     var pos = 0;
-    while pos < text_len(s) {
-      let (code, end) = Json.utf8(s, pos, "");
-      if !whitespace(code) { return s; }
+    while pos < text_len(s)
+    {
+      let(code, end) = Json.utf8(s, pos, "");
+      if ! whitespace(code)
+      {
+        return s;
+      }
       pos = end;
     }
   }
@@ -57,16 +84,22 @@ fn nonempty_text(value: sexpr, where: string) -> string {
   return "";
 }
 
-fn child_ages(value: sexpr, where: string) -> sexpr {
+fn child_ages(value: sexpr, where: string) -> sexpr
+{
   let ages = array_items(value, where);
   var rest = ages;
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let age = sx_head(rest);
-    if Json.kind(age) != "integer" || text_len(sx_text(age)) > 2 {
+    if Json.kind(age) != "integer" || text_len(sx_text(age)) > 2
+    {
       tool_fail("$where must contain only integer ages from 0 to 17");
     }
     let n = Json.int64(age, where);
-    if n < 0 || n > 17 { tool_fail("$where must contain only integer ages from 0 to 17"); }
+    if n < 0 || n > 17
+    {
+      tool_fail("$where must contain only integer ages from 0 to 17");
+    }
     rest = sx_tail(rest);
   }
   return ages;
@@ -74,222 +107,382 @@ fn child_ages(value: sexpr, where: string) -> sexpr {
 
 # Subtract two unsigned exact decimals, so a valid adult count need not fit
 # the machine integer ABI. Empty denotes an amount larger than the remainder.
-fn adult_remainder(remaining: string, allocated: string) -> string {
-  if text_len(allocated) > text_len(remaining) ||
-      (text_len(allocated) == text_len(remaining) && Str.compare(allocated, remaining) > 0) { return ""; }
+fn adult_remainder(remaining: string, allocated: string) -> string
+{
+  if text_len(allocated) > text_len(remaining) || (text_len(allocated) == text_len(remaining) && Str.compare(allocated,
+    remaining) > 0)
+  {
+    return "";
+  }
   let rev = buffer_new();
   var i = text_len(remaining);
   var j = text_len(allocated);
   var carried = 0;
-  while i > 0 {
+  while i > 0
+  {
     i = i - 1;
     var digit = text_byte(remaining, i) - 48 - carried;
-    if j > 0 {
+    if j > 0
+    {
       j = j - 1;
       digit = digit - (text_byte(allocated, j) - 48);
     }
     carried = 0;
-    if digit < 0 { digit = digit + 10; carried = 1; }
+    if digit < 0
+    {
+      digit = digit + 10;
+      carried = 1;
+    }
     buffer_byte(rev, digit + 48);
   }
   let out = buffer_new();
   var n = buffer_len(rev);
-  while n > 1 && buffer_at(rev, n - 1) == 48u8 { n = n - 1; }
-  while n > 0 {
+  while n > 1 && buffer_at(rev, n - 1) == 48u8
+  {
+    n = n - 1;
+  }
+  while n > 0
+  {
     n = n - 1;
     buffer_push(out, buffer_at(rev, n));
   }
   return buffer_text(out);
 }
 
-fn guest(value: sexpr, where: string) -> sexpr {
+fn guest(value: sexpr, where: string) -> sexpr
+{
   object_fields(value, "id rooms adults child_ages", "allocation", where);
   ignore(nonempty_text(Json.field(value, "id"), "$where.id"));
-  let rooms = Json.positive_integer_text(Json.field(value, "rooms"), "$where.rooms");
+  let rooms = Json.positive_integer_text(Json.field(value,
+    "rooms"),
+    "$where.rooms");
   let adults = Json.field(value, "adults");
   let ages = Json.field(value, "child_ages");
   var remaining = Json.positive_integer_text(adults, "$where.adults");
   ignore(child_ages(ages, "$where.child_ages"));
   let allocation = Json.get(value, "allocation");
-  if sx_kind(allocation) == 0 {
-    if rooms != "1" { tool_fail("$where.allocation is required for more than one room"); }
-    let room = Json.object(sx_cons(Json.pair("adults", adults),
-      sx_cons(Json.pair("child_ages", ages), sx_nil())));
-    return Json.replace(value, "allocation", Json.array(sx_cons(room, sx_nil())));
+  if sx_kind(allocation) == 0
+  {
+    if rooms != "1"
+    {
+      tool_fail("$where.allocation is required for more than one room");
+    }
+    let room = Json.object(sx_cons(Json.pair("adults",
+      adults),
+      sx_cons(Json.pair("child_ages",
+      ages),
+      sx_nil())));
+    return Json.replace(value,
+      "allocation",
+      Json.array(sx_cons(room,
+      sx_nil())));
   }
   var rest = array_items(allocation, "$where.allocation");
-  if Int.to_string(Sx.sexpr_size(rest)) != rooms {
+  if Int.to_string(Sx.sexpr_size(rest)) != rooms
+  {
     tool_fail("$where.allocation must have exactly one entry per room");
   }
   var index = 0;
   var allocated_ages = sx_nil();
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let at = "$where.allocation[$index]";
     let room = sx_head(rest);
     object_fields(room, "adults child_ages", "", at);
-    let n = Json.positive_integer_text(Json.field(room, "adults"), "$at.adults");
+    let n = Json.positive_integer_text(Json.field(room,
+      "adults"),
+      "$at.adults");
     remaining = adult_remainder(remaining, n);
-    if remaining == "" { tool_fail("$where.allocation does not match the stated party"); }
-    var room_ages = child_ages(Json.field(room, "child_ages"), "$at.child_ages");
-    while sx_kind(room_ages) == 3 {
+    if remaining == ""
+    {
+      tool_fail("$where.allocation does not match the stated party");
+    }
+    var room_ages = child_ages(Json.field(room,
+      "child_ages"),
+      "$at.child_ages");
+    while sx_kind(room_ages) == 3
+    {
       allocated_ages = sx_cons(sx_head(room_ages), allocated_ages);
       room_ages = sx_tail(room_ages);
     }
     index = index + 1;
     rest = sx_tail(rest);
   }
-  if remaining != "0" || Json.render(Json.sorted_array(Json.array(allocated_ages), true)) !=
-      Json.render(Json.sorted_array(ages, true)) {
+  if remaining != "0" || Json.render(Json.sorted_array(Json.array(allocated_ages),
+    true)) != Json.render(Json.sorted_array(ages,
+    true))
+  {
     tool_fail("$where.allocation does not match the stated party");
   }
   return value;
 }
 
-fn coordinate(value: sexpr, bound: i64, where: string) {
+fn coordinate(value: sexpr, bound: i64, where: string)
+{
   let typ = Json.kind(value);
-  if typ == "float" {
+  if typ == "float"
+  {
     let parsed = Host.caravansary_parse_float(sx_text(value));
-    if parsed < -f64_from_i64(bound) || parsed > f64_from_i64(bound) {
+    if parsed < - f64_from_i64(bound) || parsed > f64_from_i64(bound)
+    {
       tool_fail("$where must be between ${-bound} and $bound");
     }
     return;
   }
-  if typ != "integer" && typ != "string" { tool_fail("$where must be a decimal coordinate"); }
+  if typ != "integer" && typ != "string"
+  {
+    tool_fail("$where must be a decimal coordinate");
+  }
   # Compare an exact decimal string without rounding to binary float.
   let s = sx_text(value);
   let n = text_len(s);
   var pos = 0;
-  if n > 0 && (text_byte(s, 0) == 45 || text_byte(s, 0) == 43) { pos = 1; }
+  if n > 0 && (text_byte(s, 0) == 45 || text_byte(s, 0) == 43)
+  {
+    pos = 1;
+  }
   let start = pos;
   var units = 0;
   pos = Json.skip_digits(s, pos);
-  for i in start .. pos {
-    if units <= bound { units = units * 10 + text_byte(s, i) - 48; }
-  }
-  var nonzero_fraction = false;
-  if pos < n && text_byte(s, pos) == 46 {
-    let after = pos + 1;
-    pos = Json.skip_digits(s, after);
-    if pos == after { tool_fail("$where must be a decimal coordinate"); }
-    for i in after .. pos {
-      if text_byte(s, i) != 48 { nonzero_fraction = true; }
+  for i in start .. pos
+  {
+    if units <= bound
+    {
+      units = units * 10 + text_byte(s, i) - 48;
     }
   }
-  if pos != n || pos == start { tool_fail("$where must be a decimal coordinate"); }
-  if units > bound || (units == bound && nonzero_fraction) {
+  var nonzero_fraction = false;
+  if pos < n && text_byte(s, pos) == 46
+  {
+    let after = pos + 1;
+    pos = Json.skip_digits(s, after);
+    if pos == after
+    {
+      tool_fail("$where must be a decimal coordinate");
+    }
+    for i in after .. pos
+    {
+      if text_byte(s, i) != 48
+      {
+        nonzero_fraction = true;
+      }
+    }
+  }
+  if pos != n || pos == start
+  {
+    tool_fail("$where must be a decimal coordinate");
+  }
+  if units > bound || (units == bound && nonzero_fraction)
+  {
     tool_fail("$where must be between ${-bound} and $bound");
   }
 }
 
-fn starts_ascii_ci(s: string, prefix: string) -> bool {
-  if text_len(s) < text_len(prefix) { return false; }
-  for i in 0 .. text_len(prefix) {
+fn starts_ascii_ci(s: string, prefix: string) -> bool
+{
+  if text_len(s) < text_len(prefix)
+  {
+    return false;
+  }
+  for i in 0 .. text_len(prefix)
+  {
     var c = text_byte(s, i);
-    if c >= 65 && c <= 90 { c = c + 32; }
-    if c != text_byte(prefix, i) { return false; }
+    if c >= 65 && c <= 90
+    {
+      c = c + 32;
+    }
+    if c != text_byte(prefix, i)
+    {
+      return false;
+    }
   }
   return true;
 }
 
 # These compatibility characters introduce a URI delimiter after NFKC.
-fn disguised_delimiter(c: i64) -> bool {
-  return c == 0x2047 || c == 0x2048 || c == 0x2049 || c == 0x2100 || c == 0x2101 ||
-    c == 0x2105 || c == 0x2106 || c == 0x2a74 || c == 0xfe13 || c == 0xfe16 ||
-    c == 0xfe55 || c == 0xfe56 || c == 0xfe5f || c == 0xfe6b || c == 0xff03 ||
-    c == 0xff0f || c == 0xff1a || c == 0xff1f || c == 0xff20;
+fn disguised_delimiter(c: i64) -> bool
+{
+  return c == 0x2047 || c == 0x2048 || c == 0x2049 || c == 0x2100 || c == 0x2101 || c == 0x2105 || c == 0x2106 || c == 0x2a74 || c == 0xfe13 || c == 0xfe16 || c == 0xfe55 || c == 0xfe56 || c == 0xfe5f || c == 0xfe6b || c == 0xff03 || c == 0xff0f || c == 0xff1a || c == 0xff1f || c == 0xff20;
 }
 
-fn ip_literal(host: string) -> bool {
+fn ip_literal(host: string) -> bool
+{
   let n = text_len(host);
-  if n == 0 { return false; }
-  if text_byte(host, 0) == 118 {
+  if n == 0
+  {
+    return false;
+  }
+  if text_byte(host, 0) == 118
+  {
     var pos = 1;
-    while pos < n && text_byte(host, pos) != 46 {
+    while pos < n && text_byte(host, pos) != 46
+    {
       let c = text_byte(host, pos);
-      if !Json.digit(c) && !(c >= 65 && c <= 70) && !(c >= 97 && c <= 102) { return false; }
+      if ! Json.digit(c) && !(c >= 65 && c <= 70) && !(c >= 97 && c <= 102)
+      {
+        return false;
+      }
       pos = pos + 1;
     }
     return pos > 1 && pos + 1 < n;
   }
   var percent = n;
-  for i in 0 .. n {
-    if text_byte(host, i) == 37 {
-      if percent != n { return false; }
+  for i in 0 .. n
+  {
+    if text_byte(host, i) == 37
+    {
+      if percent != n
+      {
+        return false;
+      }
       percent = i;
     }
   }
-  if percent == n - 1 { return false; }
+  if percent == n - 1
+  {
+    return false;
+  }
   return Host.caravansary_ipv6(text_slice(host, 0, percent));
 }
 
-fn provider_url(value: sexpr, where: string) {
+fn provider_url(value: sexpr, where: string)
+{
   let url = nonempty_text(value, where);
   let message = "$where must be an absolute HTTP(S) URL without credentials";
   let n = text_len(url);
   var start = 0;
-  if starts_ascii_ci(url, "https://") { start = 8; }
-  if starts_ascii_ci(url, "http://") { start = 7; }
-  if start == 0 || start == n { tool_fail(message); }
+  if starts_ascii_ci(url, "https://")
+  {
+    start = 8;
+  }
+  if starts_ascii_ci(url, "http://")
+  {
+    start = 7;
+  }
+  if start == 0 || start == n
+  {
+    tool_fail(message);
+  }
   var end = n;
   var pos = 0;
-  while pos < n {
-    let (c, next) = Json.utf8(url, pos, "");
-    if whitespace(c) || c < 32 || c == 127 || c == 92 { tool_fail(message); }
-    if pos >= start && end == n {
-      if c == 47 || c == 63 || c == 35 { end = pos; }
-      else {
-        if c == 64 || disguised_delimiter(c) { tool_fail(message); }
+  while pos < n
+  {
+    let(c, next) = Json.utf8(url, pos, "");
+    if whitespace(c) || c < 32 || c == 127 || c == 92
+    {
+      tool_fail(message);
+    }
+    if pos >= start && end == n
+    {
+      if c == 47 || c == 63 || c == 35
+      {
+        end = pos;
+      }
+      else
+      {
+        if c == 64 || disguised_delimiter(c)
+        {
+          tool_fail(message);
+        }
       }
     }
     pos = next;
   }
-  if end == start { tool_fail(message); }
+  if end == start
+  {
+    tool_fail(message);
+  }
   var port = end;
-  if text_byte(url, start) == 91 {
+  if text_byte(url, start) == 91
+  {
     var bracket = start + 1;
-    while bracket < end && text_byte(url, bracket) != 93 { bracket = bracket + 1; }
-    if bracket == end || !ip_literal(text_slice(url, start + 1, bracket)) { tool_fail(message); }
-    if bracket + 1 < end {
-      if text_byte(url, bracket + 1) != 58 { tool_fail(message); }
+    while bracket < end && text_byte(url, bracket) != 93
+    {
+      bracket = bracket + 1;
+    }
+    if bracket == end || ! ip_literal(text_slice(url, start + 1, bracket))
+    {
+      tool_fail(message);
+    }
+    if bracket + 1 < end
+    {
+      if text_byte(url, bracket + 1) != 58
+      {
+        tool_fail(message);
+      }
       port = bracket + 2;
     }
-  } else {
+  }
+  else
+  {
     var split = start;
-    while split < end && text_byte(url, split) != 58 {
+    while split < end && text_byte(url, split) != 58
+    {
       let c = text_byte(url, split);
-      if c == 91 || c == 93 { tool_fail(message); }
+      if c == 91 || c == 93
+      {
+        tool_fail(message);
+      }
       split = split + 1;
     }
-    if split == start { tool_fail(message); }
-    if split < end { port = split + 1; }
-  }
-  if port < end {
-    var number = 0;
-    for i in port .. end {
-      let c = text_byte(url, i);
-      if !Json.digit(c) { tool_fail(message); }
-      number = number * 10 + c - 48;
-      if number > 65535 { tool_fail(message); }
+    if split == start
+    {
+      tool_fail(message);
     }
-    if number == 0 { tool_fail(message); }
+    if split < end
+    {
+      port = split + 1;
+    }
+  }
+  if port < end
+  {
+    var number = 0;
+    for i in port .. end
+    {
+      let c = text_byte(url, i);
+      if ! Json.digit(c)
+      {
+        tool_fail(message);
+      }
+      number = number * 10 + c - 48;
+      if number > 65535
+      {
+        tool_fail(message);
+      }
+    }
+    if number == 0
+    {
+      tool_fail(message);
+    }
   }
 }
 
-fn property(value: sexpr, where: string, verified: sexpr) -> sexpr {
+fn property(value: sexpr, where: string, verified: sexpr) -> sexpr
+{
   object_fields(value, "id name providers", "latitude longitude type", where);
   ignore(nonempty_text(Json.field(value, "id"), "$where.id"));
   ignore(nonempty_text(Json.field(value, "name"), "$where.name"));
   let prop_type = Json.get(value, "type");
-  if sx_kind(prop_type) != 0 { ignore(nonempty_text(prop_type, "$where.type")); }
+  if sx_kind(prop_type) != 0
+  {
+    ignore(nonempty_text(prop_type, "$where.type"));
+  }
   let latitude = Json.get(value, "latitude");
   let longitude = Json.get(value, "longitude");
-  if sx_kind(latitude) != 0 { coordinate(latitude, 90, "$where.latitude"); }
-  if sx_kind(longitude) != 0 { coordinate(longitude, 180, "$where.longitude"); }
+  if sx_kind(latitude) != 0
+  {
+    coordinate(latitude, 90, "$where.latitude");
+  }
+  if sx_kind(longitude) != 0
+  {
+    coordinate(longitude, 180, "$where.longitude");
+  }
   let providers = Json.field(value, "providers");
   object_fields(providers, "", "agoda booking", "$where.providers");
   var rest = sx_tail(providers);
   var checked = verified;
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let pair = sx_head(rest);
     let source = sx_text(sx_head(pair));
     let mapping = Json.pair_value(pair);
@@ -297,28 +490,50 @@ fn property(value: sexpr, where: string, verified: sexpr) -> sexpr {
     object_fields(mapping, "mapping_status", "provider_property_id url", at);
     let status_value = Json.field(mapping, "mapping_status");
     var status = "";
-    if sx_kind(status_value) == 2 { status = sx_text(status_value); }
-    if status != "missing" && status != "unverified" && status != "verified" {
+    if sx_kind(status_value) == 2
+    {
+      status = sx_text(status_value);
+    }
+    if status != "missing" && status != "unverified" && status != "verified"
+    {
       tool_fail("$at.mapping_status must be verified, unverified, or missing");
     }
     let id = Json.get(mapping, "provider_property_id");
     let url = Json.get(mapping, "url");
     let have_id = sx_kind(id) != 0;
     let have_url = sx_kind(url) != 0;
-    if status == "missing" {
-      if have_id || have_url { tool_fail("$at: a missing mapping cannot have a provider identity"); }
-    } else {
-      if !have_id && !have_url { tool_fail("$at requires a provider_property_id and/or url"); }
-      if have_id { ignore(nonempty_text(id, "$at.provider_property_id")); }
-      if have_url { provider_url(url, "$at.url"); }
-      if status == "verified" {
+    if status == "missing"
+    {
+      if have_id || have_url
+      {
+        tool_fail("$at: a missing mapping cannot have a provider identity");
+      }
+    }
+    else
+    {
+      if ! have_id && ! have_url
+      {
+        tool_fail("$at requires a provider_property_id and/or url");
+      }
+      if have_id
+      {
+        ignore(nonempty_text(id, "$at.provider_property_id"));
+      }
+      if have_url
+      {
+        provider_url(url, "$at.url");
+      }
+      if status == "verified"
+      {
         # IDs and URLs are separate namespaces. Fixed prefixes contain no
         # source data, so key concatenation is unambiguous.
-        if have_id {
+        if have_id
+        {
           let key = "$source provider_property_id ${sx_text(id)}";
           checked = sx_cons(Json.pair(key, Json.null_value()), checked);
         }
-        if have_url {
+        if have_url
+        {
           let key = "$source url ${sx_text(url)}";
           checked = sx_cons(Json.pair(key, Json.null_value()), checked);
         }
@@ -329,90 +544,143 @@ fn property(value: sexpr, where: string, verified: sexpr) -> sexpr {
   return checked;
 }
 
-fn competitors(doc: sexpr, origin: string) -> (sexpr, sexpr) {
-  object_fields(doc, "kind guest_configurations properties", "", "${origin}competitor document");
+fn competitors(doc: sexpr, origin: string) ->(sexpr, sexpr)
+{
+  object_fields(doc,
+    "kind guest_configurations properties",
+    "",
+    "${origin}competitor document");
   let kind = Json.field(doc, "kind");
-  if sx_kind(kind) != 2 || sx_text(kind) != "caravansary.competitors@1" {
+  if sx_kind(kind) != 2 || sx_text(kind) != "caravansary.competitors@1"
+  {
     tool_fail("${origin}competitor document kind must be caravansary.competitors@1");
   }
   var guests = sx_nil();
-  var rest = array_items(Json.field(doc, "guest_configurations"), "${origin}guest_configurations");
+  var rest = array_items(Json.field(doc,
+    "guest_configurations"),
+    "${origin}guest_configurations");
   var index = 0;
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let value = guest(sx_head(rest), "${origin}guest_configurations[$index]");
-    guests = sx_cons(Json.pair(Json.text(Json.field(value, "id")), value), guests);
+    guests = sx_cons(Json.pair(Json.text(Json.field(value,
+      "id")),
+      value),
+      guests);
     index = index + 1;
     rest = sx_tail(rest);
   }
-  let guests_by_id = Json.object_unique(guests, "${origin}duplicate guest configuration ID");
-  let properties = array_items(Json.field(doc, "properties"), "${origin}properties");
+  let guests_by_id = Json.object_unique(guests,
+    "${origin}duplicate guest configuration ID");
+  let properties = array_items(Json.field(doc,
+    "properties"),
+    "${origin}properties");
   var ids = sx_nil();
   var verified = sx_nil();
   rest = properties;
   index = 0;
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let value = sx_head(rest);
     verified = property(value, "${origin}properties[$index]", verified);
-    ids = sx_cons(Json.pair(Json.text(Json.field(value, "id")), Json.null_value()), ids);
+    ids = sx_cons(Json.pair(Json.text(Json.field(value,
+      "id")),
+      Json.null_value()),
+      ids);
     index = index + 1;
     rest = sx_tail(rest);
   }
   ignore(Json.object_unique(ids, "${origin}duplicate property ID"));
-  ignore(Json.object_unique(verified, "${origin}duplicates a verified provider identity"));
+  ignore(Json.object_unique(verified,
+    "${origin}duplicates a verified provider identity"));
   return (guests_by_id, properties);
 }
 
-fn pair_key(guest: string, nights: string) -> string {
+fn pair_key(guest: string, nights: string) -> string
+{
   # The first separator cannot appear in a positive integer spelling.
   return "$nights:$guest";
 }
 
-fn contains_atom(values: sexpr, key: string) -> bool {
+fn contains_atom(values: sexpr, key: string) -> bool
+{
   var rest = values;
-  while sx_kind(rest) == 3 {
-    if sx_text(sx_head(rest)) == key { return true; }
+  while sx_kind(rest) == 3
+  {
+    if sx_text(sx_head(rest)) == key
+    {
+      return true;
+    }
     rest = sx_tail(rest);
   }
   return false;
 }
 
-fn weights(doc: sexpr, guests: sexpr, stays: sexpr, origin: string) -> sexpr {
-  object_fields(doc, "kind mode source weights", "", "${origin}weight document");
+fn weights(doc: sexpr, guests: sexpr, stays: sexpr, origin: string) -> sexpr
+{
+  object_fields(doc,
+    "kind mode source weights",
+    "",
+    "${origin}weight document");
   let kind = Json.field(doc, "kind");
-  if sx_kind(kind) != 2 || sx_text(kind) != "caravansary.weights@1" {
+  if sx_kind(kind) != 2 || sx_text(kind) != "caravansary.weights@1"
+  {
     tool_fail("${origin}weight document kind must be caravansary.weights@1");
   }
   let mode = Json.field(doc, "mode");
-  if sx_kind(mode) != 2 || sx_text(mode) != "joint" { tool_fail("${origin}weight mode must be joint"); }
+  if sx_kind(mode) != 2 || sx_text(mode) != "joint"
+  {
+    tool_fail("${origin}weight mode must be joint");
+  }
   ignore(nonempty_text(Json.field(doc, "source"), "${origin}weight source"));
   var pairs = sx_nil();
   var rest = array_items(Json.field(doc, "weights"), "${origin}weights");
   var positive = false;
   var index = 0;
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let at = "${origin}weights[$index]";
     let entry = sx_head(rest);
     object_fields(entry, "guest_configuration stay_length weight", "", at);
-    let guest_id = nonempty_text(Json.field(entry, "guest_configuration"), "$at.guest_configuration");
-    let stay = Json.positive_integer_text(Json.field(entry, "stay_length"), "$at.stay_length");
-    if !contains_atom(guests, guest_id) || !contains_atom(stays, stay) {
+    let guest_id = nonempty_text(Json.field(entry,
+      "guest_configuration"),
+      "$at.guest_configuration");
+    let stay = Json.positive_integer_text(Json.field(entry,
+      "stay_length"),
+      "$at.stay_length");
+    if ! contains_atom(guests, guest_id) || ! contains_atom(stays, stay)
+    {
       tool_fail("$at is for an unconfigured guest/stay pair");
     }
     let weight = Json.field(entry, "weight");
     let typ = Json.kind(weight);
-    if typ != "integer" && typ != "float" { tool_fail("$at.weight must be a nonnegative finite number"); }
+    if typ != "integer" && typ != "float"
+    {
+      tool_fail("$at.weight must be a nonnegative finite number");
+    }
     let literal = sx_text(weight);
     let zero = literal == "0" || literal == "0.0" || literal == "-0.0";
-    if !zero && text_byte(literal, 0) == 45 { tool_fail("$at.weight must be a nonnegative finite number"); }
-    if !zero { positive = true; }
+    if ! zero && text_byte(literal, 0) == 45
+    {
+      tool_fail("$at.weight must be a nonnegative finite number");
+    }
+    if ! zero
+    {
+      positive = true;
+    }
     pairs = sx_cons(Json.pair(pair_key(guest_id, stay), weight), pairs);
     index = index + 1;
     rest = sx_tail(rest);
   }
-  let result = Json.object_unique(pairs, "${origin}duplicates a guest/stay pair");
-  if index != Sx.sexpr_size(guests) * Sx.sexpr_size(stays) {
+  let result = Json.object_unique(pairs,
+    "${origin}duplicates a guest/stay pair");
+  if index != Sx.sexpr_size(guests) * Sx.sexpr_size(stays)
+  {
     tool_fail("${origin}weights are required for every configured guest/stay pair");
   }
-  if !positive { tool_fail("${origin}at least one weight must be positive"); }
+  if ! positive
+  {
+    tool_fail("${origin}at least one weight must be positive");
+  }
   return result;
 }

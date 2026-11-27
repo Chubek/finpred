@@ -1,0 +1,8 @@
+# GNU C-inspired: two-space indentation, separate brace lines, and
+# a preferred 79-column width. Separate top-level blocks with a blank line.
+# The formatter does not support GNU's extra indent for nested braces.
+width = 79
+tabstop = 2
+algorithm = fits
+brace_style = allman
+top_level_block_newlines = 2

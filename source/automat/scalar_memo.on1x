@@ -1,62 +1,102 @@
 # Run-local table for the trusted scalar evaluator. Registry identifiers and
 # raw hex parent digests are validated, newline-free fields.
-fn key(owner:string, op:string, kind:string, left:string, right:string) -> string
+fn key(owner: string,
+  op: string,
+  kind: string,
+  left: string,
+  right: string) -> string
 {
   let k = "scalar-memo@1\nengine=automat.scalar-dag@1\nowner=$owner\nop=$op\nkind=$kind\nleft=$left\nright=$right\n";
-  if text_len(k) > 512 { tool_fail("scalar memo: key too long"); }
+  if text_len(k) > 512
+  {
+    tool_fail("scalar memo: key too long");
+  }
   return k;
 }
 
-fn select_key(condition:string, positive:string, zero:string) -> string
+fn select_key(condition: string, positive: string, zero: string) -> string
 {
   let k = "scalar-select-memo@1\nengine=automat.scalar-dag@2\nowner=finpred.core@1\nop=select@1\nkind=scalar.level@1\ncondition=$condition\npositive=$positive\nzero=$zero\n";
-  if text_len(k) > 512 { tool_fail("scalar memo: key too long"); }
+  if text_len(k) > 512
+  {
+    tool_fail("scalar memo: key too long");
+  }
   return k;
 }
 
-fn decimal_value(s:string) -> i64
+fn decimal_value(s: string) -> i64
 {
   let n = text_len(s);
-  if n < 1 || n > 13 { tool_fail("scalar memo: invalid decimal length"); }
-  if n > 1 && text_byte(s,0) == 48 { tool_fail("scalar memo: leading zero"); }
+  if n < 1 || n > 13
+  {
+    tool_fail("scalar memo: invalid decimal length");
+  }
+  if n > 1 && text_byte(s, 0) == 48
+  {
+    tool_fail("scalar memo: leading zero");
+  }
   var v = 0;
   for i in 0 .. n
   {
-    let digit = text_byte(s,i) - 48;
-    if digit < 0 || digit > 9 { tool_fail("scalar memo: invalid digit"); }
-    v = v*10 + digit;
+    let digit = text_byte(s, i) - 48;
+    if digit < 0 || digit > 9
+    {
+      tool_fail("scalar memo: invalid digit");
+    }
+    v = v * 10 + digit;
   }
-  if v > 1000000000000 { tool_fail("scalar memo: value out of range"); }
+  if v > 1000000000000
+  {
+    tool_fail("scalar memo: value out of range");
+  }
   return v;
 }
 
-fn lookup(entries:sexpr, k:string) -> Option<i64>
+fn lookup(entries: sexpr, k: string) -> Option < i64 >
 {
-  if text_len(k) > 512 { tool_fail("scalar memo: key too long"); }
-  var rest = entries;
-  for i in 0 .. 16
+  if text_len(k) > 512
   {
-    if sx_kind(rest) == 0 { return option_none(); }
-    let pair = sx_head(rest);
-    if sx_text(sx_head(pair)) == k { return option_some(decimal_value(sx_text(sx_head(sx_tail(pair))))); }
-    rest = sx_tail(rest);
+    tool_fail("scalar memo: key too long");
   }
-  if sx_kind(rest) != 0 { tool_fail("scalar memo: capacity exceeded"); }
-  return option_none();
-}
-
-# Called on a miss; entries is nil or a table built only by this evaluator.
-fn remember(entries:sexpr, k:string, value:i64) -> sexpr
-{
-  if text_len(k) > 512 { tool_fail("scalar memo: key too long"); }
-  if value < 0 || value > 1000000000000 { tool_fail("scalar memo: value out of range"); }
   var rest = entries;
   for i in 0 .. 16
   {
     if sx_kind(rest) == 0
     {
-      let pair = sx_cons(sx_string(k),sx_cons(sx_string("$value"),sx_nil()));
-      return sx_cons(pair,entries);
+      return option_none();
+    }
+    let pair = sx_head(rest);
+    if sx_text(sx_head(pair)) == k
+    {
+      return option_some(decimal_value(sx_text(sx_head(sx_tail(pair)))));
+    }
+    rest = sx_tail(rest);
+  }
+  if sx_kind(rest) != 0
+  {
+    tool_fail("scalar memo: capacity exceeded");
+  }
+  return option_none();
+}
+
+# Called on a miss; entries is nil or a table built only by this evaluator.
+fn remember(entries: sexpr, k: string, value: i64) -> sexpr
+{
+  if text_len(k) > 512
+  {
+    tool_fail("scalar memo: key too long");
+  }
+  if value < 0 || value > 1000000000000
+  {
+    tool_fail("scalar memo: value out of range");
+  }
+  var rest = entries;
+  for i in 0 .. 16
+  {
+    if sx_kind(rest) == 0
+    {
+      let pair = sx_cons(sx_string(k), sx_cons(sx_string("$value"), sx_nil()));
+      return sx_cons(pair, entries);
     }
     rest = sx_tail(rest);
   }

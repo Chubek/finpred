@@ -4,26 +4,47 @@ import plugins.caravansary.coverage.index as Index;
 import plugins.caravansary.coverage.observation as Obs;
 import plugins.caravansary.coverage.values as J;
 import std.collections.List as List;
+macro fail
+{
+  rule($message: Expression) => expression
+  {
+    result_error(sx_string($message))
+  };
+}
 
-macro fail { rule ($message:Expression) => expression { result_error(sx_string($message)) }; }
-
-fn next_line(text: string, begin: i64, number: i64) -> Result<(sexpr, i64), sexpr>
+fn next_line(text: string,
+  begin: i64,
+  number: i64) -> Result < (sexpr,
+  i64), sexpr >
 {
   let size = text_len(text);
   var end = begin;
   while end < size && text_byte(text, end) != 10 && text_byte(text, end) != 13
-  { end = end + 1; }
+  {
+    end = end + 1;
+  }
   var next = end + 1;
-  if end < size && text_byte(text, end) == 13 && next < size && text_byte(text, next) == 10
-  { next = next + 1; }
+  if end < size && text_byte(text,
+    end) == 13 && next < size && text_byte(text,
+    next) == 10
+  {
+    next = next + 1;
+  }
   match J.parse(text_slice(text, begin, end)) with
   {
-    Ok(r) => { return result_ok((r, next)); },
-    Err(message) => { return fail!(format("observation log line {}: {}", number, sx_text(message))); }
+    Ok(r) =>
+    {
+      return result_ok((r, next));
+    }, Err(message) =>
+    {
+      return fail!(format("observation log line {}: {}",
+        number,
+        sx_text(message)));
+    }
   };
 }
 
-fn observations(text: string) -> Result<sexpr, sexpr>
+fn observations(text: string) -> Result < sexpr, sexpr >
 {
   let size = text_len(text);
   var begin = 0;
@@ -32,93 +53,155 @@ fn observations(text: string) -> Result<sexpr, sexpr>
   while begin < size
   {
     number = number + 1;
-    let (r, next) = next_line(text, begin, number)?;
+    let(r, next) = next_line(text, begin, number)?;
     records = sx_cons(r, records);
     begin = next;
   }
   return result_ok(J.array(List.basis_list_rev(records)));
 }
 
-fn planner_index(rows: sexpr) -> Result<sexpr, sexpr>
+fn planner_index(rows: sexpr) -> Result < sexpr, sexpr >
 {
-  if !J.is_array(rows) { return fail!("planner rows must be an array"); }
+  if ! J.is_array(rows)
+  {
+    return fail!("planner rows must be an array");
+  }
   var rest = sx_tail(rows);
   var tree = sx_nil();
-  while !J.absent(rest)
+  while ! J.absent(rest)
   {
     let row = sx_head(rest);
     let cell = J.get(row, "cell_key");
     Obs.nonempty(cell, "planner cell_key")?;
     let key = sx_text(cell);
-    if !J.absent(Index.get(tree, key)) { return fail!("duplicate planner cell_key"); }
+    if ! J.absent(Index.get(tree, key))
+    {
+      return fail!("duplicate planner cell_key");
+    }
     let status = J.plain(J.get(row, "status"));
     if status != "pending" && status != "unsupported"
-    { return fail!("planner rows must start pending or unsupported"); }
+    {
+      return fail!("planner rows must start pending or unsupported");
+    }
     tree = Index.put_atom(tree, cell, row);
     rest = sx_tail(rest);
   }
   return result_ok(tree);
 }
 
-fn inspect_record(v: sexpr, rows: sexpr, seen: sexpr) -> Result<(sexpr, Obs.Order), sexpr>
+fn inspect_record(v: sexpr,
+  rows: sexpr,
+  seen: sexpr) -> Result < (sexpr,
+  Obs.Order), sexpr >
 {
   let key = Obs.key(v)?;
   let time = Obs.validate(v, Index.get(rows, sx_text(key)))?;
-  if !J.absent(Index.get(seen, sx_text(time["id"])))
-  { return fail!("duplicate observation_id"); }
+  if ! J.absent(Index.get(seen, sx_text(time["id"])))
+  {
+    return fail!("duplicate observation_id");
+  }
   return result_ok((key, time));
 }
 
-fn newer(t: Obs.Order, old: sexpr) -> Result<bool, sexpr>
+fn newer(t: Obs.Order, old: sexpr) -> Result < bool, sexpr >
 {
-  if J.absent(old) { return result_ok(true); }
-  let received = Clock.parse(J.plain(J.get(old, "received_at")), "received_at")?;
-  if t["received"] != received { return result_ok(t["received"] > received); }
-  let ingested = Clock.parse(J.plain(J.get(old, "ingested_at")), "ingested_at")?;
-  if t["ingested"] != ingested { return result_ok(t["ingested"] > ingested); }
+  if J.absent(old)
+  {
+    return result_ok(true);
+  }
+  let received = Clock.parse(J.plain(J.get(old,
+    "received_at")),
+    "received_at")?;
+  if t["received"] != received
+  {
+    return result_ok(t["received"] > received);
+  }
+  let ingested = Clock.parse(J.plain(J.get(old,
+    "ingested_at")),
+    "ingested_at")?;
+  if t["ingested"] != ingested
+  {
+    return result_ok(t["ingested"] > ingested);
+  }
   # UTF-8 unsigned byte ordering is Unicode scalar ordering.
-  return result_ok(Index.compare(sx_text(t["id"]), sx_text(J.get(old, "observation_id"))) > 0);
+  return result_ok(Index.compare(sx_text(t["id"]),
+    sx_text(J.get(old,
+    "observation_id"))) > 0);
 }
 
-fn tally(pending: i64, priced: i64, unavailable: i64, unsupported: i64, failed: i64) -> sexpr
+fn tally(pending: i64,
+  priced: i64,
+  unavailable: i64,
+  unsupported: i64,
+  failed: i64) -> sexpr
 {
-  return J.object(sx_cons(J.member("pending", J.integer(pending)),
-    sx_cons(J.member("priced", J.integer(priced)),
-    sx_cons(J.member("unavailable", J.integer(unavailable)),
-    sx_cons(J.member("unsupported", J.integer(unsupported)),
-    sx_cons(J.member("failed", J.integer(failed)), sx_nil()))))));
+  return J.object(sx_cons(J.member("pending",
+    J.integer(pending)),
+    sx_cons(J.member("priced",
+    J.integer(priced)),
+    sx_cons(J.member("unavailable",
+    J.integer(unavailable)),
+    sx_cons(J.member("unsupported",
+    J.integer(unsupported)),
+    sx_cons(J.member("failed",
+    J.integer(failed)),
+    sx_nil()))))));
 }
 
 fn freshness_tally(fresh: i64, stale: i64, none: i64) -> sexpr
 {
-  return J.object(sx_cons(J.member("fresh", J.integer(fresh)),
-    sx_cons(J.member("stale", J.integer(stale)),
-    sx_cons(J.member("none", J.integer(none)), sx_nil()))));
+  return J.object(sx_cons(J.member("fresh",
+    J.integer(fresh)),
+    sx_cons(J.member("stale",
+    J.integer(stale)),
+    sx_cons(J.member("none",
+    J.integer(none)),
+    sx_nil()))));
 }
 
-record Replay { expected: sexpr, seen: sexpr, attempts: sexpr, successes: sexpr, now: i64 }
-record Winners { attempts: sexpr, successes: sexpr, now: i64 }
+record Replay
+{
+  expected: sexpr, seen: sexpr, attempts: sexpr, successes: sexpr, now: i64
+}
 
-fn start(rows: sexpr, as_of: string, max_age_seconds: i64) -> Result<Replay, sexpr>
+record Winners
+{
+  attempts: sexpr, successes: sexpr, now: i64
+}
+
+fn start(rows: sexpr,
+  as_of: string,
+  max_age_seconds: i64) -> Result < Replay, sexpr >
 {
   let now = Clock.parse(as_of, "as_of")?;
-  if max_age_seconds <= 0 { return fail!("max_age_seconds must be a positive integer"); }
+  if max_age_seconds <= 0
+  {
+    return fail!("max_age_seconds must be a positive integer");
+  }
   # Same upper bound as Python's timedelta constructor.
   if max_age_seconds > 86399999999999
-  { return fail!("now or max_age_seconds is outside supported bounds"); }
+  {
+    return fail!("now or max_age_seconds is outside supported bounds");
+  }
   let expected = planner_index(rows)?;
-  return result_ok(record<Replay>{expected: expected, seen: sx_nil(), attempts: sx_nil(),
-    successes: sx_nil(), now: now});
+  return result_ok(record < Replay >
+  {
+    expected: expected, seen: sx_nil(), attempts: sx_nil(), successes: sx_nil(), now: now
+  });
 }
 
-fn ingest(state: Replay, record_value: sexpr, number: i64) -> Result<Replay, sexpr>
+fn ingest(state: Replay,
+  record_value: sexpr,
+  number: i64) -> Result < Replay, sexpr >
 {
   let now = state["now"];
   let checked = inspect_record(record_value, state["expected"], state["seen"]);
-  let (key_value, time) = match checked with
+  let(key_value, time) = match checked with
   {
-    Ok(pair) => pair,
-    Err(message) => { return fail!(format("observation {}: {}", number, sx_text(message))); }
+    Ok(pair) => pair, Err(message) =>
+    {
+      return fail!(format("observation {}: {}", number, sx_text(message)));
+    }
   };
   let key = sx_text(key_value);
   let seen = Index.put_atom(state["seen"], time["id"], J.boolean(true));
@@ -127,21 +210,35 @@ fn ingest(state: Replay, record_value: sexpr, number: i64) -> Result<Replay, sex
   if time["ingested"] <= now
   {
     let update_attempt = newer(time, Index.get(attempts, key))?;
-    let update_success = J.truth(J.get(record_value, "complete")) &&
-      newer(time, Index.get(successes, key))?;
+    let update_success = J.truth(J.get(record_value,
+      "complete")) && newer(time,
+      Index.get(successes,
+      key))?;
     if update_attempt || update_success
     {
       let normalized = Obs.canonical(record_value, time);
-      if update_attempt { attempts = Index.put_atom(attempts, key_value, normalized); }
-      if update_success { successes = Index.put_atom(successes, key_value, normalized); }
+      if update_attempt
+      {
+        attempts = Index.put_atom(attempts, key_value, normalized);
+      }
+      if update_success
+      {
+        successes = Index.put_atom(successes, key_value, normalized);
+      }
     }
   }
-  return result_ok(record<Replay>{expected: state["expected"], seen: seen, attempts: attempts,
-    successes: successes, now: now});
+  return result_ok(record < Replay >
+  {
+    expected: state["expected"], seen: seen, attempts: attempts, successes: successes, now: now
+  });
 }
 
-fn materialize(rows: sexpr, now: i64, max_age_seconds: i64, capacity: sexpr,
-               attempts: sexpr, successes: sexpr) -> Result<sexpr, sexpr>
+fn materialize(rows: sexpr,
+  now: i64,
+  max_age_seconds: i64,
+  capacity: sexpr,
+  attempts: sexpr,
+  successes: sexpr) -> Result < sexpr, sexpr >
 {
   let stamp = J.ascii(Clock.utc_text(now));
   # Share immutable default fields across cells. The matrix and report coexist
@@ -163,7 +260,7 @@ fn materialize(rows: sexpr, now: i64, max_age_seconds: i64, capacity: sexpr,
   var fresh = 0;
   var stale = 0;
   var none = 0;
-  while !J.absent(rest)
+  while ! J.absent(rest)
   {
     let row = sx_head(rest);
     let key = sx_text(J.get(row, "cell_key"));
@@ -172,82 +269,144 @@ fn materialize(rows: sexpr, now: i64, max_age_seconds: i64, capacity: sexpr,
     var status = J.get(row, "status");
     var attempt_pair = no_attempt;
     var tail_fields = sx_nil();
-    if !J.absent(attempt)
+    if ! J.absent(attempt)
     {
       status = J.get(attempt, "outcome");
       let reason = J.get(attempt, "reason");
       var reason_pair = no_reason;
-      if !J.absent(reason) && !J.is_null(reason) { reason_pair = J.member("reason", reason); }
-      tail_fields = sx_cons(reason_pair, sx_cons(J.member("status", status), tail_fields));
+      if ! J.absent(reason) && ! J.is_null(reason)
+      {
+        reason_pair = J.member("reason", reason);
+      }
+      tail_fields = sx_cons(reason_pair,
+        sx_cons(J.member("status",
+        status),
+        tail_fields));
       attempt_pair = J.member("latest_attempt", attempt);
     }
     else
     {
-      if !J.has(row, "reason") { tail_fields = sx_cons(no_reason, tail_fields); }
+      if ! J.has(row, "reason")
+      {
+        tail_fields = sx_cons(no_reason, tail_fields);
+      }
     }
     var next_due = due_as_of;
     match J.plain(status) with
     {
-      "pending" => { pending = pending + 1; },
-      "priced" => { priced = priced + 1; },
-      "unavailable" => { unavailable = unavailable + 1; },
-      "failed" => { failed = failed + 1; },
-      _ => { unsupported = unsupported + 1; next_due = not_due; }
+      "pending" =>
+      {
+        pending = pending + 1;
+      }, "priced" =>
+      {
+        priced = priced + 1;
+      }, "unavailable" =>
+      {
+        unavailable = unavailable + 1;
+      }, "failed" =>
+      {
+        failed = failed + 1;
+      }, _ =>
+      {
+        unsupported = unsupported + 1;
+        next_due = not_due;
+      }
     };
     var freshness_pair = no_freshness;
     var success_pair = no_success;
-    if !J.absent(success)
+    if ! J.absent(success)
     {
-      let receipt = Clock.parse(J.plain(J.get(success, "received_at")), "received_at")?;
+      let receipt = Clock.parse(J.plain(J.get(success,
+        "received_at")),
+        "received_at")?;
       let deadline = Clock.add_seconds(receipt, max_age_seconds);
       if deadline > Clock.latest()
-      { return fail!("freshness deadline is outside the supported UTC calendar"); }
+      {
+        return fail!("freshness deadline is outside the supported UTC calendar");
+      }
       next_due = J.member("next_due_at", J.ascii(Clock.utc_text(deadline)));
       var freshness = "stale";
-      if now < deadline { fresh = fresh + 1; freshness = "fresh"; }
-      else { stale = stale + 1; }
+      if now < deadline
+      {
+        fresh = fresh + 1;
+        freshness = "fresh";
+      }
+      else
+      {
+        stale = stale + 1;
+      }
       freshness_pair = J.member("freshness", J.ascii(freshness));
       success_pair = J.member("latest_success", success);
     }
-    else { none = none + 1; }
-    let fields = sx_cons(freshness_pair, sx_cons(attempt_pair, sx_cons(success_pair, sx_cons(next_due, tail_fields))));
+    else
+    {
+      none = none + 1;
+    }
+    let fields = sx_cons(freshness_pair,
+      sx_cons(attempt_pair,
+      sx_cons(success_pair,
+      sx_cons(next_due,
+      tail_fields))));
     let cell = J.merge(row, fields);
     cells = sx_cons(cell, cells);
     rest = sx_tail(rest);
   }
-  let counts_by_status = tally(pending, priced, unavailable, unsupported, failed);
+  let counts_by_status = tally(pending,
+    priced,
+    unavailable,
+    unsupported,
+    failed);
   let counts_by_freshness = freshness_tally(fresh, stale, none);
   var report_value = J.object(sx_nil());
-  report_value = J.set(report_value, "kind", J.ascii("caravansary.coverage@1"));
+  report_value = J.set(report_value,
+    "kind",
+    J.ascii("caravansary.coverage@1"));
   report_value = J.set(report_value, "as_of", stamp);
-  report_value = J.set(report_value, "max_age_seconds", J.integer(max_age_seconds));
+  report_value = J.set(report_value,
+    "max_age_seconds",
+    J.integer(max_age_seconds));
   report_value = J.set(report_value, "counts_by_status", counts_by_status);
-  report_value = J.set(report_value, "counts_by_freshness", counts_by_freshness);
-  report_value = J.set(report_value, "cells", J.array(List.basis_list_rev(cells)));
-  if !J.absent(capacity) && !J.is_null(capacity)
-  { report_value = J.set(report_value, "capacity", capacity); }
+  report_value = J.set(report_value,
+    "counts_by_freshness",
+    counts_by_freshness);
+  report_value = J.set(report_value,
+    "cells",
+    J.array(List.basis_list_rev(cells)));
+  if ! J.absent(capacity) && ! J.is_null(capacity)
+  {
+    report_value = J.set(report_value, "capacity", capacity);
+  }
   return result_ok(report_value);
 }
 
-fn fold_records(rows: sexpr, records: sexpr, as_of: string, max_age_seconds: i64)
-  -> Result<Winners, sexpr>
+fn fold_records(rows: sexpr,
+  records: sexpr,
+  as_of: string,
+  max_age_seconds: i64) -> Result < Winners, sexpr >
 {
   var state = start(rows, as_of, max_age_seconds)?;
-  if !J.is_array(records) { return fail!("observations must be an array"); }
+  if ! J.is_array(records)
+  {
+    return fail!("observations must be an array");
+  }
   var rest = sx_tail(records);
   var number = 0;
-  while !J.absent(rest)
+  while ! J.absent(rest)
   {
     number = number + 1;
     state = ingest(state, sx_head(rest), number)?;
     rest = sx_tail(rest);
   }
-  return result_ok(record<Winners>{now: state["now"], attempts: state["attempts"],
-    successes: state["successes"]});
+  return result_ok(record < Winners >
+  {
+    now: state["now"], attempts: state["attempts"], successes: state["successes"]
+  });
 }
 
-fn fold_lines(rows: sexpr, raw_jsonl: string, as_of: string, max_age_seconds: i64)
-  -> Result<Winners, sexpr>
+fn fold_lines(rows: sexpr,
+  raw_jsonl: string,
+  as_of: string,
+  max_age_seconds: i64) -> Result < Winners, sexpr >
 {
   var state = start(rows, as_of, max_age_seconds)?;
   let size = text_len(raw_jsonl);
@@ -256,27 +415,45 @@ fn fold_lines(rows: sexpr, raw_jsonl: string, as_of: string, max_age_seconds: i6
   while begin < size
   {
     number = number + 1;
-    let (r, next) = next_line(raw_jsonl, begin, number)?;
+    let(r, next) = next_line(raw_jsonl, begin, number)?;
     state = ingest(state, r, number)?;
     begin = next;
   }
-  return result_ok(record<Winners>{now: state["now"], attempts: state["attempts"],
-    successes: state["successes"]});
+  return result_ok(record < Winners >
+  {
+    now: state["now"], attempts: state["attempts"], successes: state["successes"]
+  });
 }
 
 # All observations are validated, including ones ingested after as_of.
 # The caller scopes the log and supplies trusted planner rows and capacity.
-fn coverage(rows: sexpr, records: sexpr, as_of: string, max_age_seconds: i64, capacity: sexpr)
-  -> Result<sexpr, sexpr>
+fn coverage(rows: sexpr,
+  records: sexpr,
+  as_of: string,
+  max_age_seconds: i64,
+  capacity: sexpr) -> Result < sexpr, sexpr >
 {
   let state = fold_records(rows, records, as_of, max_age_seconds)?;
-  return materialize(rows, state["now"], max_age_seconds, capacity, state["attempts"], state["successes"]);
+  return materialize(rows,
+    state["now"],
+    max_age_seconds,
+    capacity,
+    state["attempts"],
+    state["successes"]);
 }
 
 # Parse and validate in log order, keeping just the winners and unique IDs.
-fn report(rows: sexpr, raw_jsonl: string, as_of: string, max_age_seconds: i64, capacity: sexpr)
-  -> Result<sexpr, sexpr>
+fn report(rows: sexpr,
+  raw_jsonl: string,
+  as_of: string,
+  max_age_seconds: i64,
+  capacity: sexpr) -> Result < sexpr, sexpr >
 {
   let state = fold_lines(rows, raw_jsonl, as_of, max_age_seconds)?;
-  return materialize(rows, state["now"], max_age_seconds, capacity, state["attempts"], state["successes"]);
+  return materialize(rows,
+    state["now"],
+    max_age_seconds,
+    capacity,
+    state["attempts"],
+    state["successes"]);
 }

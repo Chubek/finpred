@@ -2,12 +2,11 @@
 import dragnet.source_registry as Sources;
 import std.os.CommandLine as Env;
 import std.io.TextIO as IO;
-
 fn main() -> i64
 {
   let source = Env.basis_command_line_get_env("DRAGNET_TEST_SOURCE");
   let mode = Env.basis_command_line_get_env("DRAGNET_TEST_MODE");
-  let result = Sources.invoke(source,mode,"","","","","");
+  let result = Sources.invoke(source, mode, "", "", "", "", "");
   IO.basis_text_io_print(sx_text(result["bytes"]));
   return 0;
 }

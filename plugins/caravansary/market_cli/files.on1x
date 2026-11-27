@@ -4,51 +4,71 @@ import std.os.OS_Path as Path;
 import plugins.caravansary.planning.host as Host;
 import plugins.caravansary.planning.paths as Paths;
 import plugins.caravansary.planning.json as Json;
-
-fn check_path(path: string, where: string) {
-  if path == "" || Str.contains(path,":") || Str.contains(path,"\\") {
+fn check_path(path: string, where: string)
+{
+  if path == "" || Str.contains(path, ":") || Str.contains(path, "\\")
+  {
     tool_fail("$where requires a local input path");
   }
-  for i in 0 .. text_len(path) {
-    let b = text_byte(path,i);
-    if b < 32 || b == 127 { tool_fail("$where requires a local input path"); }
+  for i in 0 .. text_len(path)
+  {
+    let b = text_byte(path, i);
+    if b < 32 || b == 127
+    {
+      tool_fail("$where requires a local input path");
+    }
   }
 }
 
-fn root_paths(inputs: sexpr) -> sexpr {
+fn root_paths(inputs: sexpr) -> sexpr
+{
   let cwd = FS.basis_fs_cwd();
   var roots = sx_nil();
   var rest = inputs;
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let path = sx_text(sx_head(rest));
-    check_path(path,"--input-root");
-    roots = sx_cons(sx_string(Paths.directory(Path.basis_path_join(cwd,path))),roots);
+    check_path(path, "--input-root");
+    roots = sx_cons(sx_string(Paths.directory(Path.basis_path_join(cwd,
+      path))),
+      roots);
     rest = sx_tail(rest);
   }
   return roots;
 }
 
-fn resolve(path: string, parent: string, roots: sexpr, where: string) -> string {
-  check_path(path,where);
-  return Paths.input_path(parent,path,roots);
+fn resolve(path: string, parent: string, roots: sexpr, where: string) -> string
+{
+  check_path(path, where);
+  return Paths.input_path(parent, path, roots);
 }
 
-fn read_text(resolved: string, limit: i64, where: string) -> string {
-  let value = Host.caravansary_read_regular(resolved,true,limit,where);
-  Json.validate_utf8(value,"$where ");
+fn read_text(resolved: string, limit: i64, where: string) -> string
+{
+  let value = Host.caravansary_read_regular(resolved, true, limit, where);
+  Json.validate_utf8(value, "$where ");
   return value;
 }
 
-fn read_json(path: string, roots: sexpr, limit: i64, where: string) -> sexpr {
-  let resolved = resolve(path,FS.basis_fs_cwd(),roots,where);
-  return Json.parse_at(read_text(resolved,limit,where),"$where: ");
+fn read_json(path: string, roots: sexpr, limit: i64, where: string) -> sexpr
+{
+  let resolved = resolve(path, FS.basis_fs_cwd(), roots, where);
+  return Json.parse_at(read_text(resolved, limit, where), "$where: ");
 }
 
-fn sha256_hex(value: string) -> bool {
-  if text_len(value) != 64 { return false; }
-  for i in 0 .. 64 {
-    let b = text_byte(value,i);
-    if !Json.digit(b) && !(b >= 97 && b <= 102) { return false; }
+fn sha256_hex(value: string) -> bool
+{
+  if text_len(value) != 64
+  {
+    return false;
+  }
+  for i in 0 .. 64
+  {
+    let b = text_byte(value, i);
+    if ! Json.digit(b) && !(b >= 97 && b <= 102)
+    {
+      return false;
+    }
   }
   return true;
 }

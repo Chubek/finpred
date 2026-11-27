@@ -3,25 +3,40 @@ import automat.runner as Runner;
 import core.contracts as C;
 import std.os.CommandLine as Env;
 import std.io.TextIO as IO;
-
 # This callback is a test policy, not a linked plugin.
-fn evaluate(s: C.Scenario, v: C.Valuation, offers: string, profile: string,
-  collect: bool, evidence: buffer) -> C.Recommendation
+fn evaluate(s: C.Scenario,
+  v: C.Valuation,
+  offers: string,
+  profile: string,
+  collect: bool,
+  evidence: buffer) -> C.Recommendation
 {
   let test = Env.basis_command_line_get_env("RUNNER_CASE");
   if test != "premium" && test != "out_of_range" && test != "over_budget" && test != "negative_search"
-  { tool_fail("test: handler must not be reached"); }
+  {
+    tool_fail("test: handler must not be reached");
+  }
   assert(s["nights"] == 2 && v["current_cents"] == 17500);
   assert(text_len(offers) > 0 && profile == "premium-p75" && collect);
-  buffer_append(evidence,"test witness\n");
+  buffer_append(evidence, "test witness\n");
   var price = 18888;
-  if test == "out_of_range" { price = v["cap_cents"] + 1; }
+  if test == "out_of_range"
+  {
+    price = v["cap_cents"] + 1;
+  }
   var searched = 1;
-  if test == "over_budget" { searched = s["search_budget"] + 1; }
-  if test == "negative_search" { searched = 0 - 1; }
-  return record<C.Recommendation>{intended_bps:7500,selected_bps:7500,intended_cents:price,
-    lower_cents:price,candidate_cents:price,recommended_cents:price,property_count:5,
-    rejected:0,infeasible:0,search_nodes:searched,reason:sx_string("test")};
+  if test == "over_budget"
+  {
+    searched = s["search_budget"] + 1;
+  }
+  if test == "negative_search"
+  {
+    searched = 0 - 1;
+  }
+  return record < C.Recommendation >
+  {
+    intended_bps: 7500, selected_bps: 7500, intended_cents: price, lower_cents: price, candidate_cents: price, recommended_cents: price, property_count: 5, rejected: 0, infeasible: 0, search_nodes: searched, reason: sx_string("test")
+  };
 }
 
 # A native caller need not go through Ottomat. Supply malformed plans directly
@@ -36,29 +51,63 @@ fn main() -> i64
   var policy = premium["profile"];
   var mode = "recommendation";
   if test == "algorithm_effect"
-  { algorithm = G.make_node(3,"algorithm","hospitality.offer@1","pricing.distribution@1","read"); }
+  {
+    algorithm = G.make_node(3,
+      "algorithm",
+      "hospitality.offer@1",
+      "pricing.distribution@1",
+      "read");
+  }
   if test == "output_effect"
-  { output = G.make_node(6,"output","pricing.recommendation@1","pricing.recommendation@1","external_action"); }
+  {
+    output = G.make_node(6,
+      "output",
+      "pricing.recommendation@1",
+      "pricing.recommendation@1",
+      "external_action");
+  }
   if test == "gate_edge"
-  { gate = G.make_node(5,"gate","pricing.distribution@1","pricing.recommendation@1","pure"); }
-  if test == "gate_order" { gate = premium["strategy"]; }
-  if test == "unknown_profile" { policy = sx_string("premium-p99"); }
-  if test == "execution" { mode = test; }
-  let plan = record<G.Plan>{input:premium["input"],source:premium["source"],
-    transform:premium["transform"],algorithm:algorithm,strategy:premium["strategy"],
-    gate:gate,output:output,profile:policy};
+  {
+    gate = G.make_node(5,
+      "gate",
+      "pricing.distribution@1",
+      "pricing.recommendation@1",
+      "pure");
+  }
+  if test == "gate_order"
+  {
+    gate = premium["strategy"];
+  }
+  if test == "unknown_profile"
+  {
+    policy = sx_string("premium-p99");
+  }
+  if test == "execution"
+  {
+    mode = test;
+  }
+  let plan = record < G.Plan >
+  {
+    input: premium["input"], source: premium["source"], transform: premium["transform"], algorithm: algorithm, strategy: premium["strategy"], gate: gate, output: output, profile: policy
+  };
   var scenario = "";
   var offers = "";
   var valuation = "";
-  if test == "premium" || test == "out_of_range" || test == "over_budget"
-    || test == "negative_search" || test == "large_offers"
+  if test == "premium" || test == "out_of_range" || test == "over_budget" || test == "negative_search" || test == "large_offers"
   {
     scenario = IO.basis_text_io_input_all(Env.basis_command_line_get_env("RUNNER_SCENARIO"));
     offers = IO.basis_text_io_input_all(Env.basis_command_line_get_env("RUNNER_OFFERS"));
     valuation = IO.basis_text_io_input_all(Env.basis_command_line_get_env("RUNNER_VALUATION"));
   }
   let evidence = buffer_new();
-  let result = Runner.run(plan,mode,scenario,offers,valuation,true,evidence,evaluate);
+  let result = Runner.run(plan,
+    mode,
+    scenario,
+    offers,
+    valuation,
+    true,
+    evidence,
+    evaluate);
   let r = result["recommendation"];
   assert(buffer_text(evidence) == "test witness\n");
   println(r["intended_bps"]);

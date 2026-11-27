@@ -5,215 +5,376 @@ import plugins.caravansary.planning.json as Json;
 import plugins.caravansary.coverage.values as Values;
 import std.String as Str;
 import std.sexpr.sexpr as Sx;
+extern fn caravansary_booking_exchange(body: string,
+  token: string,
+  affiliate: string) -> string;
+fn field(object: sexpr, key: string) -> string
+{
+  return Values.plain(Json.get(object, key));
+}
 
-extern fn caravansary_booking_exchange(body:string,token:string,affiliate:string) -> string;
+fn pair(key: string, value: sexpr, rest: sexpr) -> sexpr
+{
+  return sx_cons(Json.pair(key, value), rest);
+}
 
-fn field(object:sexpr,key:string) -> string { return Values.plain(Json.get(object,key)); }
-fn pair(key:string,value:sexpr,rest:sexpr) -> sexpr { return sx_cons(Json.pair(key,value),rest); }
-
-fn booker_country(input:string) -> string
+fn booker_country(input: string) -> string
 {
   let out = buffer_new();
   for i in 0 .. text_len(input)
   {
-    let c = text_byte(input,i);
-    if c >= 65 && c <= 90 { buffer_byte(out,c+32); }
-    else { buffer_byte(out,c); }
+    let c = text_byte(input, i);
+    if c >= 65 && c <= 90
+    {
+      buffer_byte(out, c + 32);
+    }
+    else
+    {
+      buffer_byte(out, c);
+    }
   }
   return buffer_text(out);
 }
 
-fn property_id(id:string) -> i64
+fn property_id(id: string) -> i64
 {
-  if id == "12337" || id == "42709" || id == "2098153" || id == "3427703" ||
-     id == "4462291" || id == "5476508" || id == "10507360"
-  { return Civil.digits(id,0,text_len(id)); }
+  if id == "12337" || id == "42709" || id == "2098153" || id == "3427703" || id == "4462291" || id == "5476508" || id == "10507360"
+  {
+    return Civil.digits(id, 0, text_len(id));
+  }
   tool_fail("caravansary: the pilot needs a documented numeric Booking sandbox accommodation ID");
   return 0;
 }
 
-fn request(cell:sexpr,today:string) -> sexpr
+fn request(cell: sexpr, today: string) -> sexpr
 {
-  if field(cell,"source") != "booking" || field(cell,"status") != "pending"
-  { tool_fail("caravansary: the pilot needs a verified Booking sandbox property mapping"); }
-  let id = property_id(field(cell,"provider_property_id"));
-  let context = Json.field(cell,"request_context");
-  let start = Civil.date(field(context,"checkin"));
-  let end = Civil.date(field(context,"checkout"));
+  if field(cell, "source") != "booking" || field(cell, "status") != "pending"
+  {
+    tool_fail("caravansary: the pilot needs a verified Booking sandbox property mapping");
+  }
+  let id = property_id(field(cell, "provider_property_id"));
+  let context = Json.field(cell, "request_context");
+  let start = Civil.date(field(context, "checkin"));
+  let end = Civil.date(field(context, "checkout"));
   let available = Civil.date(today);
   if start < available || end - available > 500 || end - start < 1 || end - start > 90
-  { tool_fail("caravansary: Booking requires a stay of 1–90 nights within the next 500 days"); }
-  let guests = Json.field(context,"guest_configuration");
-  var rooms = Json.items(Json.field(guests,"allocation"));
+  {
+    tool_fail("caravansary: Booking requires a stay of 1–90 nights within the next 500 days");
+  }
+  let guests = Json.field(context, "guest_configuration");
+  var rooms = Json.items(Json.field(guests, "allocation"));
   var allocation = sx_nil();
   while sx_kind(rooms) == 3
   {
     let room = sx_head(rooms);
-    let item = Json.object(pair("number_of_adults",Json.field(room,"adults"),
-      pair("children",Json.field(room,"child_ages"),sx_nil())));
-    allocation = sx_cons(item,allocation);
+    let item = Json.object(pair("number_of_adults",
+      Json.field(room,
+      "adults"),
+      pair("children",
+      Json.field(room,
+      "child_ages"),
+      sx_nil())));
+    allocation = sx_cons(item, allocation);
     rooms = sx_tail(rooms);
   }
-  let guest_fields = Json.object(pair("number_of_adults",Json.field(guests,"adults"),
-    pair("number_of_rooms",Json.field(guests,"rooms"),
-    pair("children",Json.field(guests,"child_ages"),
-    pair("allocation",Json.array(Sx.sexpr_reverse(allocation)),sx_nil())))));
-  let booker = Json.object(pair("country",sx_string(booker_country(field(context,"booker_country"))),
-    pair("platform",sx_string("desktop"),sx_nil())));
-  let extras = Json.array(sx_cons(sx_string("products"),sx_cons(sx_string("extra_charges"),sx_nil())));
-  return Json.object(pair("accommodations",Json.array(sx_cons(Json.integer(id),sx_nil())),
-    pair("booker",booker,
-    pair("checkin",Json.field(context,"checkin"),
-    pair("checkout",Json.field(context,"checkout"),
-    pair("currency",Json.field(context,"currency"),
-    pair("guests",guest_fields,
-    pair("extras",extras,sx_nil()))))))));
+  let guest_fields = Json.object(pair("number_of_adults",
+    Json.field(guests,
+    "adults"),
+    pair("number_of_rooms",
+    Json.field(guests,
+    "rooms"),
+    pair("children",
+    Json.field(guests,
+    "child_ages"),
+    pair("allocation",
+    Json.array(Sx.sexpr_reverse(allocation)),
+    sx_nil())))));
+  let booker = Json.object(pair("country",
+    sx_string(booker_country(field(context,
+    "booker_country"))),
+    pair("platform",
+    sx_string("desktop"),
+    sx_nil())));
+  let extras = Json.array(sx_cons(sx_string("products"),
+    sx_cons(sx_string("extra_charges"),
+    sx_nil())));
+  return Json.object(pair("accommodations",
+    Json.array(sx_cons(Json.integer(id),
+    sx_nil())),
+    pair("booker",
+    booker,
+    pair("checkin",
+    Json.field(context,
+    "checkin"),
+    pair("checkout",
+    Json.field(context,
+    "checkout"),
+    pair("currency",
+    Json.field(context,
+    "currency"),
+    pair("guests",
+    guest_fields,
+    pair("extras",
+    extras,
+    sx_nil()))))))));
 }
 
-fn credentials_valid(token:string,affiliate:string) -> bool
+fn credentials_valid(token: string, affiliate: string) -> bool
 {
   let size = text_len(token);
-  if size == 0 || size > 4096 { return false; }
+  if size == 0 || size > 4096
+  {
+    return false;
+  }
   let alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._~+/-";
   var padding = false;
   for i in 0 .. size
   {
-    if text_byte(token,i) == 61
+    if text_byte(token, i) == 61
     {
-      if i == 0 { return false; }
+      if i == 0
+      {
+        return false;
+      }
       padding = true;
     }
     else
     {
-      if padding || !Str.contains(alphabet,text_slice(token,i,i+1)) { return false; }
+      if padding || ! Str.contains(alphabet, text_slice(token, i, i + 1))
+      {
+        return false;
+      }
     }
   }
   let length = text_len(affiliate);
-  if length == 0 || length > 19 || text_byte(affiliate,0) == 48 { return false; }
+  if length == 0 || length > 19 || text_byte(affiliate, 0) == 48
+  {
+    return false;
+  }
   for i in 0 .. length
   {
-    let c = text_byte(affiliate,i);
-    if c < 48 || c > 57 { return false; }
+    let c = text_byte(affiliate, i);
+    if c < 48 || c > 57
+    {
+      return false;
+    }
   }
   return true;
 }
 
-fn failed(reason:string) -> sexpr
+fn failed(reason: string) -> sexpr
 {
-  return Json.object(pair("outcome",sx_string("failed"),pair("reason",sx_string(reason),sx_nil())));
+  return Json.object(pair("outcome",
+    sx_string("failed"),
+    pair("reason",
+    sx_string(reason),
+    sx_nil())));
 }
 
-fn http_reason(status:i64) -> string
+fn http_reason(status: i64) -> string
 {
-  if status == 401 { return "authentication_failed"; }
-  if status == 403 { return "permission_denied"; }
-  if status == 429 { return "rate_limited"; }
-  if status >= 300 && status < 400 { return "redirect_blocked"; }
+  if status == 401
+  {
+    return "authentication_failed";
+  }
+  if status == 403
+  {
+    return "permission_denied";
+  }
+  if status == 429
+  {
+    return "rate_limited";
+  }
+  if status >= 300 && status < 400
+  {
+    return "redirect_blocked";
+  }
   return "http_error";
 }
 
-fn populated(value:sexpr) -> bool
+fn populated(value: sexpr) -> bool
 {
   let kind = Json.kind(value);
-  if kind == "null" || kind == "missing" { return false; }
-  if kind == "array" || kind == "object" { return sx_kind(sx_tail(value)) != 0; }
-  if kind == "boolean" { return Values.truth(value); }
-  if kind == "string" { return sx_text(value) != ""; }
+  if kind == "null" || kind == "missing"
+  {
+    return false;
+  }
+  if kind == "array" || kind == "object"
+  {
+    return sx_kind(sx_tail(value)) != 0;
+  }
+  if kind == "boolean"
+  {
+    return Values.truth(value);
+  }
+  if kind == "string"
+  {
+    return sx_text(value) != "";
+  }
   let number = sx_text(value);
   return number != "0" && number != "0.0" && number != "-0.0";
 }
 
-fn summarize_payload(value:sexpr,query:sexpr) -> sexpr
+fn summarize_payload(value: sexpr, query: sexpr) -> sexpr
 {
-  let data = Json.get(value,"data");
-  if populated(Json.get(value,"errors")) || field(value,"request_id") == "" || Json.kind(data) != "array"
-  { return failed("invalid_response"); }
-  let metadata = Json.get(value,"metadata");
-  if sx_kind(metadata) != 0 && Json.kind(metadata) != "object" { return failed("invalid_response"); }
-  let next_page = Json.get(metadata,"next_page");
-  let has_more = sx_kind(next_page) != 0 && !Values.is_null(next_page);
-  if has_more && Values.plain(next_page) == "" { return failed("invalid_response"); }
+  let data = Json.get(value, "data");
+  if populated(Json.get(value,
+    "errors")) || field(value,
+    "request_id") == "" || Json.kind(data) != "array"
+  {
+    return failed("invalid_response");
+  }
+  let metadata = Json.get(value, "metadata");
+  if sx_kind(metadata) != 0 && Json.kind(metadata) != "object"
+  {
+    return failed("invalid_response");
+  }
+  let next_page = Json.get(metadata, "next_page");
+  let has_more = sx_kind(next_page) != 0 && ! Values.is_null(next_page);
+  if has_more && Values.plain(next_page) == ""
+  {
+    return failed("invalid_response");
+  }
   let rows = Json.items(data);
   if sx_kind(rows) == 0
   {
-    return Json.object(pair("outcome",sx_string("no_match"),pair("has_more",Json.boolean(has_more),sx_nil())));
+    return Json.object(pair("outcome",
+      sx_string("no_match"),
+      pair("has_more",
+      Json.boolean(has_more),
+      sx_nil())));
   }
-  if sx_kind(sx_tail(rows)) != 0 { return failed("invalid_response"); }
+  if sx_kind(sx_tail(rows)) != 0
+  {
+    return failed("invalid_response");
+  }
   let row = sx_head(rows);
-  let id = Json.get(row,"id");
-  if Json.kind(id) != "integer" ||
-     sx_text(id) != sx_text(sx_head(Json.items(Json.field(query,"accommodations"))))
-  { return failed("invalid_response"); }
-  let products = Json.get(row,"products");
-  if sx_kind(products) != 0 && Json.kind(products) != "array" { return failed("invalid_response"); }
+  let id = Json.get(row, "id");
+  if Json.kind(id) != "integer" || sx_text(id) != sx_text(sx_head(Json.items(Json.field(query,
+    "accommodations"))))
+  {
+    return failed("invalid_response");
+  }
+  let products = Json.get(row, "products");
+  if sx_kind(products) != 0 && Json.kind(products) != "array"
+  {
+    return failed("invalid_response");
+  }
   var product_count = 0;
   if sx_kind(products) != 0
   {
     var rest = Json.items(products);
     while sx_kind(rest) == 3
     {
-      if Json.kind(sx_head(rest)) != "object" { return failed("invalid_response"); }
+      if Json.kind(sx_head(rest)) != "object"
+      {
+        return failed("invalid_response");
+      }
       product_count = product_count + 1;
       rest = sx_tail(rest);
     }
   }
-  let total = Json.get(Json.get(row,"price"),"total");
-  let amount = Json.get(total,"booker_currency");
+  let total = Json.get(Json.get(row, "price"), "total");
+  let amount = Json.get(total, "booker_currency");
   let kind = Json.kind(amount);
   var nonnegative = false;
   if kind == "integer" || kind == "float"
   {
     let spelling = sx_text(amount);
-    nonnegative = !Str.is_prefix("-",spelling) || spelling == "-0.0";
+    nonnegative = ! Str.is_prefix("-", spelling) || spelling == "-0.0";
   }
-  let matches_currency = field(Json.get(row,"currency"),"booker") == field(query,"currency");
-  return Json.object(pair("outcome",sx_string("matched"),
-    pair("has_more",Json.boolean(has_more),
-    pair("products_reported",Json.integer(product_count),
-    pair("total_in_requested_currency",Json.boolean(nonnegative && matches_currency),sx_nil())))));
+  let matches_currency = field(Json.get(row,
+    "currency"),
+    "booker") == field(query,
+    "currency");
+  return Json.object(pair("outcome",
+    sx_string("matched"),
+    pair("has_more",
+    Json.boolean(has_more),
+    pair("products_reported",
+    Json.integer(product_count),
+    pair("total_in_requested_currency",
+    Json.boolean(nonnegative && matches_currency),
+    sx_nil())))));
 }
 
-fn summarize(status:i64,transport_reason:string,raw:string,query:sexpr) -> sexpr
+fn summarize(status: i64,
+  transport_reason: string,
+  raw: string,
+  query: sexpr) -> sexpr
 {
   var payload = failed("invalid_response");
-  if status > 0 && status != 200 { payload = failed(http_reason(status)); }
+  if status > 0 && status != 200
+  {
+    payload = failed(http_reason(status));
+  }
   else
   {
-    if transport_reason != "" { payload = failed(transport_reason); }
+    if transport_reason != ""
+    {
+      payload = failed(transport_reason);
+    }
     else
     {
       if status == 200
       {
         match Values.parse(raw) with
         {
-          Ok(value) => { payload = summarize_payload(value,query); },
-          Err(_) => {}
+          Ok(value) =>
+          {
+            payload = summarize_payload(value, query);
+          }, Err(_) =>
+          {
+          }
         };
       }
     }
   }
-  if status > 0 { return Json.replace(payload,"http_status",Json.integer(status)); }
+  if status > 0
+  {
+    return Json.replace(payload, "http_status", Json.integer(status));
+  }
   return payload;
 }
 
 # C returns three ASCII status bytes, a newline-terminated controlled reason,
 # and (only for a bounded 200 JSON response) the original response body.
-fn run(query:sexpr,token:string,affiliate:string) -> sexpr
+fn run(query: sexpr, token: string, affiliate: string) -> sexpr
 {
-  if !credentials_valid(token,affiliate)
-  { tool_fail("caravansary: configure CARAVANSARY_BOOKING_API_TOKEN and CARAVANSARY_BOOKING_AFFILIATE_ID with partner API credentials"); }
+  if ! credentials_valid(token, affiliate)
+  {
+    tool_fail("caravansary: configure CARAVANSARY_BOOKING_API_TOKEN and CARAVANSARY_BOOKING_AFFILIATE_ID with partner API credentials");
+  }
   let started = Civil.utc_text(Civil.clock(""));
-  let wire = caravansary_booking_exchange(Json.render(query),token,affiliate);
+  let wire = caravansary_booking_exchange(Json.render(query),
+    token,
+    affiliate);
   let size = text_len(wire);
   var end = 3;
-  while end < size && text_byte(wire,end) != 10 { end = end + 1; }
+  while end < size && text_byte(wire, end) != 10
+  {
+    end = end + 1;
+  }
   var result = failed("transport_error");
   if end < size
   {
-    result = summarize(Civil.digits(wire,0,3),text_slice(wire,3,end),text_slice(wire,end+1,size),query);
+    result = summarize(Civil.digits(wire,
+      0,
+      3),
+      text_slice(wire,
+      3,
+      end),
+      text_slice(wire,
+      end + 1,
+      size),
+      query);
   }
-  result = Json.replace(result,"kind",sx_string("caravansary.booking-sandbox-pilot@1"));
-  result = Json.replace(result,"attempts",Json.integer(1));
-  result = Json.replace(result,"started_at",sx_string(started));
-  return Json.replace(result,"finished_at",sx_string(Civil.utc_text(Civil.clock(""))));
+  result = Json.replace(result,
+    "kind",
+    sx_string("caravansary.booking-sandbox-pilot@1"));
+  result = Json.replace(result, "attempts", Json.integer(1));
+  result = Json.replace(result, "started_at", sx_string(started));
+  return Json.replace(result,
+    "finished_at",
+    sx_string(Civil.utc_text(Civil.clock(""))));
 }

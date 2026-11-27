@@ -4,32 +4,46 @@
 import std.sexpr.sexpr as Sx;
 from plugins.caravansary.planning import json as Json, civil as Civil;
 from . import price_values as V;
+fn max_history() -> i64
+{
+  return 1024;
+}
 
-fn max_history() -> i64 { return 1024; }
-fn rooms_cap() -> i64 { return 1000000; }
+fn rooms_cap() -> i64
+{
+  return 1000000;
+}
 
 # Index into descending date order, independent of observation order. Bad
 # quantity on a dated, clocked record blocks that date only when it is current.
-fn index(history: sexpr) -> (sexpr, string) {
+fn index(history: sexpr) ->(sexpr, string)
+{
   let qual = V.text(history, "qualification");
   let observations = Json.get(history, "observations");
-  if V.text(history, "kind") != "caravansary.rooms-sold-history@1" ||
-      V.text(history, "property_id") == "" || V.text(history, "room_scope") == "" ||
-      (qual != "fixture" && qual != "observed") || Json.kind(observations) != "array" {
+  if V.text(history,
+    "kind") != "caravansary.rooms-sold-history@1" || V.text(history,
+    "property_id") == "" || V.text(history,
+    "room_scope") == "" || (qual != "fixture" && qual != "observed") || Json.kind(observations) != "array"
+  {
     return (sx_nil(), "invalid_first_party_history");
   }
   var n = 0;
   var rows = Json.items(observations);
   var pairs = sx_nil();
-  while sx_kind(rows) == 3 {
+  while sx_kind(rows) == 3
+  {
     n = n + 1;
-    if n > max_history() { return (sx_nil(), "history_too_large"); }
+    if n > max_history()
+    {
+      return (sx_nil(), "history_too_large");
+    }
     let row = sx_head(rows);
     let date = V.text(row, "stay_date");
     let day = Civil.date(date);
-    let (has_available, available) = V.instant(V.text(row, "available_at"));
+    let(has_available, available) = V.instant(V.text(row, "available_at"));
     # Unplaceable/physically premature records cannot establish a fact.
-    if day == 0 || !has_available || available < V.day_start(day + 1) {
+    if day == 0 || ! has_available || available < V.day_start(day + 1)
+    {
       return (sx_nil(), "invalid_history_clock");
     }
     pairs = V.put(pairs, date, row);
@@ -37,10 +51,12 @@ fn index(history: sexpr) -> (sexpr, string) {
   }
   var sorted = Json.sort_count(pairs, n, true, false);
   var grouped = sx_nil();
-  while sx_kind(sorted) == 3 {
+  while sx_kind(sorted) == 3
+  {
     let day = sx_text(sx_head(sx_head(sorted)));
     var group = sx_nil();
-    while sx_kind(sorted) == 3 && sx_text(sx_head(sx_head(sorted))) == day {
+    while sx_kind(sorted) == 3 && sx_text(sx_head(sx_head(sorted))) == day
+    {
       group = sx_cons(Json.pair_value(sx_head(sorted)), group);
       sorted = sx_tail(sorted);
     }
@@ -50,63 +66,94 @@ fn index(history: sexpr) -> (sexpr, string) {
 }
 
 # No fallback to older quantities after a conflicting or invalid revision.
-fn latest(dated: sexpr, cutoff: i64) -> i64 {
+fn latest(dated: sexpr, cutoff: i64) -> i64
+{
   var rows = dated;
   var found = false;
   var latest_time = 0;
-  var rooms = -1;
+  var rooms = - 1;
   var conflict = false;
-  while sx_kind(rows) == 3 {
+  while sx_kind(rows) == 3
+  {
     let row = sx_head(rows);
-    let (_has_available, available) = V.instant(V.text(row, "available_at"));
-    if available <= cutoff && (!found || available >= latest_time) {
+    let(_has_available, available) = V.instant(V.text(row, "available_at"));
+    if available <= cutoff && (! found || available >= latest_time)
+    {
       let count = V.number(row, "rooms_sold", rooms_cap());
-      if !found || available > latest_time {
+      if ! found || available > latest_time
+      {
         latest_time = available;
         rooms = count;
         found = true;
         conflict = false;
-      } else {
-        if count != rooms { conflict = true; }
+      }
+      else
+      {
+        if count != rooms
+        {
+          conflict = true;
+        }
       }
     }
     rows = sx_tail(rows);
   }
-  if conflict { return -1; }
+  if conflict
+  {
+    return - 1;
+  }
   return rooms;
 }
 
-fn skip_after(indexed: sexpr, latest_day: i64) -> sexpr {
+fn skip_after(indexed: sexpr, latest_day: i64) -> sexpr
+{
   var groups = indexed;
-  while sx_kind(groups) == 3 && Civil.date(sx_text(sx_head(sx_head(groups)))) > latest_day {
+  while sx_kind(groups) == 3 && Civil.date(sx_text(sx_head(sx_head(groups)))) > latest_day
+  {
     groups = sx_tail(groups);
   }
   return groups;
 }
 
-fn actual(indexed: sexpr, stay_day: i64, cutoff: i64) -> i64 {
-  if stay_day >= V.utc_day(cutoff) { return -1; }
+fn actual(indexed: sexpr, stay_day: i64, cutoff: i64) -> i64
+{
+  if stay_day >= V.utc_day(cutoff)
+  {
+    return - 1;
+  }
   let groups = skip_after(indexed, stay_day);
-  if sx_kind(groups) == 3 && Civil.date(sx_text(sx_head(sx_head(groups)))) == stay_day {
+  if sx_kind(groups) == 3 && Civil.date(sx_text(sx_head(sx_head(groups)))) == stay_day
+  {
     return latest(Json.pair_value(sx_head(groups)), cutoff);
   }
-  return -1;
+  return - 1;
 }
 
 # The history window never slides backwards to conceal missing days, and must
 # be consecutive. Return most recent day first, no zero imputation.
-fn trailing(indexed: sexpr, latest_day: i64, cutoff: i64, size: i64) -> sexpr {
-  if size < 1 || latest_day - size < 0 || latest_day >= V.utc_day(cutoff) {
+fn trailing(indexed: sexpr, latest_day: i64, cutoff: i64, size: i64) -> sexpr
+{
+  if size < 1 || latest_day - size < 0 || latest_day >= V.utc_day(cutoff)
+  {
     return sx_nil();
   }
   var groups = skip_after(indexed, latest_day);
   var quantities = sx_nil();
-  for offset in 0 .. size {
-    if sx_kind(groups) != 3 { return sx_nil(); }
+  for offset in 0 .. size
+  {
+    if sx_kind(groups) != 3
+    {
+      return sx_nil();
+    }
     let group = sx_head(groups);
-    if Civil.date(sx_text(sx_head(group))) != latest_day - offset { return sx_nil(); }
+    if Civil.date(sx_text(sx_head(group))) != latest_day - offset
+    {
+      return sx_nil();
+    }
     let count = latest(Json.pair_value(group), cutoff);
-    if count < 0 { return sx_nil(); }
+    if count < 0
+    {
+      return sx_nil();
+    }
     quantities = sx_cons(Json.integer(count), quantities);
     groups = sx_tail(groups);
   }

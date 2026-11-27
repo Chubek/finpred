@@ -1,45 +1,91 @@
 # Read-only regular series; see docs/CORE_NUMERICS.md for the time and score contracts.
 import core.csv as CSV;
 import std.Int as Int;
-
-extern fn finpred_on1x_series_predict(series:string, horizon:i64, season:i64, coverage:i64) -> string;
-extern fn finpred_on1x_series_evaluate(series:string, horizon:i64, season:i64, coverage:i64, first:i64) -> string;
-
-record Prediction { status:sexpr, point:i64, calibration_count:i64, has_interval:bool, lower:i64, upper:i64 }
-record Evaluation { status:sexpr, point_count:i64, interval_count:i64, covered_count:i64,
-  absolute_error_sum:i64, interval_width_sum:i64, interval_score_sum:i64, folds:string }
-
-fn signed(value:string) -> i64
+extern fn finpred_on1x_series_predict(series: string,
+  horizon: i64,
+  season: i64,
+  coverage: i64) -> string;
+extern fn finpred_on1x_series_evaluate(series: string,
+  horizon: i64,
+  season: i64,
+  coverage: i64,
+  first: i64) -> string;
+record Prediction
 {
-  let (ok, number, end) = Int.scan(value,0);
-  if !ok || end != text_len(value) { tool_fail("series forecast: invalid companion integer"); }
+  status: sexpr, point: i64, calibration_count: i64, has_interval: bool, lower: i64, upper: i64
+}
+
+record Evaluation
+{
+  status: sexpr, point_count: i64, interval_count: i64, covered_count: i64, absolute_error_sum: i64, interval_width_sum: i64, interval_score_sum: i64, folds: string
+}
+
+fn signed(value: string) -> i64
+{
+  let(ok, number, end) = Int.scan(value, 0);
+  if ! ok || end != text_len(value)
+  {
+    tool_fail("series forecast: invalid companion integer");
+  }
   return number;
 }
 
 # One canonical signed decimal integer plus LF per contiguous observation.
-fn predict(series:string, horizon:i64, season:i64, coverage:i64) -> Prediction
+fn predict(series: string,
+  horizon: i64,
+  season: i64,
+  coverage: i64) -> Prediction
 {
-  let line = finpred_on1x_series_predict(series,horizon,season,coverage);
-  if CSV.columns(line) != 5 {
-    return record<Prediction>{status:sx_string(line),point:0,calibration_count:0,has_interval:false,lower:0,upper:0};
+  let line = finpred_on1x_series_predict(series, horizon, season, coverage);
+  if CSV.columns(line) != 5
+  {
+    return record < Prediction >
+    {
+      status: sx_string(line), point: 0, calibration_count: 0, has_interval: false, lower: 0, upper: 0
+    };
   }
-  return record<Prediction>{status:sx_string("ok"),point:signed(CSV.field(line,0)),
-    calibration_count:CSV.nat(CSV.field(line,1)),has_interval:CSV.bit(CSV.field(line,2)),
-    lower:signed(CSV.field(line,3)),upper:signed(CSV.field(line,4))};
+  return record < Prediction >
+  {
+    status: sx_string("ok"), point: signed(CSV.field(line,
+      0)), calibration_count: CSV.nat(CSV.field(line,
+      1)), has_interval: CSV.bit(CSV.field(line,
+      2)), lower: signed(CSV.field(line,
+      3)), upper: signed(CSV.field(line,
+      4))
+  };
 }
 
 # Each fold is LF-terminated CSV: target,train,actual,has_point,point,
 # calibration_count,has_interval,lower,upper. Unavailable numeric fields are zero.
-fn evaluate(series:string, horizon:i64, season:i64, coverage:i64, first:i64) -> Evaluation
+fn evaluate(series: string,
+  horizon: i64,
+  season: i64,
+  coverage: i64,
+  first: i64) -> Evaluation
 {
-  let wire = finpred_on1x_series_evaluate(series,horizon,season,coverage,first);
-  let line = CSV.line(wire,0);
-  if CSV.columns(line) != 6 {
-    return record<Evaluation>{status:sx_string(line),point_count:0,interval_count:0,covered_count:0,
-      absolute_error_sum:0,interval_width_sum:0,interval_score_sum:0,folds:""};
+  let wire = finpred_on1x_series_evaluate(series,
+    horizon,
+    season,
+    coverage,
+    first);
+  let line = CSV.line(wire, 0);
+  if CSV.columns(line) != 6
+  {
+    return record < Evaluation >
+    {
+      status: sx_string(line), point_count: 0, interval_count: 0, covered_count: 0, absolute_error_sum: 0, interval_width_sum: 0, interval_score_sum: 0, folds: ""
+    };
   }
-  return record<Evaluation>{status:sx_string("ok"),point_count:CSV.nat(CSV.field(line,0)),
-    interval_count:CSV.nat(CSV.field(line,1)),covered_count:CSV.nat(CSV.field(line,2)),
-    absolute_error_sum:CSV.nat(CSV.field(line,3)),interval_width_sum:CSV.nat(CSV.field(line,4)),
-    interval_score_sum:CSV.nat(CSV.field(line,5)),folds:text_slice(wire,text_len(line)+1,text_len(wire))};
+  return record < Evaluation >
+  {
+    status: sx_string("ok"), point_count: CSV.nat(CSV.field(line,
+      0)), interval_count: CSV.nat(CSV.field(line,
+      1)), covered_count: CSV.nat(CSV.field(line,
+      2)), absolute_error_sum: CSV.nat(CSV.field(line,
+      3)), interval_width_sum: CSV.nat(CSV.field(line,
+      4)), interval_score_sum: CSV.nat(CSV.field(line,
+      5)), folds: text_slice(wire,
+      text_len(line) + 1,
+      text_len(wire))
+  };
 }

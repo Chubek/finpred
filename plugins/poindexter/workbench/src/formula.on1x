@@ -2,243 +2,685 @@
 import grid as G;
 import std.collections.Array as A;
 import std.Int as Int;
+fn limit() -> i64
+{
+  return 1000000000000000;
+}
 
-fn limit() -> i64 { return 1000000000000000; }
-fn word(s:string,pos:i64) -> (string,i64) {
-  let buf=buffer_new(); var i=pos;
-  while i<text_len(s) {
-    let c=G.upper(G.byte(s,i));
-    if !(c>=65 && c<=90) && !(c>=48 && c<=57) { break; }
-    buffer_byte(buf,c); i=i+1;
+fn word(s: string, pos: i64) ->(string, i64)
+{
+  let buf = buffer_new();
+  var i = pos;
+  while i < text_len(s)
+  {
+    let c = G.upper(G.byte(s, i));
+    if !(c >= 65 && c <= 90) && !(c >= 48 && c <= 57)
+    {
+      break;
+    }
+    buffer_byte(buf, c);
+    i = i + 1;
   }
-  return (buffer_text(buf),i);
+  return (buffer_text(buf), i);
 }
+
 # Optional $ anchors belong to cell references, not to script-local $X.
-fn reference(s:string,pos:i64) -> (i64,i64,bool,bool) {
-  var i=pos; let fixedcol=G.byte(s,i)==36;
-  if fixedcol { i=i+1; }
-  let col=G.upper(G.byte(s,i))-65;
-  if col<0 || col>=16 { return (-1,pos,false,false); }
-  i=i+1; let fixedrow=G.byte(s,i)==36;
-  if fixedrow { i=i+1; }
-  let begin=i;
-  while G.byte(s,i)>=48 && G.byte(s,i)<=57 { i=i+1; }
-  if i==begin || i-begin>2 || G.byte(s,begin)==48 { return (-1,pos,false,false); }
-  let(ok,row)=Int.from_string(text_slice(s,begin,i));
-  if !ok || row<1 || row>64 { return (-1,pos,false,false); }
-  return ((row-1)*16+col,i,fixedcol,fixedrow);
+fn reference(s: string, pos: i64) ->(i64, i64, bool, bool)
+{
+  var i = pos;
+  let fixedcol = G.byte(s, i) == 36;
+  if fixedcol
+  {
+    i = i + 1;
+  }
+  let col = G.upper(G.byte(s, i)) - 65;
+  if col < 0 || col >= 16
+  {
+    return (- 1, pos, false, false);
+  }
+  i = i + 1;
+  let fixedrow = G.byte(s, i) == 36;
+  if fixedrow
+  {
+    i = i + 1;
+  }
+  let begin = i;
+  while G.byte(s, i) >= 48 && G.byte(s, i) <= 57
+  {
+    i = i + 1;
+  }
+  if i == begin || i - begin > 2 || G.byte(s, begin) == 48
+  {
+    return (- 1, pos, false, false);
+  }
+  let(ok, row) = Int.from_string(text_slice(s, begin, i));
+  if ! ok || row < 1 || row > 64
+  {
+    return (- 1, pos, false, false);
+  }
+  return ((row - 1) * 16 + col, i, fixedcol, fixedrow);
 }
-fn relocate(s:string,source:i64,dest:i64) -> string {
-  if G.byte(s,0)!=61 { return s; }
-  let buf=buffer_new(); var i=0;
-  while i<text_len(s) {
-    let c=G.byte(s,i);
-    let(id,p,fc,fr)=reference(s,i);
-    if id>=0 {
-      var row=id/16; var col=id%16;
-      if !fr { row=row+dest/16-source/16; }
-      if !fc { col=col+dest%16-source%16; }
-      if row<0 || row>=64 || col<0 || col>=16 { tool_fail("worksheet: copy would move a reference off the grid"); }
-      if fc { buffer_byte(buf,36); } buffer_byte(buf,65+col);
-      if fr { buffer_byte(buf,36); } buffer_append(buf,Int.to_string(row+1));
-      i=p;
-    } else {
-      buffer_byte(buf,c); i=i+1;
+
+fn relocate(s: string, source: i64, dest: i64) -> string
+{
+  if G.byte(s, 0) != 61
+  {
+    return s;
+  }
+  let buf = buffer_new();
+  var i = 0;
+  while i < text_len(s)
+  {
+    let c = G.byte(s, i);
+    let(id, p, fc, fr) = reference(s, i);
+    if id >= 0
+    {
+      var row = id / 16;
+      var col = id % 16;
+      if ! fr
+      {
+        row = row + dest / 16 - source / 16;
+      }
+      if ! fc
+      {
+        col = col + dest % 16 - source % 16;
+      }
+      if row < 0 || row >= 64 || col < 0 || col >= 16
+      {
+        tool_fail("worksheet: copy would move a reference off the grid");
+      }
+      if fc
+      {
+        buffer_byte(buf, 36);
+      }
+      buffer_byte(buf, 65 + col);
+      if fr
+      {
+        buffer_byte(buf, 36);
+      }
+      buffer_append(buf, Int.to_string(row + 1));
+      i = p;
+    }
+    else
+    {
+      buffer_byte(buf, c);
+      i = i + 1;
     }
   }
   return buffer_text(buf);
 }
-fn op(s:string,i:i64) -> (i64,i64,i64) {
-  let a=G.byte(s,i); let b=G.byte(s,i+1);
-  if a==60 && (b==62 || b==61) { if b==62 { return (1,1,2); } return (1,2,2); }
-  if a==62 && b==61 { return (1,3,2); }
-  if a==33 && b==61 { return (1,1,2); }
-  if a==61 && b==61 { return (1,61,2); }
-  if a==60 || a==62 || a==61 { return (1,a,1); }
-  if a==43 || a==45 { return (2,a,1); }
-  if a==42 || a==47 || a==37 { return (3,a,1); }
-  return (0,0,0);
-}
-fn apply(k:i64,x:i64,y:i64) -> (i64,i64) {
-  var v=0;
-  if k==43 { v=x+y; }
-  if k==45 { v=x-y; }
-  if k==42 {
-    if x!=0 && Int.abs(y)>limit()/Int.abs(x) { return (7,0); } v=x*y;
+
+fn op(s: string, i: i64) ->(i64, i64, i64)
+{
+  let a = G.byte(s, i);
+  let b = G.byte(s, i + 1);
+  if a == 60 && (b == 62 || b == 61)
+  {
+    if b == 62
+    {
+      return (1, 1, 2);
+    }
+    return (1, 2, 2);
   }
-  if k==47 || k==37 {
-    if y==0 { return (6,0); }
-    if k==47 { v=x/y; } else { v=x%y; }
+  if a == 62 && b == 61
+  {
+    return (1, 3, 2);
   }
-  if (k==61 && x==y) || (k==1 && x!=y) || (k==2 && x<=y) || (k==3 && x>=y)
-       || (k==60 && x<y) || (k==62 && x>y) { v=1; }
-  if v < -1000000000000000 || v>limit() { return (7,0); }
-  return (1,v);
+  if a == 33 && b == 61
+  {
+    return (1, 1, 2);
+  }
+  if a == 61 && b == 61
+  {
+    return (1, 61, 2);
+  }
+  if a == 60 || a == 62 || a == 61
+  {
+    return (1, a, 1);
+  }
+  if a == 43 || a == 45
+  {
+    return (2, a, 1);
+  }
+  if a == 42 || a == 47 || a == 37
+  {
+    return (3, a, 1);
+  }
+  return (0, 0, 0);
 }
-fn literal(s:string) -> (i64,i64) {
-  if text_len(s)==0 { return (2,0); }
-  var i=0; if G.byte(s,0)==45 || G.byte(s,0)==43 { i=1; }
-  if i==text_len(s) { return (3,0); }
-  for j in i .. text_len(s) { if G.byte(s,j)<48 || G.byte(s,j)>57 { return (3,0); } }
-  let(ok,v,end)=Int.scan(s,0);
-  if !ok || end!=text_len(s) || v < -1000000000000000 || v>limit() { return (7,0); }
-  return (1,v);
+
+fn apply(k: i64, x: i64, y: i64) ->(i64, i64)
+{
+  var v = 0;
+  if k == 43
+  {
+    v = x + y;
+  }
+  if k == 45
+  {
+    v = x - y;
+  }
+  if k == 42
+  {
+    if x != 0 && Int.abs(y) > limit() / Int.abs(x)
+    {
+      return (7, 0);
+    }
+    v = x * y;
+  }
+  if k == 47 || k == 37
+  {
+    if y == 0
+    {
+      return (6, 0);
+    }
+    if k == 47
+    {
+      v = x / y;
+    }
+    else
+    {
+      v = x % y;
+    }
+  }
+  if (k == 61 && x == y) || (k == 1 && x != y) || (k == 2 && x <= y) || (k == 3 && x >= y) || (k == 60 && x < y) || (k == 62 && x > y)
+  {
+    v = 1;
+  }
+  if v < - 1000000000000000 || v > limit()
+  {
+    return (7, 0);
+  }
+  return (1, v);
 }
-fn cell(b:G.Book,id:i64,depth:i64) -> (i64,i64) {
+
+fn literal(s: string) ->(i64, i64)
+{
+  if text_len(s) == 0
+  {
+    return (2, 0);
+  }
+  var i = 0;
+  if G.byte(s, 0) == 45 || G.byte(s, 0) == 43
+  {
+    i = 1;
+  }
+  if i == text_len(s)
+  {
+    return (3, 0);
+  }
+  for j in i .. text_len(s)
+  {
+    if G.byte(s, j) < 48 || G.byte(s, j) > 57
+    {
+      return (3, 0);
+    }
+  }
+  let(ok, v, end) = Int.scan(s, 0);
+  if ! ok || end != text_len(s) || v < - 1000000000000000 || v > limit()
+  {
+    return (7, 0);
+  }
+  return (1, v);
+}
+
+fn cell(b: G.Book, id: i64, depth: i64) ->(i64, i64)
+{
   G.tick(b);
-  let tag=A.basis_array_sub(b["state"],id);
-  if tag == -1 { return (8,0); }
-  if depth>64 { return (9,0); }
-  if tag>0 {
-    if depth+A.basis_array_sub(b["height"],id)>64 { return (9,0); }
-    return (tag,A.basis_array_sub(b["values"],id));
+  let tag = A.basis_array_sub(b["state"], id);
+  if tag == - 1
+  {
+    return (8, 0);
   }
-  A.basis_array_update(b["height"],id,depth);
-  let s=G.raw(b,id); var status=0; var value=0;
-  if G.byte(s,0)==61 {
-    A.basis_array_update(b["state"],id,-1);
-    let(st,v,p)=expr(b,s,1,1,id,depth+1,true,false);
-    status=st; value=v;
-    if st==1 && G.skip(s,p)!=text_len(s) { status=4; }
-  } else {
-    let(st,v)=literal(s); status=st; value=v;
+  if depth > 64
+  {
+    return (9, 0);
+  }
+  if tag > 0
+  {
+    if depth + A.basis_array_sub(b["height"], id) > 64
+    {
+      return (9, 0);
+    }
+    return (tag, A.basis_array_sub(b["values"], id));
+  }
+  A.basis_array_update(b["height"], id, depth);
+  let s = G.raw(b, id);
+  var status = 0;
+  var value = 0;
+  if G.byte(s, 0) == 61
+  {
+    A.basis_array_update(b["state"], id, - 1);
+    let(st, v, p) = expr(b, s, 1, 1, id, depth + 1, true, false);
+    status = st;
+    value = v;
+    if st == 1 && G.skip(s, p) != text_len(s)
+    {
+      status = 4;
+    }
+  }
+  else
+  {
+    let(st, v) = literal(s);
+    status = st;
+    value = v;
   }
   # Depth exhaustion depends on the caller's remaining budget, not the cell.
-  if status==9 { A.basis_array_update(b["state"],id,0); return (9,0); }
-  A.basis_array_update(b["height"],id,A.basis_array_sub(b["height"],id)-depth);
-  A.basis_array_update(b["state"],id,status); A.basis_array_update(b["values"],id,value);
-  return (status,value);
+  if status == 9
+  {
+    A.basis_array_update(b["state"], id, 0);
+    return (9, 0);
+  }
+  A.basis_array_update(b["height"],
+    id,
+    A.basis_array_sub(b["height"],
+    id) - depth);
+  A.basis_array_update(b["state"], id, status);
+  A.basis_array_update(b["values"], id, value);
+  return (status, value);
 }
-fn reach(b:G.Book,id:i64,depth:i64) {
-  if A.basis_array_sub(b["state"],id)==-1 && depth>A.basis_array_sub(b["height"],id) {
-    A.basis_array_update(b["height"],id,depth);
+
+fn reach(b: G.Book, id: i64, depth: i64)
+{
+  if A.basis_array_sub(b["state"],
+    id) == - 1 && depth > A.basis_array_sub(b["height"],
+    id)
+  {
+    A.basis_array_update(b["height"], id, depth);
   }
 }
-fn dependency(b:G.Book,owner:i64,target:i64,depth:i64) -> (i64,i64) {
-  let(st,v)=cell(b,target,depth);
-  if st<=3 { reach(b,owner,depth+A.basis_array_sub(b["height"],target)); }
-  return (st,v);
-}
-fn aggregate(b:G.Book,s:string,pos:i64,kind:string,id:i64,depth:i64,active:bool) -> (i64,i64,i64) {
-  let(first,p,fc,fr)=reference(s,G.skip(s,pos)); var last=first;
-  var end=G.skip(s,p);
-  if G.byte(s,end)==58 {
-    let(z,q,ac,ar)=reference(s,G.skip(s,end+1)); last=z; end=G.skip(s,q);
+
+fn dependency(b: G.Book, owner: i64, target: i64, depth: i64) ->(i64, i64)
+{
+  let(st, v) = cell(b, target, depth);
+  if st <= 3
+  {
+    reach(b, owner, depth + A.basis_array_sub(b["height"], target));
   }
-  if G.byte(s,end)!=41 { return (4,0,end); }
-  if first<0 || last<0 || first/16>last/16 || first%16>last%16 { return (5,0,end); }
-  if !active { return (1,0,end+1); }
-  var count=0; var total=0; var lo=0; var hi=0;
-  for row in first/16 .. last/16+1 {
-    for col in first%16 .. last%16+1 {
-      let(st,v)=dependency(b,id,row*16+col,depth+1);
-      if st>3 { return (st,0,end+1); }
-      if st==1 {
-        if count==0 || v<lo { lo=v; } if count==0 || v>hi { hi=v; }
-        count=count+1; total=total+v;
+  return (st, v);
+}
+
+fn aggregate(b: G.Book,
+  s: string,
+  pos: i64,
+  kind: string,
+  id: i64,
+  depth: i64,
+  active: bool) ->(i64,
+  i64,
+  i64)
+{
+  let(first, p, fc, fr) = reference(s, G.skip(s, pos));
+  var last = first;
+  var end = G.skip(s, p);
+  if G.byte(s, end) == 58
+  {
+    let(z, q, ac, ar) = reference(s, G.skip(s, end + 1));
+    last = z;
+    end = G.skip(s, q);
+  }
+  if G.byte(s, end) != 41
+  {
+    return (4, 0, end);
+  }
+  if first < 0 || last < 0 || first / 16 > last / 16 || first % 16 > last % 16
+  {
+    return (5, 0, end);
+  }
+  if ! active
+  {
+    return (1, 0, end + 1);
+  }
+  var count = 0;
+  var total = 0;
+  var lo = 0;
+  var hi = 0;
+  for row in first / 16 .. last / 16 + 1
+  {
+    for col in first % 16 .. last % 16 + 1
+    {
+      let(st, v) = dependency(b, id, row * 16 + col, depth + 1);
+      if st > 3
+      {
+        return (st, 0, end + 1);
+      }
+      if st == 1
+      {
+        if count == 0 || v < lo
+        {
+          lo = v;
+        }
+        if count == 0 || v > hi
+        {
+          hi = v;
+        }
+        count = count + 1;
+        total = total + v;
       }
     }
   }
-  if kind=="COUNT" { return (1,count,end+1); }
-  if kind=="MIN" { return (1,lo,end+1); }
-  if kind=="MAX" { return (1,hi,end+1); }
-  if kind=="AVG" || kind=="AVERAGE" {
-    if count==0 { return (6,0,end+1); } return (1,total/count,end+1);
+  if kind == "COUNT"
+  {
+    return (1, count, end + 1);
   }
-  if Int.abs(total)>limit() { return (7,0,end+1); } return (1,total,end+1);
-}
-fn atom(b:G.Book,s:string,pos:i64,id:i64,d:i64,active:bool,locals:bool) -> (i64,i64,i64) {
-  let i=G.skip(s,pos); let c=G.byte(s,i);
-  if d>64 { return (9,0,i); }
-  reach(b,id,d);
-  if c==43 || c==45 {
-    let(st,v,p)=atom(b,s,i+1,id,d+1,active,locals);
-    if c==45 { return (st,-v,p); } return (st,v,p);
+  if kind == "MIN"
+  {
+    return (1, lo, end + 1);
   }
-  if c==40 {
-    let(st,v,p)=expr(b,s,i+1,1,id,d+1,active,locals);
-    let end=G.skip(s,p);
-    if st!=1 { return (st,0,end); } if G.byte(s,end)!=41 { return (4,0,end); }
-    return (1,v,end+1);
+  if kind == "MAX"
+  {
+    return (1, hi, end + 1);
   }
-  if c>=48 && c<=57 {
-    let(ok,v,p)=Int.scan(s,i);
-    if !ok || v>limit() { return (7,0,i); } return (1,v,p);
-  }
-  let(address,after,fc,fr)=reference(s,i);
-  if address>=0 {
-    if !active { return (1,0,after); }
-    let(st,v)=dependency(b,id,address,d+1);
-    if st==3 { return (10,0,after); } if st==2 { return (1,0,after); } return (st,v,after);
-  }
-  if c==36 && locals {
-    let k=G.upper(G.byte(s,i+1))-65;
-    if k<0 || k>=26 { return (4,0,i); }
-    if active && A.basis_array_sub(b["defined"],k)==0 { return (5,0,i); }
-    return (1,A.basis_array_sub(b["vars"],k),i+2);
-  }
-  let(w,p)=word(s,i); if w=="" { return (4,0,i); }
-  let j=G.skip(s,p);
-  if G.byte(s,j)!=40 { return (5,0,p); }
-  if w=="SUM" || w=="MIN" || w=="MAX" || w=="COUNT" || w=="AVG" || w=="AVERAGE" {
-    return aggregate(b,s,j+1,w,id,d,active);
-  }
-  if w=="ROW" || w=="COL" {
-    let end=G.skip(s,j+1); if G.byte(s,end)!=41 { return (4,0,end); }
-    if w=="ROW" { return (1,id/16+1,end+1); } return (1,id%16+1,end+1);
-  }
-  if w!="IF" && w!="ABS" && w!="ROUNDDIV" { return (4,0,i); }
-  let(st,x,next)=expr(b,s,j+1,1,id,d+1,active,locals);
-  let sep=G.skip(s,next);
-  if st!=1 { return (st,0,sep); }
-  if w=="ABS" {
-    if G.byte(s,sep)!=41 { return (4,0,sep); } return (1,Int.abs(x),sep+1);
-  }
-  if G.byte(s,sep)!=44 { return (4,0,sep); }
-  if w=="ROUNDDIV" {
-    let(sr,den,pd)=expr(b,s,sep+1,1,id,d+1,active,locals);
-    let end=G.skip(s,pd); if sr!=1 { return (sr,0,end); }
-    if G.byte(s,end)!=41 { return (4,0,end); }
-    if !active { return (1,0,end+1); }
-    if den==0 { return (6,0,end+1); }
-    let quotient=(Int.abs(x)+Int.abs(den)/2)/Int.abs(den);
-    if (x<0 && den>0) || (x>0 && den<0) { return (1,-quotient,end+1); }
-    return (1,quotient,end+1);
-  }
-  let(sy,y,py)=expr(b,s,sep+1,1,id,d+1,active && x!=0,locals);
-  let comma=G.skip(s,py); if sy!=1 { return (sy,0,comma); }
-  if G.byte(s,comma)!=44 { return (4,0,comma); }
-  let(sz,z,pz)=expr(b,s,comma+1,1,id,d+1,active && x==0,locals);
-  let end=G.skip(s,pz); if sz!=1 { return (sz,0,end); }
-  if G.byte(s,end)!=41 { return (4,0,end); }
-  if x!=0 { return (1,y,end+1); } return (1,z,end+1);
-}
-fn expr(b:G.Book,s:string,pos:i64,prec:i64,id:i64,d:i64,active:bool,locals:bool) -> (i64,i64,i64) {
-  G.tick(b);
-  let(st,x,next)=atom(b,s,pos,id,d,active,locals);
-  if st!=1 { return (st,0,next); }
-  var v=x; var p=next;
-  while true {
-    let i=G.skip(s,p); let(rank,k,width)=op(s,i);
-    if rank<prec { break; }
-    let(sy,y,end)=expr(b,s,i+width,rank+1,id,d+1,active,locals);
-    if sy!=1 { return (sy,0,end); }
-    if active {
-      let(status,n)=apply(k,v,y);
-      if status!=1 { return (status,0,end); } v=n;
+  if kind == "AVG" || kind == "AVERAGE"
+  {
+    if count == 0
+    {
+      return (6, 0, end + 1);
     }
-    p=end;
+    return (1, total / count, end + 1);
   }
-  return (1,v,p);
+  if Int.abs(total) > limit()
+  {
+    return (7, 0, end + 1);
+  }
+  return (1, total, end + 1);
 }
-fn error(st:i64) -> string {
-  if st==5 { return "#REF!"; } if st==6 { return "#DIV/0!"; }
-  if st==7 { return "#NUM!"; } if st==8 { return "#CYCLE!"; }
-  if st==9 { return "#DEPTH!"; } if st==10 { return "#VALUE!"; } return "#SYNTAX!";
+
+fn atom(b: G.Book,
+  s: string,
+  pos: i64,
+  id: i64,
+  d: i64,
+  active: bool,
+  locals: bool) ->(i64,
+  i64,
+  i64)
+{
+  let i = G.skip(s, pos);
+  let c = G.byte(s, i);
+  if d > 64
+  {
+    return (9, 0, i);
+  }
+  reach(b, id, d);
+  if c == 43 || c == 45
+  {
+    let(st, v, p) = atom(b, s, i + 1, id, d + 1, active, locals);
+    if c == 45
+    {
+      return (st, - v, p);
+    }
+    return (st, v, p);
+  }
+  if c == 40
+  {
+    let(st, v, p) = expr(b, s, i + 1, 1, id, d + 1, active, locals);
+    let end = G.skip(s, p);
+    if st != 1
+    {
+      return (st, 0, end);
+    }
+    if G.byte(s, end) != 41
+    {
+      return (4, 0, end);
+    }
+    return (1, v, end + 1);
+  }
+  if c >= 48 && c <= 57
+  {
+    let(ok, v, p) = Int.scan(s, i);
+    if ! ok || v > limit()
+    {
+      return (7, 0, i);
+    }
+    return (1, v, p);
+  }
+  let(address, after, fc, fr) = reference(s, i);
+  if address >= 0
+  {
+    if ! active
+    {
+      return (1, 0, after);
+    }
+    let(st, v) = dependency(b, id, address, d + 1);
+    if st == 3
+    {
+      return (10, 0, after);
+    }
+    if st == 2
+    {
+      return (1, 0, after);
+    }
+    return (st, v, after);
+  }
+  if c == 36 && locals
+  {
+    let k = G.upper(G.byte(s, i + 1)) - 65;
+    if k < 0 || k >= 26
+    {
+      return (4, 0, i);
+    }
+    if active && A.basis_array_sub(b["defined"], k) == 0
+    {
+      return (5, 0, i);
+    }
+    return (1, A.basis_array_sub(b["vars"], k), i + 2);
+  }
+  let(w, p) = word(s, i);
+  if w == ""
+  {
+    return (4, 0, i);
+  }
+  let j = G.skip(s, p);
+  if G.byte(s, j) != 40
+  {
+    return (5, 0, p);
+  }
+  if w == "SUM" || w == "MIN" || w == "MAX" || w == "COUNT" || w == "AVG" || w == "AVERAGE"
+  {
+    return aggregate(b, s, j + 1, w, id, d, active);
+  }
+  if w == "ROW" || w == "COL"
+  {
+    let end = G.skip(s, j + 1);
+    if G.byte(s, end) != 41
+    {
+      return (4, 0, end);
+    }
+    if w == "ROW"
+    {
+      return (1, id / 16 + 1, end + 1);
+    }
+    return (1, id % 16 + 1, end + 1);
+  }
+  if w != "IF" && w != "ABS" && w != "ROUNDDIV"
+  {
+    return (4, 0, i);
+  }
+  let(st, x, next) = expr(b, s, j + 1, 1, id, d + 1, active, locals);
+  let sep = G.skip(s, next);
+  if st != 1
+  {
+    return (st, 0, sep);
+  }
+  if w == "ABS"
+  {
+    if G.byte(s, sep) != 41
+    {
+      return (4, 0, sep);
+    }
+    return (1, Int.abs(x), sep + 1);
+  }
+  if G.byte(s, sep) != 44
+  {
+    return (4, 0, sep);
+  }
+  if w == "ROUNDDIV"
+  {
+    let(sr, den, pd) = expr(b, s, sep + 1, 1, id, d + 1, active, locals);
+    let end = G.skip(s, pd);
+    if sr != 1
+    {
+      return (sr, 0, end);
+    }
+    if G.byte(s, end) != 41
+    {
+      return (4, 0, end);
+    }
+    if ! active
+    {
+      return (1, 0, end + 1);
+    }
+    if den == 0
+    {
+      return (6, 0, end + 1);
+    }
+    let quotient = (Int.abs(x) + Int.abs(den) / 2) / Int.abs(den);
+    if (x < 0 && den > 0) || (x > 0 && den < 0)
+    {
+      return (1, - quotient, end + 1);
+    }
+    return (1, quotient, end + 1);
+  }
+  let(sy, y, py) = expr(b, s, sep + 1, 1, id, d + 1, active && x != 0, locals);
+  let comma = G.skip(s, py);
+  if sy != 1
+  {
+    return (sy, 0, comma);
+  }
+  if G.byte(s, comma) != 44
+  {
+    return (4, 0, comma);
+  }
+  let(sz,
+    z,
+    pz) = expr(b,
+    s,
+    comma + 1,
+    1,
+    id,
+    d + 1,
+    active && x == 0,
+    locals);
+  let end = G.skip(s, pz);
+  if sz != 1
+  {
+    return (sz, 0, end);
+  }
+  if G.byte(s, end) != 41
+  {
+    return (4, 0, end);
+  }
+  if x != 0
+  {
+    return (1, y, end + 1);
+  }
+  return (1, z, end + 1);
 }
-fn display(b:G.Book,id:i64) -> string {
-  let(st,v)=cell(b,id,0);
-  if st==1 { return Int.to_string(v); } if st==2 { return ""; }
-  if st==3 { let s=G.raw(b,id); if G.byte(s,0)==39 { return text_slice(s,1,text_len(s)); } return s; }
+
+fn expr(b: G.Book,
+  s: string,
+  pos: i64,
+  prec: i64,
+  id: i64,
+  d: i64,
+  active: bool,
+  locals: bool) ->(i64,
+  i64,
+  i64)
+{
+  G.tick(b);
+  let(st, x, next) = atom(b, s, pos, id, d, active, locals);
+  if st != 1
+  {
+    return (st, 0, next);
+  }
+  var v = x;
+  var p = next;
+  while true
+  {
+    let i = G.skip(s, p);
+    let(rank, k, width) = op(s, i);
+    if rank < prec
+    {
+      break;
+    }
+    let(sy,
+      y,
+      end) = expr(b,
+      s,
+      i + width,
+      rank + 1,
+      id,
+      d + 1,
+      active,
+      locals);
+    if sy != 1
+    {
+      return (sy, 0, end);
+    }
+    if active
+    {
+      let(status, n) = apply(k, v, y);
+      if status != 1
+      {
+        return (status, 0, end);
+      }
+      v = n;
+    }
+    p = end;
+  }
+  return (1, v, p);
+}
+
+fn error(st: i64) -> string
+{
+  if st == 5
+  {
+    return "#REF!";
+  }
+  if st == 6
+  {
+    return "#DIV/0!";
+  }
+  if st == 7
+  {
+    return "#NUM!";
+  }
+  if st == 8
+  {
+    return "#CYCLE!";
+  }
+  if st == 9
+  {
+    return "#DEPTH!";
+  }
+  if st == 10
+  {
+    return "#VALUE!";
+  }
+  return "#SYNTAX!";
+}
+
+fn display(b: G.Book, id: i64) -> string
+{
+  let(st, v) = cell(b, id, 0);
+  if st == 1
+  {
+    return Int.to_string(v);
+  }
+  if st == 2
+  {
+    return "";
+  }
+  if st == 3
+  {
+    let s = G.raw(b, id);
+    if G.byte(s, 0) == 39
+    {
+      return text_slice(s, 1, text_len(s));
+    }
+    return s;
+  }
   return error(st);
 }

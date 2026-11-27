@@ -6,66 +6,104 @@ import sdk.callable as SDK;
 import std.crypto.crypto as Crypto;
 import std.os.CommandLine as Env;
 import std.io.TextIO as IO;
-
-fn env(key:string) -> string { return Env.basis_command_line_get_env(key); }
-fn payload(key:string) -> string { return IO.basis_text_io_input_all(env(key)); }
-fn port_matches(entry:sexpr, name:string, kind:string, limit:i64) -> bool
+fn env(key: string) -> string
 {
-  let p = SDK.decode_port(entry);
-  return sx_text(p["name"]) == name && sx_text(p["kind"]) == kind &&
-    p["major"] == 1 && p["max_bytes"] == limit && p["states"] == 1;
+  return Env.basis_command_line_get_env(key);
 }
 
-fn legacy(key:string, mode:string, inputs:sexpr) -> i64
+fn payload(key: string) -> string
 {
-  let a = sx_text(SDK.value_bytes(SDK.port_at(inputs,0)));
-  let b = sx_text(SDK.value_bytes(SDK.port_at(inputs,1)));
+  return IO.basis_text_io_input_all(env(key));
+}
+
+fn port_matches(entry: sexpr, name: string, kind: string, limit: i64) -> bool
+{
+  let p = SDK.decode_port(entry);
+  return sx_text(p["name"]) == name && sx_text(p["kind"]) == kind && p["major"] == 1 && p["max_bytes"] == limit && p["states"] == 1;
+}
+
+fn legacy(key: string, mode: string, inputs: sexpr) -> i64
+{
+  let a = sx_text(SDK.value_bytes(SDK.port_at(inputs, 0)));
+  let b = sx_text(SDK.value_bytes(SDK.port_at(inputs, 1)));
   var source = key;
   var contract = "hospitality.offer@1";
   var format = "ndjson";
   var c = "";
   var d = "";
   var e = "";
-  if key != Sources.frozen_key() {
+  if key != Sources.frozen_key()
+  {
     format = "json";
-    c = sx_text(SDK.value_bytes(SDK.port_at(inputs,2)));
-    if key == Sources.crossref_key() {
+    c = sx_text(SDK.value_bytes(SDK.port_at(inputs, 2)));
+    if key == Sources.crossref_key()
+    {
       contract = "dragnet.crossref-evidence@1";
-      d = sx_text(SDK.value_bytes(SDK.port_at(inputs,3)));
-      e = sx_text(SDK.value_bytes(SDK.port_at(inputs,4)));
-    } else {
+      d = sx_text(SDK.value_bytes(SDK.port_at(inputs, 3)));
+      e = sx_text(SDK.value_bytes(SDK.port_at(inputs, 4)));
+    }
+    else
+    {
       source = Sources.public_key();
       contract = source;
       d = env("DRAGNET_SDK_CUTOFF");
     }
   }
-  let result = Sources.invoke(source,mode,a,b,c,d,e);
-  if sx_text(result["source"]) != source || sx_text(result["contract"]) != contract ||
-    sx_text(result["format"]) != format { return 89; }
+  let result = Sources.invoke(source, mode, a, b, c, d, e);
+  if sx_text(result["source"]) != source || sx_text(result["contract"]) != contract || sx_text(result["format"]) != format
+  {
+    return 89;
+  }
   IO.basis_text_io_print(sx_text(result["bytes"]));
   return 0;
 }
 
-fn fx(trial:string) -> i64
+fn fx(trial: string) -> i64
 {
   let snapshot = payload("DRAGNET_SDK_1");
   let cutoff = env("DRAGNET_SDK_CUTOFF");
   let base = env("DRAGNET_SDK_BASE");
   let quote_currency = env("DRAGNET_SDK_QUOTE");
   var parent = env("DRAGNET_SDK_PARENT");
-  if trial == "fx-digest" || trial == "fx-recomputed" {
-    let (status,hash) = Crypto.basis_crypto_blake3(snapshot);
-    if status != 0 { return 97; }
+  if trial == "fx-digest" || trial == "fx-recomputed"
+  {
+    let(status, hash) = Crypto.basis_crypto_blake3(snapshot);
+    if status != 0
+    {
+      return 97;
+    }
     parent = "blake3:$hash";
-    if trial == "fx-digest" { println(parent); return 0; }
+    if trial == "fx-digest"
+    {
+      println(parent);
+      return 0;
+    }
   }
-  if trial == "fx-verify" {
-    if FX.verifies(snapshot,parent,cutoff,base,quote_currency,payload("DRAGNET_SDK_2")) { return 0; }
+  if trial == "fx-verify"
+  {
+    if FX.verifies(snapshot,
+      parent,
+      cutoff,
+      base,
+      quote_currency,
+      payload("DRAGNET_SDK_2"))
+    {
+      return 0;
+    }
     return 1;
   }
-  let p = FX.project(snapshot,parent,cutoff,base,quote_currency);
-  if p["status"] == 0 { IO.basis_text_io_print(sx_text(p["bytes"])); }
-  else { if sx_kind(p["bytes"]) != 0 { return 98; } }
+  let p = FX.project(snapshot, parent, cutoff, base, quote_currency);
+  if p["status"] == 0
+  {
+    IO.basis_text_io_print(sx_text(p["bytes"]));
+  }
+  else
+  {
+    if sx_kind(p["bytes"]) != 0
+    {
+      return 98;
+    }
+  }
   return p["status"];
 }
 
@@ -74,81 +112,180 @@ fn main() -> i64
   let key = env("DRAGNET_SDK_SOURCE");
   let mode = env("DRAGNET_SDK_MODE");
   let trial = env("DRAGNET_SDK_CASE");
-  if text_len(trial) >= 3 && text_slice(trial,0,3) == "fx-" { return fx(trial); }
-  let d = SDK.resolve(key,mode,Sources.lookup);
-  if !d["enabled"] { return 1; }
+  if text_len(trial) >= 3 && text_slice(trial, 0, 3) == "fx-"
+  {
+    return fx(trial);
+  }
+  let d = SDK.resolve(key, mode, Sources.lookup);
+  if ! d["enabled"]
+  {
+    return 1;
+  }
   let p = d["pin"];
-  if sx_text(d["role"]) != "Source" || sx_text(d["effect"]) != "pure" || p["abi"] != 1 ||
-     sx_text(p["handler_name"]) != key || sx_text(p["handler_version"]) != "1"
-  { return 90; }
-  if trial == "identity" || trial == "bundle-digest" {
-    let (status,hash) = Crypto.basis_crypto_blake3(payload("DRAGNET_SDK_BUNDLE"));
-    if trial == "bundle-digest" && status == 0 { println(hash); return 0; }
-    if status != 0 || sx_text(p["code_digest"]) != "blake3:$hash" { return 91; }
+  if sx_text(d["role"]) != "Source" || sx_text(d["effect"]) != "pure" || p["abi"] != 1 || sx_text(p["handler_name"]) != key || sx_text(p["handler_version"]) != "1"
+  {
+    return 90;
+  }
+  if trial == "identity" || trial == "bundle-digest"
+  {
+    let(status,
+      hash) = Crypto.basis_crypto_blake3(payload("DRAGNET_SDK_BUNDLE"));
+    if trial == "bundle-digest" && status == 0
+    {
+      println(hash);
+      return 0;
+    }
+    if status != 0 || sx_text(p["code_digest"]) != "blake3:$hash"
+    {
+      return 91;
+    }
     println(sx_text(p["policy_digest"]));
     return 0;
   }
   var inputs = sx_nil();
-  if key == "dragnet.frozen_csv@1" {
+  if key == "dragnet.frozen_csv@1"
+  {
     let ports = d["inputs"];
-    if !port_matches(sx_head(ports),"scenario","hospitality.scenario",2000000) ||
-      !port_matches(sx_head(sx_tail(ports)),"offers","finpred.offers.csv",2000000) ||
-      sx_kind(sx_tail(sx_tail(ports))) != 0 || d["max_work"] != 1 { return 92; }
-    let offers = SDK.value_entry(1,payload("DRAGNET_SDK_2"));
-    let scenario = SDK.value_entry(1,payload("DRAGNET_SDK_1"));
-    inputs = sx_cons(scenario,sx_cons(offers,sx_nil()));
-    if trial == "arity" { inputs = sx_cons(scenario,sx_nil()); }
-    if trial == "presence" { inputs = sx_cons(SDK.value_entry(4,"x"),sx_cons(offers,sx_nil())); }
-  }
-  else { if key == "dragnet.crossref@1" {
-    let ports = d["inputs"];
-    if !port_matches(SDK.port_at(ports,0),"request","dragnet.crossref-request",1024) ||
-      !port_matches(SDK.port_at(ports,1),"search_raw","dragnet.crossref-search-json",262144) ||
-      !port_matches(SDK.port_at(ports,2),"work_raw","dragnet.crossref-work-json",262144) ||
-      !port_matches(SDK.port_at(ports,3),"search_decode","dragnet.crossref-search-decode",16384) ||
-      !port_matches(SDK.port_at(ports,4),"work_decode","dragnet.crossref-work-decode",16384) ||
-      sx_kind(SDK.port_at(ports,5)) != 0 { return 96; }
-    inputs = sx_cons(SDK.value_entry(1,payload("DRAGNET_SDK_1")),
-      sx_cons(SDK.value_entry(1,payload("DRAGNET_SDK_2")),
-      sx_cons(SDK.value_entry(1,payload("DRAGNET_SDK_3")),
-      sx_cons(SDK.value_entry(1,payload("DRAGNET_SDK_4")),
-      sx_cons(SDK.value_entry(1,payload("DRAGNET_SDK_5")),sx_nil())))));
-  }
-  else {
-    let ports = d["inputs"];
-    var raw_kind = "dragnet.ecb-xml";
-    var decode_kind = "dragnet.ecb-decode";
-    if key == "dragnet.public-feed.eurostat@1" {
-      raw_kind = "dragnet.eurostat-jsonstat"; decode_kind = "dragnet.eurostat-decode";
+    if ! port_matches(sx_head(ports),
+      "scenario",
+      "hospitality.scenario",
+      2000000) || ! port_matches(sx_head(sx_tail(ports)),
+      "offers",
+      "finpred.offers.csv",
+      2000000) || sx_kind(sx_tail(sx_tail(ports))) != 0 || d["max_work"] != 1
+    {
+      return 92;
     }
-    if !port_matches(sx_head(ports),"capture","dragnet.feed-capture",512) ||
-      !port_matches(sx_head(sx_tail(ports)),"raw",raw_kind,65536) ||
-      !port_matches(sx_head(sx_tail(sx_tail(ports))),"decode",decode_kind,4096) ||
-      sx_kind(sx_tail(sx_tail(sx_tail(ports)))) != 0 { return 93; }
-    inputs = sx_cons(SDK.value_entry(1,payload("DRAGNET_SDK_1")),
-      sx_cons(SDK.value_entry(1,payload("DRAGNET_SDK_2")),
-      sx_cons(SDK.value_entry(1,payload("DRAGNET_SDK_3")),sx_nil())));
-  } }
-  if trial == "legacy" { return legacy(key,mode,inputs); }
+    let offers = SDK.value_entry(1, payload("DRAGNET_SDK_2"));
+    let scenario = SDK.value_entry(1, payload("DRAGNET_SDK_1"));
+    inputs = sx_cons(scenario, sx_cons(offers, sx_nil()));
+    if trial == "arity"
+    {
+      inputs = sx_cons(scenario, sx_nil());
+    }
+    if trial == "presence"
+    {
+      inputs = sx_cons(SDK.value_entry(4, "x"), sx_cons(offers, sx_nil()));
+    }
+  }
+  else
+  {
+    if key == "dragnet.crossref@1"
+    {
+      let ports = d["inputs"];
+      if ! port_matches(SDK.port_at(ports,
+        0),
+        "request",
+        "dragnet.crossref-request",
+        1024) || ! port_matches(SDK.port_at(ports,
+        1),
+        "search_raw",
+        "dragnet.crossref-search-json",
+        262144) || ! port_matches(SDK.port_at(ports,
+        2),
+        "work_raw",
+        "dragnet.crossref-work-json",
+        262144) || ! port_matches(SDK.port_at(ports,
+        3),
+        "search_decode",
+        "dragnet.crossref-search-decode",
+        16384) || ! port_matches(SDK.port_at(ports,
+        4),
+        "work_decode",
+        "dragnet.crossref-work-decode",
+        16384) || sx_kind(SDK.port_at(ports,
+        5)) != 0
+      {
+        return 96;
+      }
+      inputs = sx_cons(SDK.value_entry(1,
+        payload("DRAGNET_SDK_1")),
+        sx_cons(SDK.value_entry(1,
+        payload("DRAGNET_SDK_2")),
+        sx_cons(SDK.value_entry(1,
+        payload("DRAGNET_SDK_3")),
+        sx_cons(SDK.value_entry(1,
+        payload("DRAGNET_SDK_4")),
+        sx_cons(SDK.value_entry(1,
+        payload("DRAGNET_SDK_5")),
+        sx_nil())))));
+    }
+    else
+    {
+      let ports = d["inputs"];
+      var raw_kind = "dragnet.ecb-xml";
+      var decode_kind = "dragnet.ecb-decode";
+      if key == "dragnet.public-feed.eurostat@1"
+      {
+        raw_kind = "dragnet.eurostat-jsonstat";
+        decode_kind = "dragnet.eurostat-decode";
+      }
+      if ! port_matches(sx_head(ports),
+        "capture",
+        "dragnet.feed-capture",
+        512) || ! port_matches(sx_head(sx_tail(ports)),
+        "raw",
+        raw_kind,
+        65536) || ! port_matches(sx_head(sx_tail(sx_tail(ports))),
+        "decode",
+        decode_kind,
+        4096) || sx_kind(sx_tail(sx_tail(sx_tail(ports)))) != 0
+      {
+        return 93;
+      }
+      inputs = sx_cons(SDK.value_entry(1,
+        payload("DRAGNET_SDK_1")),
+        sx_cons(SDK.value_entry(1,
+        payload("DRAGNET_SDK_2")),
+        sx_cons(SDK.value_entry(1,
+        payload("DRAGNET_SDK_3")),
+        sx_nil())));
+    }
+  }
+  if trial == "legacy"
+  {
+    return legacy(key, mode, inputs);
+  }
   var work = 1;
-  if trial == "budget" { work = 2; }
+  if trial == "budget"
+  {
+    work = 2;
+  }
   var policy = p["policy_digest"];
-  if trial == "forged-pin" {
+  if trial == "forged-pin"
+  {
     policy = sx_string("blake3:0000000000000000000000000000000000000000000000000000000000000000");
   }
-  let pin = record<SDK.Pin>{package_name:p["package_name"],package_version:p["package_version"],
-    handler_name:p["handler_name"],handler_version:p["handler_version"],abi:p["abi"],
-    code_digest:p["code_digest"],policy_digest:policy};
-  let request = record<SDK.Request>{inputs:inputs,cutoff:sx_string(env("DRAGNET_SDK_CUTOFF")),work:work};
-  let result = SDK.invoke(pin,mode,request,Sources.lookup,Sources.call);
-  if result["status"] != 0 {
-    if result["state"] != 0 || sx_kind(result["bytes"]) != 0 { return 94; }
+  let pin = record < SDK.Pin >
+  {
+    package_name: p["package_name"], package_version: p["package_version"], handler_name: p["handler_name"], handler_version: p["handler_version"], abi: p["abi"], code_digest: p["code_digest"], policy_digest: policy
+  };
+  let request = record < SDK.Request >
+  {
+    inputs: inputs, cutoff: sx_string(env("DRAGNET_SDK_CUTOFF")), work: work
+  };
+  let result = SDK.invoke(pin, mode, request, Sources.lookup, Sources.call);
+  if result["status"] != 0
+  {
+    if result["state"] != 0 || sx_kind(result["bytes"]) != 0
+    {
+      return 94;
+    }
     return result["status"];
   }
   var expected = 1;
-  if trial == "empty-ndjson" { expected = 4; }
-  if trial == "partial" { expected = 2; }
-  if result["state"] != expected { return 95; }
+  if trial == "empty-ndjson"
+  {
+    expected = 4;
+  }
+  if trial == "partial"
+  {
+    expected = 2;
+  }
+  if result["state"] != expected
+  {
+    return 95;
+  }
   IO.basis_text_io_print(sx_text(result["bytes"]));
   return 0;
 }

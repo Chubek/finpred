@@ -4,57 +4,90 @@ import std.collections.List as L;
 import automat.dag_artifacts as Art;
 import automat.scalar_memo as Memo;
 import automat.schedule as Schedule;
-
-record Plan { version:sexpr, nodes:sexpr, output:sexpr }
-record Outcome {
-  status:sexpr, output_kind:sexpr, value:sexpr, trace:sexpr, artifacts:sexpr, output_digest:sexpr,
-  invocations:i64, memo_hits:i64
+record Plan
+{
+  version: sexpr, nodes: sexpr, output: sexpr
 }
 
-fn failed(reason:string) -> Outcome
+record Outcome
 {
-  return record<Outcome>{status:sx_string(reason),output_kind:sx_nil(),value:sx_nil(),trace:sx_string(""),
-    artifacts:sx_nil(),output_digest:sx_nil(),invocations:0,memo_hits:0};
+  status: sexpr, output_kind: sexpr, value: sexpr, trace: sexpr, artifacts: sexpr, output_digest: sexpr, invocations: i64, memo_hits: i64
+}
+
+fn failed(reason: string) -> Outcome
+{
+  return record < Outcome >
+  {
+    status: sx_string(reason), output_kind: sx_nil(), value: sx_nil(), trace: sx_string(""), artifacts: sx_nil(), output_digest: sx_nil(), invocations: 0, memo_hits: 0
+  };
 }
 
 # A declaration binds the left and right ports in that order. Each node
 # publishes one result under its id. Trusted host code supplies any additional signatures.
-fn node(id:string, op:string, left:string, right:string) -> sexpr
+fn node(id: string, op: string, left: string, right: string) -> sexpr
 {
-  return sx_cons(sx_string(id),sx_cons(sx_string(op),
-    sx_cons(sx_string(left),sx_cons(sx_string(right),sx_nil()))));
+  return sx_cons(sx_string(id),
+    sx_cons(sx_string(op),
+    sx_cons(sx_string(left),
+    sx_cons(sx_string(right),
+    sx_nil()))));
 }
 
-fn select_node(id:string, condition:string, positive:string, zero:string) -> sexpr
+fn select_node(id: string,
+  condition: string,
+  positive: string,
+  zero: string) -> sexpr
 {
-  return sx_cons(sx_string(id),sx_cons(sx_string("select@1"),sx_cons(sx_string(condition),
-    sx_cons(sx_string(positive),sx_cons(sx_string(zero),sx_nil())))));
+  return sx_cons(sx_string(id),
+    sx_cons(sx_string("select@1"),
+    sx_cons(sx_string(condition),
+    sx_cons(sx_string(positive),
+    sx_cons(sx_string(zero),
+    sx_nil())))));
 }
 
-fn field(n:sexpr, i:i64) -> string { return sx_text(L.basis_list_nth(n,i)); }
+fn field(n: sexpr, i: i64) -> string
+{
+  return sx_text(L.basis_list_nth(n, i));
+}
 
-fn valid_shape(n:sexpr, select_enabled:bool) -> bool
+fn valid_shape(n: sexpr, select_enabled: bool) -> bool
 {
   var rest = n;
   var width = 4;
   var i = 0;
   while i < width
   {
-    if sx_kind(rest) != 3 { return false; }
+    if sx_kind(rest) != 3
+    {
+      return false;
+    }
     let a = sx_head(rest);
-    if sx_kind(a) != 2 { return false; }
+    if sx_kind(a) != 2
+    {
+      return false;
+    }
     let s = sx_text(a);
-    if text_len(s) < 1 || text_len(s) > 32 { return false; }
+    if text_len(s) < 1 || text_len(s) > 32
+    {
+      return false;
+    }
     if i == 1
     {
-      if select_enabled && s == "select@1" { width = 5; }
+      if select_enabled && s == "select@1"
+      {
+        width = 5;
+      }
     }
     else
     {
       for j in 0 .. text_len(s)
       {
-        let c = text_byte(s,j);
-        if c < 97 || c > 122 { return false; }
+        let c = text_byte(s, j);
+        if c < 97 || c > 122
+        {
+          return false;
+        }
       }
     }
     rest = sx_tail(rest);
@@ -67,143 +100,257 @@ fn valid_shape(n:sexpr, select_enabled:bool) -> bool
 # Binary ports share accepts; select uses it for its condition only.
 record Descriptor
 {
-  handler:i64, min_dialect:i64, identity:sexpr, owner:sexpr, accepts:sexpr, produces:sexpr,
-  effect:sexpr, grants:sexpr, cost:i64
+  handler: i64, min_dialect: i64, identity: sexpr, owner: sexpr, accepts: sexpr, produces: sexpr, effect: sexpr, grants: sexpr, cost: i64
 }
 
-fn descriptor(handler:i64, dialect:i64, op:string, owner:string, input:string, output:string) -> Descriptor
+fn descriptor(handler: i64,
+  dialect: i64,
+  op: string,
+  owner: string,
+  input: string,
+  output: string) -> Descriptor
 {
-  return record<Descriptor>{handler:handler,min_dialect:dialect,identity:sx_string(op),
-    owner:sx_string(owner),accepts:sx_string(input),produces:sx_string(output),
-    effect:sx_string("pure"),grants:sx_nil(),cost:1};
+  return record < Descriptor >
+  {
+    handler: handler, min_dialect: dialect, identity: sx_string(op), owner: sx_string(owner), accepts: sx_string(input), produces: sx_string(output), effect: sx_string("pure"), grants: sx_nil(), cost: 1
+  };
 }
 
-fn host_binary(op:string, dialect:i64, owner:string, input:string, output:string) -> Descriptor
+fn host_binary(op: string,
+  dialect: i64,
+  owner: string,
+  input: string,
+  output: string) -> Descriptor
 {
-  return descriptor(5,dialect,op,owner,input,output);
+  return descriptor(5, dialect, op, owner, input, output);
 }
 
-fn resolve(op:string) -> Descriptor
+fn resolve(op: string) -> Descriptor
 {
   var handler = 0;
   var min_dialect = 1;
   var input = "scalar.level@1";
   var output = "scalar.level@1";
-  if op == "minimum@1" { handler = 1; }
-  if op == "maximum@1" { handler = 2; }
-  if op == "distance@1" { handler = 3; output = "scalar.distance@1"; }
-  if op == "select@1" { handler = 4; min_dialect = 2; input = "scalar.distance@1"; }
-  return descriptor(handler,min_dialect,op,"finpred.core@1",input,output);
+  if op == "minimum@1"
+  {
+    handler = 1;
+  }
+  if op == "maximum@1"
+  {
+    handler = 2;
+  }
+  if op == "distance@1"
+  {
+    handler = 3;
+    output = "scalar.distance@1";
+  }
+  if op == "select@1"
+  {
+    handler = 4;
+    min_dialect = 2;
+    input = "scalar.distance@1";
+  }
+  return descriptor(handler, min_dialect, op, "finpred.core@1", input, output);
 }
 
-fn no_binding(op:string, mode:string) -> Descriptor
+fn no_binding(op: string, mode: string) -> Descriptor
 {
-  return descriptor(0,0,op,"","","");
+  return descriptor(0, 0, op, "", "", "");
 }
 
-fn no_invoke(op:string, left:i64, right:i64) -> i64
+fn no_invoke(op: string, left: i64, right: i64) -> i64
 {
   tool_fail("dag: no host handler");
   return 0;
 }
 
-fn resolve_with(op:string, mode:string, lookup:fn(string,string) -> Descriptor) -> Descriptor
+fn resolve_with(op: string,
+  mode: string,
+  lookup: fn(string,
+  string) -> Descriptor) -> Descriptor
 {
   let builtin = resolve(op);
-  if builtin["handler"] > 0 { return builtin; }
-  let binding = lookup(op,mode);
-  if binding["handler"] != 5 || sx_kind(binding["identity"]) != 2 || sx_text(binding["identity"]) != op
-    || sx_kind(binding["owner"]) != 2 || text_len(sx_text(binding["owner"])) == 0
-    || sx_kind(binding["accepts"]) != 2 || sx_kind(binding["produces"]) != 2
-  { return builtin; }
+  if builtin["handler"] > 0
+  {
+    return builtin;
+  }
+  let binding = lookup(op, mode);
+  if binding["handler"] != 5 || sx_kind(binding["identity"]) != 2 || sx_text(binding["identity"]) != op || sx_kind(binding["owner"]) != 2 || text_len(sx_text(binding["owner"])) == 0 || sx_kind(binding["accepts"]) != 2 || sx_kind(binding["produces"]) != 2
+  {
+    return builtin;
+  }
   return binding;
 }
 
-fn plan_dialect(version:string) -> i64
+fn plan_dialect(version: string) -> i64
 {
-  if version == "automat.scalar-dag@1" { return 1; }
-  if version == "automat.scalar-dag@2" { return 2; }
-  if version == "automat.scalar-dag@3" { return 3; }
+  if version == "automat.scalar-dag@1"
+  {
+    return 1;
+  }
+  if version == "automat.scalar-dag@2"
+  {
+    return 2;
+  }
+  if version == "automat.scalar-dag@3"
+  {
+    return 3;
+  }
   return 0;
 }
 
-fn available(d:Descriptor, version:string) -> bool
+fn available(d: Descriptor, version: string) -> bool
 {
   return d["handler"] > 0 && d["min_dialect"] > 0 && plan_dialect(version) >= d["min_dialect"];
 }
 
-fn input_kind(d:Descriptor, port:i64) -> string
+fn input_kind(d: Descriptor, port: i64) -> string
 {
-  if d["handler"] == 4 && port > 2 { return "scalar.level@1"; }
+  if d["handler"] == 4 && port > 2
+  {
+    return "scalar.level@1";
+  }
   return sx_text(d["accepts"]);
 }
 
-fn admitted(d:Descriptor, mode:string) -> bool
+fn admitted(d: Descriptor, mode: string) -> bool
 {
-  return mode == "analysis" && d["handler"] > 0 && sx_text(d["effect"]) == "pure"
-    && sx_kind(d["grants"]) == 0 && d["cost"] == 1;
+  return mode == "analysis" && d["handler"] > 0 && sx_text(d["effect"]) == "pure" && sx_kind(d["grants"]) == 0 && d["cost"] == 1;
 }
 
 # Values are nonnegative integers <= 10^12; subtraction stays exact.
-fn dispatch_binary(d:Descriptor, left:i64, right:i64, call:fn(string,i64,i64) -> i64) -> i64
+fn dispatch_binary(d: Descriptor,
+  left: i64,
+  right: i64,
+  call: fn(string,
+  i64,
+  i64) -> i64) -> i64
 {
-  if d["handler"] == 1 { if left < right { return left; } return right; }
-  if d["handler"] == 2 { if left > right { return left; } return right; }
-  if d["handler"] == 3 { if left < right { return right-left; } return left-right; }
-  if d["handler"] == 5 { return call(sx_text(d["identity"]),left,right); }
+  if d["handler"] == 1
+  {
+    if left < right
+    {
+      return left;
+    }
+    return right;
+  }
+  if d["handler"] == 2
+  {
+    if left > right
+    {
+      return left;
+    }
+    return right;
+  }
+  if d["handler"] == 3
+  {
+    if left < right
+    {
+      return right - left;
+    }
+    return left - right;
+  }
+  if d["handler"] == 5
+  {
+    return call(sx_text(d["identity"]), left, right);
+  }
   tool_fail("dag: no registered pure handler");
   return 0;
 }
 
-fn invoke_binary_with(op:string, version:string, mode:string, left:i64, right:i64,
-  lookup:fn(string,string) -> Descriptor, call:fn(string,i64,i64) -> i64) -> i64
+fn invoke_binary_with(op: string,
+  version: string,
+  mode: string,
+  left: i64,
+  right: i64,
+  lookup: fn(string,
+  string) -> Descriptor,
+  call: fn(string,
+  i64,
+  i64) -> i64) -> i64
 {
-  let d = resolve_with(op,mode,lookup);
-  if !admitted(d,mode) || !available(d,version) { tool_fail("dag: invocation denied"); }
-  return dispatch_binary(d,left,right,call);
+  let d = resolve_with(op, mode, lookup);
+  if ! admitted(d, mode) || ! available(d, version)
+  {
+    tool_fail("dag: invocation denied");
+  }
+  return dispatch_binary(d, left, right, call);
 }
 
-fn invoke_binary(op:string, version:string, mode:string, left:i64, right:i64) -> i64
+fn invoke_binary(op: string,
+  version: string,
+  mode: string,
+  left: i64,
+  right: i64) -> i64
 {
-  return invoke_binary_with(op,version,mode,left,right,no_binding,no_invoke);
+  return invoke_binary_with(op,
+    version,
+    mode,
+    left,
+    right,
+    no_binding,
+    no_invoke);
 }
 
 # Keep the unversioned helpers restricted to the legacy handler set.
-fn invoke(op:string, mode:string, left:i64, right:i64) -> i64
+fn invoke(op: string, mode: string, left: i64, right: i64) -> i64
 {
-  return invoke_binary(op,"automat.scalar-dag@2",mode,left,right);
+  return invoke_binary(op, "automat.scalar-dag@2", mode, left, right);
 }
 
-fn invoke_select_versioned(version:string, mode:string, condition:i64, positive:i64, zero:i64) -> i64
+fn invoke_select_versioned(version: string,
+  mode: string,
+  condition: i64,
+  positive: i64,
+  zero: i64) -> i64
 {
   let d = resolve("select@1");
-  if !admitted(d,mode) || !available(d,version) { tool_fail("dag: invocation denied"); }
-  if condition == 0 { return zero; }
+  if ! admitted(d, mode) || ! available(d, version)
+  {
+    tool_fail("dag: invocation denied");
+  }
+  if condition == 0
+  {
+    return zero;
+  }
   return positive;
 }
 
-fn invoke_select(mode:string, condition:i64, positive:i64, zero:i64) -> i64
+fn invoke_select(mode: string, condition: i64, positive: i64, zero: i64) -> i64
 {
-  return invoke_select_versioned("automat.scalar-dag@2",mode,condition,positive,zero);
+  return invoke_select_versioned("automat.scalar-dag@2",
+    mode,
+    condition,
+    positive,
+    zero);
 }
 
 # Slot 0/1 is an immutable graph input; later slots follow declaration order.
-fn slot(nodes:sexpr, name:string) -> i64
+fn slot(nodes: sexpr, name: string) -> i64
 {
-  if name == "first" { return 0; }
-  if name == "second" { return 1; }
+  if name == "first"
+  {
+    return 0;
+  }
+  if name == "second"
+  {
+    return 1;
+  }
   var rest = nodes;
   var i = 2;
   while sx_kind(rest) == 3
   {
-    if field(sx_head(rest),0) == name { return i; }
+    if field(sx_head(rest), 0) == name
+    {
+      return i;
+    }
     rest = sx_tail(rest);
     i = i + 1;
   }
   return 0 - 1;
 }
 
-fn dependency_rows(nodes:sexpr) -> sexpr
+fn dependency_rows(nodes: sexpr) -> sexpr
 {
   var items = nodes;
   var rows = sx_nil();
@@ -211,50 +358,73 @@ fn dependency_rows(nodes:sexpr) -> sexpr
   {
     let n = sx_head(items);
     var width = 4;
-    if field(n,1) == "select@1" { width = 5; }
+    if field(n, 1) == "select@1"
+    {
+      width = 5;
+    }
     var parents = sx_nil();
     for port in 2 .. width
     {
-      let name = L.basis_list_nth(n,port);
-      if sx_text(name) != "first" && sx_text(name) != "second" { parents = sx_cons(name,parents); }
+      let name = L.basis_list_nth(n, port);
+      if sx_text(name) != "first" && sx_text(name) != "second"
+      {
+        parents = sx_cons(name, parents);
+      }
     }
-    rows = sx_cons(sx_cons(sx_head(n),parents),rows);
+    rows = sx_cons(sx_cons(sx_head(n), parents), rows);
     items = sx_tail(items);
   }
   return L.basis_list_rev(rows);
 }
 
-fn evaluate(nodes:sexpr, count:i64, output:i64, mode:string, order:i64,
-  values:i64, memoized:bool, version:string, lookup:fn(string,string) -> Descriptor,
-  call:fn(string,i64,i64) -> i64) -> Outcome
+fn evaluate(nodes: sexpr,
+  count: i64,
+  output: i64,
+  mode: string,
+  order: i64,
+  values: i64,
+  memoized: bool,
+  version: string,
+  lookup: fn(string,
+  string) -> Descriptor,
+  call: fn(string,
+  i64,
+  i64) -> i64) -> Outcome
 {
   let trace = buffer_new();
-  let first = Art.input_bytes("first",A.basis_array_sub(values,0));
-  let second = Art.input_bytes("second",A.basis_array_sub(values,1));
-  var artifacts = sx_cons(Art.entry(Art.digest(second),second),
-    sx_cons(Art.entry(Art.digest(first),first),sx_nil()));
+  let first = Art.input_bytes("first", A.basis_array_sub(values, 0));
+  let second = Art.input_bytes("second", A.basis_array_sub(values, 1));
+  var artifacts = sx_cons(Art.entry(Art.digest(second),
+    second),
+    sx_cons(Art.entry(Art.digest(first),
+    first),
+    sx_nil()));
   # Slot -> execution position. Prepend entries during execution and reverse once.
-  let positions = A.basis_array_array(count+2,0);
-  A.basis_array_update(positions,1,1);
+  let positions = A.basis_array_array(count + 2, 0);
+  A.basis_array_update(positions, 1, 1);
   var entries = sx_nil();
   var invocations = 0;
   var hits = 0;
   for step in 0 .. count
   {
-    let i = A.basis_array_sub(order,step);
-    let n = L.basis_list_nth(nodes,i);
-    let op = field(n,1);
-    let left = field(n,2);
-    let right = field(n,3);
-    let left_slot = slot(nodes,left);
-    let right_slot = slot(nodes,right);
-    let left_entry = L.basis_list_nth(artifacts,step+1-A.basis_array_sub(positions,left_slot));
-    let right_entry = L.basis_list_nth(artifacts,step+1-A.basis_array_sub(positions,right_slot));
+    let i = A.basis_array_sub(order, step);
+    let n = L.basis_list_nth(nodes, i);
+    let op = field(n, 1);
+    let left = field(n, 2);
+    let right = field(n, 3);
+    let left_slot = slot(nodes, left);
+    let right_slot = slot(nodes, right);
+    let left_entry = L.basis_list_nth(artifacts,
+      step + 1 - A.basis_array_sub(positions,
+      left_slot));
+    let right_entry = L.basis_list_nth(artifacts,
+      step + 1 - A.basis_array_sub(positions,
+      right_slot));
     let left_digest = sx_text(sx_head(left_entry));
     let right_digest = sx_text(sx_head(right_entry));
-    let desc = resolve_with(op,mode,lookup);
+    let desc = resolve_with(op, mode, lookup);
     let selecting = desc["handler"] == 4;
-    if !admitted(desc,mode) || !available(desc,version)
+    if ! admitted(desc, mode) || ! available(desc, version)
     {
       A.basis_array_destroy(positions);
       return failed("denied");
@@ -268,180 +438,344 @@ fn evaluate(nodes:sexpr, count:i64, output:i64, mode:string, order:i64,
     # For select, the first two declaration slots are condition and positive.
     if selecting
     {
-      zero = field(n,4);
-      zero_slot = slot(nodes,zero);
-      let zero_entry = L.basis_list_nth(artifacts,step+1-A.basis_array_sub(positions,zero_slot));
+      zero = field(n, 4);
+      zero_slot = slot(nodes, zero);
+      let zero_entry = L.basis_list_nth(artifacts,
+        step + 1 - A.basis_array_sub(positions,
+        zero_slot));
       zero_digest = sx_text(sx_head(zero_entry));
     }
     var k = "";
-    var cached:Option<i64> = option_none();
+    var cached: Option < i64 > = option_none();
     if memoized
     {
-      if selecting { k = Memo.select_key(left_digest,right_digest,zero_digest); }
-      else { k = Memo.key(owner,identity,kind,left_digest,right_digest); }
-      cached = Memo.lookup(entries,k);
+      if selecting
+      {
+        k = Memo.select_key(left_digest, right_digest, zero_digest);
+      }
+      else
+      {
+        k = Memo.key(owner, identity, kind, left_digest, right_digest);
+      }
+      cached = Memo.lookup(entries, k);
     }
-    let v = cached ~ {
-      Some(value) => { hits = hits + 1; value },
-      None() => {
-        let a = A.basis_array_sub(values,left_slot);
-        let b = A.basis_array_sub(values,right_slot);
+    let v = cached ~
+    {
+      Some(value) =>
+      {
+        hits = hits + 1;
+        value
+      }, None() =>
+      {
+        let a = A.basis_array_sub(values, left_slot);
+        let b = A.basis_array_sub(values, right_slot);
         var value = 0;
-        if selecting { value = invoke_select_versioned(version,mode,a,b,A.basis_array_sub(values,zero_slot)); }
-         else { value = dispatch_binary(desc,a,b,call); }
+        if selecting
+        {
+          value = invoke_select_versioned(version,
+            mode,
+            a,
+            b,
+            A.basis_array_sub(values,
+            zero_slot));
+        }
+        else
+        {
+          value = dispatch_binary(desc, a, b, call);
+        }
         invocations = invocations + 1;
-        if memoized { entries = Memo.remember(entries,k,value); }
+        if memoized
+        {
+          entries = Memo.remember(entries, k, value);
+        }
         value
       },
     };
-    A.basis_array_update(values,i+2,v);
-    let id = field(n,0);
+    A.basis_array_update(values, i + 2, v);
+    let id = field(n, 0);
     var bytes = "";
     if selecting
     {
-      bytes = Art.select_bytes(id,left_digest,right_digest,zero_digest,v);
-      buffer_append(trace,"$id=$op($left,$right,$zero):$v\n");
+      bytes = Art.select_bytes(id, left_digest, right_digest, zero_digest, v);
+      buffer_append(trace, "$id=$op($left,$right,$zero):$v\n");
     }
     else
     {
-      bytes = Art.node_bytes_owned(id,owner,identity,kind,left_digest,right_digest,v);
-      buffer_append(trace,"$id=$op($left,$right):$v\n");
+      bytes = Art.node_bytes_owned(id,
+        owner,
+        identity,
+        kind,
+        left_digest,
+        right_digest,
+        v);
+      buffer_append(trace, "$id=$op($left,$right):$v\n");
     }
-    artifacts = sx_cons(Art.entry(Art.digest(bytes),bytes),artifacts);
-    A.basis_array_update(positions,i+2,step+2);
+    artifacts = sx_cons(Art.entry(Art.digest(bytes), bytes), artifacts);
+    A.basis_array_update(positions, i + 2, step + 2);
   }
-  let descriptor = resolve_with(field(L.basis_list_nth(nodes,output-2),1),mode,lookup);
+  let descriptor = resolve_with(field(L.basis_list_nth(nodes,
+    output - 2),
+    1),
+    mode,
+    lookup);
   let ordered = L.basis_list_rev(artifacts);
-  let selected = L.basis_list_nth(ordered,A.basis_array_sub(positions,output));
+  let selected = L.basis_list_nth(ordered,
+    A.basis_array_sub(positions,
+    output));
   A.basis_array_destroy(positions);
-  return record<Outcome>{status:sx_string("ok"),output_kind:descriptor["produces"],
-    value:sx_string("${A.basis_array_sub(values,output)}"),
-    trace:sx_string(buffer_text(trace)),artifacts:ordered,output_digest:sx_head(selected),
-    invocations:invocations,memo_hits:hits};
+  return record < Outcome >
+  {
+    status: sx_string("ok"), output_kind: descriptor["produces"], value: sx_string("${A.basis_array_sub(values,output)}"), trace: sx_string(buffer_text(trace)), artifacts: ordered, output_digest: sx_head(selected), invocations: invocations, memo_hits: hits
+  };
 }
 
-fn check_header(plan:Plan, mode:string) -> string
+fn check_header(plan: Plan, mode: string) -> string
 {
-  if mode != "analysis" { return "denied"; }
-  if sx_kind(plan["version"]) != 2 { return "version"; }
-  if plan_dialect(sx_text(plan["version"])) == 0 { return "version"; }
+  if mode != "analysis"
+  {
+    return "denied";
+  }
+  if sx_kind(plan["version"]) != 2
+  {
+    return "version";
+  }
+  if plan_dialect(sx_text(plan["version"])) == 0
+  {
+    return "version";
+  }
   return "ok";
 }
 
-record Planned { status:sexpr, count:i64, output:i64, order:i64 }
-
-fn rejected_plan(reason:string) -> Planned
+record Planned
 {
-  return record<Planned>{status:sx_string(reason),count:0,output:0,order:0};
+  status: sexpr, count: i64, output: i64, order: i64
+}
+
+fn rejected_plan(reason: string) -> Planned
+{
+  return record < Planned >
+  {
+    status: sx_string(reason), count: 0, output: 0, order: 0
+  };
 }
 
 # Caller checks the header first. Only success transfers ownership of order.
-fn plan_graph(plan:Plan, mode:string, budget:i64, lookup:fn(string,string) -> Descriptor) -> Planned
+fn plan_graph(plan: Plan,
+  mode: string,
+  budget: i64,
+  lookup: fn(string,
+  string) -> Descriptor) -> Planned
 {
   let nodes = plan["nodes"];
   let version = sx_text(plan["version"]);
   # Preserve @1 shape checking before handler admission, even for select.
-  let select_enabled = available(resolve("select@1"),version);
+  let select_enabled = available(resolve("select@1"), version);
   var rest = nodes;
   var count = 0;
   while sx_kind(rest) == 3
   {
-    if count >= 16 || count >= budget { return rejected_plan("budget"); }
+    if count >= 16 || count >= budget
+    {
+      return rejected_plan("budget");
+    }
     let n = sx_head(rest);
-    if !valid_shape(n,select_enabled) { return rejected_plan("invalid_node"); }
-    let d = resolve_with(field(n,1),mode,lookup);
-    if !available(d,version) { return rejected_plan("unknown_handler"); }
-    if !admitted(d,mode) { return rejected_plan("denied"); }
+    if ! valid_shape(n, select_enabled)
+    {
+      return rejected_plan("invalid_node");
+    }
+    let d = resolve_with(field(n, 1), mode, lookup);
+    if ! available(d, version)
+    {
+      return rejected_plan("unknown_handler");
+    }
+    if ! admitted(d, mode)
+    {
+      return rejected_plan("denied");
+    }
     count = count + 1;
     rest = sx_tail(rest);
   }
-  if sx_kind(rest) != 0 || count == 0 { return rejected_plan("invalid_plan"); }
-  for i in 0 .. count
+  if sx_kind(rest) != 0 || count == 0
   {
-    let n = L.basis_list_nth(nodes,i);
-    if slot(nodes,field(n,0)) != i+2 { return rejected_plan("duplicate"); }
+    return rejected_plan("invalid_plan");
   }
   for i in 0 .. count
   {
-    let n = L.basis_list_nth(nodes,i);
-    let dest = resolve_with(field(n,1),mode,lookup);
+    let n = L.basis_list_nth(nodes, i);
+    if slot(nodes, field(n, 0)) != i + 2
+    {
+      return rejected_plan("duplicate");
+    }
+  }
+  for i in 0 .. count
+  {
+    let n = L.basis_list_nth(nodes, i);
+    let dest = resolve_with(field(n, 1), mode, lookup);
     var width = 4;
-    if dest["handler"] == 4 { width = 5; }
+    if dest["handler"] == 4
+    {
+      width = 5;
+    }
     for port in 2 .. width
     {
-      let from = slot(nodes,field(n,port));
-      if from < 0 { return rejected_plan("missing_port"); }
+      let from = slot(nodes, field(n, port));
+      if from < 0
+      {
+        return rejected_plan("missing_port");
+      }
       var incoming = "scalar.level@1";
       if from >= 2
       {
-        let parent = resolve_with(field(L.basis_list_nth(nodes,from-2),1),mode,lookup);
+        let parent = resolve_with(field(L.basis_list_nth(nodes,
+          from - 2),
+          1),
+          mode,
+          lookup);
         incoming = sx_text(parent["produces"]);
       }
-      if incoming != input_kind(dest,port) { return rejected_plan("type_mismatch"); }
+      if incoming != input_kind(dest, port)
+      {
+        return rejected_plan("type_mismatch");
+      }
     }
   }
-  if sx_kind(plan["output"]) != 2 { return rejected_plan("missing_output"); }
+  if sx_kind(plan["output"]) != 2
+  {
+    return rejected_plan("missing_output");
+  }
   let out = sx_text(plan["output"]);
-  if text_len(out) > 32 { return rejected_plan("missing_output"); }
-  let output = slot(nodes,out);
-  if output < 2 { return rejected_plan("missing_output"); }
-  var ordered = Schedule.order(version,dependency_rows(nodes));
-  if sx_kind(ordered) == 0 { return rejected_plan("cycle"); }
-  let order = A.basis_array_array(count,0);
+  if text_len(out) > 32
+  {
+    return rejected_plan("missing_output");
+  }
+  let output = slot(nodes, out);
+  if output < 2
+  {
+    return rejected_plan("missing_output");
+  }
+  var ordered = Schedule.order(version, dependency_rows(nodes));
+  if sx_kind(ordered) == 0
+  {
+    return rejected_plan("cycle");
+  }
+  let order = A.basis_array_array(count, 0);
   for step in 0 .. count
   {
-    A.basis_array_update(order,step,slot(nodes,sx_text(sx_head(ordered)))-2);
+    A.basis_array_update(order,
+      step,
+      slot(nodes,
+      sx_text(sx_head(ordered))) - 2);
     ordered = sx_tail(ordered);
   }
-  return record<Planned>{status:sx_string("ok"),count:count,output:output,order:order};
+  return record < Planned >
+  {
+    status: sx_string("ok"), count: count, output: output, order: order
+  };
 }
 
 # Preflight the entire graph without runtime values or evidence generation.
-fn validate_with(plan:Plan, mode:string, budget:i64, lookup:fn(string,string) -> Descriptor) -> string
+fn validate_with(plan: Plan,
+  mode: string,
+  budget: i64,
+  lookup: fn(string,
+  string) -> Descriptor) -> string
 {
-  let header = check_header(plan,mode);
-  if header != "ok" { return header; }
-  let planned = plan_graph(plan,mode,budget,lookup);
+  let header = check_header(plan, mode);
+  if header != "ok"
+  {
+    return header;
+  }
+  let planned = plan_graph(plan, mode, budget, lookup);
   let status = sx_text(planned["status"]);
-  if status == "ok" { A.basis_array_destroy(planned["order"]); }
+  if status == "ok"
+  {
+    A.basis_array_destroy(planned["order"]);
+  }
   return status;
 }
 
-fn validate(plan:Plan, mode:string, budget:i64) -> string
+fn validate(plan: Plan, mode: string, budget: i64) -> string
 {
-  return validate_with(plan,mode,budget,no_binding);
+  return validate_with(plan, mode, budget, no_binding);
 }
 
 # A trusted host supplies consistent, pure callbacks for the entire run.
-fn run_with(plan:Plan, mode:string, budget:i64, first:i64, second:i64, memoized:bool,
-  lookup:fn(string,string) -> Descriptor, call:fn(string,i64,i64) -> i64) -> Outcome
+fn run_with(plan: Plan,
+  mode: string,
+  budget: i64,
+  first: i64,
+  second: i64,
+  memoized: bool,
+  lookup: fn(string,
+  string) -> Descriptor,
+  call: fn(string,
+  i64,
+  i64) -> i64) -> Outcome
 {
-  let header = check_header(plan,mode);
-  if header != "ok" { return failed(header); }
+  let header = check_header(plan, mode);
+  if header != "ok"
+  {
+    return failed(header);
+  }
   # Runtime input errors precede structural graph errors, but not header errors.
   if first < 0 || second < 0 || first > 1000000000000 || second > 1000000000000
-  { return failed("invalid_input"); }
-  let planned = plan_graph(plan,mode,budget,lookup);
+  {
+    return failed("invalid_input");
+  }
+  let planned = plan_graph(plan, mode, budget, lookup);
   let status = sx_text(planned["status"]);
-  if status != "ok" { return failed(status); }
+  if status != "ok"
+  {
+    return failed(status);
+  }
   let count = planned["count"];
   let order = planned["order"];
-  let values = A.basis_array_array(count+2,0);
-  A.basis_array_update(values,0,first);
-  A.basis_array_update(values,1,second);
-  let result = evaluate(plan["nodes"],count,planned["output"],mode,order,values,memoized,sx_text(plan["version"]),
-    lookup,call);
+  let values = A.basis_array_array(count + 2, 0);
+  A.basis_array_update(values, 0, first);
+  A.basis_array_update(values, 1, second);
+  let result = evaluate(plan["nodes"],
+    count,
+    planned["output"],
+    mode,
+    order,
+    values,
+    memoized,
+    sx_text(plan["version"]),
+    lookup,
+    call);
   A.basis_array_destroy(values);
   A.basis_array_destroy(order);
   return result;
 }
 
-fn run(plan:Plan, mode:string, budget:i64, first:i64, second:i64) -> Outcome
+fn run(plan: Plan,
+  mode: string,
+  budget: i64,
+  first: i64,
+  second: i64) -> Outcome
 {
-  return run_with(plan,mode,budget,first,second,false,no_binding,no_invoke);
+  return run_with(plan,
+    mode,
+    budget,
+    first,
+    second,
+    false,
+    no_binding,
+    no_invoke);
 }
 
-fn run_memoized(plan:Plan, mode:string, budget:i64, first:i64, second:i64) -> Outcome
+fn run_memoized(plan: Plan,
+  mode: string,
+  budget: i64,
+  first: i64,
+  second: i64) -> Outcome
 {
-  return run_with(plan,mode,budget,first,second,true,no_binding,no_invoke);
+  return run_with(plan,
+    mode,
+    budget,
+    first,
+    second,
+    true,
+    no_binding,
+    no_invoke);
 }

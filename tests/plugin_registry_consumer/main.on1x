@@ -7,51 +7,62 @@ import plugins.yieldcraft.entry as Yieldcraft;
 import std.os.CommandLine as Env;
 import std.io.TextIO as IO;
 import ottomat.scalar as Ottomat;
-
 fn main() -> i64
 {
   let task = Env.basis_command_line_get_env("REGISTRY_CASE");
   if task == "lookup"
   {
-    assert(Registry.admits(Registry.yieldcraft_entry(),"recommendation"));
-    assert(Registry.admits("poindexter.sheet.render","analysis"));
-    assert(Registry.admits("dragnet.frozen_csv.offers_as_of","analysis"));
-    assert(Registry.admits("plugins.scalar_diagnostics.midpoint.midpoint","analysis"));
-    assert(!Registry.admits(Registry.yieldcraft_entry(),"analysis"));
-    assert(!Registry.admits("poindexter.sheet.render","execution"));
-    assert(!Registry.admits("dragnet.frozen_csv.offers_as_of","recommendation"));
-    assert(!Registry.admits("plugins.scalar_diagnostics.midpoint.midpoint","execution"));
-    assert(!Registry.admits("external.unregistered","analysis"));
-    assert(!Registry.admits("dragnet.frozen_crossref.evidence_as_of","analysis"));
-    assert(!Registry.admits("","analysis"));
+    assert(Registry.admits(Registry.yieldcraft_entry(), "recommendation"));
+    assert(Registry.admits("poindexter.sheet.render", "analysis"));
+    assert(Registry.admits("dragnet.frozen_csv.offers_as_of", "analysis"));
+    assert(Registry.admits("plugins.scalar_diagnostics.midpoint.midpoint",
+      "analysis"));
+    assert(! Registry.admits(Registry.yieldcraft_entry(), "analysis"));
+    assert(! Registry.admits("poindexter.sheet.render", "execution"));
+    assert(! Registry.admits("dragnet.frozen_csv.offers_as_of",
+      "recommendation"));
+    assert(! Registry.admits("plugins.scalar_diagnostics.midpoint.midpoint",
+      "execution"));
+    assert(! Registry.admits("external.unregistered", "analysis"));
+    assert(! Registry.admits("dragnet.frozen_crossref.evidence_as_of",
+      "analysis"));
+    assert(! Registry.admits("", "analysis"));
     assert(Host.yieldcraft("recommendation") && Host.poindexter() && Host.dragnet());
-    assert(!Host.yieldcraft("execution"));
+    assert(! Host.yieldcraft("execution"));
     return 0;
   }
   if task == "disabled"
   {
-    assert(!Registry.admits("dragnet.frozen_csv.offers_as_of","analysis"));
-    assert(!Registry.admits("poindexter.sheet.render","analysis"));
-    assert(!Registry.admits("plugins.scalar_diagnostics.midpoint.midpoint","analysis"));
+    assert(! Registry.admits("dragnet.frozen_csv.offers_as_of", "analysis"));
+    assert(! Registry.admits("poindexter.sheet.render", "analysis"));
+    assert(! Registry.admits("plugins.scalar_diagnostics.midpoint.midpoint",
+      "analysis"));
     return 0;
   }
   if task == "denied_dependency"
   {
-    assert(!Registry.admits(Registry.yieldcraft_entry(),"recommendation"));
-    assert(!Registry.admits("dragnet.frozen_csv.offers_as_of","analysis"));
-    assert(!Registry.admits("poindexter.sheet.render","analysis"));
-    assert(Registry.admits("plugins.scalar_diagnostics.midpoint.midpoint","analysis"));
+    assert(! Registry.admits(Registry.yieldcraft_entry(), "recommendation"));
+    assert(! Registry.admits("dragnet.frozen_csv.offers_as_of", "analysis"));
+    assert(! Registry.admits("poindexter.sheet.render", "analysis"));
+    assert(Registry.admits("plugins.scalar_diagnostics.midpoint.midpoint",
+      "analysis"));
     return 0;
   }
-  let n = Dag.node("midpoint","midpoint@1","first","second");
-  let plan = record<Dag.Plan>{version:sx_string("automat.scalar-dag@3"),
-    nodes:sx_cons(n,sx_nil()),output:sx_string("midpoint")};
+  let n = Dag.node("midpoint", "midpoint@1", "first", "second");
+  let plan = record < Dag.Plan >
+  {
+    version: sx_string("automat.scalar-dag@3"), nodes: sx_cons(n,
+      sx_nil()), output: sx_string("midpoint")
+  };
   if task == "invoke"
   {
     println("${Dag.invoke_binary_with("midpoint@1","automat.scalar-dag@3","analysis",17,42,
       Diagnostics.lookup,Diagnostics.call)}");
   }
-  if task == "direct" { println("${Midpoint.midpoint(17,42)}"); }
+  if task == "direct"
+  {
+    println("${Midpoint.midpoint(17,42)}");
+  }
   if task == "direct_yieldcraft"
   {
     let r = Yieldcraft.recommend("recommendation",
@@ -62,11 +73,21 @@ fn main() -> i64
   }
   if task == "plan"
   {
-    assert(Dag.validate(plan,"analysis",1) == "unknown_handler");
-    let outcome = Dag.run_with(plan,"analysis",1,17,42,true,Diagnostics.lookup,Diagnostics.call);
+    assert(Dag.validate(plan, "analysis", 1) == "unknown_handler");
+    let outcome = Dag.run_with(plan,
+      "analysis",
+      1,
+      17,
+      42,
+      true,
+      Diagnostics.lookup,
+      Diagnostics.call);
     println(sx_text(outcome["status"]));
     println("${outcome["invocations"]}");
-    let lowered = Ottomat.lower_with(IO.basis_text_io_input_all("midpoint.ottomat"),"analysis",3,Diagnostics.lookup);
+    let lowered = Ottomat.lower_with(IO.basis_text_io_input_all("midpoint.ottomat"),
+      "analysis",
+      3,
+      Diagnostics.lookup);
     println(sx_text(lowered["status"]));
   }
   return 0;

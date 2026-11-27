@@ -2,60 +2,83 @@
 import ottomat.grammar as Syntax;
 import automat.graph as Graph;
 import std.collections.List as L;
-
 # A reference to the canonical Automat plan (node ids 0..6), parameterized
 # by an admitted profile. An empty profile means there is no validated plan.
 record Plan
 {
-  syntax_version: i64,
-  graph: sexpr,
-  profile: sexpr
+  syntax_version: i64, graph: sexpr, profile: sexpr
 }
 
 fn invalid() -> Plan
 {
-  return record<Plan>{syntax_version:0,graph:sx_string(""),profile:sx_string("")};
+  return record < Plan >
+  {
+    syntax_version: 0, graph: sx_string(""), profile: sx_string("")
+  };
 }
 
-fn bounded_contract(contract:string) -> bool
+fn bounded_contract(contract: string) -> bool
 {
   # The generated CONTRACT token establishes the spelling. Keep the old
   # 32-byte ceiling independently for both dot-separated components.
   for i in 0 .. text_len(contract)
   {
-    if text_byte(contract,i) == 46 { return i <= 32 && text_len(contract)-i-3 <= 32; }
+    if text_byte(contract, i) == 46
+    {
+      return i <= 32 && text_len(contract) - i - 3 <= 32;
+    }
   }
   return false;
 }
 
 fn effect_allowed(family: string, effect: string) -> bool
 {
-  if family == "input" || family == "source" { return effect == "read"; }
+  if family == "input" || family == "source"
+  {
+    return effect == "read";
+  }
   if family == "transform" || family == "algorithm" || family == "strategy" || family == "gate"
-  { return effect == "pure"; }
+  {
+    return effect == "pure";
+  }
   return family == "output" && effect == "record";
 }
 
-fn field(row:sexpr, i:i64) -> string
+fn field(row: sexpr, i: i64) -> string
 {
-  return sx_text(L.basis_list_nth(row,i));
+  return sx_text(L.basis_list_nth(row, i));
 }
 
-fn policy(row:sexpr) -> string
+fn policy(row: sexpr) -> string
 {
-  let id = field(row,1);
-  let op = field(row,2);
-  let arg = field(row,3);
+  let id = field(row, 1);
+  let op = field(row, 2);
+  let arg = field(row, 3);
   if op == "target_bps"
   {
-    if id == "value-p40@1" && arg == "4000" { return "value-p40"; }
-    if id == "balanced-p55@1" && arg == "5500" { return "balanced-p55"; }
-    if id == "premium-p75@1" && arg == "7500" { return "premium-p75"; }
+    if id == "value-p40@1" && arg == "4000"
+    {
+      return "value-p40";
+    }
+    if id == "balanced-p55@1" && arg == "5500"
+    {
+      return "balanced-p55";
+    }
+    if id == "premium-p75@1" && arg == "7500"
+    {
+      return "premium-p75";
+    }
   }
   if op == "curve"
   {
-    if id == "lead-linear@1" && arg == "linear" { return "lead-linear"; }
-    if id == "lead-quadratic@1" && arg == "quadratic" { return "lead-quadratic"; }
+    if id == "lead-linear@1" && arg == "linear"
+    {
+      return "lead-linear";
+    }
+    if id == "lead-quadratic@1" && arg == "quadratic"
+    {
+      return "lead-quadratic";
+    }
   }
   return "";
 }
@@ -63,25 +86,39 @@ fn policy(row:sexpr) -> string
 fn lower(s: string) -> Plan
 {
   let size = text_len(s);
-  if size < 1 || size > 512 { return invalid(); }
+  if size < 1 || size > 512
+  {
+    return invalid();
+  }
   let lines = Syntax.fixed(s);
-  if sx_kind(lines) == 0 { return invalid(); }
+  if sx_kind(lines) == 0
+  {
+    return invalid();
+  }
   var version = 1;
-  if field(sx_head(lines),1) == "2" { version = 2; }
+  if field(sx_head(lines), 1) == "2"
+  {
+    version = 2;
+  }
   var rest = sx_tail(lines);
   var previous = "none";
   for id in 0 .. 7
   {
     let row = sx_head(rest);
-    let family = field(row,0);
-    let output = field(row,1);
-    if !bounded_contract(output) { return invalid(); }
+    let family = field(row, 0);
+    let output = field(row, 1);
+    if ! bounded_contract(output)
+    {
+      return invalid();
+    }
     # Resolve the declaration to this exact native operation, checking its
     # input against the previous declaration's output, including the root.
     let n = Graph.node(id);
-    if n["id"] != id || sx_text(n["family"]) != family || sx_text(n["accepts"]) != previous
-      || sx_text(n["produces"]) != output || !effect_allowed(family,sx_text(n["effect"]))
-    { return invalid(); }
+    if n["id"] != id || sx_text(n["family"]) != family || sx_text(n["accepts"]) != previous || sx_text(n["produces"]) != output || ! effect_allowed(family,
+      sx_text(n["effect"]))
+    {
+      return invalid();
+    }
     previous = output;
     rest = sx_tail(rest);
   }
@@ -89,10 +126,19 @@ fn lower(s: string) -> Plan
   if version == 2
   {
     selected = policy(sx_head(rest));
-    if selected == "" { return invalid(); }
+    if selected == ""
+    {
+      return invalid();
+    }
   }
-  if !Graph.validate("recommendation") { return invalid(); }
-  return record<Plan>{syntax_version:version,graph:sx_string(Graph.version()),profile:sx_string(selected)};
+  if ! Graph.validate("recommendation")
+  {
+    return invalid();
+  }
+  return record < Plan >
+  {
+    syntax_version: version, graph: sx_string(Graph.version()), profile: sx_string(selected)
+  };
 }
 
 fn profile(source: string) -> string

@@ -3,120 +3,309 @@ import grid as G;
 import formula as F;
 import std.Int as Int;
 import std.collections.Array as A;
-
-fn fail(line:i64,msg:string) {
-  tool_fail(text_concat("script line ",text_concat(Int.to_string(line+1),text_concat(": ",msg))));
+fn fail(line: i64, msg: string)
+{
+  tool_fail(text_concat("script line ",
+    text_concat(Int.to_string(line + 1),
+    text_concat(": ",
+    msg))));
 }
-fn eval(b:G.Book,s:string,i:i64,id:i64,line:i64) -> i64 {
-  let(st,v,p)=F.expr(b,s,i,1,id,0,true,true);
-  if st!=1 { fail(line,F.error(st)); }
-  if G.skip(s,p)!=text_len(s) { fail(line,"unexpected trailing input"); }
+
+fn eval(b: G.Book, s: string, i: i64, id: i64, line: i64) -> i64
+{
+  let(st, v, p) = F.expr(b, s, i, 1, id, 0, true, true);
+  if st != 1
+  {
+    fail(line, F.error(st));
+  }
+  if G.skip(s, p) != text_len(s)
+  {
+    fail(line, "unexpected trailing input");
+  }
   return v;
 }
-fn line_at(src:string,offsets:i64,line:i64) -> string {
-  let a=A.basis_array_sub(offsets,line); let z=A.basis_array_sub(offsets,line+1);
-  var end=z;
-  if G.byte(src,end-1)==10 { end=end-1; } if G.byte(src,end-1)==13 { end=end-1; }
-  return text_slice(src,a,end);
+
+fn line_at(src: string, offsets: i64, line: i64) -> string
+{
+  let a = A.basis_array_sub(offsets, line);
+  let z = A.basis_array_sub(offsets, line + 1);
+  var end = z;
+  if G.byte(src, end - 1) == 10
+  {
+    end = end - 1;
+  }
+  if G.byte(src, end - 1) == 13
+  {
+    end = end - 1;
+  }
+  return text_slice(src, a, end);
 }
-fn block(b:G.Book,src:string,offsets:i64,first:i64,last:i64,depth:i64,steps:i64) {
-  if depth>8 { fail(first,"block nesting exceeds 8"); }
-  var line=first;
-  while line<last {
-    let used=A.basis_array_sub(steps,0)+1;
-    if used>4096 { fail(line,"instruction budget exceeded"); } A.basis_array_update(steps,0,used);
-    let s=line_at(src,offsets,line);
-    let start=G.skip(s,0);
-    if start==text_len(s) || G.byte(s,start)==35 { line=line+1; continue; }
-    let(cmd,p)=F.word(s,start); let arg=G.skip(s,p);
-    if cmd=="REPEAT" || cmd=="IF" {
-      let n=eval(b,s,arg,0,line);
-      var end=line+1; var nest=0; var middle=last;
-      while end<last {
-        let t=line_at(src,offsets,end); let(k,q)=F.word(t,G.skip(t,0));
-        if k=="END" || k=="ELSE" {
-          if G.skip(t,q)!=text_len(t) { fail(end,"unexpected block delimiter arguments"); }
+
+fn block(b: G.Book,
+  src: string,
+  offsets: i64,
+  first: i64,
+  last: i64,
+  depth: i64,
+  steps: i64)
+{
+  if depth > 8
+  {
+    fail(first, "block nesting exceeds 8");
+  }
+  var line = first;
+  while line < last
+  {
+    let used = A.basis_array_sub(steps, 0) + 1;
+    if used > 4096
+    {
+      fail(line, "instruction budget exceeded");
+    }
+    A.basis_array_update(steps, 0, used);
+    let s = line_at(src, offsets, line);
+    let start = G.skip(s, 0);
+    if start == text_len(s) || G.byte(s, start) == 35
+    {
+      line = line + 1;
+      continue;
+    }
+    let(cmd, p) = F.word(s, start);
+    let arg = G.skip(s, p);
+    if cmd == "REPEAT" || cmd == "IF"
+    {
+      let n = eval(b, s, arg, 0, line);
+      var end = line + 1;
+      var nest = 0;
+      var middle = last;
+      while end < last
+      {
+        let t = line_at(src, offsets, end);
+        let(k, q) = F.word(t, G.skip(t, 0));
+        if k == "END" || k == "ELSE"
+        {
+          if G.skip(t, q) != text_len(t)
+          {
+            fail(end, "unexpected block delimiter arguments");
+          }
         }
-        if k=="END" { if nest==0 { break; } nest=nest-1; }
-        if k=="IF" || k=="REPEAT" { nest=nest+1; }
-        if k=="ELSE" && nest==0 {
-          if cmd!="IF" || middle!=last { fail(end,"unexpected ELSE"); } middle=end;
+        if k == "END"
+        {
+          if nest == 0
+          {
+            break;
+          }
+          nest = nest - 1;
         }
-        end=end+1;
+        if k == "IF" || k == "REPEAT"
+        {
+          nest = nest + 1;
+        }
+        if k == "ELSE" && nest == 0
+        {
+          if cmd != "IF" || middle != last
+          {
+            fail(end, "unexpected ELSE");
+          }
+          middle = end;
+        }
+        end = end + 1;
       }
-      if end>=last { fail(line,"missing END"); }
-      if middle==last { middle=end; }
-      if cmd=="REPEAT" {
-        if n<0 || n>256 { fail(line,"REPEAT count outside 0..256"); }
-        for i in 0 .. n {
+      if end >= last
+      {
+        fail(line, "missing END");
+      }
+      if middle == last
+      {
+        middle = end;
+      }
+      if cmd == "REPEAT"
+      {
+        if n < 0 || n > 256
+        {
+          fail(line, "REPEAT count outside 0..256");
+        }
+        for i in 0 .. n
+        {
           # Empty nested loops must consume budget too.
-          G.tick(b); block(b,src,offsets,line+1,end,depth+1,steps);
+          G.tick(b);
+          block(b, src, offsets, line + 1, end, depth + 1, steps);
         }
-      } else {
-        if n!=0 { block(b,src,offsets,line+1,middle,depth+1,steps); }
-        if n==0 && middle<end { block(b,src,offsets,middle+1,end,depth+1,steps); }
       }
-      line=end+1; continue;
-    }
-    if cmd=="ASSERT" { if eval(b,s,arg,0,line)==0 { fail(line,"assertion failed"); } line=line+1; continue; }
-    if cmd=="LET" {
-      let k=G.upper(G.byte(s,arg))-65; let eq=G.skip(s,arg+1);
-      if k<0 || k>=26 || G.byte(s,eq)!=61 { fail(line,"expected LET X = expression"); }
-      let v=eval(b,s,eq+1,0,line); A.basis_array_update(b["vars"],k,v); A.basis_array_update(b["defined"],k,1);
-      line=line+1; continue;
-    }
-    if cmd=="SET" || cmd=="FILL" || cmd=="FORMULA" || cmd=="CLEAR" || cmd=="TEXT" || cmd=="COPY" {
-      var to=arg; var original=0; var clip="";
-      if cmd=="COPY" {
-        let(from,past)=F.word(s,arg); original=G.addr(from);
-        to=G.skip(s,past);
-        if original<0 || to==past { fail(line,"expected COPY source destination"); }
-        clip=G.raw(b,original);
-      }
-      let(w,q)=F.word(s,to); let a=G.addr(w); var z=a; var tail=q;
-      if G.byte(s,q)==58 && (cmd=="FILL" || cmd=="CLEAR" || cmd=="COPY") {
-        let(end,r)=F.word(s,q+1); z=G.addr(end); tail=r;
-      }
-      if a<0 || z<0 || a/16>z/16 || a%16>z%16 { fail(line,"invalid destination"); }
-      var value="";
-      let eq=G.skip(s,tail);
-      if cmd=="TEXT" {
-        if eq==tail { fail(line,"expected text after address"); }
-        value=text_concat("'",text_slice(s,eq,text_len(s)));
-      } else { if cmd=="CLEAR" || cmd=="COPY" {
-        if eq!=text_len(s) { fail(line,"unexpected range arguments"); }
-      } else {
-        if G.byte(s,eq)!=61 { fail(line,"expected ="); }
-        if cmd=="SET" { value=Int.to_string(eval(b,s,eq+1,a,line)); }
-        else {
-          let(st,unused,end)=F.expr(b,s,eq+1,1,a,0,false,false);
-          if st!=1 || G.skip(s,end)!=text_len(s) { fail(line,"invalid stored formula"); }
-          value=text_concat("=",text_slice(s,G.skip(s,eq+1),text_len(s)));
+      else
+      {
+        if n != 0
+        {
+          block(b, src, offsets, line + 1, middle, depth + 1, steps);
         }
-      } }
-      for row in a/16 .. z/16+1 { for col in a%16 .. z%16+1 {
-        G.tick(b); let dest=row*16+col;
-        if cmd=="COPY" { G.set(b,dest,F.relocate(clip,original,dest)); } else { G.set(b,dest,value); }
-      } }
+        if n == 0 && middle < end
+        {
+          block(b, src, offsets, middle + 1, end, depth + 1, steps);
+        }
+      }
+      line = end + 1;
+      continue;
+    }
+    if cmd == "ASSERT"
+    {
+      if eval(b, s, arg, 0, line) == 0
+      {
+        fail(line, "assertion failed");
+      }
+      line = line + 1;
+      continue;
+    }
+    if cmd == "LET"
+    {
+      let k = G.upper(G.byte(s, arg)) - 65;
+      let eq = G.skip(s, arg + 1);
+      if k < 0 || k >= 26 || G.byte(s, eq) != 61
+      {
+        fail(line, "expected LET X = expression");
+      }
+      let v = eval(b, s, eq + 1, 0, line);
+      A.basis_array_update(b["vars"], k, v);
+      A.basis_array_update(b["defined"], k, 1);
+      line = line + 1;
+      continue;
+    }
+    if cmd == "SET" || cmd == "FILL" || cmd == "FORMULA" || cmd == "CLEAR" || cmd == "TEXT" || cmd == "COPY"
+    {
+      var to = arg;
+      var original = 0;
+      var clip = "";
+      if cmd == "COPY"
+      {
+        let(from, past) = F.word(s, arg);
+        original = G.addr(from);
+        to = G.skip(s, past);
+        if original < 0 || to == past
+        {
+          fail(line, "expected COPY source destination");
+        }
+        clip = G.raw(b, original);
+      }
+      let(w, q) = F.word(s, to);
+      let a = G.addr(w);
+      var z = a;
+      var tail = q;
+      if G.byte(s,
+        q) == 58 && (cmd == "FILL" || cmd == "CLEAR" || cmd == "COPY")
+      {
+        let(end, r) = F.word(s, q + 1);
+        z = G.addr(end);
+        tail = r;
+      }
+      if a < 0 || z < 0 || a / 16 > z / 16 || a % 16 > z % 16
+      {
+        fail(line, "invalid destination");
+      }
+      var value = "";
+      let eq = G.skip(s, tail);
+      if cmd == "TEXT"
+      {
+        if eq == tail
+        {
+          fail(line, "expected text after address");
+        }
+        value = text_concat("'", text_slice(s, eq, text_len(s)));
+      }
+      else
+      {
+        if cmd == "CLEAR" || cmd == "COPY"
+        {
+          if eq != text_len(s)
+          {
+            fail(line, "unexpected range arguments");
+          }
+        }
+        else
+        {
+          if G.byte(s, eq) != 61
+          {
+            fail(line, "expected =");
+          }
+          if cmd == "SET"
+          {
+            value = Int.to_string(eval(b, s, eq + 1, a, line));
+          }
+          else
+          {
+            let(st, unused, end) = F.expr(b, s, eq + 1, 1, a, 0, false, false);
+            if st != 1 || G.skip(s, end) != text_len(s)
+            {
+              fail(line, "invalid stored formula");
+            }
+            value = text_concat("=",
+              text_slice(s,
+              G.skip(s,
+              eq + 1),
+              text_len(s)));
+          }
+        }
+      }
+      for row in a / 16 .. z / 16 + 1
+      {
+        for col in a % 16 .. z % 16 + 1
+        {
+          G.tick(b);
+          let dest = row * 16 + col;
+          if cmd == "COPY"
+          {
+            G.set(b, dest, F.relocate(clip, original, dest));
+          }
+          else
+          {
+            G.set(b, dest, value);
+          }
+        }
+      }
       G.invalidate(b);
-    } else { fail(line,"unknown statement or misplaced delimiter"); }
-    line=line+1;
+    }
+    else
+    {
+      fail(line, "unknown statement or misplaced delimiter");
+    }
+    line = line + 1;
   }
 }
-fn run(b:G.Book,src:string) {
-  let offsets=A.basis_array_array(130,0); let steps=A.basis_array_array(1,0);
-  var count=0; var start=0;
-  for i in 0 .. text_len(src) {
-    let c=G.byte(src,i);
-    if c==10 {
-      if count>=128 || i-start>256 { fail(count,"script exceeds line limit"); }
-      count=count+1; start=i+1; A.basis_array_update(offsets,count,start);
-    } else { if (c<32 || c>126) && !(c==13 && G.byte(src,i+1)==10) { fail(count,"invalid byte"); } }
+
+fn run(b: G.Book, src: string)
+{
+  let offsets = A.basis_array_array(130, 0);
+  let steps = A.basis_array_array(1, 0);
+  var count = 0;
+  var start = 0;
+  for i in 0 .. text_len(src)
+  {
+    let c = G.byte(src, i);
+    if c == 10
+    {
+      if count >= 128 || i - start > 256
+      {
+        fail(count, "script exceeds line limit");
+      }
+      count = count + 1;
+      start = i + 1;
+      A.basis_array_update(offsets, count, start);
+    }
+    else
+    {
+      if (c < 32 || c > 126) && !(c == 13 && G.byte(src, i + 1) == 10)
+      {
+        fail(count, "invalid byte");
+      }
+    }
   }
-  if start<text_len(src) {
-    if count>=128 || text_len(src)-start>256 { fail(count,"script exceeds line limit"); }
-    count=count+1; A.basis_array_update(offsets,count,text_len(src));
+  if start < text_len(src)
+  {
+    if count >= 128 || text_len(src) - start > 256
+    {
+      fail(count, "script exceeds line limit");
+    }
+    count = count + 1;
+    A.basis_array_update(offsets, count, text_len(src));
   }
-  block(b,src,offsets,0,count,0,steps);
-  A.basis_array_destroy(offsets); A.basis_array_destroy(steps);
+  block(b, src, offsets, 0, count, 0, steps);
+  A.basis_array_destroy(offsets);
+  A.basis_array_destroy(steps);
 }

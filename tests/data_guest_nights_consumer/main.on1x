@@ -3,37 +3,66 @@ import dragnet.public_feeds as Feed;
 import std.crypto.crypto as Crypto;
 import std.os.CommandLine as Env;
 import std.io.TextIO as IO;
+fn env(key: string) -> string
+{
+  return Env.basis_command_line_get_env(key);
+}
 
-fn env(key:string) -> string { return Env.basis_command_line_get_env(key); }
-
-fn main() -> i64 {
-  if env("CASE") == "fixture" {
+fn main() -> i64
+{
+  if env("CASE") == "fixture"
+  {
     let raw = env("RAW");
-    let (status,hash) = Crypto.basis_crypto_blake3(raw);
-    if status != 0 { return 90; }
+    let(status, hash) = Crypto.basis_crypto_blake3(raw);
+    if status != 0
+    {
+      return 90;
+    }
     let capture = "dragnet.feed-capture@1\neurostat,offline_snapshot,2026-11-16T10:10:00Z,2026-11-16T10:10:01Z,terms-r1,retention-r2\n";
     let decode = "dragnet.feed-decode@1\neurostat\n$hash\n2026-11-16T11:00:00+0100\n2026-07,480000000,-\n2026-08,515000001,p\n2026-09,-,-\n";
-    IO.basis_text_io_print(Feed.normalize(capture,raw,decode,"2026-11-16T10:10:01Z"));
+    IO.basis_text_io_print(Feed.normalize(capture,
+      raw,
+      decode,
+      "2026-11-16T10:10:01Z"));
     return 0;
   }
   let snapshot = env("SNAPSHOT");
   var parent = env("PARENT");
-  if env("CASE") == "verify" {
-    if Nights.verifies(snapshot,parent,env("CUTOFF"),env("PROJECTED")) { return 0; }
+  if env("CASE") == "verify"
+  {
+    if Nights.verifies(snapshot, parent, env("CUTOFF"), env("PROJECTED"))
+    {
+      return 0;
+    }
     return 1;
   }
-  if env("CASE") == "digest" || env("CASE") == "changed-parent" {
-    let (status,hash) = Crypto.basis_crypto_blake3(snapshot);
-    if status != 0 { return 90; }
+  if env("CASE") == "digest" || env("CASE") == "changed-parent"
+  {
+    let(status, hash) = Crypto.basis_crypto_blake3(snapshot);
+    if status != 0
+    {
+      return 90;
+    }
     parent = "blake3:$hash";
-    if env("CASE") == "digest" { println(parent); return 0; }
+    if env("CASE") == "digest"
+    {
+      println(parent);
+      return 0;
+    }
   }
-  let result = Nights.project(snapshot,parent,env("CUTOFF"));
-  if result["status"] != 0 {
-    if sx_kind(result["bytes"]) != 0 || result["state"] != 0 { return 91; }
+  let result = Nights.project(snapshot, parent, env("CUTOFF"));
+  if result["status"] != 0
+  {
+    if sx_kind(result["bytes"]) != 0 || result["state"] != 0
+    {
+      return 91;
+    }
     return result["status"];
   }
-  if result["state"] != 1 && result["state"] != 2 { return 92; }
+  if result["state"] != 1 && result["state"] != 2
+  {
+    return 92;
+  }
   IO.basis_text_io_print(sx_text(result["bytes"]));
   return 0;
 }

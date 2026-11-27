@@ -10,27 +10,42 @@ fn half_up(numerator: i64, denominator: i64) -> i64
   assert(numerator >= 0 && denominator > 0);
   var result = numerator / denominator;
   let remainder = numerator % denominator;
-  if remainder >= denominator - remainder { result = result + 1; }
+  if remainder >= denominator - remainder
+  {
+    result = result + 1;
+  }
   return result;
 }
 
 fn capped(value: i64, floor: i64, ceiling: i64) -> i64
 {
   assert(floor >= 0 && floor <= ceiling);
-  if value < floor { return floor; }
-  if value > ceiling { return ceiling; }
+  if value < floor
+  {
+    return floor;
+  }
+  if value > ceiling
+  {
+    return ceiling;
+  }
   return value;
 }
 
 fn shortcut(intended: i64, lower: i64, threshold: i64) -> i64
 {
   assert(intended >= lower && lower >= 0 && threshold >= 0);
-  if intended - lower < threshold { return lower; }
+  if intended - lower < threshold
+  {
+    return lower;
+  }
   return intended;
 }
 
 fn absolute_distance(left: i64, right: i64) -> i64
 {
-  if left >= right { return left - right; }
+  if left >= right
+  {
+    return left - right;
+  }
   return right - left;
 }

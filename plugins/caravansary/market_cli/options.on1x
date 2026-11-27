@@ -2,89 +2,154 @@ import std.environ as Env;
 import std.sexpr.sexpr as Sx;
 import plugins.caravansary.args as LegacyArgs;
 import plugins.caravansary.planning.json as Json;
-
-fn usage() -> string {
+fn usage() -> string
+{
   let out = buffer_new();
-  buffer_append(out,"Usage: bin/caravansary discover SCRIPT --input-root DIR --host-grants FILE --as-of UTC\n");
-  buffer_append(out,"       bin/caravansary scrape SCRIPT --source ID --input-root DIR --host-grants FILE --as-of UTC\n");
-  buffer_append(out,"       bin/caravansary collect SCRIPT --input-root DIR --host-grants FILE --as-of UTC\n");
-  buffer_append(out,"       bin/caravansary predict SCRIPT --input-root DIR --host-grants FILE --as-of UTC [--pricing-input FILE]\n");
-  buffer_append(out,"       bin/caravansary backtest SERIES --input-root DIR --as-of UTC\n");
-  buffer_append(out,"       bin/caravansary history ARTIFACT [ARTIFACT ...] --input-root DIR\n");
-  buffer_append(out,"       bin/caravansary explain ARTIFACT --input-root DIR\n");
-  buffer_append(out,"       bin/caravansary jobs --state ABSOLUTE_OWNER_PRIVATE_DIR COMMAND [ARG ...]\n");
-  buffer_append(out,"Use repeated --input-root for additional local input directories. Market commands are offline and never publish prices.\n");
+  buffer_append(out,
+    "Usage: bin/caravansary discover SCRIPT --input-root DIR --host-grants FILE --as-of UTC\n");
+  buffer_append(out,
+    "       bin/caravansary scrape SCRIPT --source ID --input-root DIR --host-grants FILE --as-of UTC\n");
+  buffer_append(out,
+    "       bin/caravansary collect SCRIPT --input-root DIR --host-grants FILE --as-of UTC\n");
+  buffer_append(out,
+    "       bin/caravansary predict SCRIPT --input-root DIR --host-grants FILE --as-of UTC [--pricing-input FILE]\n");
+  buffer_append(out,
+    "       bin/caravansary backtest SERIES --input-root DIR --as-of UTC\n");
+  buffer_append(out,
+    "       bin/caravansary history ARTIFACT [ARTIFACT ...] --input-root DIR\n");
+  buffer_append(out,
+    "       bin/caravansary explain ARTIFACT --input-root DIR\n");
+  buffer_append(out,
+    "       bin/caravansary jobs --state ABSOLUTE_OWNER_PRIVATE_DIR COMMAND [ARG ...]\n");
+  buffer_append(out,
+    "Use repeated --input-root for additional local input directories. Market commands are offline and never publish prices.\n");
   return buffer_text(out);
 }
 
-fn from_script(mode: string) -> bool {
+fn from_script(mode: string) -> bool
+{
   return mode == "discover" || mode == "scrape" || mode == "collect" || mode == "predict";
 }
 
 # Positionals and accepted flags are validated before access to any file.
-fn read() -> (string, sexpr, sexpr, sexpr) {
+fn read() ->(string, sexpr, sexpr, sexpr)
+{
   let argv = sx_tail(Env.argv());
-  if sx_kind(argv) != 3 { LegacyArgs.bad("expected a market subcommand (see market-help)"); }
+  if sx_kind(argv) != 3
+  {
+    LegacyArgs.bad("expected a market subcommand (see market-help)");
+  }
   let mode = sx_text(sx_head(argv));
   var rest = sx_tail(argv);
-  if mode == "market-help" || mode == "--help" || mode == "-h" {
-    if sx_kind(rest) != 0 { LegacyArgs.bad("market-help takes no arguments"); }
-    return ("help",sx_nil(),sx_nil(),Json.object(sx_nil()));
+  if mode == "market-help" || mode == "--help" || mode == "-h"
+  {
+    if sx_kind(rest) != 0
+    {
+      LegacyArgs.bad("market-help takes no arguments");
+    }
+    return ("help", sx_nil(), sx_nil(), Json.object(sx_nil()));
   }
-  if !from_script(mode) && mode != "backtest" && mode != "explain" && mode != "history" {
+  if ! from_script(mode) && mode != "backtest" && mode != "explain" && mode != "history"
+  {
     LegacyArgs.bad("unknown market subcommand (see market-help)");
   }
-  if sx_kind(rest) == 3 && sx_kind(sx_tail(rest)) == 0 {
+  if sx_kind(rest) == 3 && sx_kind(sx_tail(rest)) == 0
+  {
     let flag = sx_text(sx_head(rest));
-    if flag == "--help" || flag == "-h" { return ("help",sx_nil(),sx_nil(),Json.object(sx_nil())); }
+    if flag == "--help" || flag == "-h"
+    {
+      return ("help", sx_nil(), sx_nil(), Json.object(sx_nil()));
+    }
   }
   var inputs = sx_nil();
   var roots = sx_nil();
   var flags = sx_nil();
   var positional_only = false;
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let arg = sx_text(sx_head(rest));
     rest = sx_tail(rest);
-    if arg == "" { LegacyArgs.bad("empty market argument"); }
-    if arg == "--" && !positional_only { positional_only = true; }
-    else {
-      if !positional_only && text_byte(arg,0) == 45 {
-        let (flag,inline_value,attached) = LegacyArgs.split_option(arg);
-        if flag != "--input-root" &&
-          !(flag == "--as-of" && (mode == "backtest" || from_script(mode))) &&
-          !(flag == "--host-grants" && from_script(mode)) &&
-          !(flag == "--source" && mode == "scrape") &&
-          !(flag == "--pricing-input" && mode == "predict") {
+    if arg == ""
+    {
+      LegacyArgs.bad("empty market argument");
+    }
+    if arg == "--" && ! positional_only
+    {
+      positional_only = true;
+    }
+    else
+    {
+      if ! positional_only && text_byte(arg, 0) == 45
+      {
+        let(flag, inline_value, attached) = LegacyArgs.split_option(arg);
+        if flag != "--input-root" && !(flag == "--as-of" && (mode == "backtest" || from_script(mode))) && !(flag == "--host-grants" && from_script(mode)) && !(flag == "--source" && mode == "scrape") && !(flag == "--pricing-input" && mode == "predict")
+        {
           LegacyArgs.bad("unsupported option for market subcommand (see market-help)");
         }
         var value = inline_value;
-        if !attached {
-          if sx_kind(rest) != 3 { LegacyArgs.bad("market option requires a value"); }
+        if ! attached
+        {
+          if sx_kind(rest) != 3
+          {
+            LegacyArgs.bad("market option requires a value");
+          }
           value = sx_text(sx_head(rest));
           rest = sx_tail(rest);
-          if value != "" && text_byte(value,0) == 45 { LegacyArgs.bad("market option requires a value"); }
+          if value != "" && text_byte(value, 0) == 45
+          {
+            LegacyArgs.bad("market option requires a value");
+          }
         }
-        if value == "" { LegacyArgs.bad("market option requires a nonempty value"); }
-        if flag == "--input-root" { roots = sx_cons(sx_string(value),roots); }
-        else { flags = sx_cons(Json.pair(flag,sx_string(value)),flags); }
+        if value == ""
+        {
+          LegacyArgs.bad("market option requires a nonempty value");
+        }
+        if flag == "--input-root"
+        {
+          roots = sx_cons(sx_string(value), roots);
+        }
+        else
+        {
+          flags = sx_cons(Json.pair(flag, sx_string(value)), flags);
+        }
       }
-      else { inputs = sx_cons(sx_string(arg),inputs); }
+      else
+      {
+        inputs = sx_cons(sx_string(arg), inputs);
+      }
     }
   }
   let count = Sx.sexpr_size(inputs);
-  if count < 1 || (mode != "history" && count != 1) || count > 128 {
+  if count < 1 || (mode != "history" && count != 1) || count > 128
+  {
     LegacyArgs.bad("expected one input path (history accepts at most 128 artifact paths)");
   }
-  if sx_kind(roots) == 0 { LegacyArgs.bad("market commands require an explicit --input-root DIR"); }
-  let named = Json.object_unique(flags,"duplicate market option");
-  if from_script(mode) || mode == "backtest" { ignore(required(named,"--as-of")); }
-  if from_script(mode) { ignore(required(named,"--host-grants")); }
-  if mode == "scrape" { ignore(required(named,"--source")); }
-  return (mode,Sx.sexpr_reverse(inputs),roots,named);
+  if sx_kind(roots) == 0
+  {
+    LegacyArgs.bad("market commands require an explicit --input-root DIR");
+  }
+  let named = Json.object_unique(flags, "duplicate market option");
+  if from_script(mode) || mode == "backtest"
+  {
+    ignore(required(named, "--as-of"));
+  }
+  if from_script(mode)
+  {
+    ignore(required(named, "--host-grants"));
+  }
+  if mode == "scrape"
+  {
+    ignore(required(named, "--source"));
+  }
+  return (mode, Sx.sexpr_reverse(inputs), roots, named);
 }
 
-fn required(options: sexpr, key: string) -> string {
-  let val = Json.get(options,key);
-  if sx_kind(val) == 0 { LegacyArgs.bad("market subcommand requires $key"); }
+fn required(options: sexpr, key: string) -> string
+{
+  let val = Json.get(options, key);
+  if sx_kind(val) == 0
+  {
+    LegacyArgs.bad("market subcommand requires $key");
+  }
   return Json.text(val);
 }

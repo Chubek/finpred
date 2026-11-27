@@ -1,164 +1,241 @@
 from . import json_wire as J;
 import std.Int as Int;
 import std.collections.List as List;
-
 # Only compile() should construct a Program. Expressions are immutable JSON
 # trees; functions index by name and metrics retain their declaration order.
-record Program { functions:sexpr, metrics:sexpr }
+record Program
+{
+  functions: sexpr, metrics: sexpr
+}
 
 fn empty_program() -> Program
 {
-  return record<Program>{functions:sx_nil(),metrics:sx_nil()};
+  return record < Program >
+  {
+    functions: sx_nil(), metrics: sx_nil()
+  };
 }
 
-fn alpha(c:i64) -> bool
+fn alpha(c: i64) -> bool
 {
   return (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
 }
 
-fn identifier(v:sexpr) -> Result<sexpr,sexpr>
+fn identifier(v: sexpr) -> Result < sexpr, sexpr >
 {
   let name = J.plain(v);
-  if !alpha(J.byte(name,0)) { return J.fail!("invalid or reserved transform identifier"); }
+  if ! alpha(J.byte(name, 0))
+  {
+    return J.fail!("invalid or reserved transform identifier");
+  }
   for i in 1 .. text_len(name)
   {
-    let c = J.byte(name,i);
-    if !alpha(c) && !J.digit(c) && c != 95 { return J.fail!("invalid or reserved transform identifier"); }
+    let c = J.byte(name, i);
+    if ! alpha(c) && ! J.digit(c) && c != 95
+    {
+      return J.fail!("invalid or reserved transform identifier");
+    }
   }
   match name with
   {
-    "fn" | "emit" | "return" | "int" | "bool" | "text" | "true" | "false" |
-    "not" | "and" | "or" => { return J.fail!("invalid or reserved transform identifier"); },
-    _ => { return result_ok(sx_string(name)); }
+    "fn" | "emit" | "return" | "int" | "bool" | "text" | "true" | "false" | "not" | "and" | "or" =>
+    {
+      return J.fail!("invalid or reserved transform identifier");
+    }, _ =>
+    {
+      return result_ok(sx_string(name));
+    }
   };
 }
 
-fn type_name(v:sexpr) -> Result<sexpr,sexpr>
+fn type_name(v: sexpr) -> Result < sexpr, sexpr >
 {
   let name = J.plain(v);
   if name != "int" && name != "bool" && name != "text"
-  { return J.fail!("invalid transform type; expected int, bool, or text"); }
+  {
+    return J.fail!("invalid transform type; expected int, bool, or text");
+  }
   return result_ok(sx_string(name));
 }
 
-fn array_items(v:sexpr, lower:i64, upper:i64, what:string) -> Result<sexpr,sexpr>
+fn array_items(v: sexpr,
+  lower: i64,
+  upper: i64,
+  what: string) -> Result < sexpr, sexpr >
 {
   var items = sx_nil();
-  var count = -1;
-  if J.tag(v,"array") { items = sx_tail(v); count = J.size(items); }
+  var count = - 1;
+  if J.tag(v, "array")
+  {
+    items = sx_tail(v);
+    count = J.size(items);
+  }
   if count < lower || count > upper
   {
-    return J.fail!(format("transform requires {} to {} {}",lower,upper,what));
+    return J.fail!(format("transform requires {} to {} {}",
+      lower,
+      upper,
+      what));
   }
   return result_ok(items);
 }
 
 # -1 marks a user function or an unknown name.
-fn builtin_arity(name:string) -> i64
+fn builtin_arity(name: string) -> i64
 {
   return match name with
   {
-    "total_cells" => 0,
-    "status_count" | "freshness_count" | "source_count" => 1,
-    "source_status_count" => 2,
-    _ => -1
+    "total_cells" => 0, "status_count" | "freshness_count" | "source_count" => 1, "source_status_count" => 2, _ => - 1
   };
 }
 
-fn literal_type(v:sexpr) -> Result<sexpr,sexpr>
+fn literal_type(v: sexpr) -> Result < sexpr, sexpr >
 {
   if J.string_value(v)
   {
-    if J.decoded_bytes(sx_text(v)) > 4096 { return J.fail!("text literal exceeds 4096 UTF-8 bytes"); }
+    if J.decoded_bytes(sx_text(v)) > 4096
+    {
+      return J.fail!("text literal exceeds 4096 UTF-8 bytes");
+    }
     return result_ok(sx_string("text"));
   }
-  if J.tag(v,"number")
+  if J.tag(v, "number")
   {
-    let s = sx_text(J.at(v,1));
+    let s = sx_text(J.at(v, 1));
     for i in 0 .. text_len(s)
     {
-      let c = J.byte(s,i);
-      if c == 46 || c == 69 || c == 101 { return J.fail!("invalid transform literal"); }
+      let c = J.byte(s, i);
+      if c == 46 || c == 69 || c == 101
+      {
+        return J.fail!("invalid transform literal");
+      }
     }
-    let (ok,n,end) = Int.scan(s,0);
-    if !ok || end != text_len(s) || n < 0
-    { return J.fail!("integer literal must be between 0 and 2**63 - 1"); }
+    let(ok, n, end) = Int.scan(s, 0);
+    if ! ok || end != text_len(s) || n < 0
+    {
+      return J.fail!("integer literal must be between 0 and 2**63 - 1");
+    }
     return result_ok(sx_string("int"));
   }
   if sx_kind(v) == 1 && (sx_text(v) == "true" || sx_text(v) == "false")
-  { return result_ok(sx_string("bool")); }
+  {
+    return result_ok(sx_string("bool"));
+  }
   return J.fail!("invalid transform literal");
 }
 
-fn binary_type(op:string, left:string, right:string) -> Result<sexpr,sexpr>
+fn binary_type(op: string,
+  left: string,
+  right: string) -> Result < sexpr, sexpr >
 {
   if op == "==" || op == "!="
   {
-    if left != right { return J.fail!(format("{} requires operands of the same type",op)); }
+    if left != right
+    {
+      return J.fail!(format("{} requires operands of the same type", op));
+    }
     return result_ok(sx_string("bool"));
   }
   var input = "int";
   var output = "int";
   match op with
   {
-    "+" | "-" | "*" => {},
-    "<" | "<=" | ">" | ">=" => { output = "bool"; },
-    "and" | "or" => { input = "bool"; output = "bool"; },
-    _ => { return J.fail!("unknown transform binary operator"); }
+    "+" | "-" | "*" =>
+    {
+    }, "<" | "<=" | ">" | ">=" =>
+    {
+      output = "bool";
+    }, "and" | "or" =>
+    {
+      input = "bool";
+      output = "bool";
+    }, _ =>
+    {
+      return J.fail!("unknown transform binary operator");
+    }
   };
   if left != input || right != input
-  { return J.fail!(format("{} requires {} operands",op,input)); }
+  {
+    return J.fail!(format("{} requires {} operands", op, input));
+  }
   return result_ok(sx_string(output));
 }
 
-fn expression(expr:sexpr, scope:sexpr, functions:sexpr, calls:sexpr, nodes:i64, depth:i64)
-  -> Result<(sexpr,i64,sexpr),sexpr>
+fn expression(expr: sexpr,
+  scope: sexpr,
+  functions: sexpr,
+  calls: sexpr,
+  nodes: i64,
+  depth: i64) -> Result < (sexpr,
+  i64,
+  sexpr), sexpr >
 {
   let used = nodes + 1;
-  if used > 4096 { return J.fail!("transform exceeds 4096 expression nodes"); }
-  if depth > 64 { return J.fail!("expression exceeds depth 64"); }
-  if !J.tag(expr,"array") { return J.fail!("invalid transform expression"); }
+  if used > 4096
+  {
+    return J.fail!("transform exceeds 4096 expression nodes");
+  }
+  if depth > 64
+  {
+    return J.fail!("expression exceeds depth 64");
+  }
+  if ! J.tag(expr, "array")
+  {
+    return J.fail!("invalid transform expression");
+  }
   let parts = sx_tail(expr);
-  let tag = J.plain(J.at(parts,0));
+  let tag = J.plain(J.at(parts, 0));
   let n = J.size(parts);
   let arity = match tag with
   {
-    "literal" | "name" => 2, "call" | "unary" => 3, "binary" => 4, _ => -1
+    "literal" | "name" => 2, "call" | "unary" => 3, "binary" => 4, _ => - 1
   };
-  if n != arity { return J.fail!("invalid transform expression"); }
-  let second = J.at(parts,1);
+  if n != arity
+  {
+    return J.fail!("invalid transform expression");
+  }
+  let second = J.at(parts, 1);
   if tag == "literal"
   {
     let kind = literal_type(second)?;
-    return result_ok((kind,used,calls));
+    return result_ok((kind, used, calls));
   }
   if tag == "name"
   {
     let name = sx_text(identifier(second)?);
-    let known = J.field(scope,name);
-    if sx_kind(known) == 0 { return J.fail!(format("unbound parameter {}",name)); }
-    return result_ok((known,used,calls));
+    let known = J.field(scope, name);
+    if sx_kind(known) == 0
+    {
+      return J.fail!(format("unbound parameter {}", name));
+    }
+    return result_ok((known, used, calls));
   }
   if tag == "call"
   {
     let name = sx_text(identifier(second)?);
     let builtin = builtin_arity(name);
-    let decl = J.field(functions,name);
-    if builtin < 0 && sx_kind(decl) == 0 { return J.fail!(format("unknown function {}",name)); }
-    let args = array_items(J.at(parts,2),0,16,"arguments")?;
+    let decl = J.field(functions, name);
+    if builtin < 0 && sx_kind(decl) == 0
+    {
+      return J.fail!(format("unknown function {}", name));
+    }
+    let args = array_items(J.at(parts, 2), 0, 16, "arguments")?;
     var params = sx_nil();
     var expected_n = builtin;
     var output = "int";
     if builtin < 0
     {
-      params = sx_tail(J.get(decl,"parameters"));
+      params = sx_tail(J.get(decl, "parameters"));
       expected_n = J.size(params);
-      output = J.plain(J.get(decl,"return_type"));
+      output = J.plain(J.get(decl, "return_type"));
     }
     let actual_n = J.size(args);
     if actual_n != expected_n
     {
-      return J.fail!(format("{} expects {} arguments, got {}",name,expected_n,actual_n));
+      return J.fail!(format("{} expects {} arguments, got {}",
+        name,
+        expected_n,
+        actual_n));
     }
     var arg = args;
     var total = used;
@@ -168,111 +245,205 @@ fn expression(expr:sexpr, scope:sexpr, functions:sexpr, calls:sexpr, nodes:i64, 
       var expected = "text";
       if builtin < 0
       {
-        expected = J.plain(J.at(sx_tail(sx_head(params)),1));
+        expected = J.plain(J.at(sx_tail(sx_head(params)), 1));
         params = sx_tail(params);
       }
-      let (kind,used_now,called) = expression(sx_head(arg),scope,functions,dependencies,total,depth+1)?;
+      let(kind,
+        used_now,
+        called) = expression(sx_head(arg),
+        scope,
+        functions,
+        dependencies,
+        total,
+        depth + 1)?;
       let actual = sx_text(kind);
       if actual != expected
       {
-        return J.fail!(format("argument {} of {} expects {}, got {}",i+1,name,expected,actual));
+        return J.fail!(format("argument {} of {} expects {}, got {}",
+          i + 1,
+          name,
+          expected,
+          actual));
       }
       total = used_now;
       dependencies = called;
       arg = sx_tail(arg);
     }
-    if builtin < 0 && sx_kind(J.field(dependencies,name)) == 0
-    { dependencies = sx_cons(J.pair(sx_string(name),sx_symbol("edge")),dependencies); }
-    return result_ok((sx_string(output),total,dependencies));
+    if builtin < 0 && sx_kind(J.field(dependencies, name)) == 0
+    {
+      dependencies = sx_cons(J.pair(sx_string(name),
+        sx_symbol("edge")),
+        dependencies);
+    }
+    return result_ok((sx_string(output), total, dependencies));
   }
-  if !J.string_value(second) { return J.fail!("invalid transform operator"); }
+  if ! J.string_value(second)
+  {
+    return J.fail!("invalid transform operator");
+  }
   let op = J.plain(second);
-  let (left,used_left,called_left) = expression(J.at(parts,2),scope,functions,calls,used,depth+1)?;
+  let(left,
+    used_left,
+    called_left) = expression(J.at(parts,
+    2),
+    scope,
+    functions,
+    calls,
+    used,
+    depth + 1)?;
   if tag == "unary"
   {
     var expected = "";
-    if op == "-" { expected = "int"; }
-    if op == "not" { expected = "bool"; }
-    if expected == "" { return J.fail!("unknown transform unary operator"); }
-    if sx_text(left) != expected { return J.fail!(format("{} requires operand type {}",op,expected)); }
-    return result_ok((left,used_left,called_left));
+    if op == "-"
+    {
+      expected = "int";
+    }
+    if op == "not"
+    {
+      expected = "bool";
+    }
+    if expected == ""
+    {
+      return J.fail!("unknown transform unary operator");
+    }
+    if sx_text(left) != expected
+    {
+      return J.fail!(format("{} requires operand type {}", op, expected));
+    }
+    return result_ok((left, used_left, called_left));
   }
-  let (right,used_right,called_right) = expression(J.at(parts,3),scope,functions,called_left,used_left,depth+1)?;
-  let kind = binary_type(op,sx_text(left),sx_text(right))?;
-  return result_ok((kind,used_right,called_right));
+  let(right,
+    used_right,
+    called_right) = expression(J.at(parts,
+    3),
+    scope,
+    functions,
+    called_left,
+    used_left,
+    depth + 1)?;
+  let kind = binary_type(op, sx_text(left), sx_text(right))?;
+  return result_ok((kind, used_right, called_right));
 }
 
-fn parameters(decl:sexpr, function_name:string) -> Result<sexpr,sexpr>
+fn parameters(decl: sexpr, function_name: string) -> Result < sexpr, sexpr >
 {
-  var remaining = array_items(J.get(decl,"parameters"),0,16,"parameters")?;
+  var remaining = array_items(J.get(decl, "parameters"), 0, 16, "parameters")?;
   var scope = sx_nil();
   while sx_kind(remaining) == 3
   {
-    let pair = array_items(sx_head(remaining),2,2,"parameter fields")?;
-    let parameter = identifier(J.at(pair,0))?;
+    let pair = array_items(sx_head(remaining), 2, 2, "parameter fields")?;
+    let parameter = identifier(J.at(pair, 0))?;
     let name = sx_text(parameter);
-    if sx_kind(J.field(scope,name)) != 0
-    { return J.fail!(format("duplicate parameter {} in transform function {}",name,function_name)); }
-    scope = sx_cons(J.pair(parameter,type_name(J.at(pair,1))?),scope);
+    if sx_kind(J.field(scope, name)) != 0
+    {
+      return J.fail!(format("duplicate parameter {} in transform function {}",
+        name,
+        function_name));
+    }
+    scope = sx_cons(J.pair(parameter, type_name(J.at(pair, 1))?), scope);
     remaining = sx_tail(remaining);
   }
   return result_ok(scope);
 }
 
-fn checked_body(decl:sexpr, scope:sexpr, functions:sexpr, nodes:i64) -> Result<(i64,sexpr),sexpr>
+fn checked_body(decl: sexpr,
+  scope: sexpr,
+  functions: sexpr,
+  nodes: i64) -> Result < (i64,
+  sexpr), sexpr >
 {
-  let (kind,used,called) = expression(J.get(decl,"expression"),scope,functions,sx_nil(),nodes,1)?;
-  let expected = J.plain(J.get(decl,"return_type"));
+  let(kind,
+    used,
+    called) = expression(J.get(decl,
+    "expression"),
+    scope,
+    functions,
+    sx_nil(),
+    nodes,
+    1)?;
+  let expected = J.plain(J.get(decl, "return_type"));
   if sx_text(kind) != expected
-  { return J.fail!(format("return type must be {}, got {}",expected,sx_text(kind))); }
-  return result_ok((used,called));
+  {
+    return J.fail!(format("return type must be {}, got {}",
+      expected,
+      sx_text(kind)));
+  }
+  return result_ok((used, called));
 }
 
-fn visit(name:string, graph:sexpr, visiting:sexpr, done:sexpr) -> Result<sexpr,sexpr>
+fn visit(name: string,
+  graph: sexpr,
+  visiting: sexpr,
+  done: sexpr) -> Result < sexpr, sexpr >
 {
-  if sx_kind(J.field(visiting,name)) != 0
-  { return J.fail!(format("recursive transform function {}",name)); }
-  if sx_kind(J.field(done,name)) != 0 { return result_ok(done); }
-  let mark = J.pair(sx_string(name),sx_symbol("seen"));
-  let active = sx_cons(mark,visiting);
+  if sx_kind(J.field(visiting, name)) != 0
+  {
+    return J.fail!(format("recursive transform function {}", name));
+  }
+  if sx_kind(J.field(done, name)) != 0
+  {
+    return result_ok(done);
+  }
+  let mark = J.pair(sx_string(name), sx_symbol("seen"));
+  let active = sx_cons(mark, visiting);
   var complete = done;
-  var edges = J.field(graph,name);
+  var edges = J.field(graph, name);
   while sx_kind(edges) == 3
   {
-    complete = visit(sx_text(sx_head(sx_head(edges))),graph,active,complete)?;
+    complete = visit(sx_text(sx_head(sx_head(edges))),
+      graph,
+      active,
+      complete)?;
     edges = sx_tail(edges);
   }
-  return result_ok(sx_cons(mark,complete));
+  return result_ok(sx_cons(mark, complete));
 }
 
-fn has_fields(obj:sexpr, count:i64) -> bool
+fn has_fields(obj: sexpr, count: i64) -> bool
 {
-  return J.tag(obj,"object") && J.size(sx_tail(obj)) == count;
+  return J.tag(obj, "object") && J.size(sx_tail(obj)) == count;
 }
 
-fn compile(ast:sexpr) -> Result<Program,sexpr>
+fn compile(ast: sexpr) -> Result < Program, sexpr >
 {
-  if !has_fields(ast,2) || sx_kind(J.get(ast,"functions")) == 0 || sx_kind(J.get(ast,"metrics")) == 0
-  { return J.fail!("invalid transform block"); }
-  let declarations = array_items(J.get(ast,"functions"),0,64,"functions")?;
-  let emits = array_items(J.get(ast,"metrics"),1,64,"metrics")?;
+  if ! has_fields(ast,
+    2) || sx_kind(J.get(ast,
+    "functions")) == 0 || sx_kind(J.get(ast,
+    "metrics")) == 0
+  {
+    return J.fail!("invalid transform block");
+  }
+  let declarations = array_items(J.get(ast, "functions"), 0, 64, "functions")?;
+  let emits = array_items(J.get(ast, "metrics"), 1, 64, "metrics")?;
   var functions_rev = sx_nil();
   var scopes_rev = sx_nil();
   var rest = declarations;
   while sx_kind(rest) == 3
   {
     let decl = sx_head(rest);
-    if !has_fields(decl,4) || sx_kind(J.get(decl,"name")) == 0 || sx_kind(J.get(decl,"parameters")) == 0 ||
-       sx_kind(J.get(decl,"return_type")) == 0 || sx_kind(J.get(decl,"expression")) == 0
-    { return J.fail!("invalid transform function"); }
-    let ident = identifier(J.get(decl,"name"))?;
+    if ! has_fields(decl,
+      4) || sx_kind(J.get(decl,
+      "name")) == 0 || sx_kind(J.get(decl,
+      "parameters")) == 0 || sx_kind(J.get(decl,
+      "return_type")) == 0 || sx_kind(J.get(decl,
+      "expression")) == 0
+    {
+      return J.fail!("invalid transform function");
+    }
+    let ident = identifier(J.get(decl, "name"))?;
     let name = sx_text(ident);
-    if builtin_arity(name) >= 0 { return J.fail!(format("transform function {} shadows a builtin",name)); }
-    if sx_kind(J.field(functions_rev,name)) != 0 { return J.fail!(format("duplicate transform function {}",name)); }
-    let scope = parameters(decl,name)?;
-    let _ = type_name(J.get(decl,"return_type"))?;
-    scopes_rev = sx_cons(scope,scopes_rev);
-    functions_rev = sx_cons(J.pair(ident,decl),functions_rev);
+    if builtin_arity(name) >= 0
+    {
+      return J.fail!(format("transform function {} shadows a builtin", name));
+    }
+    if sx_kind(J.field(functions_rev, name)) != 0
+    {
+      return J.fail!(format("duplicate transform function {}", name));
+    }
+    let scope = parameters(decl, name)?;
+    let _ = type_name(J.get(decl, "return_type"))?;
+    scopes_rev = sx_cons(scope, scopes_rev);
+    functions_rev = sx_cons(J.pair(ident, decl), functions_rev);
     rest = sx_tail(rest);
   }
   let functions = List.basis_list_rev(functions_rev);
@@ -284,46 +455,70 @@ fn compile(ast:sexpr) -> Result<Program,sexpr>
   {
     let entry = sx_head(rest);
     let name = sx_head(entry);
-    let checked = checked_body(J.at(entry,1),sx_head(scopes),functions,nodes);
+    let checked = checked_body(J.at(entry,
+      1),
+      sx_head(scopes),
+      functions,
+      nodes);
     match checked with
     {
-      Ok((used,called)) => { nodes = used; graph = sx_cons(J.pair(name,called),graph); },
-      Err(reason) => { return J.fail!(format("transform function {}: {}",sx_text(name),sx_text(reason))); }
+      Ok((used, called)) =>
+      {
+        nodes = used;
+        graph = sx_cons(J.pair(name, called), graph);
+      }, Err(reason) =>
+      {
+        return J.fail!(format("transform function {}: {}",
+          sx_text(name),
+          sx_text(reason)));
+      }
     };
     scopes = sx_tail(scopes);
     rest = sx_tail(rest);
   }
-
   rest = functions;
   var done = sx_nil();
   while sx_kind(rest) == 3
   {
-    done = visit(sx_text(sx_head(sx_head(rest))),graph,sx_nil(),done)?;
+    done = visit(sx_text(sx_head(sx_head(rest))), graph, sx_nil(), done)?;
     rest = sx_tail(rest);
   }
-
   rest = emits;
   var metrics_rev = sx_nil();
   while sx_kind(rest) == 3
   {
     let emit = sx_head(rest);
-    let expr = J.get(emit,"expression");
-    if !has_fields(emit,2) || sx_kind(J.get(emit,"name")) == 0 || sx_kind(expr) == 0
-    { return J.fail!("invalid transform metric"); }
-    let ident = identifier(J.get(emit,"name"))?;
+    let expr = J.get(emit, "expression");
+    if ! has_fields(emit,
+      2) || sx_kind(J.get(emit,
+      "name")) == 0 || sx_kind(expr) == 0
+    {
+      return J.fail!("invalid transform metric");
+    }
+    let ident = identifier(J.get(emit, "name"))?;
     let name = sx_text(ident);
-    if sx_kind(J.field(metrics_rev,name)) != 0 { return J.fail!(format("duplicate transform metric {}",name)); }
-    let checked = expression(expr,sx_nil(),functions,sx_nil(),nodes,1);
+    if sx_kind(J.field(metrics_rev, name)) != 0
+    {
+      return J.fail!(format("duplicate transform metric {}", name));
+    }
+    let checked = expression(expr, sx_nil(), functions, sx_nil(), nodes, 1);
     match checked with
     {
-      Ok((kind,used,_)) =>
+      Ok((kind, used, _)) =>
       {
         nodes = used;
-        metrics_rev = sx_cons(sx_cons(ident,J.pair(kind,expr)),metrics_rev);
-      },
-      Err(reason) => { return J.fail!(format("transform metric {}: {}",name,sx_text(reason))); }
+        metrics_rev = sx_cons(sx_cons(ident, J.pair(kind, expr)), metrics_rev);
+      }, Err(reason) =>
+      {
+        return J.fail!(format("transform metric {}: {}",
+          name,
+          sx_text(reason)));
+      }
     };
     rest = sx_tail(rest);
   }
-  return result_ok(record<Program>{functions:functions,metrics:List.basis_list_rev(metrics_rev)});
+  return result_ok(record < Program >
+  {
+    functions: functions, metrics: List.basis_list_rev(metrics_rev)
+  });
 }

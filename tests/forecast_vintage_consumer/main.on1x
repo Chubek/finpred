@@ -6,37 +6,99 @@ import forecast_baselines.vintage as Vintage;
 import forecast_baselines.vintage_replay as Replay;
 import std.io.TextIO as IO;
 import std.os.CommandLine as Env;
-
-fn env(key:string) -> string { return Env.basis_command_line_get_env(key); }
-fn arg(key:string) -> sexpr { return sx_string(env(key)); }
-fn catalog(name:string) -> Replay.Catalog {
-  return record<Replay.Catalog>{id:arg("${name}_ID"),count:Guest.nat(env("${name}_COUNT"),2)};
+fn env(key: string) -> string
+{
+  return Env.basis_command_line_get_env(key);
 }
-fn entry(name:string, index:i64) -> Vintage.Entry {
+
+fn arg(key: string) -> sexpr
+{
+  return sx_string(env(key));
+}
+
+fn catalog(name: string) -> Replay.Catalog
+{
+  return record < Replay.Catalog >
+  {
+    id: arg("${name}_ID"), count: Guest.nat(env("${name}_COUNT"), 2)
+  };
+}
+
+fn entry(name: string, index: i64) -> Vintage.Entry
+{
   let n = F.num(index);
-  return record<Vintage.Entry>{parent:arg("${name}_${n}_ID"),snapshot:arg("${name}_${n}_RAW")};
+  return record < Vintage.Entry >
+  {
+    parent: arg("${name}_${n}_ID"), snapshot: arg("${name}_${n}_RAW")
+  };
 }
-fn training(index:i64) -> Vintage.Entry { return entry("TRAIN",index); }
-fn actuals(index:i64) -> Vintage.Entry { return entry("ACTUAL",index); }
 
-fn main() -> i64 {
+fn training(index: i64) -> Vintage.Entry
+{
+  return entry("TRAIN", index);
+}
+
+fn actuals(index: i64) -> Vintage.Entry
+{
+  return entry("ACTUAL", index);
+}
+
+fn main() -> i64
+{
   let task = env("CASE");
-  if task == "digest" { println(Model.digest(env("BYTES"))); return 0; }
-  let linked = record<Replay.Linked>{model_code:sx_string(Model.digest(env("MODEL_SUBJECT"))),
-    scoring_code:sx_string(Model.digest(env("SCORING_SUBJECT")))};
-  let selection = record<Replay.Selection>{model:arg("MODEL"),model_code:arg("MODEL_CODE"),
-    scoring_code:arg("SCORING_CODE"),training_cutoff:arg("TRAIN_CUTOFF"),scoring_cutoff:arg("SCORE_CUTOFF")};
-  let archive = record<Replay.Archive>{forecast_id:arg("FORECAST_ID"),forecast:arg("FORECAST"),
-    evaluation_id:arg("EVALUATION_ID"),evaluation:arg("EVALUATION")};
+  if task == "digest"
+  {
+    println(Model.digest(env("BYTES")));
+    return 0;
+  }
+  let linked = record < Replay.Linked >
+  {
+    model_code: sx_string(Model.digest(env("MODEL_SUBJECT"))), scoring_code: sx_string(Model.digest(env("SCORING_SUBJECT")))
+  };
+  let selection = record < Replay.Selection >
+  {
+    model: arg("MODEL"), model_code: arg("MODEL_CODE"), scoring_code: arg("SCORING_CODE"), training_cutoff: arg("TRAIN_CUTOFF"), scoring_cutoff: arg("SCORE_CUTOFF")
+  };
+  let archive = record < Replay.Archive >
+  {
+    forecast_id: arg("FORECAST_ID"), forecast: arg("FORECAST"), evaluation_id: arg("EVALUATION_ID"), evaluation: arg("EVALUATION")
+  };
   let train = catalog("TRAIN");
   let actual = catalog("ACTUAL");
   let request = arg("REQUEST");
   var result = Replay.reject(1);
-  if task == "issue" { result = Replay.issue(linked,selection,train,request,training); }
-  if task == "evaluate" { result = Replay.evaluate(linked,selection,train,actual,request,archive,training,actuals); }
-  if task == "replay" { result = Replay.replay(linked,selection,train,actual,request,archive,training,actuals); }
-  if result["status"] != 0 {
-    if sx_kind(result["id"]) != 0 || sx_kind(result["bytes"]) != 0 { return 39; }
+  if task == "issue"
+  {
+    result = Replay.issue(linked, selection, train, request, training);
+  }
+  if task == "evaluate"
+  {
+    result = Replay.evaluate(linked,
+      selection,
+      train,
+      actual,
+      request,
+      archive,
+      training,
+      actuals);
+  }
+  if task == "replay"
+  {
+    result = Replay.replay(linked,
+      selection,
+      train,
+      actual,
+      request,
+      archive,
+      training,
+      actuals);
+  }
+  if result["status"] != 0
+  {
+    if sx_kind(result["id"]) != 0 || sx_kind(result["bytes"]) != 0
+    {
+      return 39;
+    }
     return 40 + result["status"];
   }
   println(sx_text(result["id"]));

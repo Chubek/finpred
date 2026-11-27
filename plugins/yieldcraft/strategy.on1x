@@ -3,36 +3,61 @@ import core.date as Date;
 import core.money as Money;
 import algorithms.quantile as Q;
 import plugins.yieldcraft.matcher as Match;
-
 fn target_bps(scenario: C.Scenario, profile: string) -> i64
 {
-  let lead = Date.lead_days(sx_text(scenario["decision_at"]),sx_text(scenario["arrival"]));
+  let lead = Date.lead_days(sx_text(scenario["decision_at"]),
+    sx_text(scenario["arrival"]));
   if profile == "scenario"
   {
-    if scenario["target_bps"] == 0 { return Q.target(lead,sx_text(scenario["curve"])); }
+    if scenario["target_bps"] == 0
+    {
+      return Q.target(lead, sx_text(scenario["curve"]));
+    }
     return scenario["target_bps"];
   }
-  if profile == "value-p40" { return 4000; }
-  if profile == "balanced-p55" { return 5500; }
-  if profile == "premium-p75" { return 7500; }
-  if profile == "lead-linear" { return Q.target(lead,"linear"); }
-  if profile == "lead-quadratic" { return Q.target(lead,"quadratic"); }
+  if profile == "value-p40"
+  {
+    return 4000;
+  }
+  if profile == "balanced-p55"
+  {
+    return 5500;
+  }
+  if profile == "premium-p75"
+  {
+    return 7500;
+  }
+  if profile == "lead-linear"
+  {
+    return Q.target(lead, "linear");
+  }
+  if profile == "lead-quadratic"
+  {
+    return Q.target(lead, "quadratic");
+  }
   tool_fail("strategy: unknown Yieldcraft profile");
   return 0;
 }
 
-fn recommend_profile(scenario: C.Scenario, valuation: C.Valuation, dist: Match.Distribution, profile: string) -> C.Recommendation
+fn recommend_profile(scenario: C.Scenario,
+  valuation: C.Valuation,
+  dist: Match.Distribution,
+  profile: string) -> C.Recommendation
 {
   if dist["count"] < scenario["min_properties"]
-  { tool_fail("insufficient_evidence: too few independent, bookable properties"); }
-  let percentile = target_bps(scenario,profile);
+  {
+    tool_fail("insufficient_evidence: too few independent, bookable properties");
+  }
+  let percentile = target_bps(scenario, profile);
   if percentile < 4000
-  { tool_fail("strategy: shortcut's lower percentile exceeds intended percentile"); }
-  let intended_total = Q.type7(dist["prices"],dist["count"],percentile);
-  let lower_total = Q.type7(dist["prices"],dist["count"],4000);
-  let intended = Money.half_up(intended_total,scenario["nights"]);
-  let lower = Money.half_up(lower_total,scenario["nights"]);
-  let candidate = Money.shortcut(intended,lower,valuation["shortcut_cents"]);
+  {
+    tool_fail("strategy: shortcut's lower percentile exceeds intended percentile");
+  }
+  let intended_total = Q.type7(dist["prices"], dist["count"], percentile);
+  let lower_total = Q.type7(dist["prices"], dist["count"], 4000);
+  let intended = Money.half_up(intended_total, scenario["nights"]);
+  let lower = Money.half_up(lower_total, scenario["nights"]);
+  let candidate = Money.shortcut(intended, lower, valuation["shortcut_cents"]);
   var selected = percentile;
   var reason = "target_percentile";
   if candidate == lower && candidate != intended
@@ -45,21 +70,41 @@ fn recommend_profile(scenario: C.Scenario, valuation: C.Valuation, dist: Match.D
   let previous = valuation["current_cents"];
   let movement = valuation["max_move_cents"];
   var lower_movement = 0;
-  if previous > movement { lower_movement = previous - movement; }
-  if lower_movement > floor { floor = lower_movement; }
+  if previous > movement
+  {
+    lower_movement = previous - movement;
+  }
+  if lower_movement > floor
+  {
+    floor = lower_movement;
+  }
   var upper_movement = previous + movement;
-  if upper_movement > 1000000000000 { upper_movement = 1000000000000; }
-  if upper_movement < cap { cap = upper_movement; }
-  if floor > cap { tool_fail("guardrails: empty floor/cap/movement intersection"); }
-  let approved = Money.capped(candidate,floor,cap);
-  if approved != candidate { reason = "guardrail_adjustment"; }
-  return record<C.Recommendation>{intended_bps:percentile,selected_bps:selected,
-    intended_cents:intended,lower_cents:lower,candidate_cents:candidate,
-    recommended_cents:approved,property_count:dist["count"],rejected:dist["rejected"],
-    infeasible:dist["infeasible"],search_nodes:dist["examined"],reason:sx_string(reason)};
+  if upper_movement > 1000000000000
+  {
+    upper_movement = 1000000000000;
+  }
+  if upper_movement < cap
+  {
+    cap = upper_movement;
+  }
+  if floor > cap
+  {
+    tool_fail("guardrails: empty floor/cap/movement intersection");
+  }
+  let approved = Money.capped(candidate, floor, cap);
+  if approved != candidate
+  {
+    reason = "guardrail_adjustment";
+  }
+  return record < C.Recommendation >
+  {
+    intended_bps: percentile, selected_bps: selected, intended_cents: intended, lower_cents: lower, candidate_cents: candidate, recommended_cents: approved, property_count: dist["count"], rejected: dist["rejected"], infeasible: dist["infeasible"], search_nodes: dist["examined"], reason: sx_string(reason)
+  };
 }
 
-fn recommend(scenario: C.Scenario, valuation: C.Valuation, dist: Match.Distribution) -> C.Recommendation
+fn recommend(scenario: C.Scenario,
+  valuation: C.Valuation,
+  dist: Match.Distribution) -> C.Recommendation
 {
-  return recommend_profile(scenario,valuation,dist,"scenario");
+  return recommend_profile(scenario, valuation, dist, "scenario");
 }

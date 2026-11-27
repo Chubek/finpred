@@ -1,104 +1,181 @@
 # A proleptic Gregorian civil date is a positive day ordinal (0001-01-01 = 1).
 # UTC instants are signed microseconds from 1970-01-01T00:00:00Z.
 from . import host as Host;
+fn max_day() -> i64
+{
+  return 3652059;
+}
 
-fn max_day() -> i64 { return 3652059; }
-fn epoch_day() -> i64 { return 719163; }
-fn micros_per_day() -> i64 { return 86400000000; }
+fn epoch_day() -> i64
+{
+  return 719163;
+}
 
-fn digits(s: string, start: i64, end: i64) -> i64 {
+fn micros_per_day() -> i64
+{
+  return 86400000000;
+}
+
+fn digits(s: string, start: i64, end: i64) -> i64
+{
   var number = 0;
-  for i in start .. end {
+  for i in start .. end
+  {
     let c = text_byte(s, i);
-    if c < 48 || c > 57 { return -1; }
+    if c < 48 || c > 57
+    {
+      return - 1;
+    }
     number = number * 10 + c - 48;
   }
   return number;
 }
 
-fn days_before_year(year: i64) -> i64 {
+fn days_before_year(year: i64) -> i64
+{
   let y = year - 1;
   return y * 365 + y / 4 - y / 100 + y / 400;
 }
 
-fn month_days(year: i64, month: i64) -> i64 {
-  if month == 4 || month == 6 || month == 9 || month == 11 { return 30; }
-  if month != 2 { return 31; }
-  if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) { return 29; }
+fn month_days(year: i64, month: i64) -> i64
+{
+  if month == 4 || month == 6 || month == 9 || month == 11
+  {
+    return 30;
+  }
+  if month != 2
+  {
+    return 31;
+  }
+  if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
+  {
+    return 29;
+  }
   return 28;
 }
 
-fn date(s: string) -> i64 {
-  if text_len(s) != 10 || text_byte(s, 4) != 45 || text_byte(s, 7) != 45 { return 0; }
+fn date(s: string) -> i64
+{
+  if text_len(s) != 10 || text_byte(s, 4) != 45 || text_byte(s, 7) != 45
+  {
+    return 0;
+  }
   let year = digits(s, 0, 4);
   let month = digits(s, 5, 7);
   let day = digits(s, 8, 10);
-  if year < 1 || month < 1 || month > 12 || day < 1 || day > month_days(year, month) { return 0; }
+  if year < 1 || month < 1 || month > 12 || day < 1 || day > month_days(year,
+    month)
+  {
+    return 0;
+  }
   var result = days_before_year(year) + day;
-  for m in 1 .. month { result = result + month_days(year, m); }
+  for m in 1 .. month
+  {
+    result = result + month_days(year, m);
+  }
   return result;
 }
 
-fn pad(out: buffer, n: i64, first_place: i64) {
+fn pad(out: buffer, n: i64, first_place: i64)
+{
   var place = first_place;
-  while place > 0 {
+  while place > 0
+  {
     buffer_byte(out, 48 + n / place % 10);
     place = place / 10;
   }
 }
 
-fn append_date(out: buffer, ordinal: i64) {
-  if ordinal < 1 || ordinal > max_day() { tool_fail("date is outside the supported Gregorian calendar"); }
+fn append_date(out: buffer, ordinal: i64)
+{
+  if ordinal < 1 || ordinal > max_day()
+  {
+    tool_fail("date is outside the supported Gregorian calendar");
+  }
   var lo = 1;
   var hi = 10000;
-  while hi - lo > 1 {
+  while hi - lo > 1
+  {
     let mid = lo + (hi - lo) / 2;
-    if days_before_year(mid) < ordinal { lo = mid; } else { hi = mid; }
+    if days_before_year(mid) < ordinal
+    {
+      lo = mid;
+    }
+    else
+    {
+      hi = mid;
+    }
   }
   var m = 1;
   var d = ordinal - days_before_year(lo);
-  while d > month_days(lo, m) {
+  while d > month_days(lo, m)
+  {
     d = d - month_days(lo, m);
     m = m + 1;
   }
-  pad(out, lo, 1000); buffer_byte(out, 45);
-  pad(out, m, 10); buffer_byte(out, 45);
+  pad(out, lo, 1000);
+  buffer_byte(out, 45);
+  pad(out, m, 10);
+  buffer_byte(out, 45);
   pad(out, d, 10);
 }
 
-fn date_text(ordinal: i64) -> string {
+fn date_text(ordinal: i64) -> string
+{
   let out = buffer_new();
   append_date(out, ordinal);
   return buffer_text(out);
 }
 
-fn quotient_down(n: i64, divisor: i64) -> i64 {
+fn quotient_down(n: i64, divisor: i64) -> i64
+{
   let q = n / divisor;
-  if n % divisor < 0 { return q - 1; }
+  if n % divisor < 0
+  {
+    return q - 1;
+  }
   return q;
 }
 
-fn timestamp(s: string, where: string) -> i64 {
+fn timestamp(s: string, where: string) -> i64
+{
   let length = text_len(s);
   var end = 0;
-  if length >= 20 && text_byte(s, length - 1) == 90 { end = length - 1; }
-  if length >= 25 && text_slice(s, length - 6, length) == "+00:00" { end = length - 6; }
-
-  if end >= 19 && end <= 26 &&
-      text_byte(s, 10) == 84 && text_byte(s, 13) == 58 && text_byte(s, 16) == 58 {
+  if length >= 20 && text_byte(s, length - 1) == 90
+  {
+    end = length - 1;
+  }
+  if length >= 25 && text_slice(s, length - 6, length) == "+00:00"
+  {
+    end = length - 6;
+  }
+  if end >= 19 && end <= 26 && text_byte(s,
+    10) == 84 && text_byte(s,
+    13) == 58 && text_byte(s,
+    16) == 58
+  {
     let day = date(text_slice(s, 0, 10));
     let h = digits(s, 11, 13);
     let m = digits(s, 14, 16);
     let sec = digits(s, 17, 19);
-    var micro = -1;
-    if end == 19 { micro = 0; }
-    if end > 20 && text_byte(s, 19) == 46 {
+    var micro = - 1;
+    if end == 19
+    {
+      micro = 0;
+    }
+    if end > 20 && text_byte(s, 19) == 46
+    {
       micro = digits(s, 20, end);
-      if micro >= 0 {
-        for _ in end .. 26 { micro = micro * 10; }
+      if micro >= 0
+      {
+        for _ in end .. 26
+        {
+          micro = micro * 10;
+        }
       }
     }
-    if day > 0 && h >= 0 && h < 24 && m >= 0 && m < 60 && sec >= 0 && sec < 60 && micro >= 0 {
+    if day > 0 && h >= 0 && h < 24 && m >= 0 && m < 60 && sec >= 0 && sec < 60 && micro >= 0
+    {
       return (day - epoch_day()) * micros_per_day() + ((h * 60 + m) * 60 + sec) * 1000000 + micro;
     }
   }
@@ -106,35 +183,51 @@ fn timestamp(s: string, where: string) -> i64 {
   return 0;
 }
 
-fn utc_text(instant: i64) -> string {
+fn utc_text(instant: i64) -> string
+{
   let days = quotient_down(instant, micros_per_day());
   let ordinal = days + epoch_day();
-  if ordinal < 1 || ordinal > max_day() { tool_fail("timestamp is outside the supported UTC calendar"); }
+  if ordinal < 1 || ordinal > max_day()
+  {
+    tool_fail("timestamp is outside the supported UTC calendar");
+  }
   let micro = instant - days * micros_per_day();
   let seconds = micro / 1000000;
   let out = buffer_new();
-  append_date(out, ordinal); buffer_byte(out, 84);
-  pad(out, seconds / 3600, 10); buffer_byte(out, 58);
-  pad(out, seconds / 60 % 60, 10); buffer_byte(out, 58);
+  append_date(out, ordinal);
+  buffer_byte(out, 84);
+  pad(out, seconds / 3600, 10);
+  buffer_byte(out, 58);
+  pad(out, seconds / 60 % 60, 10);
+  buffer_byte(out, 58);
   pad(out, seconds % 60, 10);
-  if micro % 1000000 != 0 {
-    buffer_byte(out, 46); pad(out, micro % 1000000, 100000);
+  if micro % 1000000 != 0
+  {
+    buffer_byte(out, 46);
+    pad(out, micro % 1000000, 100000);
   }
   buffer_byte(out, 90);
   return buffer_text(out);
 }
 
-fn clock(text: string) -> i64 {
-  if text == "" { return Host.caravansary_clock(); }
+fn clock(text: string) -> i64
+{
+  if text == ""
+  {
+    return Host.caravansary_clock();
+  }
   return timestamp(text, "--as-of");
 }
 
-fn local_date(zone: string, instant: i64) -> string {
+fn local_date(zone: string, instant: i64) -> string
+{
   return Host.caravansary_local_date(zone, quotient_down(instant, 1000000));
 }
 
-fn validate_zone(zone: string) {
-  if !Host.caravansary_has_zone(zone) {
+fn validate_zone(zone: string)
+{
+  if ! Host.caravansary_has_zone(zone)
+  {
     tool_fail("property.timezone is not available in the host IANA timezone database");
   }
 }

@@ -7,50 +7,94 @@ import plugins.caravansary.market_cli.options as Opt;
 import plugins.caravansary.market_cli.positioning as Position;
 import plugins.caravansary.market_cli.replay as Replay;
 import plugins.caravansary.market_cli.workflow as Workflow;
-
-fn artifact_for_script(mode: string, path: string, roots: sexpr, opts: sexpr) -> sexpr {
-  let now = Civil.timestamp(Opt.required(opts,"--as-of"),"--as-of");
+fn artifact_for_script(mode: string,
+  path: string,
+  roots: sexpr,
+  opts: sexpr) -> sexpr
+{
+  let now = Civil.timestamp(Opt.required(opts, "--as-of"), "--as-of");
   let timestamp = Civil.utc_text(now);
-  let script = Workflow.script(path,roots);
+  let script = Workflow.script(path, roots);
   var only = "";
-  if mode == "scrape" { only = Opt.required(opts,"--source"); }
-  let (captures,capture_ids) = Workflow.collect(script,mode,only,Opt.required(opts,"--host-grants"),roots,now);
-  var inputs = Artifacts.put(sx_nil(),"script_digest",sx_string(Json.digest(script)));
-  inputs = Artifacts.put(inputs,"capture_sha256",capture_ids);
-  var result = Artifacts.put(sx_nil(),"sources",captures);
+  if mode == "scrape"
+  {
+    only = Opt.required(opts, "--source");
+  }
+  let(captures,
+    capture_ids) = Workflow.collect(script,
+    mode,
+    only,
+    Opt.required(opts,
+    "--host-grants"),
+    roots,
+    now);
+  var inputs = Artifacts.put(sx_nil(),
+    "script_digest",
+    sx_string(Json.digest(script)));
+  inputs = Artifacts.put(inputs, "capture_sha256", capture_ids);
+  var result = Artifacts.put(sx_nil(), "sources", captures);
   var status = "completed";
-  if mode == "discover" || mode == "predict" {
-    let discovery = Workflow.discover(script,captures);
-    result = Artifacts.put(result,"discovery",discovery);
-    if mode == "predict" {
+  if mode == "discover" || mode == "predict"
+  {
+    let discovery = Workflow.discover(script, captures);
+    result = Artifacts.put(result, "discovery", discovery);
+    if mode == "predict"
+    {
       var position = Position.no_evidence();
-      let prices = Json.get(opts,"--pricing-input");
-      if sx_kind(prices) != 0 {
-        let evidence = Files.read_json(Json.text(prices),roots,2097152,"market pricing input");
-        inputs = Artifacts.put(inputs,"pricing_input_digest",sx_string(Json.digest(evidence)));
-        position = Position.compare(script,discovery,evidence,timestamp);
+      let prices = Json.get(opts, "--pricing-input");
+      if sx_kind(prices) != 0
+      {
+        let evidence = Files.read_json(Json.text(prices),
+          roots,
+          2097152,
+          "market pricing input");
+        inputs = Artifacts.put(inputs,
+          "pricing_input_digest",
+          sx_string(Json.digest(evidence)));
+        position = Position.compare(script, discovery, evidence, timestamp);
       }
-      result = Artifacts.put(result,"position",position);
-      if sx_text(Json.field(position,"status")) != "recommended" { status = "abstained"; }
+      result = Artifacts.put(result, "position", position);
+      if sx_text(Json.field(position, "status")) != "recommended"
+      {
+        status = "abstained";
+      }
     }
   }
-  return Artifacts.produce(mode,timestamp,status,Json.object(inputs),Json.object(result));
+  return Artifacts.produce(mode,
+    timestamp,
+    status,
+    Json.object(inputs),
+    Json.object(result));
 }
 
-fn main() -> i64 {
-  let (mode,paths,root_args,options) = Opt.read();
-  if mode == "help" {
+fn main() -> i64
+{
+  let(mode, paths, root_args, options) = Opt.read();
+  if mode == "help"
+  {
     IO.basis_text_io_print(Opt.usage());
     return 0;
   }
   let roots = Files.root_paths(root_args);
   let path = sx_text(sx_head(paths));
-  if mode == "explain" { println(Json.render(Artifacts.explain(path,roots))); return 0; }
-  if mode == "history" { println(Json.render(Artifacts.history(paths,roots))); return 0; }
-  if mode == "backtest" {
-    Artifacts.print(Replay.backtest(path,roots,Opt.required(options,"--as-of")));
+  if mode == "explain"
+  {
+    println(Json.render(Artifacts.explain(path, roots)));
     return 0;
   }
-  Artifacts.print(artifact_for_script(mode,path,roots,options));
+  if mode == "history"
+  {
+    println(Json.render(Artifacts.history(paths, roots)));
+    return 0;
+  }
+  if mode == "backtest"
+  {
+    Artifacts.print(Replay.backtest(path,
+      roots,
+      Opt.required(options,
+      "--as-of")));
+    return 0;
+  }
+  Artifacts.print(artifact_for_script(mode, path, roots, options));
   return 0;
 }

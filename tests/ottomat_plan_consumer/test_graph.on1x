@@ -2,24 +2,47 @@
 # native graph revision with an incompatible signature or effect grant.
 import reference.native as Native;
 import std.os.CommandLine as Env;
-
 fn node(id: i64) -> Native.Node
 {
   let n = Native.node(id);
   let change = Env.basis_command_line_get_env("OTTOMAT_GRAPH_CHANGE");
   if id == 0 && change == "root"
-  { return Native.make_node(id,"input","pricing.recommendation@1","hospitality.scenario@1","read"); }
+  {
+    return Native.make_node(id,
+      "input",
+      "pricing.recommendation@1",
+      "hospitality.scenario@1",
+      "read");
+  }
   if id == 4 && change == "record"
-  { return Native.make_node(id,"strategy","pricing.distribution@1","pricing.recommendation@1","record"); }
+  {
+    return Native.make_node(id,
+      "strategy",
+      "pricing.distribution@1",
+      "pricing.recommendation@1",
+      "record");
+  }
   if id == 6 && change == "network"
-  { return Native.make_node(id,"output","pricing.recommendation@1","pricing.recommendation@1","network"); }
+  {
+    return Native.make_node(id,
+      "output",
+      "pricing.recommendation@1",
+      "pricing.recommendation@1",
+      "network");
+  }
   return n;
 }
 
 fn validate(mode: string) -> bool
 {
-  if Env.basis_command_line_get_env("OTTOMAT_GRAPH_CHANGE") == "denied" { return false; }
+  if Env.basis_command_line_get_env("OTTOMAT_GRAPH_CHANGE") == "denied"
+  {
+    return false;
+  }
   return Native.validate(mode);
 }
 
-fn version() -> string { return Native.version(); }
+fn version() -> string
+{
+  return Native.version();
+}

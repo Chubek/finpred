@@ -6,54 +6,121 @@ import std.collections.List as List;
 import std.parsec as Parse;
 import std.String as Str;
 import std.ppx.json as Ppx;
+fn array(items: sexpr) -> sexpr
+{
+  return PlanJson.array(items);
+}
 
-fn array(items: sexpr) -> sexpr { return PlanJson.array(items); }
-fn object(pairs: sexpr) -> sexpr { return PlanJson.object(pairs); }
-fn null_value() -> sexpr { return sx_symbol("null"); }
-fn absent(v: sexpr) -> bool { return sx_kind(v) == 0; }
-fn is_null(v: sexpr) -> bool { return sx_kind(v) == 1 && sx_text(v) == "null"; }
-fn is_object(v: sexpr) -> bool { return PlanJson.kind(v) == "object"; }
-fn is_array(v: sexpr) -> bool { return PlanJson.kind(v) == "array"; }
-fn is_integer(v: sexpr) -> bool { return PlanJson.kind(v) == "integer"; }
+fn object(pairs: sexpr) -> sexpr
+{
+  return PlanJson.object(pairs);
+}
+
+fn null_value() -> sexpr
+{
+  return sx_symbol("null");
+}
+
+fn absent(v: sexpr) -> bool
+{
+  return sx_kind(v) == 0;
+}
+
+fn is_null(v: sexpr) -> bool
+{
+  return sx_kind(v) == 1 && sx_text(v) == "null";
+}
+
+fn is_object(v: sexpr) -> bool
+{
+  return PlanJson.kind(v) == "object";
+}
+
+fn is_array(v: sexpr) -> bool
+{
+  return PlanJson.kind(v) == "array";
+}
+
+fn is_integer(v: sexpr) -> bool
+{
+  return PlanJson.kind(v) == "integer";
+}
+
 fn is_bool(v: sexpr) -> bool
 {
   return sx_kind(v) == 1 && (sx_text(v) == "true" || sx_text(v) == "false");
 }
-fn truth(v: sexpr) -> bool { return sx_kind(v) == 1 && sx_text(v) == "true"; }
+
+fn truth(v: sexpr) -> bool
+{
+  return sx_kind(v) == 1 && sx_text(v) == "true";
+}
+
 fn boolean(v: bool) -> sexpr
 {
-  if v { return sx_symbol("true"); }
+  if v
+  {
+    return sx_symbol("true");
+  }
   return sx_symbol("false");
 }
-fn integer(n: i64) -> sexpr { return PlanJson.integer(n); }
-fn ascii(s: string) -> sexpr { return sx_string(s); }
-fn member(name: string, value: sexpr) -> sexpr { return PlanJson.pair(name, value); }
+
+fn integer(n: i64) -> sexpr
+{
+  return PlanJson.integer(n);
+}
+
+fn ascii(s: string) -> sexpr
+{
+  return sx_string(s);
+}
+
+fn member(name: string, value: sexpr) -> sexpr
+{
+  return PlanJson.pair(name, value);
+}
+
 fn get(v: sexpr, name: string) -> sexpr
 {
   # Coverage objects have small fixed schemas. Native string equality is
   # cheaper here than byte-at-a-time ordering on every candidate field.
-  if !is_object(v) { return sx_nil(); }
+  if ! is_object(v)
+  {
+    return sx_nil();
+  }
   var rest = sx_tail(v);
-  while !absent(rest)
+  while ! absent(rest)
   {
     let field = sx_head(rest);
-    if sx_text(sx_head(field)) == name { return PlanJson.pair_value(field); }
+    if sx_text(sx_head(field)) == name
+    {
+      return PlanJson.pair_value(field);
+    }
     rest = sx_tail(rest);
   }
   return sx_nil();
 }
-fn has(v: sexpr, name: string) -> bool { return !absent(get(v, name)); }
+
+fn has(v: sexpr, name: string) -> bool
+{
+  return ! absent(get(v, name));
+}
+
 fn or_null(v: sexpr) -> sexpr
 {
-  if absent(v) { return null_value(); }
+  if absent(v)
+  {
+    return null_value();
+  }
   return v;
 }
+
 fn merge(v: sexpr, bindings: sexpr) -> sexpr
 {
   var old = sx_tail(v);
   var new_fields = bindings;
   var rev = sx_nil();
-  while !absent(old) && !absent(new_fields)
+  while ! absent(old) && ! absent(new_fields)
   {
     let a = sx_head(old);
     let b = sx_head(new_fields);
@@ -66,13 +133,19 @@ fn merge(v: sexpr, bindings: sexpr) -> sexpr
     else
     {
       rev = sx_cons(b, rev);
-      if cmp == 0 { old = sx_tail(old); }
+      if cmp == 0
+      {
+        old = sx_tail(old);
+      }
       new_fields = sx_tail(new_fields);
     }
   }
   var output = old;
-  if absent(old) { output = new_fields; }
-  while !absent(rev)
+  if absent(old)
+  {
+    output = new_fields;
+  }
+  while ! absent(rev)
   {
     output = sx_cons(sx_head(rev), output);
     rev = sx_tail(rev);
@@ -80,38 +153,56 @@ fn merge(v: sexpr, bindings: sexpr) -> sexpr
   return sx_cons(sx_symbol("object"), output);
 }
 
-fn set_pair(v: sexpr, binding: sexpr) -> sexpr { return merge(v, sx_cons(binding, sx_nil())); }
-fn set(v: sexpr, name: string, value: sexpr) -> sexpr { return set_pair(v, member(name, value)); }
+fn set_pair(v: sexpr, binding: sexpr) -> sexpr
+{
+  return merge(v, sx_cons(binding, sx_nil()));
+}
+
+fn set(v: sexpr, name: string, value: sexpr) -> sexpr
+{
+  return set_pair(v, member(name, value));
+}
 
 fn integer_spelling(s: string) -> bool
 {
-  return !Str.contains(s, ".") && !Str.contains(s, "e") && !Str.contains(s, "E");
+  return ! Str.contains(s,
+    ".") && ! Str.contains(s,
+    "e") && ! Str.contains(s,
+    "E");
 }
-fn as_i64(v: sexpr) -> (bool, i64)
+
+fn as_i64(v: sexpr) ->(bool, i64)
 {
-  if PlanJson.kind(v) != "integer" { return (false, 0); }
+  if PlanJson.kind(v) != "integer"
+  {
+    return (false, 0);
+  }
   let s = sx_text(v);
-  let (ok, n, end) = Parse.basis_parsec_int(s, 0);
+  let(ok, n, end) = Parse.basis_parsec_int(s, 0);
   return (ok && end == text_len(s), n);
 }
 
 fn whitespace(c: i64) -> bool
 {
-  return (c >= 9 && c <= 13) || (c >= 28 && c <= 32) || c == 133 || c == 160 ||
-    c == 5760 || (c >= 8192 && c <= 8202) || c == 8232 || c == 8233 || c == 8239 ||
-    c == 8287 || c == 12288;
+  return (c >= 9 && c <= 13) || (c >= 28 && c <= 32) || c == 133 || c == 160 || c == 5760 || (c >= 8192 && c <= 8202) || c == 8232 || c == 8233 || c == 8239 || c == 8287 || c == 12288;
 }
 
 fn text(v: sexpr) -> bool
 {
-  if sx_kind(v) != 2 { return false; }
+  if sx_kind(v) != 2
+  {
+    return false;
+  }
   let s = sx_text(v);
   let end = text_len(s);
   var i = 0;
   while i < end
   {
-    let (c, next) = Wire.utf8(s, i);
-    if !whitespace(c) { return true; }
+    let(c, next) = Wire.utf8(s, i);
+    if ! whitespace(c)
+    {
+      return true;
+    }
     i = next;
   }
   return false;
@@ -119,35 +210,59 @@ fn text(v: sexpr) -> bool
 
 fn plain(v: sexpr) -> string
 {
-  if sx_kind(v) != 2 { return ""; }
+  if sx_kind(v) != 2
+  {
+    return "";
+  }
   return sx_text(v);
 }
 
 fn same(a: sexpr, b: sexpr) -> bool
 {
-  if sx_kind(a) != sx_kind(b) { return false; }
-  if absent(a) { return true; }
+  if sx_kind(a) != sx_kind(b)
+  {
+    return false;
+  }
+  if absent(a)
+  {
+    return true;
+  }
   if sx_kind(a) != 3
   {
     let x = sx_text(a);
     let y = sx_text(b);
-    if x == y { return true; }
+    if x == y
+    {
+      return true;
+    }
     return sx_kind(a) == 1 && ((x == "-0.0" && y == "0.0") || (x == "0.0" && y == "-0.0"));
   }
-  if sx_text(sx_head(a)) != sx_text(sx_head(b)) { return false; }
+  if sx_text(sx_head(a)) != sx_text(sx_head(b))
+  {
+    return false;
+  }
   var xs = sx_tail(a);
   var ys = sx_tail(b);
   let dictionary = is_object(a);
-  while !absent(xs) && !absent(ys)
+  while ! absent(xs) && ! absent(ys)
   {
     let x = sx_head(xs);
     let y = sx_head(ys);
     if dictionary
     {
-      if sx_text(sx_head(x)) != sx_text(sx_head(y)) ||
-        !same(PlanJson.pair_value(x), PlanJson.pair_value(y)) { return false; }
+      if sx_text(sx_head(x)) != sx_text(sx_head(y)) || ! same(PlanJson.pair_value(x),
+        PlanJson.pair_value(y))
+      {
+        return false;
+      }
     }
-    else { if !same(x, y) { return false; } }
+    else
+    {
+      if ! same(x, y)
+      {
+        return false;
+      }
+    }
     xs = sx_tail(xs);
     ys = sx_tail(ys);
   }
@@ -156,7 +271,7 @@ fn same(a: sexpr, b: sexpr) -> bool
 
 # The wire decoder returns recoverable errors and retains original numeric
 # spellings. Convert to the canonical tree used by the planner and renderer.
-fn decoded(s: string) -> Result<sexpr, sexpr>
+fn decoded(s: string) -> Result < sexpr, sexpr >
 {
   var i = 1;
   let stop = text_len(s) - 1;
@@ -166,50 +281,80 @@ fn decoded(s: string) -> Result<sexpr, sexpr>
     {
       if text_byte(s, i + 1) == 117
       {
-        if Wire.code4(s, i + 2) == 0 { return result_error(sx_string("NUL is unsupported by the text ABI")); }
+        if Wire.code4(s, i + 2) == 0
+        {
+          return result_error(sx_string("NUL is unsupported by the text ABI"));
+        }
         i = i + 4;
       }
       i = i + 1;
     }
     i = i + 1;
   }
-  let (value, _) = Ppx.ppx_json_quoted(s, 0);
+  let(value, _) = Ppx.ppx_json_quoted(s, 0);
   return result_ok(sx_string(value));
 }
 
-fn numeric(s: string) -> Result<sexpr, sexpr>
+fn numeric(s: string) -> Result < sexpr, sexpr >
 {
   if integer_spelling(s)
   {
     var n = text_len(s);
-    if text_byte(s, 0) == 45 { n = n - 1; }
-    if n > 4300 { return result_error(sx_string("JSON integer exceeds supported digit limit")); }
-    if s == "-0" { return result_ok(integer(0)); }
+    if text_byte(s, 0) == 45
+    {
+      n = n - 1;
+    }
+    if n > 4300
+    {
+      return result_error(sx_string("JSON integer exceeds supported digit limit"));
+    }
+    if s == "-0"
+    {
+      return result_ok(integer(0));
+    }
     return result_ok(sx_symbol(s));
   }
   let value = Host.caravansary_parse_float(s);
-  if !f64_is_finite(value) { return result_error(sx_string("JSON number exceeds floating-point range")); }
+  if ! f64_is_finite(value)
+  {
+    return result_error(sx_string("JSON number exceeds floating-point range"));
+  }
   if value == 0.0
   {
     for i in 0 .. text_len(s)
     {
       let c = text_byte(s, i);
-      if c == 101 || c == 69 { break; }
-      if c >= 49 && c <= 57 { return result_error(sx_string("nonzero JSON number underflows to zero")); }
+      if c == 101 || c == 69
+      {
+        break;
+      }
+      if c >= 49 && c <= 57
+      {
+        return result_error(sx_string("nonzero JSON number underflows to zero"));
+      }
     }
   }
   return result_ok(PlanJson.real(value));
 }
 
-fn from_wire(value: sexpr) -> Result<sexpr, sexpr>
+fn from_wire(value: sexpr) -> Result < sexpr, sexpr >
 {
-  if sx_kind(value) == 2 { return decoded(sx_text(value)); }
-  if sx_kind(value) != 3 { return result_ok(value); }
-  if Wire.tag(value, "number") { return numeric(sx_text(Wire.at(value, 1))); }
+  if sx_kind(value) == 2
+  {
+    return decoded(sx_text(value));
+  }
+  if sx_kind(value) != 3
+  {
+    return result_ok(value);
+  }
+  if Wire.tag(value, "number")
+  {
+    return numeric(sx_text(Wire.at(value, 1)));
+  }
   let dictionary = Wire.tag(value, "object");
   var rest = sx_tail(value);
   var rev = sx_nil();
-  while !absent(rest)
+  while ! absent(rest)
   {
     let item = sx_head(rest);
     if dictionary
@@ -218,22 +363,32 @@ fn from_wire(value: sexpr) -> Result<sexpr, sexpr>
       let val = from_wire(Wire.at(item, 1))?;
       rev = sx_cons(member(sx_text(name), val), rev);
     }
-    else { rev = sx_cons(from_wire(item)?, rev); }
+    else
+    {
+      rev = sx_cons(from_wire(item)?, rev);
+    }
     rest = sx_tail(rest);
   }
-  if dictionary { return result_ok(object(rev)); }
+  if dictionary
+  {
+    return result_ok(object(rev));
+  }
   return result_ok(array(List.basis_list_rev(rev)));
 }
 
-fn parse(s: string) -> Result<sexpr, sexpr>
+fn parse(s: string) -> Result < sexpr, sexpr >
 {
   match Wire.parse(s) with
   {
-    Ok(value) => { return from_wire(value); },
-    Err(message) =>
+    Ok(value) =>
+    {
+      return from_wire(value);
+    }, Err(message) =>
     {
       if sx_text(message) == "duplicate JSON object key"
-      { return result_error(sx_string("duplicate JSON field")); }
+      {
+        return result_error(sx_string("duplicate JSON field"));
+      }
       return result_error(message);
     }
   };

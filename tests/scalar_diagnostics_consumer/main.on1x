@@ -1,14 +1,21 @@
 import plugins.scalar_diagnostics.midpoint as Diagnostic;
 import std.os.CommandLine as Env;
-
 fn main() -> i64
 {
   let test = Env.basis_command_line_get_env("DIAGNOSTIC_CASE");
-  if test == "negative" { println(Diagnostic.midpoint(-1,42)); return 0; }
-  if test == "oversize" { println(Diagnostic.midpoint(42,9223372036854775807)); return 0; }
-  println(Diagnostic.midpoint(17,42));
-  println(Diagnostic.midpoint(42,17));
-  println(Diagnostic.midpoint(0,1));
-  println(Diagnostic.midpoint(1000000000000,1000000000000));
+  if test == "negative"
+  {
+    println(Diagnostic.midpoint(- 1, 42));
+    return 0;
+  }
+  if test == "oversize"
+  {
+    println(Diagnostic.midpoint(42, 9223372036854775807));
+    return 0;
+  }
+  println(Diagnostic.midpoint(17, 42));
+  println(Diagnostic.midpoint(42, 17));
+  println(Diagnostic.midpoint(0, 1));
+  println(Diagnostic.midpoint(1000000000000, 1000000000000));
   return 0;
 }

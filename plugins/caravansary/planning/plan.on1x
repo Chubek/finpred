@@ -5,110 +5,195 @@ import std.String as Str;
 from . import civil as Civil, paths as Paths, inputs as Inputs, json as Json;
 from .civil import clock, utc_text, timestamp, local_date;
 from .paths import script_text, observation_text;
-
-record Plan {
-  config_value: sexpr, id: sexpr, start: i64, horizon: i64,
-  sources: sexpr, properties: sexpr, guests: sexpr, stays: sexpr, joint_weights: sexpr,
-  num_sources: i64, num_properties: i64, num_guests: i64, num_stays: i64
+record Plan
+{
+  config_value: sexpr, id: sexpr, start: i64, horizon: i64, sources: sexpr, properties: sexpr, guests: sexpr, stays: sexpr, joint_weights: sexpr, num_sources: i64, num_properties: i64, num_guests: i64, num_stays: i64
 }
 
-fn config(plan: Plan) -> sexpr { return plan["config_value"]; }
-fn config_id(plan: Plan) -> string { return sx_text(plan["id"]); }
+fn config(plan: Plan) -> sexpr
+{
+  return plan["config_value"];
+}
 
-fn or_null(value: sexpr) -> sexpr {
-  if sx_kind(value) == 0 { return Json.null_value(); }
+fn config_id(plan: Plan) -> string
+{
+  return sx_text(plan["id"]);
+}
+
+fn or_null(value: sexpr) -> sexpr
+{
+  if sx_kind(value) == 0
+  {
+    return Json.null_value();
+  }
   return value;
 }
 
-fn mapping(property: sexpr, source: string) -> sexpr {
+fn mapping(property: sexpr, source: string) -> sexpr
+{
   let found = Json.get(Json.field(property, "providers"), source);
-  if sx_kind(found) != 0 { return found; }
-  return Json.object(sx_cons(Json.pair("mapping_status", sx_string("missing")), sx_nil()));
+  if sx_kind(found) != 0
+  {
+    return found;
+  }
+  return Json.object(sx_cons(Json.pair("mapping_status",
+    sx_string("missing")),
+    sx_nil()));
 }
 
-fn all_mappings(properties: sexpr, sources: sexpr) -> sexpr {
+fn all_mappings(properties: sexpr, sources: sexpr) -> sexpr
+{
   var rest = properties;
   var result = sx_nil();
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let property = sx_head(rest);
     var selected = sources;
     var fields = sx_nil();
-    while sx_kind(selected) == 3 {
+    while sx_kind(selected) == 3
+    {
       let source = Json.text(sx_head(selected));
       fields = sx_cons(Json.pair(source, mapping(property, source)), fields);
       selected = sx_tail(selected);
     }
-    result = sx_cons(Json.pair(Json.text(Json.field(property, "id")), Json.object(fields)), result);
+    result = sx_cons(Json.pair(Json.text(Json.field(property,
+      "id")),
+      Json.object(fields)),
+      result);
     rest = sx_tail(rest);
   }
   return Json.object(result);
 }
 
-fn identify(cfg: sexpr, search: sexpr, sources: sexpr, properties: sexpr,
-            guest_ids: sexpr, stays: sexpr, guests_by_id: sexpr) -> string {
+fn identify(cfg: sexpr,
+  search: sexpr,
+  sources: sexpr,
+  properties: sexpr,
+  guest_ids: sexpr,
+  stays: sexpr,
+  guests_by_id: sexpr) -> string
+{
   var selected_guests = sx_nil();
   var rest = Json.items(guest_ids);
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let id = Json.text(sx_head(rest));
-    selected_guests = sx_cons(Json.pair(id, Json.field(guests_by_id, id)), selected_guests);
+    selected_guests = sx_cons(Json.pair(id,
+      Json.field(guests_by_id,
+      id)),
+      selected_guests);
     rest = sx_tail(rest);
   }
-  let normalized_search = Json.replace(
-    Json.replace(search, "guest_configurations", Json.sorted_array(guest_ids, false)),
-    "stay_lengths", Json.sorted_array(stays, true));
-  let fields = sx_cons(Json.pair("kind", sx_string("caravansary.config@1")),
-    sx_cons(Json.pair("name", or_null(Json.get(cfg, "name"))),
-    sx_cons(Json.pair("version", Json.integer(1)),
-    sx_cons(Json.pair("property", Json.field(cfg, "property")),
-    sx_cons(Json.pair("search", normalized_search),
-    sx_cons(Json.pair("sources", Json.sorted_array(sources, false)),
-    sx_cons(Json.pair("guest_configurations", Json.object(selected_guests)),
-    sx_cons(Json.pair("mappings", all_mappings(properties, Json.items(sources))), sx_nil()))))))));
+  let normalized_search = Json.replace(Json.replace(search,
+    "guest_configurations",
+    Json.sorted_array(guest_ids,
+    false)),
+    "stay_lengths",
+    Json.sorted_array(stays,
+    true));
+  let fields = sx_cons(Json.pair("kind",
+    sx_string("caravansary.config@1")),
+    sx_cons(Json.pair("name",
+    or_null(Json.get(cfg,
+    "name"))),
+    sx_cons(Json.pair("version",
+    Json.integer(1)),
+    sx_cons(Json.pair("property",
+    Json.field(cfg,
+    "property")),
+    sx_cons(Json.pair("search",
+    normalized_search),
+    sx_cons(Json.pair("sources",
+    Json.sorted_array(sources,
+    false)),
+    sx_cons(Json.pair("guest_configurations",
+    Json.object(selected_guests)),
+    sx_cons(Json.pair("mappings",
+    all_mappings(properties,
+    Json.items(sources))),
+    sx_nil()))))))));
   return Json.digest(Json.object(fields));
 }
 
-fn resolve_start(search: sexpr, zone: string, on_date: string, as_of: i64) -> i64 {
+fn resolve_start(search: sexpr,
+  zone: string,
+  on_date: string,
+  as_of: i64) -> i64
+{
   var override_day = 0;
-  if on_date != "" {
+  if on_date != ""
+  {
     override_day = Civil.date(on_date);
-    if override_day == 0 { tool_fail("expected a Gregorian date in YYYY-MM-DD form"); }
+    if override_day == 0
+    {
+      tool_fail("expected a Gregorian date in YYYY-MM-DD form");
+    }
   }
   let explicit_start = Json.text(Json.field(search, "start"));
-  if explicit_start == "today" {
-    if override_day != 0 { return override_day; }
+  if explicit_start == "today"
+  {
+    if override_day != 0
+    {
+      return override_day;
+    }
     return Civil.date(Civil.local_date(zone, as_of));
   }
   let day = Civil.date(explicit_start);
-  if day == 0 { tool_fail("search.start must be a valid Gregorian date"); }
+  if day == 0
+  {
+    tool_fail("search.start must be a valid Gregorian date");
+  }
   return day;
 }
 
-fn load(config_json: string, path: string, input_roots: sexpr, on_date: string, as_of: i64) -> Plan {
+fn load(config_json: string,
+  path: string,
+  input_roots: sexpr,
+  on_date: string,
+  as_of: i64) -> Plan
+{
   let cfg = Json.parse(config_json);
   let search = Json.field(cfg, "search");
   let sources = Json.field(cfg, "sources");
   let guest_ids = Json.field(search, "guest_configurations");
   let stays = Json.field(search, "stay_lengths");
-  let (parent, roots) = Paths.roots(path, input_roots);
-  let (competitors, competitors_origin) = Paths.input_json(parent, Json.text(Json.field(cfg, "competitors")), roots);
-  let (guests_by_id, properties) = Inputs.competitors(competitors, competitors_origin);
+  let(parent, roots) = Paths.roots(path, input_roots);
+  let(competitors,
+    competitors_origin) = Paths.input_json(parent,
+    Json.text(Json.field(cfg,
+    "competitors")),
+    roots);
+  let(guests_by_id,
+    properties) = Inputs.competitors(competitors,
+    competitors_origin);
   let refresh = Json.field(cfg, "refresh");
-  let (weights_doc, weights_origin) = Paths.input_json(parent, Json.text(Json.field(refresh, "weights")), roots);
+  let(weights_doc,
+    weights_origin) = Paths.input_json(parent,
+    Json.text(Json.field(refresh,
+    "weights")),
+    roots);
   let guests = Json.items(guest_ids);
   let stay_values = Json.items(stays);
-  let weights = Inputs.weights(weights_doc, guests, stay_values, weights_origin);
-
+  let weights = Inputs.weights(weights_doc,
+    guests,
+    stay_values,
+    weights_origin);
   var guest_values = sx_nil();
   var joint = sx_nil();
   var rest = guests;
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let guest_id = Json.text(sx_head(rest));
     let guest = Json.get(guests_by_id, guest_id);
-    if sx_kind(guest) == 0 { tool_fail("undefined guest configuration: '$guest_id'"); }
+    if sx_kind(guest) == 0
+    {
+      tool_fail("undefined guest configuration: '$guest_id'");
+    }
     guest_values = sx_cons(guest, guest_values);
     var nights = stay_values;
     var weights_for_guest = sx_nil();
-    while sx_kind(nights) == 3 {
+    while sx_kind(nights) == 3
+    {
       let key = Inputs.pair_key(guest_id, sx_text(sx_head(nights)));
       weights_for_guest = sx_cons(Json.field(weights, key), weights_for_guest);
       nights = sx_tail(nights);
@@ -119,33 +204,49 @@ fn load(config_json: string, path: string, input_roots: sexpr, on_date: string, 
   let zone = Json.text(Json.field(Json.field(cfg, "property"), "timezone"));
   Civil.validate_zone(zone);
   let start = resolve_start(search, zone, on_date, as_of);
-  let horizon = Json.int64(Json.field(search, "horizon_days"), "search.horizon_days");
-  if horizon < 1 || horizon > 365 { tool_fail("search.horizon_days must be between 1 and 365"); }
+  let horizon = Json.int64(Json.field(search,
+    "horizon_days"),
+    "search.horizon_days");
+  if horizon < 1 || horizon > 365
+  {
+    tool_fail("search.horizon_days must be between 1 and 365");
+  }
   let remaining = Civil.max_day() - start - horizon + 1;
   rest = stay_values;
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let s = Json.positive_integer_text(sx_head(rest), "search.stay_lengths");
-    if text_len(s) > 7 || Json.int64(sx_head(rest), "search.stay_lengths") > remaining {
+    if text_len(s) > 7 || Json.int64(sx_head(rest),
+      "search.stay_lengths") > remaining
+    {
       tool_fail("checkout exceeds the supported Gregorian calendar");
     }
     rest = sx_tail(rest);
   }
   let source_values = Json.items(sources);
-  return record<Plan>{
-    config_value: cfg, id: sx_string(identify(cfg, search, sources, properties, guest_ids, stays, guests_by_id)),
-    start: start, horizon: horizon, sources: source_values, properties: properties,
-    guests: Sx.sexpr_reverse(guest_values), stays: stay_values, joint_weights: Sx.sexpr_reverse(joint),
-    num_sources: Sx.sexpr_size(source_values), num_properties: Sx.sexpr_size(properties),
-    num_guests: Sx.sexpr_size(guests), num_stays: Sx.sexpr_size(stay_values)
+  return record < Plan >
+  {
+    config_value: cfg, id: sx_string(identify(cfg,
+      search,
+      sources,
+      properties,
+      guest_ids,
+      stays,
+      guests_by_id)), start: start, horizon: horizon, sources: source_values, properties: properties, guests: Sx.sexpr_reverse(guest_values), stays: stay_values, joint_weights: Sx.sexpr_reverse(joint), num_sources: Sx.sexpr_size(source_values), num_properties: Sx.sexpr_size(properties), num_guests: Sx.sexpr_size(guests), num_stays: Sx.sexpr_size(stay_values)
   };
 }
 
-fn row_count(plan: Plan) -> i64 {
+fn row_count(plan: Plan) -> i64
+{
   return plan["num_sources"] * plan["num_properties"] * plan["horizon"] * plan["num_guests"] * plan["num_stays"];
 }
 
-fn row_value(plan: Plan, index: i64) -> sexpr {
-  if index < 0 || index >= row_count(plan) { tool_fail("matrix cell index is out of range"); }
+fn row_value(plan: Plan, index: i64) -> sexpr
+{
+  if index < 0 || index >= row_count(plan)
+  {
+    tool_fail("matrix cell index is out of range");
+  }
   let stay_pos = index % plan["num_stays"];
   let guest_pos = index / plan["num_stays"] % plan["num_guests"];
   let date_pos = index / plan["num_stays"] / plan["num_guests"] % plan["horizon"];
@@ -158,39 +259,88 @@ fn row_value(plan: Plan, index: i64) -> sexpr {
   let guest = Sx.sexpr_nth(plan["guests"], guest_pos);
   let stay = Sx.sexpr_nth(plan["stays"], stay_pos);
   let checkin = sx_string(Civil.date_text(plan["start"] + date_pos));
-  let checkout = sx_string(Civil.date_text(plan["start"] + date_pos + Json.int64(stay, "stay_length")));
+  let checkout = sx_string(Civil.date_text(plan["start"] + date_pos + Json.int64(stay,
+    "stay_length")));
   let id = plan["id"];
-  let key_parts = sx_cons(id, sx_cons(source, sx_cons(competitor_id,
-    sx_cons(checkin, sx_cons(checkout, sx_cons(Json.field(guest, "id"), sx_nil()))))));
+  let key_parts = sx_cons(id,
+    sx_cons(source,
+    sx_cons(competitor_id,
+    sx_cons(checkin,
+    sx_cons(checkout,
+    sx_cons(Json.field(guest,
+    "id"),
+    sx_nil()))))));
   let cell_key = sx_string(Json.digest(Json.array(key_parts)));
   let search = Json.field(plan["config_value"], "search");
-  let currency = Json.field(Json.field(plan["config_value"], "property"), "currency");
-  let context = Json.object(sx_cons(Json.pair("source", source),
-    sx_cons(Json.pair("checkin", checkin), sx_cons(Json.pair("checkout", checkout),
-    sx_cons(Json.pair("guest_configuration", guest),
-    sx_cons(Json.pair("booker_country", Json.field(search, "booker_country")),
-    sx_cons(Json.pair("locale", Json.field(search, "locale")),
-    sx_cons(Json.pair("currency", currency), sx_nil()))))))));
+  let currency = Json.field(Json.field(plan["config_value"],
+    "property"),
+    "currency");
+  let context = Json.object(sx_cons(Json.pair("source",
+    source),
+    sx_cons(Json.pair("checkin",
+    checkin),
+    sx_cons(Json.pair("checkout",
+    checkout),
+    sx_cons(Json.pair("guest_configuration",
+    guest),
+    sx_cons(Json.pair("booker_country",
+    Json.field(search,
+    "booker_country")),
+    sx_cons(Json.pair("locale",
+    Json.field(search,
+    "locale")),
+    sx_cons(Json.pair("currency",
+    currency),
+    sx_nil()))))))));
   let mapping_status = Json.text(Json.field(selected, "mapping_status"));
   var status = sx_string("unsupported");
   var reason = sx_string("mapping_missing");
-  if mapping_status == "verified" { status = sx_string("pending"); reason = Json.null_value(); }
-  if mapping_status == "unverified" { reason = sx_string("mapping_unverified"); }
-  let weight = Sx.sexpr_nth(Sx.sexpr_nth(plan["joint_weights"], guest_pos), stay_pos);
-  return Json.object(sx_cons(Json.pair("cell_key", cell_key),
-    sx_cons(Json.pair("config_id", id),
-    sx_cons(Json.pair("source", source),
-    sx_cons(Json.pair("competitor_id", competitor_id),
-    sx_cons(Json.pair("checkin", checkin),
-    sx_cons(Json.pair("checkout", checkout),
-    sx_cons(Json.pair("guest_configuration", guest),
-    sx_cons(Json.pair("stay_length", stay),
-    sx_cons(Json.pair("request_context", context),
-    sx_cons(Json.pair("provider_property_id", or_null(Json.get(selected, "provider_property_id"))),
-    sx_cons(Json.pair("provider_url", or_null(Json.get(selected, "url"))),
-    sx_cons(Json.pair("status", status),
-    sx_cons(Json.pair("reason", reason),
-    sx_cons(Json.pair("weight", weight), sx_nil())))))))))))))));
+  if mapping_status == "verified"
+  {
+    status = sx_string("pending");
+    reason = Json.null_value();
+  }
+  if mapping_status == "unverified"
+  {
+    reason = sx_string("mapping_unverified");
+  }
+  let weight = Sx.sexpr_nth(Sx.sexpr_nth(plan["joint_weights"],
+    guest_pos),
+    stay_pos);
+  return Json.object(sx_cons(Json.pair("cell_key",
+    cell_key),
+    sx_cons(Json.pair("config_id",
+    id),
+    sx_cons(Json.pair("source",
+    source),
+    sx_cons(Json.pair("competitor_id",
+    competitor_id),
+    sx_cons(Json.pair("checkin",
+    checkin),
+    sx_cons(Json.pair("checkout",
+    checkout),
+    sx_cons(Json.pair("guest_configuration",
+    guest),
+    sx_cons(Json.pair("stay_length",
+    stay),
+    sx_cons(Json.pair("request_context",
+    context),
+    sx_cons(Json.pair("provider_property_id",
+    or_null(Json.get(selected,
+    "provider_property_id"))),
+    sx_cons(Json.pair("provider_url",
+    or_null(Json.get(selected,
+    "url"))),
+    sx_cons(Json.pair("status",
+    status),
+    sx_cons(Json.pair("reason",
+    reason),
+    sx_cons(Json.pair("weight",
+    weight),
+    sx_nil())))))))))))))));
 }
 
-fn row_at(plan: Plan, index: i64) -> string { return Json.render(row_value(plan, index)); }
+fn row_at(plan: Plan, index: i64) -> string
+{
+  return Json.render(row_value(plan, index));
+}

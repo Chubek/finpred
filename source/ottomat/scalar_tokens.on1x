@@ -1,21 +1,29 @@
 # Historical source limits and lexical diagnostics. GrammarEmbed, not this
 # preflight, produces the parsed lines consumed by the lowerer.
 import ottomat.grammar as Syntax;
-
-record Lexed { status:sexpr, lines:sexpr, line:i64, column:i64 }
-
-fn failure(status:string, line:i64, column:i64) -> Lexed
+record Lexed
 {
-  return record<Lexed>{status:sx_string(status),lines:sx_nil(),line:line,column:column};
+  status: sexpr, lines: sexpr, line: i64, column: i64
 }
 
-fn scan_version(source:string, v4:bool) -> Lexed
+fn failure(status: string, line: i64, column: i64) -> Lexed
+{
+  return record < Lexed >
+  {
+    status: sx_string(status), lines: sx_nil(), line: line, column: column
+  };
+}
+
+fn scan_version(source: string, v4: bool) -> Lexed
 {
   let size = text_len(source);
   let lf = 10;
   let space = 32;
   var max_tokens = 6;
-  if v4 { max_tokens = 7; }
+  if v4
+  {
+    max_tokens = 7;
+  }
   var line = 1;
   var line_start = 0;
   if size > 4096
@@ -23,56 +31,87 @@ fn scan_version(source:string, v4:bool) -> Lexed
     # Locate the first byte outside the source cap without scanning past it.
     for i in 0 .. 4096
     {
-      if text_byte(source,i) == lf
+      if text_byte(source, i) == lf
       {
-        line = line+1;
-        line_start = i+1;
+        line = line + 1;
+        line_start = i + 1;
       }
     }
-    return failure("source_limit",line,4096-line_start+1);
+    return failure("source_limit", line, 4096 - line_start + 1);
   }
-
   var completed = 0;
   var token_start = 0;
   for i in 0 .. size
   {
-    let column = i-line_start+1;
-    if line > 37 { return failure("source_limit",line,column); }
-    let byte = text_byte(source,i);
+    let column = i - line_start + 1;
+    if line > 37
+    {
+      return failure("source_limit", line, column);
+    }
+    let byte = text_byte(source, i);
     if byte == space || byte == lf
     {
       if i == token_start
       {
         # Report a trailing space at the space, not at the following LF.
-        if byte == lf && i != line_start { return failure("syntax",line,column-1); }
-        return failure("syntax",line,column);
+        if byte == lf && i != line_start
+        {
+          return failure("syntax", line, column - 1);
+        }
+        return failure("syntax", line, column);
       }
-      token_start = i+1;
+      token_start = i + 1;
       if byte == lf
       {
         completed = 0;
-        line = line+1;
-        line_start = i+1;
+        line = line + 1;
+        line_start = i + 1;
       }
-      else { completed = completed+1; }
+      else
+      {
+        completed = completed + 1;
+      }
     }
     else
     {
-      if byte < 33 || byte > 126 { return failure("syntax",line,column); }
-      if completed == max_tokens || i-token_start == 64 { return failure("source_limit",line,column); }
+      if byte < 33 || byte > 126
+      {
+        return failure("syntax", line, column);
+      }
+      if completed == max_tokens || i - token_start == 64
+      {
+        return failure("source_limit", line, column);
+      }
     }
   }
-
-  if size == 0 || line_start != size { return failure("syntax",line,size-line_start+1); }
-  let (status,lines,offset) = Syntax.scalar(source);
+  if size == 0 || line_start != size
+  {
+    return failure("syntax", line, size - line_start + 1);
+  }
+  let(status, lines, offset) = Syntax.scalar(source);
   if status != 0
   {
     var error_line = 1;
-    for i in 0 .. offset { if text_byte(source,i) == lf { error_line = error_line+1; } }
-    if status == 3 { return failure("source_limit",error_line,1); }
-    return failure("syntax",error_line,1);
+    for i in 0 .. offset
+    {
+      if text_byte(source, i) == lf
+      {
+        error_line = error_line + 1;
+      }
+    }
+    if status == 3
+    {
+      return failure("source_limit", error_line, 1);
+    }
+    return failure("syntax", error_line, 1);
   }
-  return record<Lexed>{status:sx_string("ok"),lines:lines,line:0,column:0};
+  return record < Lexed >
+  {
+    status: sx_string("ok"), lines: lines, line: 0, column: 0
+  };
 }
 
-fn scan(source:string) -> Lexed { return scan_version(source,false); }
+fn scan(source: string) -> Lexed
+{
+  return scan_version(source, false);
+}

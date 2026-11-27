@@ -5,46 +5,69 @@ import sdk.callable as SDK;
 import core.date as Date;
 import core.format as F;
 import std.collections.List as L;
-
-record Context { cutoff:sexpr, strategy_digest:sexpr }
-record Result {
-  status:sexpr, subject:sexpr, graph_digest:sexpr, artifacts:sexpr,
-  outputs:sexpr, trace:sexpr, invocations:i64
+record Context
+{
+  cutoff: sexpr, strategy_digest: sexpr
 }
 
-fn input(name:string, state:i64, bytes:string) -> sexpr
+record Result
 {
-  return sx_cons(sx_string(name),sx_cons(SDK.value_entry(state,bytes),sx_nil()));
+  status: sexpr, subject: sexpr, graph_digest: sexpr, artifacts: sexpr, outputs: sexpr, trace: sexpr, invocations: i64
 }
-fn error(status:string, subject:string) -> Result
+
+fn input(name: string, state: i64, bytes: string) -> sexpr
 {
-  return record<Result>{status:sx_string(status),subject:sx_string(subject),
-    graph_digest:sx_nil(),artifacts:sx_nil(),outputs:sx_nil(),trace:sx_nil(),invocations:0};
+  return sx_cons(sx_string(name),
+    sx_cons(SDK.value_entry(state,
+    bytes),
+    sx_nil()));
 }
-fn valid_context(ctx:Context) -> bool
+
+fn error(status: string, subject: string) -> Result
 {
-  return SDK.atom(ctx["cutoff"],20) && Date.utc_timestamp(sx_text(ctx["cutoff"]))
-    && SDK.valid_digest(ctx["strategy_digest"]);
+  return record < Result >
+  {
+    status: sx_string(status), subject: sx_string(subject), graph_digest: sx_nil(), artifacts: sx_nil(), outputs: sx_nil(), trace: sx_nil(), invocations: 0
+  };
 }
-fn valid_roots(ports:sexpr, supplied:sexpr) -> bool
+
+fn valid_context(ctx: Context) -> bool
 {
-  let n = G.length(supplied,16);
-  if n < 0 || n != G.length(ports,16) { return false; }
+  return SDK.atom(ctx["cutoff"],
+    20) && Date.utc_timestamp(sx_text(ctx["cutoff"])) && SDK.valid_digest(ctx["strategy_digest"]);
+}
+
+fn valid_roots(ports: sexpr, supplied: sexpr) -> bool
+{
+  let n = G.length(supplied, 16);
+  if n < 0 || n != G.length(ports, 16)
+  {
+    return false;
+  }
   var rest = supplied;
   var seen = sx_nil();
   var bytes = 0;
   while sx_kind(rest) == 3
   {
     let root = sx_head(rest);
-    let name = G.field(root,0);
-    let value = G.at(root,1);
-    if G.length(root,2) != 2 || G.length(value,2) != 2 || !G.identifier(name)
-      || sx_kind(G.lookup(seen,name)) != 0
-      || !SDK.valid_value(SDK.decode_port(G.lookup(ports,name)),SDK.value_state(value),SDK.value_bytes(value))
-    { return false; }
+    let name = G.field(root, 0);
+    let value = G.at(root, 1);
+    if G.length(root,
+      2) != 2 || G.length(value,
+      2) != 2 || ! G.identifier(name) || sx_kind(G.lookup(seen,
+      name)) != 0 || ! SDK.valid_value(SDK.decode_port(G.lookup(ports,
+      name)),
+      SDK.value_state(value),
+      SDK.value_bytes(value))
+    {
+      return false;
+    }
     bytes = bytes + text_len(sx_text(SDK.value_bytes(value)));
-    if bytes > 8000000 { return false; }
-    seen = sx_cons(root,seen);
+    if bytes > 8000000
+    {
+      return false;
+    }
+    seen = sx_cons(root, seen);
     rest = sx_tail(rest);
   }
   return true;
@@ -52,34 +75,44 @@ fn valid_roots(ports:sexpr, supplied:sexpr) -> bool
 
 # Artifact entries: (id, wire digest, immutable envelope bytes, SDK value).
 # The envelope includes all direct named parents in descriptor input order.
-fn artifact(id:string, digest:string, bytes:string, value:sexpr) -> sexpr
+fn artifact(id: string, digest: string, bytes: string, value: sexpr) -> sexpr
 {
-  return sx_cons(sx_string(id),sx_cons(sx_string(digest),sx_cons(sx_string(bytes),
-    sx_cons(value,sx_nil()))));
-}
-fn encode_artifact(role:string, id:string, port:SDK.Port, value:sexpr, metadata:string,
-  parents:string, ctx:Context) -> sexpr
-{
-  let b = buffer_new();
-  G.frame(b,"automat.financial-artifact@1");
-  G.frame(b,role);
-  G.frame(b,id);
-  G.frame_port(b,port);
-  G.frame(b,sx_text(ctx["cutoff"]));
-  G.frame(b,sx_text(ctx["strategy_digest"]));
-  G.frame(b,metadata);
-  G.frame(b,parents);
-  G.frame(b,F.num(SDK.value_state(value)));
-  G.frame(b,sx_text(SDK.value_bytes(value)));
-  let bytes = buffer_text(b);
-  return artifact(id,G.digest(bytes),bytes,value);
-}
-fn root_artifacts(ports:sexpr, roots:sexpr, ctx:Context) -> sexpr
-{
-  return ordered_root_artifacts(G.sorted(ports),roots,ctx);
+  return sx_cons(sx_string(id),
+    sx_cons(sx_string(digest),
+    sx_cons(sx_string(bytes),
+    sx_cons(value,
+    sx_nil()))));
 }
 
-fn ordered_root_artifacts(ports:sexpr, roots:sexpr, ctx:Context) -> sexpr
+fn encode_artifact(role: string,
+  id: string,
+  port: SDK.Port,
+  value: sexpr,
+  metadata: string,
+  parents: string,
+  ctx: Context) -> sexpr
+{
+  let b = buffer_new();
+  G.frame(b, "automat.financial-artifact@1");
+  G.frame(b, role);
+  G.frame(b, id);
+  G.frame_port(b, port);
+  G.frame(b, sx_text(ctx["cutoff"]));
+  G.frame(b, sx_text(ctx["strategy_digest"]));
+  G.frame(b, metadata);
+  G.frame(b, parents);
+  G.frame(b, F.num(SDK.value_state(value)));
+  G.frame(b, sx_text(SDK.value_bytes(value)));
+  let bytes = buffer_text(b);
+  return artifact(id, G.digest(bytes), bytes, value);
+}
+
+fn root_artifacts(ports: sexpr, roots: sexpr, ctx: Context) -> sexpr
+{
+  return ordered_root_artifacts(G.sorted(ports), roots, ctx);
+}
+
+fn ordered_root_artifacts(ports: sexpr, roots: sexpr, ctx: Context) -> sexpr
 {
   var rest = ports;
   var entries = sx_nil();
@@ -87,117 +120,220 @@ fn ordered_root_artifacts(ports:sexpr, roots:sexpr, ctx:Context) -> sexpr
   {
     let port = SDK.decode_port(sx_head(rest));
     let name = sx_text(port["name"]);
-    let value = G.at(G.lookup(roots,name),1);
-    let result = encode_artifact("input",name,port,value,"","",ctx);
-    entries = sx_cons(result,entries);
+    let value = G.at(G.lookup(roots, name), 1);
+    let result = encode_artifact("input", name, port, value, "", "", ctx);
+    entries = sx_cons(result, entries);
     rest = sx_tail(rest);
   }
   return L.basis_list_rev(entries);
 }
-fn failure_status(status:i64) -> string
+
+fn failure_status(status: i64) -> string
 {
-  if status == 1 { return "denied"; }
-  if status == 2 { return "pin_mismatch"; }
-  if status == 3 { return "invalid_request"; }
-  if status == 4 { return "budget"; }
-  if status == 6 { return "invalid_output"; }
+  if status == 1
+  {
+    return "denied";
+  }
+  if status == 2
+  {
+    return "pin_mismatch";
+  }
+  if status == 3
+  {
+    return "invalid_request";
+  }
+  if status == 4
+  {
+    return "budget";
+  }
+  if status == 6
+  {
+    return "invalid_output";
+  }
   return "handler_failure";
 }
-fn node_metadata(pin:SDK.Pin, plan_digest:string) -> string
+
+fn node_metadata(pin: SDK.Pin, plan_digest: string) -> string
 {
   let b = buffer_new();
-  G.frame(b,plan_digest);
-  G.frame_pin(b,pin);
+  G.frame(b, plan_digest);
+  G.frame_pin(b, pin);
   return buffer_text(b);
 }
-fn memo_key(pin:SDK.Pin, mode:string, ctx:Context, values:sexpr, work:i64) -> string
+
+fn memo_key(pin: SDK.Pin,
+  mode: string,
+  ctx: Context,
+  values: sexpr,
+  work: i64) -> string
 {
   let b = buffer_new();
-  G.frame(b,mode);
-  G.frame_pin(b,pin);
-  G.frame(b,sx_text(ctx["cutoff"]));
-  G.frame(b,sx_text(ctx["strategy_digest"]));
-  G.frame(b,F.num(work));
+  G.frame(b, mode);
+  G.frame_pin(b, pin);
+  G.frame(b, sx_text(ctx["cutoff"]));
+  G.frame(b, sx_text(ctx["strategy_digest"]));
+  G.frame(b, F.num(work));
   var rest = values;
   while sx_kind(rest) == 3
   {
     let value = sx_head(rest);
-    G.frame(b,F.num(SDK.value_state(value)));
-    G.frame(b,sx_text(SDK.value_bytes(value)));
+    G.frame(b, F.num(SDK.value_state(value)));
+    G.frame(b, sx_text(SDK.value_bytes(value)));
     rest = sx_tail(rest);
   }
   return buffer_text(b);
 }
 
-fn execute(g:G.Graph, roots:sexpr, ctx:Context, mode:string, budget:i64,
-  resolve:fn(string) -> SDK.Descriptor, call:fn(SDK.Pin, SDK.Request) -> SDK.Outcome) -> Result
+fn execute(g: G.Graph,
+  roots: sexpr,
+  ctx: Context,
+  mode: string,
+  budget: i64,
+  resolve: fn(string) -> SDK.Descriptor,
+  call: fn(SDK.Pin,
+  SDK.Request) -> SDK.Outcome) -> Result
 {
-  return execute_checked(g,roots,ctx,mode,budget,resolve,call,sx_nil());
+  return execute_checked(g, roots, ctx, mode, budget, resolve, call, sx_nil());
 }
 
 # Execute only the binding and graph identity previously approved by the caller.
 # Compute it from the same prepared graph used below, before invoking handlers.
-fn execute_pinned(g:G.Graph, roots:sexpr, ctx:Context, mode:string, budget:i64,
-  resolve:fn(string) -> SDK.Descriptor, call:fn(SDK.Pin, SDK.Request) -> SDK.Outcome,
-  expected_digest:sexpr) -> Result
+fn execute_pinned(g: G.Graph,
+  roots: sexpr,
+  ctx: Context,
+  mode: string,
+  budget: i64,
+  resolve: fn(string) -> SDK.Descriptor,
+  call: fn(SDK.Pin,
+  SDK.Request) -> SDK.Outcome,
+  expected_digest: sexpr) -> Result
 {
-  if !SDK.valid_digest(expected_digest) { return error("graph_mismatch",""); }
-  return execute_checked(g,roots,ctx,mode,budget,resolve,call,expected_digest);
+  if ! SDK.valid_digest(expected_digest)
+  {
+    return error("graph_mismatch", "");
+  }
+  return execute_checked(g,
+    roots,
+    ctx,
+    mode,
+    budget,
+    resolve,
+    call,
+    expected_digest);
 }
 
-fn execute_checked(g:G.Graph, roots:sexpr, ctx:Context, mode:string, budget:i64,
-  resolve:fn(string) -> SDK.Descriptor, call:fn(SDK.Pin, SDK.Request) -> SDK.Outcome,
-  expected_digest:sexpr) -> Result
+fn execute_checked(g: G.Graph,
+  roots: sexpr,
+  ctx: Context,
+  mode: string,
+  budget: i64,
+  resolve: fn(string) -> SDK.Descriptor,
+  call: fn(SDK.Pin,
+  SDK.Request) -> SDK.Outcome,
+  expected_digest: sexpr) -> Result
 {
-  return execute_expected(g,roots,ctx,mode,budget,resolve,call,expected_digest,sx_nil(),false);
+  return execute_expected(g,
+    roots,
+    ctx,
+    mode,
+    budget,
+    resolve,
+    call,
+    expected_digest,
+    sx_nil(),
+    false);
 }
 
-fn same_evidence(actual:sexpr, entry:sexpr) -> bool
+fn same_evidence(actual: sexpr, entry: sexpr) -> bool
 {
-  return G.length(entry,3) == 3 && SDK.same(G.at(actual,0),G.at(entry,0))
-    && SDK.same(G.at(actual,1),G.at(entry,1)) && SDK.same(G.at(actual,2),G.at(entry,2));
+  return G.length(entry,
+    3) == 3 && SDK.same(G.at(actual,
+    0),
+    G.at(entry,
+    0)) && SDK.same(G.at(actual,
+    1),
+    G.at(entry,
+    1)) && SDK.same(G.at(actual,
+    2),
+    G.at(entry,
+    2));
 }
 
 # Refuse archives with inconsistent frozen roots or an invalid evidence
 # inventory before dispatch. Node output bytes still require recomputation.
-fn evidence_inventory(inputs:sexpr, order:sexpr, evidence:sexpr) -> bool
+fn evidence_inventory(inputs: sexpr, order: sexpr, evidence: sexpr) -> bool
 {
   var items = evidence;
   var roots = inputs;
   while sx_kind(roots) == 3
   {
-    if sx_kind(items) != 3 || !same_evidence(sx_head(roots),sx_head(items)) { return false; }
+    if sx_kind(items) != 3 || ! same_evidence(sx_head(roots), sx_head(items))
+    {
+      return false;
+    }
     items = sx_tail(items);
     roots = sx_tail(roots);
   }
   var nodes = order;
   while sx_kind(nodes) == 3
   {
-    if sx_kind(items) != 3 { return false; }
+    if sx_kind(items) != 3
+    {
+      return false;
+    }
     let item = sx_head(items);
-    if G.length(item,3) != 3 || !SDK.same(G.at(item,0),G.at(sx_head(nodes),0))
-      || !SDK.valid_digest(G.at(item,1)) || !SDK.atom(G.at(item,2),2010000) { return false; }
+    if G.length(item,
+      3) != 3 || ! SDK.same(G.at(item,
+      0),
+      G.at(sx_head(nodes),
+      0)) || ! SDK.valid_digest(G.at(item,
+      1)) || ! SDK.atom(G.at(item,
+      2),
+      2010000)
+    {
+      return false;
+    }
     items = sx_tail(items);
     nodes = sx_tail(nodes);
   }
   return sx_kind(items) == 0;
 }
 
-fn execute_expected(g:G.Graph, roots:sexpr, ctx:Context, mode:string, budget:i64,
-  resolve:fn(string) -> SDK.Descriptor, call:fn(SDK.Pin, SDK.Request) -> SDK.Outcome,
-  expected_digest:sexpr, evidence:sexpr, replaying:bool) -> Result
+fn execute_expected(g: G.Graph,
+  roots: sexpr,
+  ctx: Context,
+  mode: string,
+  budget: i64,
+  resolve: fn(string) -> SDK.Descriptor,
+  call: fn(SDK.Pin,
+  SDK.Request) -> SDK.Outcome,
+  expected_digest: sexpr,
+  evidence: sexpr,
+  replaying: bool) -> Result
 {
-  let compilation = G.compile(g,mode,budget,resolve);
+  let compilation = G.compile(g, mode, budget, resolve);
   let plan = compilation["prepared"];
   let status = sx_text(plan["status"]);
-  if status != "ok" { return error(status,sx_text(plan["subject"])); }
+  if status != "ok"
+  {
+    return error(status, sx_text(plan["subject"]));
+  }
   let plan_digest = G.digest(sx_text(plan["canonical"]));
-  if sx_kind(expected_digest) != 0 && !SDK.same(expected_digest,sx_string(plan_digest))
-  { return error("graph_mismatch",""); }
+  if sx_kind(expected_digest) != 0 && ! SDK.same(expected_digest,
+    sx_string(plan_digest))
+  {
+    return error("graph_mismatch", "");
+  }
   let root_ports = compilation["roots"];
-  if !valid_context(ctx) || !valid_roots(root_ports,roots) { return error("input",""); }
-  let inputs = ordered_root_artifacts(root_ports,roots,ctx);
-  if replaying && !evidence_inventory(inputs,plan["order"],evidence) { return error("replay_mismatch",""); }
+  if ! valid_context(ctx) || ! valid_roots(root_ports, roots)
+  {
+    return error("input", "");
+  }
+  let inputs = ordered_root_artifacts(root_ports, roots, ctx);
+  if replaying && ! evidence_inventory(inputs, plan["order"], evidence)
+  {
+    return error("replay_mismatch", "");
+  }
   var artifacts = L.basis_list_rev(inputs);
   var nodes = compilation["steps"];
   var memo = sx_nil();
@@ -206,64 +342,100 @@ fn execute_expected(g:G.Graph, roots:sexpr, ctx:Context, mode:string, budget:i64
   var emitted_bytes = 0;
   var read_bytes = 0;
   # Artifacts are prepended, so slot 0 is the last of the accumulated list.
-  var slots = G.length(root_ports,16);
+  var slots = G.length(root_ports, 16);
   while sx_kind(nodes) == 3
   {
     let step = sx_head(nodes);
-    let node = G.at(step,0);
-    let id = G.field(node,0);
-    let pin = G.decode_pin(G.at(node,1));
-    let work = SDK.nat(G.at(node,4));
-    let port = SDK.decode_port(G.at(node,3));
+    let node = G.at(step, 0);
+    let id = G.field(node, 0);
+    let pin = G.decode_pin(G.at(node, 1));
+    let work = SDK.nat(G.at(node, 4));
+    let port = SDK.decode_port(G.at(node, 3));
     let parents = buffer_new();
-    var operands = G.at(step,1);
+    var operands = G.at(step, 1);
     var values = sx_nil();
-    G.frame(parents,F.num(G.length(operands,16)));
+    G.frame(parents, F.num(G.length(operands, 16)));
     while sx_kind(operands) == 3
     {
       let operand = sx_head(operands);
-      let source = SDK.nat(G.at(operand,1));
-      let origin = G.at(artifacts,slots-1-source);
-      G.frame(parents,G.field(operand,0));
-      G.frame(parents,G.field(operand,2));
-      G.frame(parents,G.field(operand,3));
-      G.frame(parents,G.field(origin,1));
-      let value = G.at(origin,3);
+      let source = SDK.nat(G.at(operand, 1));
+      let origin = G.at(artifacts, slots - 1 - source);
+      G.frame(parents, G.field(operand, 0));
+      G.frame(parents, G.field(operand, 2));
+      G.frame(parents, G.field(operand, 3));
+      G.frame(parents, G.field(origin, 1));
+      let value = G.at(origin, 3);
       read_bytes = read_bytes + text_len(sx_text(SDK.value_bytes(value)));
-      if read_bytes > 24000000 { return error("budget",id); }
-      values = sx_cons(value,values);
+      if read_bytes > 24000000
+      {
+        return error("budget", id);
+      }
+      values = sx_cons(value, values);
       operands = sx_tail(operands);
     }
     values = L.basis_list_rev(values);
     # Recheck current pin even when no handler call is needed (memo hit).
-    let current = SDK.resolve(sx_text(pin["handler_name"]),mode,resolve);
-    if !current["enabled"] { return error("denied",id); }
-    if !SDK.same_pin(current["pin"],pin) { return error("pin_mismatch",id); }
-    if !G.matches_signature(node,current) { return error("descriptor_mismatch",id); }
-    let key = memo_key(pin,mode,ctx,values,work);
-    var value = G.at(G.lookup(memo,key),1);
+    let current = SDK.resolve(sx_text(pin["handler_name"]), mode, resolve);
+    if ! current["enabled"]
+    {
+      return error("denied", id);
+    }
+    if ! SDK.same_pin(current["pin"], pin)
+    {
+      return error("pin_mismatch", id);
+    }
+    if ! G.matches_signature(node, current)
+    {
+      return error("descriptor_mismatch", id);
+    }
+    let key = memo_key(pin, mode, ctx, values, work);
+    var value = G.at(G.lookup(memo, key), 1);
     if sx_kind(value) == 0
     {
-      let request = record<SDK.Request>{inputs:values,cutoff:ctx["cutoff"],work:work};
+      let request = record < SDK.Request >
+      {
+        inputs: values, cutoff: ctx["cutoff"], work: work
+      };
       # Invoke against this checked snapshot, not a new host lookup. The
       # original callable module is also part of the Dragnet v1 source pin.
-      let checked = fn(name:string) -> SDK.Descriptor { return current; };
-      let outcome = SDK.invoke(pin,mode,request,checked,call);
-      if outcome["status"] != 0 { return error(failure_status(outcome["status"]),id); }
-      value = SDK.value_entry(outcome["state"],sx_text(outcome["bytes"]));
-      memo = sx_cons(sx_cons(sx_string(key),sx_cons(value,sx_nil())),memo);
+      let checked = fn(name: string) -> SDK.Descriptor
+      {
+        return current;
+      };
+      let outcome = SDK.invoke(pin, mode, request, checked, call);
+      if outcome["status"] != 0
+      {
+        return error(failure_status(outcome["status"]), id);
+      }
+      value = SDK.value_entry(outcome["state"], sx_text(outcome["bytes"]));
+      memo = sx_cons(sx_cons(sx_string(key), sx_cons(value, sx_nil())), memo);
       invocations = invocations + 1;
     }
-    if !SDK.valid_output(port,SDK.value_state(value),SDK.value_bytes(value))
-    { return error("invalid_output",id); }
+    if ! SDK.valid_output(port, SDK.value_state(value), SDK.value_bytes(value))
+    {
+      return error("invalid_output", id);
+    }
     emitted_bytes = emitted_bytes + text_len(sx_text(SDK.value_bytes(value)));
-    if emitted_bytes > 8000000 { return error("budget",id); }
-    let result = encode_artifact("node",id,port,value,node_metadata(pin,plan_digest),buffer_text(parents),ctx);
-    artifacts = sx_cons(result,artifacts);
+    if emitted_bytes > 8000000
+    {
+      return error("budget", id);
+    }
+    let result = encode_artifact("node",
+      id,
+      port,
+      value,
+      node_metadata(pin,
+      plan_digest),
+      buffer_text(parents),
+      ctx);
+    artifacts = sx_cons(result, artifacts);
     slots = slots + 1;
-    buffer_append(trace,id); buffer_append(trace,"=");
-    buffer_append(trace,sx_text(pin["handler_name"])); buffer_append(trace,":");
-    buffer_append(trace,G.field(result,1)); buffer_append(trace,"\n");
+    buffer_append(trace, id);
+    buffer_append(trace, "=");
+    buffer_append(trace, sx_text(pin["handler_name"]));
+    buffer_append(trace, ":");
+    buffer_append(trace, G.field(result, 1));
+    buffer_append(trace, "\n");
     nodes = sx_tail(nodes);
   }
   var selected = compilation["exports"];
@@ -271,56 +443,107 @@ fn execute_expected(g:G.Graph, roots:sexpr, ctx:Context, mode:string, budget:i64
   while sx_kind(selected) == 3
   {
     let export = sx_head(selected);
-    let result = G.at(artifacts,slots-1-SDK.nat(G.at(export,1)));
-    outputs = sx_cons(sx_cons(G.at(G.at(export,0),0),sx_cons(G.at(result,1),
-      sx_cons(G.at(result,3),sx_nil()))),outputs);
+    let result = G.at(artifacts, slots - 1 - SDK.nat(G.at(export, 1)));
+    outputs = sx_cons(sx_cons(G.at(G.at(export,
+      0),
+      0),
+      sx_cons(G.at(result,
+      1),
+      sx_cons(G.at(result,
+      3),
+      sx_nil()))),
+      outputs);
     selected = sx_tail(selected);
   }
-  return record<Result>{status:sx_string("ok"),subject:sx_string(""),
-    graph_digest:sx_string(plan_digest),artifacts:L.basis_list_rev(artifacts),
-    outputs:L.basis_list_rev(outputs),trace:sx_string(buffer_text(trace)),invocations:invocations};
+  return record < Result >
+  {
+    status: sx_string("ok"), subject: sx_string(""), graph_digest: sx_string(plan_digest), artifacts: L.basis_list_rev(artifacts), outputs: L.basis_list_rev(outputs), trace: sx_string(buffer_text(trace)), invocations: invocations
+  };
 }
 
 # A trusted expectation contains only IDs, raw digests, and immutable
 # envelope bytes, not caller-provided decoded values. Replay recomputes from
 # the frozen input bytes rather than invoking handlers on expected artifacts.
-fn expectation(result:Result) -> sexpr
+fn expectation(result: Result) -> sexpr
 {
   var rest = result["artifacts"];
   var entries = sx_nil();
   while sx_kind(rest) == 3
   {
     let item = sx_head(rest);
-    entries = sx_cons(sx_cons(G.at(item,0),sx_cons(G.at(item,1),
-      sx_cons(G.at(item,2),sx_nil()))),entries);
+    entries = sx_cons(sx_cons(G.at(item,
+      0),
+      sx_cons(G.at(item,
+      1),
+      sx_cons(G.at(item,
+      2),
+      sx_nil()))),
+      entries);
     rest = sx_tail(rest);
   }
   return L.basis_list_rev(entries);
 }
-fn replays(result:Result, graph_digest:sexpr, expected:sexpr) -> bool
+
+fn replays(result: Result, graph_digest: sexpr, expected: sexpr) -> bool
 {
-  if !SDK.same(result["status"],sx_string("ok")) || !SDK.same(result["graph_digest"],graph_digest)
-  { return false; }
+  if ! SDK.same(result["status"],
+    sx_string("ok")) || ! SDK.same(result["graph_digest"],
+    graph_digest)
+  {
+    return false;
+  }
   var artifacts = result["artifacts"];
   var evidence = expected;
   while sx_kind(artifacts) == 3 && sx_kind(evidence) == 3
   {
     let item = sx_head(artifacts);
     let other = sx_head(evidence);
-    if !same_evidence(item,other) { return false; }
+    if ! same_evidence(item, other)
+    {
+      return false;
+    }
     artifacts = sx_tail(artifacts);
     evidence = sx_tail(evidence);
   }
   return sx_kind(artifacts) == 0 && sx_kind(evidence) == 0;
 }
-fn replay(g:G.Graph, roots:sexpr, ctx:Context, mode:string, budget:i64,
-  resolve:fn(string) -> SDK.Descriptor, call:fn(SDK.Pin, SDK.Request) -> SDK.Outcome,
-  graph_digest:sexpr, expected:sexpr) -> Result
+
+fn replay(g: G.Graph,
+  roots: sexpr,
+  ctx: Context,
+  mode: string,
+  budget: i64,
+  resolve: fn(string) -> SDK.Descriptor,
+  call: fn(SDK.Pin,
+  SDK.Request) -> SDK.Outcome,
+  graph_digest: sexpr,
+  expected: sexpr) -> Result
 {
-  if !SDK.valid_digest(graph_digest) { return error("replay_mismatch",""); }
-  let result = execute_expected(g,roots,ctx,mode,budget,resolve,call,graph_digest,expected,true);
-  if SDK.same(result["status"],sx_string("graph_mismatch")) { return error("replay_mismatch",""); }
-  if !SDK.same(result["status"],sx_string("ok")) { return result; }
-  if !replays(result,graph_digest,expected) { return error("replay_mismatch",""); }
+  if ! SDK.valid_digest(graph_digest)
+  {
+    return error("replay_mismatch", "");
+  }
+  let result = execute_expected(g,
+    roots,
+    ctx,
+    mode,
+    budget,
+    resolve,
+    call,
+    graph_digest,
+    expected,
+    true);
+  if SDK.same(result["status"], sx_string("graph_mismatch"))
+  {
+    return error("replay_mismatch", "");
+  }
+  if ! SDK.same(result["status"], sx_string("ok"))
+  {
+    return result;
+  }
+  if ! replays(result, graph_digest, expected)
+  {
+    return error("replay_mismatch", "");
+  }
   return result;
 }

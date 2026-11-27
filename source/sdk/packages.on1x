@@ -1,65 +1,91 @@
 # Static package-use policy, interface v2. The manifest schema is still SDK 1.
 # No registry mutation, package dispatch, environment or file access.
-record Limits {
-  csv_rows:i64, bytes_per_input:i64, rooms_per_property:i64, maximum_rooms:i64,
-  adults:i64, children:i64, search_budget_max:i64, runs_per_call:i64,
-  data_rows:i64, columns:i64, output_bytes_max:i64
+record Limits
+{
+  csv_rows: i64, bytes_per_input: i64, rooms_per_property: i64, maximum_rooms: i64, adults: i64, children: i64, search_budget_max: i64, runs_per_call: i64, data_rows: i64, columns: i64, output_bytes_max: i64
 }
 
-record Host {
-  dependencies:sexpr, ceilings:Limits, grants:sexpr
+record Host
+{
+  dependencies: sexpr, ceilings: Limits, grants: sexpr
 }
 
-record Use {
-  sdk_version:i64, package_version:sexpr, kind:sexpr, inputs:sexpr, output:sexpr,
-  mode:sexpr, effect:sexpr, requested:sexpr
+record Use
+{
+  sdk_version: i64, package_version: sexpr, kind: sexpr, inputs: sexpr, output: sexpr, mode: sexpr, effect: sexpr, requested: sexpr
 }
 
-record Package {
-  kind:sexpr, inputs:sexpr, output:sexpr, mode:sexpr,
-  dependencies:sexpr, limits:Limits, capabilities:sexpr
+record Package
+{
+  kind: sexpr, inputs: sexpr, output: sexpr, mode: sexpr, dependencies: sexpr, limits: Limits, capabilities: sexpr
 }
 
-fn prepend(s:string, rest:sexpr) -> sexpr { return sx_cons(sx_string(s),rest); }
-
-fn dragnet() -> Package {
-  return record<Package>{kind:sx_string("Source"),
-    inputs:prepend("hospitality.scenario@1",prepend("finpred.offers.csv@1",sx_nil())),
-    output:sx_string("hospitality.offer@1"),mode:sx_string("analysis"),
-    dependencies:prepend("finpred.core@1",prepend("yieldcraft.asof-whole-stay-property-min@1",sx_nil())),
-    limits:record<Limits>{csv_rows:512,bytes_per_input:2000000,rooms_per_property:0,maximum_rooms:0,
-      adults:0,children:0,search_budget_max:0,runs_per_call:0,data_rows:0,columns:0,output_bytes_max:0},
-    capabilities:sx_nil()};
+fn prepend(s: string, rest: sexpr) -> sexpr
+{
+  return sx_cons(sx_string(s), rest);
 }
 
-fn yieldcraft() -> Package {
-  return record<Package>{kind:sx_string("Strategy"),
-    inputs:prepend("hospitality.scenario@1",prepend("hospitality.offer@1",prepend("pricing.valuation@1",sx_nil()))),
-    output:sx_string("pricing.recommendation@1"),mode:sx_string("recommendation"),dependencies:sx_nil(),
-    limits:record<Limits>{csv_rows:512,bytes_per_input:0,rooms_per_property:10,maximum_rooms:4,
-      adults:8,children:8,search_budget_max:1000000,runs_per_call:0,data_rows:0,columns:0,output_bytes_max:0},
-    capabilities:sx_nil()};
+fn dragnet() -> Package
+{
+  return record < Package >
+  {
+    kind: sx_string("Source"), inputs: prepend("hospitality.scenario@1",
+      prepend("finpred.offers.csv@1",
+      sx_nil())), output: sx_string("hospitality.offer@1"), mode: sx_string("analysis"), dependencies: prepend("finpred.core@1",
+      prepend("yieldcraft.asof-whole-stay-property-min@1",
+      sx_nil())), limits: record < Limits >
+    {
+      csv_rows: 512, bytes_per_input: 2000000, rooms_per_property: 0, maximum_rooms: 0, adults: 0, children: 0, search_budget_max: 0, runs_per_call: 0, data_rows: 0, columns: 0, output_bytes_max: 0
+    }, capabilities: sx_nil()
+  };
 }
 
-fn poindexter() -> Package {
-  return record<Package>{kind:sx_string("View"),
-    inputs:prepend("pricing.recommendation@1",prepend("pricing.valuation@1",sx_nil())),
-    output:sx_string("poindexter.pricing-sheet@1"),mode:sx_string("analysis"),
-    dependencies:prepend("yieldcraft.percentile@1",sx_nil()),
-    limits:record<Limits>{csv_rows:0,bytes_per_input:0,rooms_per_property:0,maximum_rooms:0,
-      adults:0,children:0,search_budget_max:0,runs_per_call:1,data_rows:1,columns:11,output_bytes_max:512},
-    capabilities:sx_nil()};
+fn yieldcraft() -> Package
+{
+  return record < Package >
+  {
+    kind: sx_string("Strategy"), inputs: prepend("hospitality.scenario@1",
+      prepend("hospitality.offer@1",
+      prepend("pricing.valuation@1",
+      sx_nil()))), output: sx_string("pricing.recommendation@1"), mode: sx_string("recommendation"), dependencies: sx_nil(), limits: record < Limits >
+    {
+      csv_rows: 512, bytes_per_input: 0, rooms_per_property: 10, maximum_rooms: 4, adults: 8, children: 8, search_budget_max: 1000000, runs_per_call: 0, data_rows: 0, columns: 0, output_bytes_max: 0
+    }, capabilities: sx_nil()
+  };
 }
 
-fn same_atom(a:sexpr,b:sexpr) -> bool {
-  if sx_kind(a) != 2 || sx_kind(b) != 2 { return false; }
+fn poindexter() -> Package
+{
+  return record < Package >
+  {
+    kind: sx_string("View"), inputs: prepend("pricing.recommendation@1",
+      prepend("pricing.valuation@1",
+      sx_nil())), output: sx_string("poindexter.pricing-sheet@1"), mode: sx_string("analysis"), dependencies: prepend("yieldcraft.percentile@1",
+      sx_nil()), limits: record < Limits >
+    {
+      csv_rows: 0, bytes_per_input: 0, rooms_per_property: 0, maximum_rooms: 0, adults: 0, children: 0, search_budget_max: 0, runs_per_call: 1, data_rows: 1, columns: 11, output_bytes_max: 512
+    }, capabilities: sx_nil()
+  };
+}
+
+fn same_atom(a: sexpr, b: sexpr) -> bool
+{
+  if sx_kind(a) != 2 || sx_kind(b) != 2
+  {
+    return false;
+  }
   return sx_text(a) == sx_text(b);
 }
 
-fn contains_atom(xs:sexpr,value:sexpr) -> bool {
+fn contains_atom(xs: sexpr, value: sexpr) -> bool
+{
   var rest = xs;
-  while sx_kind(rest) == 3 {
-    if same_atom(sx_head(rest),value) { return true; }
+  while sx_kind(rest) == 3
+  {
+    if same_atom(sx_head(rest), value)
+    {
+      return true;
+    }
     rest = sx_tail(rest);
   }
   return false;
@@ -67,65 +93,107 @@ fn contains_atom(xs:sexpr,value:sexpr) -> bool {
 
 # Validate once before walking any caller-supplied list. Bounded strings,
 # proper lists, unique nonempty names; do not interpret data as code.
-fn valid_names(xs:sexpr) -> bool {
+fn valid_names(xs: sexpr) -> bool
+{
   var rest = xs;
   var seen = sx_nil();
-  var n:i64 = 0;
-  while sx_kind(rest) == 3 {
-    if n >= 16 { return false; }
+  var n: i64 = 0;
+  while sx_kind(rest) == 3
+  {
+    if n >= 16
+    {
+      return false;
+    }
     let name = sx_head(rest);
-    if sx_kind(name) != 2 { return false; }
+    if sx_kind(name) != 2
+    {
+      return false;
+    }
     let len = text_len(sx_text(name));
-    if len == 0 || len > 127 || contains_atom(seen,name) { return false; }
-    seen = sx_cons(name,seen);
+    if len == 0 || len > 127 || contains_atom(seen, name)
+    {
+      return false;
+    }
+    seen = sx_cons(name, seen);
     rest = sx_tail(rest);
     n = n + 1;
   }
   return sx_kind(rest) == 0;
 }
 
-fn subset(xs:sexpr,ys:sexpr) -> bool {
+fn subset(xs: sexpr, ys: sexpr) -> bool
+{
   var rest = xs;
-  while sx_kind(rest) == 3 {
-    if !contains_atom(ys,sx_head(rest)) { return false; }
+  while sx_kind(rest) == 3
+  {
+    if ! contains_atom(ys, sx_head(rest))
+    {
+      return false;
+    }
     rest = sx_tail(rest);
   }
   return true;
 }
 
-fn same_inputs(xs:sexpr,ys:sexpr) -> bool {
+fn same_inputs(xs: sexpr, ys: sexpr) -> bool
+{
   var a = xs;
   var b = ys;
-  while sx_kind(a) == 3 && sx_kind(b) == 3 {
-    if !same_atom(sx_head(a),sx_head(b)) { return false; }
+  while sx_kind(a) == 3 && sx_kind(b) == 3
+  {
+    if ! same_atom(sx_head(a), sx_head(b))
+    {
+      return false;
+    }
     a = sx_tail(a);
     b = sx_tail(b);
   }
   return sx_kind(a) == 0 && sx_kind(b) == 0;
 }
 
-fn fits(p:Limits,h:Limits) -> bool {
-  return p["csv_rows"] <= h["csv_rows"] && p["bytes_per_input"] <= h["bytes_per_input"]
-    && p["rooms_per_property"] <= h["rooms_per_property"] && p["maximum_rooms"] <= h["maximum_rooms"]
-    && p["adults"] <= h["adults"] && p["children"] <= h["children"] && p["search_budget_max"] <= h["search_budget_max"]
-    && p["runs_per_call"] <= h["runs_per_call"] && p["data_rows"] <= h["data_rows"]
-    && p["columns"] <= h["columns"] && p["output_bytes_max"] <= h["output_bytes_max"];
+fn fits(p: Limits, h: Limits) -> bool
+{
+  return p["csv_rows"] <= h["csv_rows"] && p["bytes_per_input"] <= h["bytes_per_input"] && p["rooms_per_property"] <= h["rooms_per_property"] && p["maximum_rooms"] <= h["maximum_rooms"] && p["adults"] <= h["adults"] && p["children"] <= h["children"] && p["search_budget_max"] <= h["search_budget_max"] && p["runs_per_call"] <= h["runs_per_call"] && p["data_rows"] <= h["data_rows"] && p["columns"] <= h["columns"] && p["output_bytes_max"] <= h["output_bytes_max"];
 }
 
 # The caller cannot supply the package requirements. Status values match sdk.h.
-fn check_v2(name:string, use:Use, host:Host) -> i64 {
-  if name != "dragnet.frozen_csv" && name != "poindexter.pricing-sheet" && name != "yieldcraft.percentile" { return 3; }
+fn check_v2(name: string, use: Use, host: Host) -> i64
+{
+  if name != "dragnet.frozen_csv" && name != "poindexter.pricing-sheet" && name != "yieldcraft.percentile"
+  {
+    return 3;
+  }
   var p = yieldcraft();
-  if name == "dragnet.frozen_csv" { p = dragnet(); }
-  if name == "poindexter.pricing-sheet" { p = poindexter(); }
-  if !valid_names(use["inputs"]) || !valid_names(use["requested"]) ||
-     !valid_names(host["dependencies"]) || !valid_names(host["grants"]) { return 1; }
-  if use["sdk_version"] != 1 || !same_atom(use["package_version"],sx_string("1.0.0"))
-    || !same_atom(use["kind"],p["kind"]) || !same_inputs(use["inputs"],p["inputs"])
-    || !same_atom(use["output"],p["output"]) || !subset(p["dependencies"],host["dependencies"])
-    || !fits(p["limits"],host["ceilings"]) { return 2; }
-  if !same_atom(use["mode"],p["mode"]) || !same_atom(use["effect"],sx_string("pure"))
-    || !subset(use["requested"],host["grants"]) || !subset(use["requested"],p["capabilities"])
-    || !subset(p["capabilities"],use["requested"]) { return 4; }
+  if name == "dragnet.frozen_csv"
+  {
+    p = dragnet();
+  }
+  if name == "poindexter.pricing-sheet"
+  {
+    p = poindexter();
+  }
+  if ! valid_names(use["inputs"]) || ! valid_names(use["requested"]) || ! valid_names(host["dependencies"]) || ! valid_names(host["grants"])
+  {
+    return 1;
+  }
+  if use["sdk_version"] != 1 || ! same_atom(use["package_version"],
+    sx_string("1.0.0")) || ! same_atom(use["kind"],
+    p["kind"]) || ! same_inputs(use["inputs"],
+    p["inputs"]) || ! same_atom(use["output"],
+    p["output"]) || ! subset(p["dependencies"],
+    host["dependencies"]) || ! fits(p["limits"],
+    host["ceilings"])
+  {
+    return 2;
+  }
+  if ! same_atom(use["mode"],
+    p["mode"]) || ! same_atom(use["effect"],
+    sx_string("pure")) || ! subset(use["requested"],
+    host["grants"]) || ! subset(use["requested"],
+    p["capabilities"]) || ! subset(p["capabilities"],
+    use["requested"])
+  {
+    return 4;
+  }
   return 0;
 }

@@ -5,13 +5,17 @@ import plugins.caravansary.coverage.scheduler as Scheduler;
 import plugins.caravansary.coverage.values as J;
 import plugins.caravansary.planning.json as Json;
 import std.String as Str;
-
-fn checked(value: Result<sexpr, sexpr>) -> sexpr
+fn checked(value: Result < sexpr, sexpr >) -> sexpr
 {
   match value with
   {
-    Ok(v) => { return v; },
-    Err(message) => { tool_fail(sx_text(message)); }
+    Ok(v) =>
+    {
+      return v;
+    }, Err(message) =>
+    {
+      tool_fail(sx_text(message));
+    }
   };
   return sx_nil();
 }
@@ -20,18 +24,28 @@ fn stamp(text: string) -> i64
 {
   match Clock.parse(text, "test timestamp") with
   {
-    Ok(v) => { return v; },
-    Err(message) => { tool_fail(sx_text(message)); }
+    Ok(v) =>
+    {
+      return v;
+    }, Err(message) =>
+    {
+      tool_fail(sx_text(message));
+    }
   };
   return 0;
 }
 
-fn reject(r: Result<sexpr, sexpr>, expected: string)
+fn reject(r: Result < sexpr, sexpr >, expected: string)
 {
   match r with
   {
-    Ok(value) => { assert(false); },
-    Err(message) => { assert(Str.contains(sx_text(message), expected)); }
+    Ok(value) =>
+    {
+      assert(false);
+    }, Err(message) =>
+    {
+      assert(Str.contains(sx_text(message), expected));
+    }
   };
 }
 
@@ -39,13 +53,18 @@ fn replay_test()
 {
   let context = Json.parse("{\"currency\":\"EUR\",\"checkin\":\"2026-12-01\",\"checkout\":\"2026-12-03\",\"guest_configuration\":{\"allocation\":[{\"adults\":1,\"child_ages\":[]}]}}");
   let row = J.set(Json.parse("{\"cell_key\":\"a\",\"provider_property_id\":\"123\",\"status\":\"pending\",\"reason\":null}"),
-    "request_context", context);
+    "request_context",
+    context);
   let unsupported = Json.parse("{\"cell_key\":\"b\",\"provider_property_id\":null,\"status\":\"unsupported\",\"reason\":\"mapping_missing\"}");
   let rows = J.array(sx_cons(row, sx_cons(unsupported, sx_nil())));
   let common = J.set(Json.parse("{\"kind\":\"caravansary.observation@1\",\"cell_key\":\"a\",\"observation_id\":\"quote\",\"provider_property_id\":\"123\",\"received_at\":\"2026-11-26T10:00:00.1+00:00\",\"ingested_at\":\"2026-11-26T10:00:30Z\",\"observed_at\":\"2026-11-26T09:59:59Z\",\"adapter_version\":\"1\",\"extractor_version\":\"1\",\"complete\":true,\"outcome\":\"priced\"}"),
-    "request_context", context);
+    "request_context",
+    context);
   let itemized = Json.parse("{\"room_name\":\"Döuble\",\"rate_plan\":\"Flex\",\"meal\":\"none\",\"cancellation\":null,\"cancellation_reason\":\"not_disclosed\",\"allocation\":[{\"adults\":1,\"child_ages\":[]}],\"currency\":\"EUR\",\"availability\":\"available\",\"price_basis\":\"nightly_itemized\",\"nightly_itemized\":[{\"date\":\"2026-12-01\",\"amount_minor\":5500},{\"date\":\"2026-12-02\",\"amount_decimal\":\"77.40\"}],\"taxes_fees\":{\"inclusion\":\"included\",\"components\":[]}}");
-  let quotation = J.set(common, "offers", J.array(sx_cons(itemized, sx_nil())));
+  let quotation = J.set(common,
+    "offers",
+    J.array(sx_cons(itemized,
+    sx_nil())));
   var failure = J.set(common, "observation_id", J.ascii("failure"));
   failure = J.set(failure, "complete", J.boolean(false));
   failure = J.set(failure, "outcome", J.ascii("failed"));
@@ -56,66 +75,137 @@ fn replay_test()
   let error_line = Json.render(failure);
   let quote_line = Json.render(quotation);
   let log = "$error_line\r\n$quote_line\n";
-  let past = checked(Coverage.report(rows, log, "2026-11-26T10:01:00Z", 600, sx_nil()));
+  let past = checked(Coverage.report(rows,
+    log,
+    "2026-11-26T10:01:00Z",
+    600,
+    sx_nil()));
   let cell = sx_head(sx_tail(J.get(past, "cells")));
   assert(J.plain(J.get(cell, "status")) == "priced");
   assert(J.plain(J.get(cell, "freshness")) == "fresh");
-  let later = checked(Coverage.report(rows, log, "2026-11-26T10:10:00.100000Z", 600, sx_nil()));
+  let later = checked(Coverage.report(rows,
+    log,
+    "2026-11-26T10:10:00.100000Z",
+    600,
+    sx_nil()));
   let entries = sx_tail(J.get(later, "cells"));
   let first = sx_head(entries);
   let second = sx_head(sx_tail(entries));
   assert(J.plain(J.get(first, "status")) == "failed");
   assert(J.plain(J.get(first, "reason")) == "transport_error");
   assert(J.plain(J.get(first, "freshness")) == "stale");
-  assert(J.plain(J.get(first, "next_due_at")) == "2026-11-26T10:10:00.100000Z");
-  assert(J.plain(J.get(J.get(first, "latest_attempt"), "observation_id")) == "failure");
-  assert(J.plain(J.get(J.get(first, "latest_success"), "received_at")) == "2026-11-26T10:00:00.100000Z");
+  assert(J.plain(J.get(first,
+    "next_due_at")) == "2026-11-26T10:10:00.100000Z");
+  assert(J.plain(J.get(J.get(first,
+    "latest_attempt"),
+    "observation_id")) == "failure");
+  assert(J.plain(J.get(J.get(first,
+    "latest_success"),
+    "received_at")) == "2026-11-26T10:00:00.100000Z");
   assert(J.is_null(J.get(second, "next_due_at")));
-  assert(sx_text(J.get(J.get(later, "counts_by_status"), "unsupported")) == "1");
+  assert(sx_text(J.get(J.get(later,
+    "counts_by_status"),
+    "unsupported")) == "1");
   assert(sx_text(J.get(J.get(later, "counts_by_freshness"), "none")) == "1");
   let records = checked(Coverage.observations(log));
-  let tree_replay = checked(Coverage.coverage(rows, records, "2026-11-26T10:10:00.100000Z", 600, sx_nil()));
+  let tree_replay = checked(Coverage.coverage(rows,
+    records,
+    "2026-11-26T10:10:00.100000Z",
+    600,
+    sx_nil()));
   assert(J.same(later, tree_replay));
   let as_of = "2026-11-26T10:00:00Z";
-  reject(Coverage.report(rows, "$quote_line\n$quote_line", as_of, 600, sx_nil()), "duplicate observation_id");
-  reject(Coverage.report(rows, "$quote_line\n\n", as_of, 600, sx_nil()), "observation log line 2");
+  reject(Coverage.report(rows,
+    "$quote_line\n$quote_line",
+    as_of,
+    600,
+    sx_nil()),
+    "duplicate observation_id");
+  reject(Coverage.report(rows,
+    "$quote_line\n\n",
+    as_of,
+    600,
+    sx_nil()),
+    "observation log line 2");
   let invalid_prices = J.set(itemized, "amount_minor", J.boolean(true));
-  let invalid = J.set(quotation, "offers", J.array(sx_cons(itemized, sx_cons(invalid_prices, sx_nil()))));
-  reject(Coverage.report(rows, Json.render(invalid), as_of, 600, sx_nil()), "offer 2: amount_minor");
-  let wrong_type = J.set(quotation, "request_context", J.set(context, "guest_configuration", Json.parse("{\"allocation\":[{\"adults\":true,\"child_ages\":[]}]}")));
-  reject(Coverage.report(rows, Json.render(wrong_type), as_of, 600, sx_nil()), "exact cell");
+  let invalid = J.set(quotation,
+    "offers",
+    J.array(sx_cons(itemized,
+    sx_cons(invalid_prices,
+    sx_nil()))));
+  reject(Coverage.report(rows,
+    Json.render(invalid),
+    as_of,
+    600,
+    sx_nil()),
+    "offer 2: amount_minor");
+  let wrong_type = J.set(quotation,
+    "request_context",
+    J.set(context,
+    "guest_configuration",
+    Json.parse("{\"allocation\":[{\"adults\":true,\"child_ages\":[]}]}")));
+  reject(Coverage.report(rows,
+    Json.render(wrong_type),
+    as_of,
+    600,
+    sx_nil()),
+    "exact cell");
   let wrong_key = J.set(quotation, "cell_key", J.ascii("b"));
-  reject(Coverage.report(rows, Json.render(wrong_key), as_of, 600, sx_nil()), "unsupported cell");
-  reject(Coverage.report(rows, "{\"kind\":0,\"kind\":1}", as_of, 600, sx_nil()), "duplicate JSON field");
-  reject(Coverage.report(rows, "{}\nnot json", as_of, 600, sx_nil()), "observation 1: observation is missing");
+  reject(Coverage.report(rows,
+    Json.render(wrong_key),
+    as_of,
+    600,
+    sx_nil()),
+    "unsupported cell");
+  reject(Coverage.report(rows,
+    "{\"kind\":0,\"kind\":1}",
+    as_of,
+    600,
+    sx_nil()),
+    "duplicate JSON field");
+  reject(Coverage.report(rows,
+    "{}\nnot json",
+    as_of,
+    600,
+    sx_nil()),
+    "observation 1: observation is missing");
 }
 
-fn scheduler_test() -> Result<bool, sexpr>
+fn scheduler_test() -> Result < bool, sexpr >
 {
   let config = Json.parse("{\"tick_seconds\":1,\"max_age_seconds\":10,\"booking_requests_per_hour\":2,\"booking_concurrency\":1}");
   let sources = Json.parse("[\"booking\"]");
   let rows = Json.parse("[{\"cell_key\":\"y\",\"source\":\"booking\",\"status\":\"pending\",\"weight\":0},{\"cell_key\":\"x\",\"source\":\"booking\",\"status\":\"pending\",\"weight\":10}]");
   let capacity = Scheduler.capacity(config, sources, rows)?;
-  assert(sx_text(J.get(J.get(capacity, "booking"), "required_attempts_per_hour")) == "720.0");
+  assert(sx_text(J.get(J.get(capacity,
+    "booking"),
+    "required_attempts_per_hour")) == "720.0");
   let initial = Scheduler.defaults(config, sources)?;
-  let (s1, reservations) = Scheduler.schedule(initial, rows, "2026-11-26T00:00:00Z")?;
+  let(s1,
+    reservations) = Scheduler.schedule(initial,
+    rows,
+    "2026-11-26T00:00:00Z")?;
   let first = sx_head(sx_tail(reservations));
   assert(J.plain(J.get(first, "cell_key")) == "x");
-  let (ok, first_id) = J.as_i64(J.get(first, "reservation_id"));
+  let(ok, first_id) = J.as_i64(J.get(first, "reservation_id"));
   assert(ok && first_id == 1);
-  let s2 = Scheduler.finish(s1, first_id, "2026-11-26T00:00:00Z", true, false)?;
-  let (s3, r2) = Scheduler.schedule(s2, rows, "2026-11-26T00:00:01Z")?;
+  let s2 = Scheduler.finish(s1,
+    first_id,
+    "2026-11-26T00:00:00Z",
+    true,
+    false)?;
+  let(s3, r2) = Scheduler.schedule(s2, rows, "2026-11-26T00:00:01Z")?;
   assert(J.plain(J.get(sx_head(sx_tail(r2)), "cell_key")) == "y");
   let s4 = Scheduler.finish(s3, 2, "2026-11-26T00:00:01Z", false, true)?;
-  let (s5, r3) = Scheduler.schedule(s4, rows, "2026-11-26T00:59:59.999999Z")?;
+  let(s5, r3) = Scheduler.schedule(s4, rows, "2026-11-26T00:59:59.999999Z")?;
   assert(J.absent(sx_tail(r3)));
-  let (s6, r4) = Scheduler.schedule(s5, rows, "2026-11-26T01:00:00.999999Z")?;
+  let(s6, r4) = Scheduler.schedule(s5, rows, "2026-11-26T01:00:00.999999Z")?;
   assert(J.plain(J.get(sx_head(sx_tail(r4)), "cell_key")) == "x");
   assert(s6["next_id"] == 4);
   return result_ok(true);
 }
 
-fn scheduler_fairness_and_retry() -> Result<bool, sexpr>
+fn scheduler_fairness_and_retry() -> Result < bool, sexpr >
 {
   let refresh = Json.parse("{\"tick_seconds\":1,\"max_age_seconds\":1,\"booking_requests_per_hour\":100,\"booking_concurrency\":1}");
   let sources = Json.parse("[\"booking\"]");
@@ -124,28 +214,46 @@ fn scheduler_fairness_and_retry() -> Result<bool, sexpr>
   for n in 0 .. 6
   {
     let now = "2026-11-26T00:00:0${n}Z";
-    let (next, reservations) = Scheduler.schedule(state, rows, now)?;
+    let(next, reservations) = Scheduler.schedule(state, rows, now)?;
     let reserved = sx_head(sx_tail(reservations));
     var expected = "hi";
-    if n % 3 == 2 { expected = "lo"; }
+    if n % 3 == 2
+    {
+      expected = "lo";
+    }
     assert(J.plain(J.get(reserved, "cell_key")) == expected);
     state = Scheduler.finish(next, n + 1, now, true, false)?;
   }
   let retry_rows = J.array(sx_cons(sx_head(sx_tail(rows)), sx_nil()));
-  let (a, waiting_a) = Scheduler.schedule(state, retry_rows, "2026-11-26T00:00:06Z")?;
-  assert(!J.absent(sx_tail(waiting_a)));
+  let(a,
+    waiting_a) = Scheduler.schedule(state,
+    retry_rows,
+    "2026-11-26T00:00:06Z")?;
+  assert(! J.absent(sx_tail(waiting_a)));
   let b = Scheduler.finish(a, 7, "2026-11-26T00:00:06Z", false, true)?;
-  let (c, waiting_b) = Scheduler.schedule(b, retry_rows, "2026-11-26T00:00:07Z")?;
+  let(c,
+    waiting_b) = Scheduler.schedule(b,
+    retry_rows,
+    "2026-11-26T00:00:07Z")?;
   assert(J.absent(sx_tail(waiting_b)));
-  let (d, retried) = Scheduler.schedule(c, retry_rows, "2026-11-26T00:00:08Z")?;
-  assert(!J.absent(sx_tail(retried)));
+  let(d, retried) = Scheduler.schedule(c, retry_rows, "2026-11-26T00:00:08Z")?;
+  assert(! J.absent(sx_tail(retried)));
   let e = Scheduler.finish(d, 8, "2026-11-26T00:00:08Z", false, true)?;
-  let (f, waiting_c) = Scheduler.schedule(e, retry_rows, "2026-11-26T00:00:10Z")?;
+  let(f,
+    waiting_c) = Scheduler.schedule(e,
+    retry_rows,
+    "2026-11-26T00:00:10Z")?;
   assert(J.absent(sx_tail(waiting_c)));
-  let (g, retried_again) = Scheduler.schedule(f, retry_rows, "2026-11-26T00:00:11Z")?;
-  assert(!J.absent(sx_tail(retried_again)));
+  let(g,
+    retried_again) = Scheduler.schedule(f,
+    retry_rows,
+    "2026-11-26T00:00:11Z")?;
+  assert(! J.absent(sx_tail(retried_again)));
   let h = Scheduler.finish(g, 9, "2026-11-26T00:00:11Z", false, true)?;
-  let (_over, waiting_d) = Scheduler.schedule(h, retry_rows, "2026-11-26T00:00:13Z")?;
+  let(_over,
+    waiting_d) = Scheduler.schedule(h,
+    retry_rows,
+    "2026-11-26T00:00:13Z")?;
   assert(J.absent(sx_tail(waiting_d)));
   return result_ok(true);
 }
@@ -155,7 +263,11 @@ fn main() -> i64
   assert(Clock.utc_text(stamp("2000-02-29T00:00:00.01+00:00")) == "2000-02-29T00:00:00.010000Z");
   assert(stamp("9999-12-31T23:59:59.999999Z") == Clock.latest());
   let rows = Json.parse("[{\"cell_key\":\"a\",\"reason\":null,\"status\":\"pending\"}]");
-  let report_value = checked(Coverage.report(rows, "", "2026-11-26T00:00:00Z", 600, sx_nil()));
+  let report_value = checked(Coverage.report(rows,
+    "",
+    "2026-11-26T00:00:00Z",
+    600,
+    sx_nil()));
   assert(J.plain(J.get(report_value, "kind")) == "caravansary.coverage@1");
   let cell = sx_head(sx_tail(J.get(report_value, "cells")));
   assert(J.plain(J.get(cell, "next_due_at")) == "2026-11-26T00:00:00Z");
@@ -163,13 +275,23 @@ fn main() -> i64
   replay_test();
   match scheduler_test() with
   {
-    Ok(passed) => { assert(passed); },
-    Err(message) => { tool_fail(sx_text(message)); }
+    Ok(passed) =>
+    {
+      assert(passed);
+    }, Err(message) =>
+    {
+      tool_fail(sx_text(message));
+    }
   };
   match scheduler_fairness_and_retry() with
   {
-    Ok(passed) => { assert(passed); },
-    Err(message) => { tool_fail(sx_text(message)); }
+    Ok(passed) =>
+    {
+      assert(passed);
+    }, Err(message) =>
+    {
+      tool_fail(sx_text(message));
+    }
   };
   assert(data_live_nodes() == live_before);
   return 0;

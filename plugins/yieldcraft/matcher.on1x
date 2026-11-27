@@ -5,60 +5,64 @@ import core.csv as CSV;
 import core.contracts as Contract;
 import core.format as F;
 import std.collections.Array as A;
-
 record Pool
 {
-  properties: i64,
-  rooms: i64,
-  adults: i64,
-  children: i64,
-  capacity: i64,
-  gross: i64,
-  count: i64,
-  rejected: i64,
-  evidence: bool,
-  source_rows: i64,
-  source_properties: i64
+  properties: i64, rooms: i64, adults: i64, children: i64, capacity: i64, gross: i64, count: i64, rejected: i64, evidence: bool, source_rows: i64, source_properties: i64
 }
 
 # Decimal CSV fields after the first field on each audit line.
 fn field(out: buffer, n: i64)
 {
-  buffer_append(out,",");
-  buffer_append(out,F.num(n));
+  buffer_append(out, ",");
+  buffer_append(out, F.num(n));
 }
 
-fn ingest_mode(csv: string, scenario: Contract.Scenario, collect: bool, out: buffer) -> Pool
+fn ingest_mode(csv: string,
+  scenario: Contract.Scenario,
+  collect: bool,
+  out: buffer) -> Pool
 {
-  if text_len(csv) > 2000000 { tool_fail("offers: source exceeds byte limit"); }
+  if text_len(csv) > 2000000
+  {
+    tool_fail("offers: source exceeds byte limit");
+  }
   let lines = CSV.rows(csv);
-  if lines < 2 || lines > 513 { tool_fail("offers: expected 1..512 rows"); }
-  CSV.header(CSV.line(csv,0), "property_id,room_id,arrival,departure,adult_cap,child_cap,total_cap,total_cents,fees_cents,taxes_cents,currency,observed_at,ingested_at,valid_from,valid_to,bookable");
-  let property = A.basis_array_array(512,0);
-  let room = A.basis_array_array(512,0);
-  let adult = A.basis_array_array(512,0);
-  let child = A.basis_array_array(512,0);
-  let total = A.basis_array_array(512,0);
-  let gross = A.basis_array_array(512,0);
+  if lines < 2 || lines > 513
+  {
+    tool_fail("offers: expected 1..512 rows");
+  }
+  CSV.header(CSV.line(csv,
+    0),
+    "property_id,room_id,arrival,departure,adult_cap,child_cap,total_cap,total_cents,fees_cents,taxes_cents,currency,observed_at,ingested_at,valid_from,valid_to,bookable");
+  let property = A.basis_array_array(512, 0);
+  let room = A.basis_array_array(512, 0);
+  let adult = A.basis_array_array(512, 0);
+  let child = A.basis_array_array(512, 0);
+  let total = A.basis_array_array(512, 0);
+  let gross = A.basis_array_array(512, 0);
   var source_rows = 0;
   var source_properties = 0;
   if collect
   {
-    source_rows = A.basis_array_array(lines - 1,0);
-    source_properties = A.basis_array_array(lines - 1,0);
+    source_rows = A.basis_array_array(lines - 1, 0);
+    source_properties = A.basis_array_array(lines - 1, 0);
   }
   var n = 0;
   var rejected = 0;
   for i in 1 .. lines
   {
-    let offer = Contract.offer_csv(CSV.line(csv,i));
-    let reason = Contract.eligibility_reason(offer,scenario);
+    let offer = Contract.offer_csv(CSV.line(csv, i));
+    let reason = Contract.eligibility_reason(offer, scenario);
     if collect
     {
-      A.basis_array_update(source_properties,i - 1,offer["property_id"]);
-      buffer_append(out,"row="); buffer_append(out,F.num(i));
-      field(out,offer["property_id"]); field(out,offer["room_id"]);
-      buffer_append(out,","); buffer_append(out,reason); buffer_append(out,"\n");
+      A.basis_array_update(source_properties, i - 1, offer["property_id"]);
+      buffer_append(out, "row=");
+      buffer_append(out, F.num(i));
+      field(out, offer["property_id"]);
+      field(out, offer["room_id"]);
+      buffer_append(out, ",");
+      buffer_append(out, reason);
+      buffer_append(out, "\n");
     }
     if reason != "eligible"
     {
@@ -67,31 +71,41 @@ fn ingest_mode(csv: string, scenario: Contract.Scenario, collect: bool, out: buf
     }
     for j in 0 .. n
     {
-      if A.basis_array_sub(property,j) == offer["property_id"] && A.basis_array_sub(room,j) == offer["room_id"]
-      { tool_fail("offers: duplicate bookable room inventory unit"); }
+      if A.basis_array_sub(property,
+        j) == offer["property_id"] && A.basis_array_sub(room,
+        j) == offer["room_id"]
+      {
+        tool_fail("offers: duplicate bookable room inventory unit");
+      }
     }
-    A.basis_array_update(property,n,offer["property_id"]);
-    A.basis_array_update(room,n,offer["room_id"]);
-    A.basis_array_update(adult,n,offer["adult_cap"]);
-    A.basis_array_update(child,n,offer["child_cap"]);
-    A.basis_array_update(total,n,offer["total_cap"]);
-    A.basis_array_update(gross,n,offer["gross_cents"]);
-    if collect { A.basis_array_update(source_rows,n,i); }
+    A.basis_array_update(property, n, offer["property_id"]);
+    A.basis_array_update(room, n, offer["room_id"]);
+    A.basis_array_update(adult, n, offer["adult_cap"]);
+    A.basis_array_update(child, n, offer["child_cap"]);
+    A.basis_array_update(total, n, offer["total_cap"]);
+    A.basis_array_update(gross, n, offer["gross_cents"]);
+    if collect
+    {
+      A.basis_array_update(source_rows, n, i);
+    }
     n = n + 1;
   }
-  return record<Pool>{properties:property, rooms:room, adults:adult, children:child,
-    capacity:total, gross:gross,count:n,rejected:rejected,evidence:collect,
-    source_rows:source_rows,source_properties:source_properties};
+  return record < Pool >
+  {
+    properties: property, rooms: room, adults: adult, children: child, capacity: total, gross: gross, count: n, rejected: rejected, evidence: collect, source_rows: source_rows, source_properties: source_properties
+  };
 }
 
 fn ingest(csv: string, scenario: Contract.Scenario) -> Pool
 {
-  return ingest_mode(csv,scenario,false,buffer_new());
+  return ingest_mode(csv, scenario, false, buffer_new());
 }
 
-fn ingest_with_evidence(csv: string, scenario: Contract.Scenario, out: buffer) -> Pool
+fn ingest_with_evidence(csv: string,
+  scenario: Contract.Scenario,
+  out: buffer) -> Pool
 {
-  return ingest_mode(csv,scenario,true,out);
+  return ingest_mode(csv, scenario, true, out);
 }
 
 fn destroy(pool: Pool)
@@ -116,30 +130,34 @@ fn chosen(mask: i64, bit: i64) -> bool
 
 # Each selected room must contain >=1 adult. Both room total capacity
 # and separate adult/child capacities are respected exactly.
-fn occupancy(pool: Pool, indices: i64, count: i64, mask: i64, scenario: Contract.Scenario,
+fn occupancy(pool: Pool,
+  indices: i64,
+  count: i64,
+  mask: i64,
+  scenario: Contract.Scenario,
   collect: bool) -> i64
 {
   let adults = scenario["adults"];
   let children = scenario["children"];
   let span = children + 1;
   let states = (adults + 1) * span;
-  var current = A.basis_array_array(states,0);
-  A.basis_array_update(current,0,1);
+  var current = A.basis_array_array(states, 0);
+  A.basis_array_update(current, 0, 1);
   var bit = 1;
   for i in 0 .. count
   {
-    if chosen(mask,bit)
+    if chosen(mask, bit)
     {
-      let row = A.basis_array_sub(indices,i);
-      let amax = A.basis_array_sub(pool["adults"],row);
-      let cmax = A.basis_array_sub(pool["children"],row);
-      let total = A.basis_array_sub(pool["capacity"],row);
-      let next = A.basis_array_array(states,0);
+      let row = A.basis_array_sub(indices, i);
+      let amax = A.basis_array_sub(pool["adults"], row);
+      let cmax = A.basis_array_sub(pool["children"], row);
+      let total = A.basis_array_sub(pool["capacity"], row);
+      let next = A.basis_array_array(states, 0);
       for a in 0 ..= adults
       {
         for c in 0 ..= children
         {
-          let prefix = A.basis_array_sub(current,a * span + c);
+          let prefix = A.basis_array_sub(current, a * span + c);
           if prefix != 0
           {
             for add_a in 1 ..= adults - a
@@ -149,13 +167,20 @@ fn occupancy(pool: Pool, indices: i64, count: i64, mask: i64, scenario: Contract
                 if add_a <= amax && add_c <= cmax && add_a + add_c <= total
                 {
                   let dest = (a + add_a) * span + c + add_c;
-                  if !collect { A.basis_array_update(next,dest,1); }
+                  if ! collect
+                  {
+                    A.basis_array_update(next, dest, 1);
+                  }
                   else
                   {
                     # Preserve the first predecessor. One base-81 digit
                     # encodes (1..8 adults,0..8 children); <=4 such rooms.
-                    if A.basis_array_sub(next,dest) == 0
-                    { A.basis_array_update(next,dest,prefix * 81 + add_a * 9 + add_c); }
+                    if A.basis_array_sub(next, dest) == 0
+                    {
+                      A.basis_array_update(next,
+                        dest,
+                        prefix * 81 + add_a * 9 + add_c);
+                    }
                   }
                 }
               }
@@ -168,37 +193,61 @@ fn occupancy(pool: Pool, indices: i64, count: i64, mask: i64, scenario: Contract
     }
     bit = bit * 2;
   }
-  let answer = A.basis_array_sub(current,adults * span + children);
+  let answer = A.basis_array_sub(current, adults * span + children);
   A.basis_array_destroy(current);
   return answer;
 }
 
-fn property_line(out: buffer, property_id: i64, status: string, n: i64, inspected: i64)
+fn property_line(out: buffer,
+  property_id: i64,
+  status: string,
+  n: i64,
+  inspected: i64)
 {
-  buffer_append(out,"property="); buffer_append(out,F.num(property_id));
-  buffer_append(out,","); buffer_append(out,status);
-  field(out,n); field(out,inspected); buffer_append(out,"\n");
+  buffer_append(out, "property=");
+  buffer_append(out, F.num(property_id));
+  buffer_append(out, ",");
+  buffer_append(out, status);
+  field(out, n);
+  field(out, inspected);
+  buffer_append(out, "\n");
 }
 
-fn bundle_lines(out: buffer, pool: Pool, property_id: i64, indices: i64, n: i64,
-  mask: i64, code: i64, price: i64, rooms: i64)
+fn bundle_lines(out: buffer,
+  pool: Pool,
+  property_id: i64,
+  indices: i64,
+  n: i64,
+  mask: i64,
+  code: i64,
+  price: i64,
+  rooms: i64)
 {
-  buffer_append(out,"bundle="); buffer_append(out,F.num(property_id));
-  field(out,price); field(out,rooms); buffer_append(out,"\n");
+  buffer_append(out, "bundle=");
+  buffer_append(out, F.num(property_id));
+  field(out, price);
+  field(out, rooms);
+  buffer_append(out, "\n");
   var place = 1;
-  for i in 1 .. rooms { place = place * 81; }
+  for i in 1 .. rooms
+  {
+    place = place * 81;
+  }
   var bit = 1;
   for i in 0 .. n
   {
-    if chosen(mask,bit)
+    if chosen(mask, bit)
     {
-      let row = A.basis_array_sub(indices,i);
+      let row = A.basis_array_sub(indices, i);
       let digit = code / place % 81;
-      buffer_append(out,"allocation="); buffer_append(out,F.num(property_id));
-      field(out,A.basis_array_sub(pool["source_rows"],row));
-      field(out,A.basis_array_sub(pool["rooms"],row));
-      field(out,digit / 9); field(out,digit % 9);
-      field(out,A.basis_array_sub(pool["gross"],row)); buffer_append(out,"\n");
+      buffer_append(out, "allocation=");
+      buffer_append(out, F.num(property_id));
+      field(out, A.basis_array_sub(pool["source_rows"], row));
+      field(out, A.basis_array_sub(pool["rooms"], row));
+      field(out, digit / 9);
+      field(out, digit % 9);
+      field(out, A.basis_array_sub(pool["gross"], row));
+      buffer_append(out, "\n");
       place = place / 81;
     }
     bit = bit * 2;
@@ -206,24 +255,35 @@ fn bundle_lines(out: buffer, pool: Pool, property_id: i64, indices: i64, n: i64,
 }
 
 # Result price=-2 signals exhausted search budget, price=-1 unbookable.
-fn one_property(pool: Pool, property_id: i64, scenario: Contract.Scenario, remaining_budget: i64,
-  collect: bool, out: buffer)
-  ->(i64,i64,i64)
+fn one_property(pool: Pool,
+  property_id: i64,
+  scenario: Contract.Scenario,
+  remaining_budget: i64,
+  collect: bool,
+  out: buffer) ->(i64,
+  i64,
+  i64)
 {
-  let indices = A.basis_array_array(10,0);
+  let indices = A.basis_array_array(10, 0);
   var n = 0;
   for i in 0 .. pool["count"]
   {
-    if A.basis_array_sub(pool["properties"],i) == property_id
+    if A.basis_array_sub(pool["properties"], i) == property_id
     {
-      if n >= 10 { tool_fail("matcher: more than 10 offered rooms per property"); }
-      A.basis_array_update(indices,n,i);
+      if n >= 10
+      {
+        tool_fail("matcher: more than 10 offered rooms per property");
+      }
+      A.basis_array_update(indices, n, i);
       n = n + 1;
     }
   }
   var limit = 1;
-  for i in 0 .. n { limit = limit * 2; }
-  var best = -1;
+  for i in 0 .. n
+  {
+    limit = limit * 2;
+  }
+  var best = - 1;
   var best_rooms = 0;
   var best_mask = 0;
   var best_code = 0;
@@ -233,7 +293,7 @@ fn one_property(pool: Pool, property_id: i64, scenario: Contract.Scenario, remai
     if inspected >= remaining_budget
     {
       A.basis_array_destroy(indices);
-      return (-2,0,inspected);
+      return (- 2, 0, inspected);
     }
     inspected = inspected + 1;
     var bit = 1;
@@ -241,18 +301,17 @@ fn one_property(pool: Pool, property_id: i64, scenario: Contract.Scenario, remai
     var rooms = 0;
     for i in 0 .. n
     {
-      if chosen(mask,bit)
+      if chosen(mask, bit)
       {
-        let row = A.basis_array_sub(indices,i);
-        price = price + A.basis_array_sub(pool["gross"],row);
+        let row = A.basis_array_sub(indices, i);
+        price = price + A.basis_array_sub(pool["gross"], row);
         rooms = rooms + 1;
       }
       bit = bit * 2;
     }
-    if rooms <= scenario["max_rooms"] && rooms <= scenario["adults"]
-      && (best < 0 || price < best || (price == best && rooms < best_rooms))
+    if rooms <= scenario["max_rooms"] && rooms <= scenario["adults"] && (best < 0 || price < best || (price == best && rooms < best_rooms))
     {
-      let code = occupancy(pool,indices,n,mask,scenario,collect);
+      let code = occupancy(pool, indices, n, mask, scenario, collect);
       if code != 0
       {
         best = price;
@@ -264,24 +323,31 @@ fn one_property(pool: Pool, property_id: i64, scenario: Contract.Scenario, remai
   }
   if collect
   {
-    if best < 0 { property_line(out,property_id,"no_feasible_bundle",n,inspected); }
+    if best < 0
+    {
+      property_line(out, property_id, "no_feasible_bundle", n, inspected);
+    }
     else
     {
-      property_line(out,property_id,"matched",n,inspected);
-      bundle_lines(out,pool,property_id,indices,n,best_mask,best_code,best,best_rooms);
+      property_line(out, property_id, "matched", n, inspected);
+      bundle_lines(out,
+        pool,
+        property_id,
+        indices,
+        n,
+        best_mask,
+        best_code,
+        best,
+        best_rooms);
     }
   }
   A.basis_array_destroy(indices);
-  return (best,best_rooms,inspected);
+  return (best, best_rooms, inspected);
 }
 
 record Distribution
 {
-  prices: i64,
-  count: i64,
-  rejected: i64,
-  infeasible: i64,
-  examined: i64
+  prices: i64, count: i64, rejected: i64, infeasible: i64, examined: i64
 }
 
 # Report properties omitted entirely by the eligibility filter, without
@@ -291,70 +357,118 @@ fn rejected_properties(out: buffer, pool: Pool)
   let ids = pool["source_properties"];
   for i in 0 .. A.basis_array_length(ids)
   {
-    let p = A.basis_array_sub(ids,i);
+    let p = A.basis_array_sub(ids, i);
     var skip = false;
     for j in 0 .. i
     {
-      if p == A.basis_array_sub(ids,j) { skip = true; break; }
+      if p == A.basis_array_sub(ids, j)
+      {
+        skip = true;
+        break;
+      }
     }
-    if skip { continue; }
+    if skip
+    {
+      continue;
+    }
     for j in 0 .. pool["count"]
     {
-      if p == A.basis_array_sub(pool["properties"],j) { skip = true; break; }
+      if p == A.basis_array_sub(pool["properties"], j)
+      {
+        skip = true;
+        break;
+      }
     }
-    if !skip { property_line(out,p,"no_eligible_rows",0,0); }
+    if ! skip
+    {
+      property_line(out, p, "no_eligible_rows", 0, 0);
+    }
   }
 }
 
-fn distribution_mode(pool: Pool, scenario: Contract.Scenario, collect: bool, out: buffer) -> Distribution
+fn distribution_mode(pool: Pool,
+  scenario: Contract.Scenario,
+  collect: bool,
+  out: buffer) -> Distribution
 {
-  if collect && !pool["evidence"] { tool_fail("matcher: evidence requires source row identities"); }
-  let result = A.basis_array_array(512,0);
+  if collect && ! pool["evidence"]
+  {
+    tool_fail("matcher: evidence requires source row identities");
+  }
+  let result = A.basis_array_array(512, 0);
   var n = 0;
   var infeasible = 0;
   var examined = 0;
   for i in 0 .. pool["count"]
   {
-    let property = A.basis_array_sub(pool["properties"],i);
+    let property = A.basis_array_sub(pool["properties"], i);
     var already = false;
     for j in 0 .. i
     {
-      if A.basis_array_sub(pool["properties"],j) == property { already = true; }
+      if A.basis_array_sub(pool["properties"], j) == property
+      {
+        already = true;
+      }
     }
-    if already { continue; }
-    let(price, rooms, steps) = one_property(pool,property,scenario,scenario["search_budget"] - examined,collect,out);
+    if already
+    {
+      continue;
+    }
+    let(price,
+      rooms,
+      steps) = one_property(pool,
+      property,
+      scenario,
+      scenario["search_budget"] - examined,
+      collect,
+      out);
     examined = examined + steps;
-    if price == -2
+    if price == - 2
     {
       A.basis_array_destroy(result);
       tool_fail("matcher: finite node search budget exhausted");
     }
-    if price < 0 { infeasible = infeasible + 1; }
+    if price < 0
+    {
+      infeasible = infeasible + 1;
+    }
     else
     {
-      A.basis_array_update(result,n,price);
+      A.basis_array_update(result, n, price);
       n = n + 1;
     }
   }
   if collect
   {
-    rejected_properties(out,pool);
-    buffer_append(out,"sample="); buffer_append(out,F.num(n)); field(out,scenario["min_properties"]);
-    if n < scenario["min_properties"] { buffer_append(out,",insufficient_evidence\n"); }
-    else { buffer_append(out,",adequate\n"); }
+    rejected_properties(out, pool);
+    buffer_append(out, "sample=");
+    buffer_append(out, F.num(n));
+    field(out, scenario["min_properties"]);
+    if n < scenario["min_properties"]
+    {
+      buffer_append(out, ",insufficient_evidence\n");
+    }
+    else
+    {
+      buffer_append(out, ",adequate\n");
+    }
   }
-  return record<Distribution>{prices:result,count:n,rejected:pool["rejected"],
-    infeasible:infeasible,examined:examined};
+  return record < Distribution >
+  {
+    prices: result, count: n, rejected: pool["rejected"], infeasible: infeasible, examined: examined
+  };
 }
 
 fn distribution(pool: Pool, scenario: Contract.Scenario) -> Distribution
 {
-  return distribution_mode(pool,scenario,false,buffer_new());
+  return distribution_mode(pool, scenario, false, buffer_new());
 }
 
-fn distribution_with_evidence(pool: Pool, scenario: Contract.Scenario, out: buffer) -> Distribution
+fn distribution_with_evidence(pool: Pool,
+  scenario: Contract.Scenario,
+  out: buffer) -> Distribution
 {
-  return distribution_mode(pool,scenario,true,out);
+  return distribution_mode(pool, scenario, true, out);
 }
 
 fn destroy_distribution(d: Distribution)
@@ -365,9 +479,9 @@ fn destroy_distribution(d: Distribution)
 fn audit_report(scenario: Contract.Scenario, offers_raw: string) -> string
 {
   let out = buffer_new();
-  buffer_append(out,"evidence_version=yieldcraft.property-evidence@1\n");
-  let pool = ingest_with_evidence(offers_raw,scenario,out);
-  let dist = distribution_with_evidence(pool,scenario,out);
+  buffer_append(out, "evidence_version=yieldcraft.property-evidence@1\n");
+  let pool = ingest_with_evidence(offers_raw, scenario, out);
+  let dist = distribution_with_evidence(pool, scenario, out);
   destroy_distribution(dist);
   destroy(pool);
   return buffer_text(out);

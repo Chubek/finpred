@@ -1,12 +1,19 @@
 import CoreTest.QuoteAmounts as Amounts;
-
-fn pass(value:Amounts.CheckedQuote) -> Amounts.CheckedQuote { return value; }
+fn pass(value: Amounts.CheckedQuote) -> Amounts.CheckedQuote
+{
+  return value;
+}
 
 fn main()
 {
-  let (ok, net, gross) = Amounts.amounts(pass(Amounts.check(100,12,8,30)));
+  let(ok, net, gross) = Amounts.amounts(pass(Amounts.check(100, 12, 8, 30)));
   assert(ok && net == 70 && gross == 90);
-  let (valid, _net, _gross) = Amounts.amounts(Amounts.check(1000000000000,1,0,0));
-  assert(!valid);
+  let(valid,
+    _net,
+    _gross) = Amounts.amounts(Amounts.check(1000000000000,
+    1,
+    0,
+    0));
+  assert(! valid);
   println("sealed competitor amounts ok");
 }

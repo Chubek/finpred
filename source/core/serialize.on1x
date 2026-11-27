@@ -2,108 +2,181 @@
 # validated by the typed CSV reader or by the canonical hex digest function.
 import core.contracts as C;
 import core.format as F;
-
-fn opening(kind: string, id: string, observed: string, ingested: string,
-  currency: string, basis: string, source_digest: string) -> string
+fn opening(kind: string,
+  id: string,
+  observed: string,
+  ingested: string,
+  currency: string,
+  basis: string,
+  source_digest: string) -> string
 {
   let b = buffer_new();
-  buffer_append(b,"{\"mulib\":\"1.0\",\"kind\":");
-  buffer_append(b,F.q(kind));
-  buffer_append(b,",\"schema_version\":\"1.0\",\"id\":");
-  buffer_append(b,F.q(id));
-  buffer_append(b,",\"metadata\":{\"provenance\":{\"source_artifacts\":[");
-  buffer_append(b,F.q(text_concat("blake3:",source_digest)));
-  buffer_append(b,"]},\"times\":{\"observed_at\":");
-  buffer_append(b,F.q(observed));
-  buffer_append(b,",\"ingested_at\":");
-  buffer_append(b,F.q(ingested));
-  buffer_append(b,"},\"units\":{\"currency\":");
-  buffer_append(b,F.q(currency));
-  buffer_append(b,",\"price_basis\":");
-  buffer_append(b,F.q(basis));
-  buffer_append(b,"},\"quality\":{\"status\":\"validated\",\"evidence\":\"csv_import\"}},\"data\":{");
+  buffer_append(b, "{\"mulib\":\"1.0\",\"kind\":");
+  buffer_append(b, F.q(kind));
+  buffer_append(b, ",\"schema_version\":\"1.0\",\"id\":");
+  buffer_append(b, F.q(id));
+  buffer_append(b, ",\"metadata\":{\"provenance\":{\"source_artifacts\":[");
+  buffer_append(b, F.q(text_concat("blake3:", source_digest)));
+  buffer_append(b, "]},\"times\":{\"observed_at\":");
+  buffer_append(b, F.q(observed));
+  buffer_append(b, ",\"ingested_at\":");
+  buffer_append(b, F.q(ingested));
+  buffer_append(b, "},\"units\":{\"currency\":");
+  buffer_append(b, F.q(currency));
+  buffer_append(b, ",\"price_basis\":");
+  buffer_append(b, F.q(basis));
+  buffer_append(b,
+    "},\"quality\":{\"status\":\"validated\",\"evidence\":\"csv_import\"}},\"data\":{");
   return buffer_text(b);
 }
 
 fn scenario(s: C.Scenario, source_digest: string) -> string
 {
   let b = buffer_new();
-  buffer_append(b,opening("hospitality.scenario",text_concat("scenario:",F.num(s["id"])),
-    sx_text(s["observed_at"]),sx_text(s["ingested_at"]),sx_text(s["currency"]),"whole_stay",source_digest));
-  buffer_append(b,"\"decision_at\":"); buffer_append(b,F.q(sx_text(s["decision_at"])));
-  buffer_append(b,",\"arrival\":"); buffer_append(b,F.q(sx_text(s["arrival"])));
-  buffer_append(b,",\"departure\":"); buffer_append(b,F.q(sx_text(s["departure"])));
-  buffer_append(b,",\"nights\":"); buffer_append(b,F.num(s["nights"]));
-  buffer_append(b,",\"adults\":"); buffer_append(b,F.num(s["adults"]));
-  buffer_append(b,",\"children\":"); buffer_append(b,F.num(s["children"]));
-  buffer_append(b,",\"max_rooms\":"); buffer_append(b,F.num(s["max_rooms"]));
-  buffer_append(b,",\"min_properties\":"); buffer_append(b,F.num(s["min_properties"]));
-  buffer_append(b,",\"target_bps\":"); buffer_append(b,F.num(s["target_bps"]));
-  buffer_append(b,",\"curve\":"); buffer_append(b,F.q(sx_text(s["curve"])));
-  buffer_append(b,",\"max_age_days\":"); buffer_append(b,F.num(s["max_age_days"]));
-  buffer_append(b,",\"search_budget\":"); buffer_append(b,F.num(s["search_budget"]));
-  buffer_append(b,"}}\n");
+  buffer_append(b,
+    opening("hospitality.scenario",
+    text_concat("scenario:",
+    F.num(s["id"])),
+    sx_text(s["observed_at"]),
+    sx_text(s["ingested_at"]),
+    sx_text(s["currency"]),
+    "whole_stay",
+    source_digest));
+  buffer_append(b, "\"decision_at\":");
+  buffer_append(b, F.q(sx_text(s["decision_at"])));
+  buffer_append(b, ",\"arrival\":");
+  buffer_append(b, F.q(sx_text(s["arrival"])));
+  buffer_append(b, ",\"departure\":");
+  buffer_append(b, F.q(sx_text(s["departure"])));
+  buffer_append(b, ",\"nights\":");
+  buffer_append(b, F.num(s["nights"]));
+  buffer_append(b, ",\"adults\":");
+  buffer_append(b, F.num(s["adults"]));
+  buffer_append(b, ",\"children\":");
+  buffer_append(b, F.num(s["children"]));
+  buffer_append(b, ",\"max_rooms\":");
+  buffer_append(b, F.num(s["max_rooms"]));
+  buffer_append(b, ",\"min_properties\":");
+  buffer_append(b, F.num(s["min_properties"]));
+  buffer_append(b, ",\"target_bps\":");
+  buffer_append(b, F.num(s["target_bps"]));
+  buffer_append(b, ",\"curve\":");
+  buffer_append(b, F.q(sx_text(s["curve"])));
+  buffer_append(b, ",\"max_age_days\":");
+  buffer_append(b, F.num(s["max_age_days"]));
+  buffer_append(b, ",\"search_budget\":");
+  buffer_append(b, F.num(s["search_budget"]));
+  buffer_append(b, "}}\n");
   return buffer_text(b);
 }
 
 fn valuation(v: C.Valuation, source_digest: string) -> string
 {
   let b = buffer_new();
-  buffer_append(b,opening("pricing.valuation",text_concat("valuation:",F.num(v["id"])),
-    sx_text(v["observed_at"]),sx_text(v["ingested_at"]),sx_text(v["currency"]),"room_night",source_digest));
-  buffer_append(b,"\"current_cents\":"); buffer_append(b,F.num(v["current_cents"]));
-  buffer_append(b,",\"floor_cents\":"); buffer_append(b,F.num(v["floor_cents"]));
-  buffer_append(b,",\"cap_cents\":"); buffer_append(b,F.num(v["cap_cents"]));
-  buffer_append(b,",\"max_move_cents\":"); buffer_append(b,F.num(v["max_move_cents"]));
-  buffer_append(b,",\"shortcut_cents\":"); buffer_append(b,F.num(v["shortcut_cents"]));
-  buffer_append(b,"}}\n");
+  buffer_append(b,
+    opening("pricing.valuation",
+    text_concat("valuation:",
+    F.num(v["id"])),
+    sx_text(v["observed_at"]),
+    sx_text(v["ingested_at"]),
+    sx_text(v["currency"]),
+    "room_night",
+    source_digest));
+  buffer_append(b, "\"current_cents\":");
+  buffer_append(b, F.num(v["current_cents"]));
+  buffer_append(b, ",\"floor_cents\":");
+  buffer_append(b, F.num(v["floor_cents"]));
+  buffer_append(b, ",\"cap_cents\":");
+  buffer_append(b, F.num(v["cap_cents"]));
+  buffer_append(b, ",\"max_move_cents\":");
+  buffer_append(b, F.num(v["max_move_cents"]));
+  buffer_append(b, ",\"shortcut_cents\":");
+  buffer_append(b, F.num(v["shortcut_cents"]));
+  buffer_append(b, "}}\n");
   return buffer_text(b);
 }
 
 fn offer(o: C.Offer, source_digest: string) -> string
 {
   let b = buffer_new();
-  buffer_append(b,opening("hospitality.offer",
-    text_concat(text_concat(text_concat("property:",F.num(o["property_id"])),":room:"),F.num(o["room_id"])),
-    sx_text(o["observed_at"]),sx_text(o["ingested_at"]),sx_text(o["currency"]),"whole_stay",source_digest));
-  buffer_append(b,"\"arrival\":"); buffer_append(b,F.q(sx_text(o["arrival"])));
-  buffer_append(b,",\"departure\":"); buffer_append(b,F.q(sx_text(o["departure"])));
-  buffer_append(b,",\"valid_from\":"); buffer_append(b,F.q(sx_text(o["valid_from"])));
-  buffer_append(b,",\"valid_to\":"); buffer_append(b,F.q(sx_text(o["valid_to"])));
-  buffer_append(b,",\"adult_capacity\":"); buffer_append(b,F.num(o["adult_cap"]));
-  buffer_append(b,",\"child_capacity\":"); buffer_append(b,F.num(o["child_cap"]));
-  buffer_append(b,",\"total_capacity\":"); buffer_append(b,F.num(o["total_cap"]));
-  buffer_append(b,",\"guest_payable_cents\":"); buffer_append(b,F.num(o["gross_cents"]));
-  buffer_append(b,",\"bookable\":"); buffer_append(b,F.bool_text(o["bookable"]));
-  buffer_append(b,"}}\n");
+  buffer_append(b,
+    opening("hospitality.offer",
+    text_concat(text_concat(text_concat("property:",
+    F.num(o["property_id"])),
+    ":room:"),
+    F.num(o["room_id"])),
+    sx_text(o["observed_at"]),
+    sx_text(o["ingested_at"]),
+    sx_text(o["currency"]),
+    "whole_stay",
+    source_digest));
+  buffer_append(b, "\"arrival\":");
+  buffer_append(b, F.q(sx_text(o["arrival"])));
+  buffer_append(b, ",\"departure\":");
+  buffer_append(b, F.q(sx_text(o["departure"])));
+  buffer_append(b, ",\"valid_from\":");
+  buffer_append(b, F.q(sx_text(o["valid_from"])));
+  buffer_append(b, ",\"valid_to\":");
+  buffer_append(b, F.q(sx_text(o["valid_to"])));
+  buffer_append(b, ",\"adult_capacity\":");
+  buffer_append(b, F.num(o["adult_cap"]));
+  buffer_append(b, ",\"child_capacity\":");
+  buffer_append(b, F.num(o["child_cap"]));
+  buffer_append(b, ",\"total_capacity\":");
+  buffer_append(b, F.num(o["total_cap"]));
+  buffer_append(b, ",\"guest_payable_cents\":");
+  buffer_append(b, F.num(o["gross_cents"]));
+  buffer_append(b, ",\"bookable\":");
+  buffer_append(b, F.bool_text(o["bookable"]));
+  buffer_append(b, "}}\n");
   return buffer_text(b);
 }
 
-fn recommendation(s: C.Scenario, r: C.Recommendation, run_id: string,
-  scenario_digest: string, offers_digest: string, valuation_digest: string,
-  strategy_digest: string, strategy: string) -> string
+fn recommendation(s: C.Scenario,
+  r: C.Recommendation,
+  run_id: string,
+  scenario_digest: string,
+  offers_digest: string,
+  valuation_digest: string,
+  strategy_digest: string,
+  strategy: string) -> string
 {
   let b = buffer_new();
-  buffer_append(b,"{\"mulib\":\"1.0\",\"kind\":\"pricing.recommendation\",\"schema_version\":\"1.0\",\"id\":");
-  buffer_append(b,F.q(text_concat("recommendation:",run_id)));
-  buffer_append(b,",\"metadata\":{\"provenance\":{\"source_artifacts\":[");
-  buffer_append(b,F.q(text_concat("blake3:",scenario_digest))); buffer_append(b,",");
-  buffer_append(b,F.q(text_concat("blake3:",offers_digest))); buffer_append(b,",");
-  buffer_append(b,F.q(text_concat("blake3:",valuation_digest)));
-  buffer_append(b,"],\"strategy\":"); buffer_append(b,F.q(strategy));
-  buffer_append(b,",\"strategy_digest\":");
-  buffer_append(b,F.q(text_concat("blake3:",strategy_digest)));
-  buffer_append(b,"},\"times\":{\"observed_at\":"); buffer_append(b,F.q(sx_text(s["decision_at"])));
-  buffer_append(b,",\"ingested_at\":"); buffer_append(b,F.q(sx_text(s["decision_at"])));
-  buffer_append(b,"},\"units\":{\"currency\":\"EUR\",\"price_basis\":\"room_night\"},\"quality\":{\"status\":\"validated\",\"evidence\":\"scenario_comparables\"}},\"data\":{");
-  buffer_append(b,"\"price_minor\":"); buffer_append(b,F.num(r["recommended_cents"]));
-  buffer_append(b,",\"intended_percentile_bps\":"); buffer_append(b,F.num(r["intended_bps"]));
-  buffer_append(b,",\"selected_percentile_bps\":"); buffer_append(b,F.num(r["selected_bps"]));
-  buffer_append(b,",\"intended_minor\":"); buffer_append(b,F.num(r["intended_cents"]));
-  buffer_append(b,",\"lower_minor\":"); buffer_append(b,F.num(r["lower_cents"]));
-  buffer_append(b,",\"candidate_minor\":"); buffer_append(b,F.num(r["candidate_cents"]));
-  buffer_append(b,",\"independent_properties\":"); buffer_append(b,F.num(r["property_count"]));
-  buffer_append(b,",\"reason\":"); buffer_append(b,F.q(sx_text(r["reason"])));
-  buffer_append(b,",\"published\":false,\"mode\":\"recommendation\"}}\n");
+  buffer_append(b,
+    "{\"mulib\":\"1.0\",\"kind\":\"pricing.recommendation\",\"schema_version\":\"1.0\",\"id\":");
+  buffer_append(b, F.q(text_concat("recommendation:", run_id)));
+  buffer_append(b, ",\"metadata\":{\"provenance\":{\"source_artifacts\":[");
+  buffer_append(b, F.q(text_concat("blake3:", scenario_digest)));
+  buffer_append(b, ",");
+  buffer_append(b, F.q(text_concat("blake3:", offers_digest)));
+  buffer_append(b, ",");
+  buffer_append(b, F.q(text_concat("blake3:", valuation_digest)));
+  buffer_append(b, "],\"strategy\":");
+  buffer_append(b, F.q(strategy));
+  buffer_append(b, ",\"strategy_digest\":");
+  buffer_append(b, F.q(text_concat("blake3:", strategy_digest)));
+  buffer_append(b, "},\"times\":{\"observed_at\":");
+  buffer_append(b, F.q(sx_text(s["decision_at"])));
+  buffer_append(b, ",\"ingested_at\":");
+  buffer_append(b, F.q(sx_text(s["decision_at"])));
+  buffer_append(b,
+    "},\"units\":{\"currency\":\"EUR\",\"price_basis\":\"room_night\"},\"quality\":{\"status\":\"validated\",\"evidence\":\"scenario_comparables\"}},\"data\":{");
+  buffer_append(b, "\"price_minor\":");
+  buffer_append(b, F.num(r["recommended_cents"]));
+  buffer_append(b, ",\"intended_percentile_bps\":");
+  buffer_append(b, F.num(r["intended_bps"]));
+  buffer_append(b, ",\"selected_percentile_bps\":");
+  buffer_append(b, F.num(r["selected_bps"]));
+  buffer_append(b, ",\"intended_minor\":");
+  buffer_append(b, F.num(r["intended_cents"]));
+  buffer_append(b, ",\"lower_minor\":");
+  buffer_append(b, F.num(r["lower_cents"]));
+  buffer_append(b, ",\"candidate_minor\":");
+  buffer_append(b, F.num(r["candidate_cents"]));
+  buffer_append(b, ",\"independent_properties\":");
+  buffer_append(b, F.num(r["property_count"]));
+  buffer_append(b, ",\"reason\":");
+  buffer_append(b, F.q(sx_text(r["reason"])));
+  buffer_append(b, ",\"published\":false,\"mode\":\"recommendation\"}}\n");
   return buffer_text(b);
 }

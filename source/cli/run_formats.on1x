@@ -1,62 +1,107 @@
 # Manifest bytes and archived identities; the CLI owns store I/O.
 import core.csv as CSV;
 import store.artifacts as Store;
-
-record Manifest {
-  version:sexpr, scenario:sexpr, offers:sexpr, valuation:sexpr,
-  strategy:sexpr, recommendation:sexpr, trace:sexpr
+record Manifest
+{
+  version: sexpr, scenario: sexpr, offers: sexpr, valuation: sexpr, strategy: sexpr, recommendation: sexpr, trace: sexpr
 }
 
-fn current() -> string { return "finpred-run@2"; }
-fn archive_version() -> string { return "finpred-run@1"; }
+fn current() -> string
+{
+  return "finpred-run@2";
+}
+
+fn archive_version() -> string
+{
+  return "finpred-run@1";
+}
 
 # Canonical suffix shared by the current writer and the reader's byte check.
 # This does not encode a complete manifest or take a format version.
-fn canonical_field_suffix(s: string, o: string, v: string, strategy: string,
-  rec: string, tr: string) -> string
+fn canonical_field_suffix(s: string,
+  o: string,
+  v: string,
+  strategy: string,
+  rec: string,
+  tr: string) -> string
 {
   let b = buffer_new();
-  buffer_append(b,","); buffer_append(b,s);
-  buffer_append(b,","); buffer_append(b,o);
-  buffer_append(b,","); buffer_append(b,v);
-  buffer_append(b,","); buffer_append(b,strategy);
-  buffer_append(b,","); buffer_append(b,rec);
-  buffer_append(b,","); buffer_append(b,tr);
-  buffer_append(b,"\n");
+  buffer_append(b, ",");
+  buffer_append(b, s);
+  buffer_append(b, ",");
+  buffer_append(b, o);
+  buffer_append(b, ",");
+  buffer_append(b, v);
+  buffer_append(b, ",");
+  buffer_append(b, strategy);
+  buffer_append(b, ",");
+  buffer_append(b, rec);
+  buffer_append(b, ",");
+  buffer_append(b, tr);
+  buffer_append(b, "\n");
   return buffer_text(b);
 }
 
-fn encode_current(s: string, o: string, v: string, strategy: string,
-  rec: string, tr: string) -> string
+fn encode_current(s: string,
+  o: string,
+  v: string,
+  strategy: string,
+  rec: string,
+  tr: string) -> string
 {
-  return text_concat(current(),canonical_field_suffix(s,o,v,strategy,rec,tr));
+  return text_concat(current(),
+    canonical_field_suffix(s,
+    o,
+    v,
+    strategy,
+    rec,
+    tr));
 }
 
 fn read(manifest: string) -> Manifest
 {
-  if CSV.rows(manifest) != 1 { tool_fail("replay: malformed run manifest"); }
-  let line = CSV.line(manifest,0);
-  CSV.require_width(line,7);
-  let version = CSV.field(line,0);
+  if CSV.rows(manifest) != 1
+  {
+    tool_fail("replay: malformed run manifest");
+  }
+  let line = CSV.line(manifest, 0);
+  CSV.require_width(line, 7);
+  let version = CSV.field(line, 0);
   if version != archive_version() && version != current()
-  { tool_fail("replay: unknown run format"); }
-  let s = CSV.field(line,1);
-  let o = CSV.field(line,2);
-  let v = CSV.field(line,3);
-  let strategy = CSV.field(line,4);
-  let rec = CSV.field(line,5);
-  let tr = CSV.field(line,6);
-  if !Store.valid_hash(s) || !Store.valid_hash(o) || !Store.valid_hash(v)
-    || !Store.valid_hash(strategy) || !Store.valid_hash(rec) || !Store.valid_hash(tr)
-    || manifest != text_concat(version,canonical_field_suffix(s,o,v,strategy,rec,tr))
-  { tool_fail("replay: malformed run manifest"); }
-  return record<Manifest>{version:sx_string(version),scenario:sx_string(s),offers:sx_string(o),
-    valuation:sx_string(v),strategy:sx_string(strategy),recommendation:sx_string(rec),trace:sx_string(tr)};
+  {
+    tool_fail("replay: unknown run format");
+  }
+  let s = CSV.field(line, 1);
+  let o = CSV.field(line, 2);
+  let v = CSV.field(line, 3);
+  let strategy = CSV.field(line, 4);
+  let rec = CSV.field(line, 5);
+  let tr = CSV.field(line, 6);
+  if ! Store.valid_hash(s) || ! Store.valid_hash(o) || ! Store.valid_hash(v) || ! Store.valid_hash(strategy) || ! Store.valid_hash(rec) || ! Store.valid_hash(tr) || manifest != text_concat(version,
+    canonical_field_suffix(s,
+    o,
+    v,
+    strategy,
+    rec,
+    tr))
+  {
+    tool_fail("replay: malformed run manifest");
+  }
+  return record < Manifest >
+  {
+    version: sx_string(version), scenario: sx_string(s), offers: sx_string(o), valuation: sx_string(v), strategy: sx_string(strategy), recommendation: sx_string(rec), trace: sx_string(tr)
+  };
 }
 
 fn archive_key(s: string, o: string, v: string, strategy: string) -> string
 {
   return Store.digest(text_concat(archive_version(),
-    text_concat("\n",text_concat(s,text_concat("\n",text_concat(o,text_concat("\n",
-      text_concat(v,text_concat("\n",strategy)))))))));
+    text_concat("\n",
+    text_concat(s,
+    text_concat("\n",
+    text_concat(o,
+    text_concat("\n",
+    text_concat(v,
+    text_concat("\n",
+    strategy)))))))));
 }

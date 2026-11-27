@@ -2,43 +2,62 @@
 # Target percentile is integral basis points, with half-up cent interpolation.
 import std.collections.Array as A;
 import core.money as Money;
-
 fn type7(prices: i64, count: i64, percentile_bps: i64) -> i64
 {
   if count < 1 || count > 512 || percentile_bps < 0 || percentile_bps > 10000
-  { tool_fail("quantile: count or percentile outside bound"); }
+  {
+    tool_fail("quantile: count or percentile outside bound");
+  }
   let sorted = A.basis_array_clone(prices);
   for i in 0 .. count
   {
     for j in 1 .. count - i
     {
-      let left = A.basis_array_sub(sorted,j - 1);
-      let right = A.basis_array_sub(sorted,j);
+      let left = A.basis_array_sub(sorted, j - 1);
+      let right = A.basis_array_sub(sorted, j);
       if left > right
       {
-        A.basis_array_update(sorted,j - 1,right);
-        A.basis_array_update(sorted,j,left);
+        A.basis_array_update(sorted, j - 1, right);
+        A.basis_array_update(sorted, j, left);
       }
     }
   }
   let position = (count - 1) * percentile_bps;
   let lo = position / 10000;
   let fraction = position % 10000;
-  let a = A.basis_array_sub(sorted,lo);
+  let a = A.basis_array_sub(sorted, lo);
   var b = a;
-  if lo + 1 < count { b = A.basis_array_sub(sorted,lo + 1); }
+  if lo + 1 < count
+  {
+    b = A.basis_array_sub(sorted, lo + 1);
+  }
   A.basis_array_destroy(sorted);
-  if a < 0 || b < a || b > 4000000000000 { tool_fail("quantile: invalid or overflowing price"); }
+  if a < 0 || b < a || b > 4000000000000
+  {
+    tool_fail("quantile: invalid or overflowing price");
+  }
   return a + ((b - a) * fraction + 5000) / 10000;
 }
 
 fn target(lead_days: i64, curve: string) -> i64
 {
-  if lead_days < 0 { tool_fail("curve: negative lead time"); }
+  if lead_days < 0
+  {
+    tool_fail("curve: negative lead time");
+  }
   var d = lead_days;
-  if d > 90 { d = 90; }
-  if curve == "linear" { return 4000 + 3500 * d / 90; }
-  if curve == "quadratic" { return 4000 + 3500 * d * d / 8100; }
+  if d > 90
+  {
+    d = 90;
+  }
+  if curve == "linear"
+  {
+    return 4000 + 3500 * d / 90;
+  }
+  if curve == "quadratic"
+  {
+    return 4000 + 3500 * d * d / 8100;
+  }
   tool_fail("curve: unsupported mode");
   return 0;
 }

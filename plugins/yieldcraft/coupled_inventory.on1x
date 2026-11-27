@@ -4,96 +4,143 @@ import core.date as Date;
 import core.format as F;
 import plugins.yieldcraft.inventory_pricing as Inventory;
 import std.collections.Array as A;
+fn bytes_limit() -> i64
+{
+  return 8192;
+}
 
-fn bytes_limit() -> i64 { return 8192; }
-fn max_periods() -> i64 { return 8; }
-fn max_stock() -> i64 { return 6; }
-fn max_arms() -> i64 { return 12; }
-fn scale() -> i64 { return 1000; }
-fn bps() -> i64 { return 10000; }
+fn max_periods() -> i64
+{
+  return 8;
+}
+
+fn max_stock() -> i64
+{
+  return 6;
+}
+
+fn max_arms() -> i64
+{
+  return 12;
+}
+
+fn scale() -> i64
+{
+  return 1000;
+}
+
+fn bps() -> i64
+{
+  return 10000;
+}
 
 record Grid
 {
-  width:i64, size:i64, periods:i64, stock_a:i64, stock_b:i64,
-  cost_a:i64, cost_b:i64, terminal_a:i64, terminal_b:i64,
-  ends:i64, fixed:i64, products:i64, prices:i64,
-  low:i64, mid:i64, high:i64
+  width: i64, size: i64, periods: i64, stock_a: i64, stock_b: i64, cost_a: i64, cost_b: i64, terminal_a: i64, terminal_b: i64, ends: i64, fixed: i64, products: i64, prices: i64, low: i64, mid: i64, high: i64
 }
-record Values { nominal:i64, worst:i64, actions:i64 }
 
-fn parse(raw:string) -> Grid
+record Values
 {
-  if text_len(raw) > bytes_limit() { tool_fail("coupled inventory: input exceeds byte limit"); }
+  nominal: i64, worst: i64, actions: i64
+}
+
+fn parse(raw: string) -> Grid
+{
+  if text_len(raw) > bytes_limit()
+  {
+    tool_fail("coupled inventory: input exceeds byte limit");
+  }
   let n = CSV.rows(raw);
-  if n < 5 || n > 4+max_periods()*max_arms()
-  { tool_fail("coupled inventory: outside period or arm limits"); }
-  CSV.header(CSV.line(raw,0),"pricing.coupled-inventory-input@1");
-  CSV.header(CSV.line(raw,1),"currency,first_night,second_night,stock_a,stock_b,cost_a_minor,cost_b_minor,terminal_a_minor,terminal_b_minor,baseline_product,baseline_price_minor");
-  let meta = CSV.line(raw,2);
-  CSV.require_width(meta,11);
-  if CSV.field(meta,0) != "EUR" || Date.nights(CSV.field(meta,1),CSV.field(meta,2)) != 1
-  { tool_fail("coupled inventory: requires EUR and two consecutive valid night dates"); }
-  let a = Inventory.number(meta,3,max_stock());
-  let b = Inventory.number(meta,4,max_stock());
+  if n < 5 || n > 4 + max_periods() * max_arms()
+  {
+    tool_fail("coupled inventory: outside period or arm limits");
+  }
+  CSV.header(CSV.line(raw, 0), "pricing.coupled-inventory-input@1");
+  CSV.header(CSV.line(raw,
+    1),
+    "currency,first_night,second_night,stock_a,stock_b,cost_a_minor,cost_b_minor,terminal_a_minor,terminal_b_minor,baseline_product,baseline_price_minor");
+  let meta = CSV.line(raw, 2);
+  CSV.require_width(meta, 11);
+  if CSV.field(meta,
+    0) != "EUR" || Date.nights(CSV.field(meta,
+    1),
+    CSV.field(meta,
+    2)) != 1
+  {
+    tool_fail("coupled inventory: requires EUR and two consecutive valid night dates");
+  }
+  let a = Inventory.number(meta, 3, max_stock());
+  let b = Inventory.number(meta, 4, max_stock());
   let money = Inventory.money_limit();
-  let ca = Inventory.number(meta,5,money);
-  let cb = Inventory.number(meta,6,money);
-  let va = Inventory.number(meta,7,money);
-  let vb = Inventory.number(meta,8,money);
-  let fixed_product = Inventory.number(meta,9,3);
-  let fixed_price = Inventory.number(meta,10,money);
-  if fixed_product == 0 { tool_fail("coupled inventory: invalid baseline product"); }
-  CSV.header(CSV.line(raw,3),"period,product,price_minor,low_bps,nominal_bps,high_bps");
-  let ends = A.basis_array_array(max_periods()+1,0);
-  let fixed = A.basis_array_array(max_periods(),-1);
-  let products = A.basis_array_array(n-4,0);
-  let prices = A.basis_array_array(n-4,0);
-  let low = A.basis_array_array(n-4,0);
-  let mid = A.basis_array_array(n-4,0);
-  let high = A.basis_array_array(n-4,0);
+  let ca = Inventory.number(meta, 5, money);
+  let cb = Inventory.number(meta, 6, money);
+  let va = Inventory.number(meta, 7, money);
+  let vb = Inventory.number(meta, 8, money);
+  let fixed_product = Inventory.number(meta, 9, 3);
+  let fixed_price = Inventory.number(meta, 10, money);
+  if fixed_product == 0
+  {
+    tool_fail("coupled inventory: invalid baseline product");
+  }
+  CSV.header(CSV.line(raw,
+    3),
+    "period,product,price_minor,low_bps,nominal_bps,high_bps");
+  let ends = A.basis_array_array(max_periods() + 1, 0);
+  let fixed = A.basis_array_array(max_periods(), - 1);
+  let products = A.basis_array_array(n - 4, 0);
+  let prices = A.basis_array_array(n - 4, 0);
+  let low = A.basis_array_array(n - 4, 0);
+  let mid = A.basis_array_array(n - 4, 0);
+  let high = A.basis_array_array(n - 4, 0);
   var periods = 0;
   var arms = 0;
   var prior_product = 0;
-  var prior_price = -1;
+  var prior_price = - 1;
   var prior_l = bps();
   var prior_m = bps();
   var prior_h = bps();
-  for i in 0 .. n-4
+  for i in 0 .. n - 4
   {
-    let row = CSV.line(raw,i+4);
-    CSV.require_width(row,6);
-    let t = Inventory.number(row,0,max_periods());
-    let k = Inventory.number(row,1,3);
-    let p = Inventory.number(row,2,money);
-    let l = Inventory.number(row,3,bps());
-    let m = Inventory.number(row,4,bps());
-    let h = Inventory.number(row,5,bps());
-    if t == periods+1
+    let row = CSV.line(raw, i + 4);
+    CSV.require_width(row, 6);
+    let t = Inventory.number(row, 0, max_periods());
+    let k = Inventory.number(row, 1, 3);
+    let p = Inventory.number(row, 2, money);
+    let l = Inventory.number(row, 3, bps());
+    let m = Inventory.number(row, 4, bps());
+    let h = Inventory.number(row, 5, bps());
+    if t == periods + 1
     {
       periods = t;
       arms = 0;
       prior_product = 0;
     }
     if t == 0 || t != periods || k == 0 || arms >= max_arms()
-    { tool_fail("coupled inventory: invalid period, product, or too many arms"); }
+    {
+      tool_fail("coupled inventory: invalid period, product, or too many arms");
+    }
     if k > prior_product
     {
-      prior_price = -1;
+      prior_price = - 1;
       prior_l = bps();
       prior_m = bps();
       prior_h = bps();
     }
-    if k < prior_product || p <= prior_price || l > m || m > h ||
-       l > prior_l || m > prior_m || h > prior_h
-    { tool_fail("coupled inventory: unordered product, price, or probability bounds"); }
-    A.basis_array_update(products,i,k);
-    A.basis_array_update(prices,i,p);
-    A.basis_array_update(low,i,l);
-    A.basis_array_update(mid,i,m);
-    A.basis_array_update(high,i,h);
-    A.basis_array_update(ends,t,i+1);
-    if k == fixed_product && p == fixed_price { A.basis_array_update(fixed,t-1,i); }
-    arms = arms+1;
+    if k < prior_product || p <= prior_price || l > m || m > h || l > prior_l || m > prior_m || h > prior_h
+    {
+      tool_fail("coupled inventory: unordered product, price, or probability bounds");
+    }
+    A.basis_array_update(products, i, k);
+    A.basis_array_update(prices, i, p);
+    A.basis_array_update(low, i, l);
+    A.basis_array_update(mid, i, m);
+    A.basis_array_update(high, i, h);
+    A.basis_array_update(ends, t, i + 1);
+    if k == fixed_product && p == fixed_price
+    {
+      A.basis_array_update(fixed, t - 1, i);
+    }
+    arms = arms + 1;
     prior_product = k;
     prior_price = p;
     prior_l = l;
@@ -102,131 +149,195 @@ fn parse(raw:string) -> Grid
   }
   for t in 0 .. periods
   {
-    if A.basis_array_sub(fixed,t) < 0
-    { tool_fail("coupled inventory: baseline offer requires exact support every period"); }
+    if A.basis_array_sub(fixed, t) < 0
+    {
+      tool_fail("coupled inventory: baseline offer requires exact support every period");
+    }
   }
-  return record<Grid>{width:b+1,size:(a+1)*(b+1),periods:periods,stock_a:a,stock_b:b,
-    cost_a:ca,cost_b:cb,terminal_a:va,terminal_b:vb,ends:ends,fixed:fixed,products:products,prices:prices,
-    low:low,mid:mid,high:high};
+  return record < Grid >
+  {
+    width: b + 1, size: (a + 1) * (b + 1), periods: periods, stock_a: a, stock_b: b, cost_a: ca, cost_b: cb, terminal_a: va, terminal_b: vb, ends: ends, fixed: fixed, products: products, prices: prices, low: low, mid: mid, high: high
+  };
 }
 
-fn leg_a(k:i64) -> i64 { if k == 2 { return 0; } return 1; }
-fn leg_b(k:i64) -> i64 { if k == 1 { return 0; } return 1; }
-fn expectation(sale:i64, hold:i64, q:i64) -> i64 { return hold*bps()+(sale-hold)*q; }
-fn margin(g:Grid,i:i64,da:i64,db:i64) -> i64
+fn leg_a(k: i64) -> i64
 {
-  return (A.basis_array_sub(g["prices"],i)-da*g["cost_a"]-db*g["cost_b"])*scale();
+  if k == 2
+  {
+    return 0;
+  }
+  return 1;
 }
-fn robust_weight(g:Grid,i:i64,sale:i64,hold:i64) -> i64
+
+fn leg_b(k: i64) -> i64
 {
-  if sale < hold { return expectation(sale,hold,A.basis_array_sub(g["high"],i)); }
-  return expectation(sale,hold,A.basis_array_sub(g["low"],i));
+  if k == 1
+  {
+    return 0;
+  }
+  return 1;
 }
-fn rounded(value:i64) -> i64
+
+fn expectation(sale: i64, hold: i64, q: i64) -> i64
 {
-  if value < 0 { return -((-value+bps()/2)/bps()); }
-  return (value+bps()/2)/bps();
+  return hold * bps() + (sale - hold) * q;
+}
+
+fn margin(g: Grid, i: i64, da: i64, db: i64) -> i64
+{
+  return (A.basis_array_sub(g["prices"],
+    i) - da * g["cost_a"] - db * g["cost_b"]) * scale();
+}
+
+fn robust_weight(g: Grid, i: i64, sale: i64, hold: i64) -> i64
+{
+  if sale < hold
+  {
+    return expectation(sale, hold, A.basis_array_sub(g["high"], i));
+  }
+  return expectation(sale, hold, A.basis_array_sub(g["low"], i));
+}
+
+fn rounded(value: i64) -> i64
+{
+  if value < 0
+  {
+    return - ((- value + bps() / 2) / bps());
+  }
+  return (value + bps() / 2) / bps();
 }
 
 # mode 0 chooses max worst-case; 1 chooses max nominal; 2 follows fixed offer.
 # Both evaluations follow the SAME action at each state, including downstream.
-fn plan(g:Grid,mode:i64) -> Values
+fn plan(g: Grid, mode: i64) -> Values
 {
   let periods = g["periods"];
   let size = g["size"];
   let width = g["width"];
-  let nominal = A.basis_array_array((periods+1)*size,0);
-  let worst = A.basis_array_array((periods+1)*size,0);
-  let actions = A.basis_array_array(periods*size,-1);
+  let nominal = A.basis_array_array((periods + 1) * size, 0);
+  let worst = A.basis_array_array((periods + 1) * size, 0);
+  let actions = A.basis_array_array(periods * size, - 1);
   for s in 0 .. size
   {
-    let terminal = ((s/width)*g["terminal_a"]+(s%width)*g["terminal_b"])*scale();
-    A.basis_array_update(nominal,periods*size+s,terminal);
-    A.basis_array_update(worst,periods*size+s,terminal);
+    let terminal = ((s / width) * g["terminal_a"] + (s % width) * g["terminal_b"]) * scale();
+    A.basis_array_update(nominal, periods * size + s, terminal);
+    A.basis_array_update(worst, periods * size + s, terminal);
   }
   for step in 0 .. periods
   {
-    let t = periods-1-step;
-    var begin = A.basis_array_sub(g["ends"],t);
-    var end = A.basis_array_sub(g["ends"],t+1);
-    if mode == 2 { begin = A.basis_array_sub(g["fixed"],t); end = begin+1; }
+    let t = periods - 1 - step;
+    var begin = A.basis_array_sub(g["ends"], t);
+    var end = A.basis_array_sub(g["ends"], t + 1);
+    if mode == 2
+    {
+      begin = A.basis_array_sub(g["fixed"], t);
+      end = begin + 1;
+    }
     for s in 0 .. size
     {
-      let next = (t+1)*size+s;
-      let nh = A.basis_array_sub(nominal,next);
-      let wh = A.basis_array_sub(worst,next);
-      var bn = nh*bps();
-      var bw = wh*bps();
-      var action = -1;
+      let next = (t + 1) * size + s;
+      let nh = A.basis_array_sub(nominal, next);
+      let wh = A.basis_array_sub(worst, next);
+      var bn = nh * bps();
+      var bw = wh * bps();
+      var action = - 1;
       for i in begin .. end
       {
-        let k = A.basis_array_sub(g["products"],i);
+        let k = A.basis_array_sub(g["products"], i);
         let da = leg_a(k);
         let db = leg_b(k);
-        if s/width >= da && s%width >= db
+        if s / width >= da && s % width >= db
         {
-          let sold = next-da*width-db;
-          let cash = margin(g,i,da,db);
-          let wn = expectation(cash+A.basis_array_sub(nominal,sold),nh,A.basis_array_sub(g["mid"],i));
-          let ww = robust_weight(g,i,cash+A.basis_array_sub(worst,sold),wh);
+          let sold = next - da * width - db;
+          let cash = margin(g, i, da, db);
+          let wn = expectation(cash + A.basis_array_sub(nominal,
+            sold),
+            nh,
+            A.basis_array_sub(g["mid"],
+            i));
+          let ww = robust_weight(g,
+            i,
+            cash + A.basis_array_sub(worst,
+            sold),
+            wh);
           if mode == 2 || (mode == 0 && ww > bw) || (mode == 1 && wn > bn)
-          { bn = wn; bw = ww; action = i; }
+          {
+            bn = wn;
+            bw = ww;
+            action = i;
+          }
         }
       }
-      let index = t*size+s;
-      A.basis_array_update(nominal,index,rounded(bn));
-      A.basis_array_update(worst,index,rounded(bw));
-      A.basis_array_update(actions,index,action);
+      let index = t * size + s;
+      A.basis_array_update(nominal, index, rounded(bn));
+      A.basis_array_update(worst, index, rounded(bw));
+      A.basis_array_update(actions, index, action);
     }
   }
-  return record<Values>{nominal:nominal,worst:worst,actions:actions};
+  return record < Values >
+  {
+    nominal: nominal, worst: worst, actions: actions
+  };
 }
 
-fn summary(out:buffer,p:Values,s:i64)
+fn summary(out: buffer, p: Values, s: i64)
 {
-  let n = F.num(A.basis_array_sub(p["nominal"],s));
-  let w = F.num(A.basis_array_sub(p["worst"],s));
-  buffer_append(out,"{\"nominal_minor_milli\":$n,\"worst_minor_milli\":$w}");
+  let n = F.num(A.basis_array_sub(p["nominal"], s));
+  let w = F.num(A.basis_array_sub(p["worst"], s));
+  buffer_append(out, "{\"nominal_minor_milli\":$n,\"worst_minor_milli\":$w}");
 }
 
-fn destroy(p:Values)
+fn destroy(p: Values)
 {
   A.basis_array_destroy(p["nominal"]);
   A.basis_array_destroy(p["worst"]);
   A.basis_array_destroy(p["actions"]);
 }
 
-fn comparison_row(out:buffer,label:string,p:Values,s:i64,context:string)
+fn comparison_row(out: buffer,
+  label: string,
+  p: Values,
+  s: i64,
+  context: string)
 {
-  let n = F.num(A.basis_array_sub(p["nominal"],s));
-  let w = F.num(A.basis_array_sub(p["worst"],s));
-  buffer_append(out,"$label,$n,$w,$context\n");
+  let n = F.num(A.basis_array_sub(p["nominal"], s));
+  let w = F.num(A.basis_array_sub(p["worst"], s));
+  buffer_append(out, "$label,$n,$w,$context\n");
 }
 
-fn render_csv(raw:string,g:Grid,robust:Values,nominal:Values,fixed:Values) -> string
+fn render_csv(raw: string,
+  g: Grid,
+  robust: Values,
+  nominal: Values,
+  fixed: Values) -> string
 {
   let out = buffer_new();
-  let meta = CSV.line(raw,2);
+  let meta = CSV.line(raw, 2);
   let periods = F.num(g["periods"]);
-  let s = g["size"]-1;
-  let h = F.num((g["stock_a"]*g["terminal_a"]+g["stock_b"]*g["terminal_b"])*scale());
+  let s = g["size"] - 1;
+  let h = F.num((g["stock_a"] * g["terminal_a"] + g["stock_b"] * g["terminal_b"]) * scale());
   let context = "modeled_not_observed,$meta,$periods";
   # 16 columns: imports without truncation into the A:P worksheet.
-  buffer_append(out,"policy,nominal_minor_milli,worst_minor_milli,evidence,currency,first_night,second_night,stock_a,stock_b,cost_a_minor,cost_b_minor,terminal_a_minor,terminal_b_minor,baseline_product,baseline_price_minor,periods\n");
-  comparison_row(out,"robust",robust,s,context);
-  comparison_row(out,"nominal",nominal,s,context);
-  comparison_row(out,"fixed",fixed,s,context);
-  buffer_append(out,"hold,$h,$h,$context\n");
+  buffer_append(out,
+    "policy,nominal_minor_milli,worst_minor_milli,evidence,currency,first_night,second_night,stock_a,stock_b,cost_a_minor,cost_b_minor,terminal_a_minor,terminal_b_minor,baseline_product,baseline_price_minor,periods\n");
+  comparison_row(out, "robust", robust, s, context);
+  comparison_row(out, "nominal", nominal, s, context);
+  comparison_row(out, "fixed", fixed, s, context);
+  buffer_append(out, "hold,$h,$h,$context\n");
   return buffer_text(out);
 }
 
-fn render_json(raw:string,g:Grid,robust:Values,nominal:Values,fixed:Values) -> string
+fn render_json(raw: string,
+  g: Grid,
+  robust: Values,
+  nominal: Values,
+  fixed: Values) -> string
 {
   let size = g["size"];
   let out = buffer_new();
-  let meta = CSV.line(raw,2);
-  let day_a = CSV.field(meta,1);
-  let day_b = CSV.field(meta,2);
+  let meta = CSV.line(raw, 2);
+  let day_a = CSV.field(meta, 1);
+  let day_b = CSV.field(meta, 2);
   let a = F.num(g["stock_a"]);
   let b = F.num(g["stock_b"]);
   let ca = F.num(g["cost_a"]);
@@ -234,53 +345,69 @@ fn render_json(raw:string,g:Grid,robust:Values,nominal:Values,fixed:Values) -> s
   let va = F.num(g["terminal_a"]);
   let vb = F.num(g["terminal_b"]);
   let t = F.num(g["periods"]);
-  let base_product = CSV.field(meta,9);
-  let base_price = CSV.field(meta,10);
-  let h = F.num((g["stock_a"]*g["terminal_a"]+g["stock_b"]*g["terminal_b"])*scale());
-  buffer_append(out,"{\"kind\":\"pricing.coupled-inventory-policy\",\"version\":1,\"published\":false,\"comparison\":\"modeled_not_observed\",\"currency\":\"EUR\",\"scale\":1000,\"first_night\":\"$day_a\",\"second_night\":\"$day_b\",\"stock_a\":$a,\"stock_b\":$b,\"cost_a_minor\":$ca,\"cost_b_minor\":$cb,\"terminal_a_minor\":$va,\"terminal_b_minor\":$vb,\"periods\":$t,\"baseline_product\":$base_product,\"baseline_price_minor\":$base_price,\"initial\":{\"robust\":");
-  summary(out,robust,size-1);
-  buffer_append(out,",\"nominal\":");
-  summary(out,nominal,size-1);
-  buffer_append(out,",\"fixed\":");
-  summary(out,fixed,size-1);
-  buffer_append(out,",\"hold\":{\"nominal_minor_milli\":$h,\"worst_minor_milli\":$h}},\"robust_states\":[");
+  let base_product = CSV.field(meta, 9);
+  let base_price = CSV.field(meta, 10);
+  let h = F.num((g["stock_a"] * g["terminal_a"] + g["stock_b"] * g["terminal_b"]) * scale());
+  buffer_append(out,
+    "{\"kind\":\"pricing.coupled-inventory-policy\",\"version\":1,\"published\":false,\"comparison\":\"modeled_not_observed\",\"currency\":\"EUR\",\"scale\":1000,\"first_night\":\"$day_a\",\"second_night\":\"$day_b\",\"stock_a\":$a,\"stock_b\":$b,\"cost_a_minor\":$ca,\"cost_b_minor\":$cb,\"terminal_a_minor\":$va,\"terminal_b_minor\":$vb,\"periods\":$t,\"baseline_product\":$base_product,\"baseline_price_minor\":$base_price,\"initial\":{\"robust\":");
+  summary(out, robust, size - 1);
+  buffer_append(out, ",\"nominal\":");
+  summary(out, nominal, size - 1);
+  buffer_append(out, ",\"fixed\":");
+  summary(out, fixed, size - 1);
+  buffer_append(out,
+    ",\"hold\":{\"nominal_minor_milli\":$h,\"worst_minor_milli\":$h}},\"robust_states\":[");
   for step in 0 .. g["periods"]
   {
-    let period = F.num(step+1);
+    let period = F.num(step + 1);
     for s in 0 .. size
     {
-      if step != 0 || s != 0 { buffer_append(out,","); }
-      let index = step*size+s;
-      let sa = F.num(s/g["width"]);
-      let sb = F.num(s%g["width"]);
-      let action = A.basis_array_sub(robust["actions"],index);
-      buffer_append(out,"{\"period\":$period,\"stock_a\":$sa,\"stock_b\":$sb,\"value\":");
-      summary(out,robust,index);
-      if action < 0 { buffer_append(out,",\"action\":\"hold\",\"offer\":null}"); }
+      if step != 0 || s != 0
+      {
+        buffer_append(out, ",");
+      }
+      let index = step * size + s;
+      let sa = F.num(s / g["width"]);
+      let sb = F.num(s % g["width"]);
+      let action = A.basis_array_sub(robust["actions"], index);
+      buffer_append(out,
+        "{\"period\":$period,\"stock_a\":$sa,\"stock_b\":$sb,\"value\":");
+      summary(out, robust, index);
+      if action < 0
+      {
+        buffer_append(out, ",\"action\":\"hold\",\"offer\":null}");
+      }
       else
       {
-        let product = F.num(A.basis_array_sub(g["products"],action));
-        let price = F.num(A.basis_array_sub(g["prices"],action));
-        let low = F.num(A.basis_array_sub(g["low"],action));
-        let mid = F.num(A.basis_array_sub(g["mid"],action));
-        let high = F.num(A.basis_array_sub(g["high"],action));
-        buffer_append(out,",\"action\":\"offer\",\"offer\":{\"product\":$product,\"price_minor\":$price,\"low_bps\":$low,\"nominal_bps\":$mid,\"high_bps\":$high}}");
+        let product = F.num(A.basis_array_sub(g["products"], action));
+        let price = F.num(A.basis_array_sub(g["prices"], action));
+        let low = F.num(A.basis_array_sub(g["low"], action));
+        let mid = F.num(A.basis_array_sub(g["mid"], action));
+        let high = F.num(A.basis_array_sub(g["high"], action));
+        buffer_append(out,
+          ",\"action\":\"offer\",\"offer\":{\"product\":$product,\"price_minor\":$price,\"low_bps\":$low,\"nominal_bps\":$mid,\"high_bps\":$high}}");
       }
     }
   }
-  buffer_append(out,"]}\n");
+  buffer_append(out, "]}\n");
   return buffer_text(out);
 }
 
-fn evaluate(raw:string,csv:bool) -> string
+fn evaluate(raw: string, csv: bool) -> string
 {
   let g = parse(raw);
-  let robust = plan(g,0);
-  let nominal = plan(g,1);
-  let fixed = plan(g,2);
+  let robust = plan(g, 0);
+  let nominal = plan(g, 1);
+  let fixed = plan(g, 2);
   var report = "";
-  if csv { report = render_csv(raw,g,robust,nominal,fixed); }
-  else { report = render_json(raw,g,robust,nominal,fixed); }
+  if csv
+  {
+    report = render_csv(raw, g, robust, nominal, fixed);
+  }
+  else
+  {
+    report = render_json(raw, g, robust, nominal, fixed);
+  }
   destroy(robust);
   destroy(nominal);
   destroy(fixed);
@@ -294,5 +421,12 @@ fn evaluate(raw:string,csv:bool) -> string
   return report;
 }
 
-fn solve(raw:string) -> string { return evaluate(raw,false); }
-fn compare_csv(raw:string) -> string { return evaluate(raw,true); }
+fn solve(raw: string) -> string
+{
+  return evaluate(raw, false);
+}
+
+fn compare_csv(raw: string) -> string
+{
+  return evaluate(raw, true);
+}

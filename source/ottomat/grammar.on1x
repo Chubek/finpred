@@ -1,8 +1,8 @@
 # Build-host GrammarEmbed compiles these trusted declarations into ordinary
 # On1x lexers and parsers. Strategy files never register a PPX.
 import std.collections.List as L;
-
-@GrammarEmbed("grammar",r!"""grammar FixedOttomat :lexer<dfa> :parser<lalr1> {
+@GrammarEmbed("grammar",
+  r!"""grammar FixedOttomat :lexer<dfa> :parser<lalr1> {
   token CONTRACT { [a-z][-_a-z0-9]* '.' [a-z][-_a-z0-9]* '@1' }
   token ATOM { [!-~]+ }
   token EOL { \r?\n }
@@ -14,10 +14,12 @@ import std.collections.List as L;
   rule node { <word> ' ' <CONTRACT> }
   rule profile { 'profile' ' ' <word> ' ' <word> ' ' <word> }
   rule word { <ATOM> | 'ottmat' | 'ottomat' | '1' | '2' | 'profile' }
-}""")
-fn fixed_grammar() {}
+}""") fn fixed_grammar()
+{
+}
 
-@GrammarEmbed("grammar",r!"""grammar ScalarOttomat :lexer<dfa> :parser<lalr1> {
+@GrammarEmbed("grammar",
+  r!"""grammar ScalarOttomat :lexer<dfa> :parser<lalr1> {
   token ATOM { [!-~]+ }
   token EOL { \n }
   rule TOP { <header> <input> <input> <effect> (<import> | <binding>)* <output> }
@@ -28,29 +30,33 @@ fn fixed_grammar() {}
   rule binding { 'let' ' ' <word> ' ' '=' ' ' <word> ' ' <word> ' ' <word> (' ' <word>)? <EOL> }
   rule output { 'emit' ' ' <word> <EOL> }
   rule word { <ATOM> | 'ottomat' | '3' | '4' | '5' | 'input' | 'effect' | 'import' | 'let' | '=' | 'emit' }
-}""")
-fn scalar_grammar() {}
+}""") fn scalar_grammar()
+{
+}
 
 # Generated node payloads are exact terminal strings or ordered child lists.
 # Helpers flatten only successful bounded parse trees, retaining LF/CRLF
 # until the per-line records are reconstructed.
-fn reverse_terminals(tree:sexpr, acc:sexpr) -> sexpr
+fn reverse_terminals(tree: sexpr, acc: sexpr) -> sexpr
 {
-  let payload = L.basis_list_nth(tree,3);
-  if sx_kind(payload) == 2 { return sx_cons(payload,acc); }
+  let payload = L.basis_list_nth(tree, 3);
+  if sx_kind(payload) == 2
+  {
+    return sx_cons(payload, acc);
+  }
   var rest = payload;
   var values = acc;
   while sx_kind(rest) == 3
   {
-    values = reverse_terminals(sx_head(rest),values);
+    values = reverse_terminals(sx_head(rest), values);
     rest = sx_tail(rest);
   }
   return values;
 }
 
-fn project(tree:sexpr) -> sexpr
+fn project(tree: sexpr) -> sexpr
 {
-  var tokens = L.basis_list_rev(reverse_terminals(tree,sx_nil()));
+  var tokens = L.basis_list_rev(reverse_terminals(tree, sx_nil()));
   var words = sx_nil();
   var lines = sx_nil();
   while sx_kind(tokens) == 3
@@ -59,26 +65,41 @@ fn project(tree:sexpr) -> sexpr
     let text = sx_text(token);
     if text == "\n" || text == "\r\n"
     {
-      lines = sx_cons(L.basis_list_rev(words),lines);
+      lines = sx_cons(L.basis_list_rev(words), lines);
       words = sx_nil();
     }
-    else { if text != " " { words = sx_cons(token,words); } }
+    else
+    {
+      if text != " "
+      {
+        words = sx_cons(token, words);
+      }
+    }
     tokens = sx_tail(tokens);
   }
-  if sx_kind(words) != 0 { lines = sx_cons(L.basis_list_rev(words),lines); }
+  if sx_kind(words) != 0
+  {
+    lines = sx_cons(L.basis_list_rev(words), lines);
+  }
   return L.basis_list_rev(lines);
 }
 
-fn fixed(source:string) -> sexpr
+fn fixed(source: string) -> sexpr
 {
-  let (status,tree,offset) = FixedOttomat_parse(source);
-  if status != 0 { return sx_nil(); }
+  let(status, tree, offset) = FixedOttomat_parse(source);
+  if status != 0
+  {
+    return sx_nil();
+  }
   return project(tree);
 }
 
-fn scalar(source:string) -> (i64,sexpr,i64)
+fn scalar(source: string) ->(i64, sexpr, i64)
 {
-  let (status,tree,offset) = ScalarOttomat_parse(source);
-  if status != 0 { return (status,sx_nil(),offset); }
-  return (status,project(tree),offset);
+  let(status, tree, offset) = ScalarOttomat_parse(source);
+  if status != 0
+  {
+    return (status, sx_nil(), offset);
+  }
+  return (status, project(tree), offset);
 }

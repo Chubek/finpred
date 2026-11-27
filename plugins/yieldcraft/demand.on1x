@@ -6,158 +6,224 @@ import core.format as F;
 import store.artifacts as Store;
 import std.collections.Array as A;
 import std.String as Str;
-
-record Fit { id:sexpr, demand:sexpr, evidence:sexpr }
-
-fn bytes_limit() -> i64 { return 8192; }
-fn policy() -> string { return "yieldcraft.randomized-isotonic@1"; }
-
-fn number(row:string, column:i64, max:i64) -> i64
+record Fit
 {
-  let raw = CSV.field(row,column);
+  id: sexpr, demand: sexpr, evidence: sexpr
+}
+
+fn bytes_limit() -> i64
+{
+  return 8192;
+}
+
+fn policy() -> string
+{
+  return "yieldcraft.randomized-isotonic@1";
+}
+
+fn number(row: string, column: i64, max: i64) -> i64
+{
+  let raw = CSV.field(row, column);
   let n = CSV.nat(raw);
-  if n > max || F.num(n) != raw { tool_fail("demand fit: noncanonical or out-of-range integer"); }
+  if n > max || F.num(n) != raw
+  {
+    tool_fail("demand fit: noncanonical or out-of-range integer");
+  }
   return n;
 }
 
-fn label(raw:string) -> string
+fn label(raw: string) -> string
 {
   let size = text_len(raw);
-  if size < 1 || size > 64 { tool_fail("demand fit: invalid context identifier"); }
+  if size < 1 || size > 64
+  {
+    tool_fail("demand fit: invalid context identifier");
+  }
   for i in 0 .. size
   {
-    let c = text_byte(raw,i);
+    let c = text_byte(raw, i);
     if !(c >= 97 && c <= 122) && !(c >= 48 && c <= 57) && c != 45 && c != 95
-    { tool_fail("demand fit: invalid context identifier"); }
+    {
+      tool_fail("demand fit: invalid context identifier");
+    }
   }
   return raw;
 }
 
-fn utc(clock:string) -> bool { return Date.utc_timestamp(clock); }
+fn utc(clock: string) -> bool
+{
+  return Date.utc_timestamp(clock);
+}
 
-fn estimate(scenario_raw:string, raw:string) -> Fit
+fn estimate(scenario_raw: string, raw: string) -> Fit
 {
   if text_len(raw) > bytes_limit() || text_len(scenario_raw) > bytes_limit()
-  { tool_fail("demand fit: input exceeds byte limit"); }
+  {
+    tool_fail("demand fit: input exceeds byte limit");
+  }
   let s = C.scenario_csv(scenario_raw);
   if s["nights"] != 1 || s["max_rooms"] != 1
-  { tool_fail("demand fit: insufficient_demand_evidence; requires a single-room, single-night scenario"); }
+  {
+    tool_fail("demand fit: insufficient_demand_evidence; requires a single-room, single-night scenario");
+  }
   let n = CSV.rows(raw);
   if n < 6 || n > 68
-  { tool_fail("demand fit: insufficient_demand_evidence; requires 2..64 distinct price arms"); }
-  CSV.header(CSV.line(raw,0),"pricing.first-party-exposure@1");
-  CSV.header(CSV.line(raw,1),"scenario_blake3,property,product,cohort,currency,price_basis,assignment,started_at,ended_at,finalized_at,ingested_at,target_exposures,available_room_nights,marginal_cost_minor");
-  let meta = CSV.line(raw,2);
-  CSV.require_width(meta,14);
+  {
+    tool_fail("demand fit: insufficient_demand_evidence; requires 2..64 distinct price arms");
+  }
+  CSV.header(CSV.line(raw, 0), "pricing.first-party-exposure@1");
+  CSV.header(CSV.line(raw,
+    1),
+    "scenario_blake3,property,product,cohort,currency,price_basis,assignment,started_at,ended_at,finalized_at,ingested_at,target_exposures,available_room_nights,marginal_cost_minor");
+  let meta = CSV.line(raw, 2);
+  CSV.require_width(meta, 14);
   let sd = Store.digest(scenario_raw);
-  let property = label(CSV.field(meta,1));
-  let product = label(CSV.field(meta,2));
-  let cohort = label(CSV.field(meta,3));
-  if CSV.field(meta,0) != sd || CSV.field(meta,4) != sx_text(s["currency"]) || CSV.field(meta,5) != "room_night"
-  { tool_fail("demand fit: scenario, currency or price basis mismatch"); }
-  if CSV.field(meta,6) != "randomized"
-  { tool_fail("demand fit: insufficient_demand_evidence; requires declared randomized assignment"); }
-  let started = CSV.field(meta,7);
-  let ended = CSV.field(meta,8);
-  let finalized = CSV.field(meta,9);
-  let ingested = CSV.field(meta,10);
+  let property = label(CSV.field(meta, 1));
+  let product = label(CSV.field(meta, 2));
+  let cohort = label(CSV.field(meta, 3));
+  if CSV.field(meta,
+    0) != sd || CSV.field(meta,
+    4) != sx_text(s["currency"]) || CSV.field(meta,
+    5) != "room_night"
+  {
+    tool_fail("demand fit: scenario, currency or price basis mismatch");
+  }
+  if CSV.field(meta, 6) != "randomized"
+  {
+    tool_fail("demand fit: insufficient_demand_evidence; requires declared randomized assignment");
+  }
+  let started = CSV.field(meta, 7);
+  let ended = CSV.field(meta, 8);
+  let finalized = CSV.field(meta, 9);
+  let ingested = CSV.field(meta, 10);
   let cutoff = sx_text(s["decision_at"]);
-  if !utc(started) || !utc(ended) || !utc(finalized) || !utc(ingested)
-    || Str.compare(started,ended) >= 0 || Str.compare(ended,finalized) > 0
-    || Str.compare(finalized,ingested) > 0 || Str.compare(ingested,cutoff) > 0
-  { tool_fail("demand fit: invalid or future-dated cohort clocks"); }
-  let cutoff_day = Date.date_days(text_slice(cutoff,0,10));
-  let start_day = Date.date_days(text_slice(started,0,10));
-  if cutoff_day-start_day > s["max_age_days"]
-  { tool_fail("demand fit: insufficient_demand_evidence; cohort is stale"); }
-  let target = number(meta,11,1000);
-  let available = number(meta,12,1000000);
-  let cost = number(meta,13,1000000000000);
+  if ! utc(started) || ! utc(ended) || ! utc(finalized) || ! utc(ingested) || Str.compare(started,
+    ended) >= 0 || Str.compare(ended,
+    finalized) > 0 || Str.compare(finalized,
+    ingested) > 0 || Str.compare(ingested,
+    cutoff) > 0
+  {
+    tool_fail("demand fit: invalid or future-dated cohort clocks");
+  }
+  let cutoff_day = Date.date_days(text_slice(cutoff, 0, 10));
+  let start_day = Date.date_days(text_slice(started, 0, 10));
+  if cutoff_day - start_day > s["max_age_days"]
+  {
+    tool_fail("demand fit: insufficient_demand_evidence; cohort is stale");
+  }
+  let target = number(meta, 11, 1000);
+  let available = number(meta, 12, 1000000);
+  let cost = number(meta, 13, 1000000000000);
   if target == 0 || available < target
-  { tool_fail("demand fit: insufficient_demand_evidence; target inventory must cover every projected exposure"); }
-  CSV.header(CSV.line(raw,3),"price_minor,assigned,kept,cancelled,nonpurchase,unavailable,unresolved");
-  let count = n-4;
-  let prices = A.basis_array_array(count,0);
-  let numerator = A.basis_array_array(count,0);
-  let denominator = A.basis_array_array(count,0);
-  let ends = A.basis_array_array(count,0);
+  {
+    tool_fail("demand fit: insufficient_demand_evidence; target inventory must cover every projected exposure");
+  }
+  CSV.header(CSV.line(raw,
+    3),
+    "price_minor,assigned,kept,cancelled,nonpurchase,unavailable,unresolved");
+  let count = n - 4;
+  let prices = A.basis_array_array(count, 0);
+  let numerator = A.basis_array_array(count, 0);
+  let denominator = A.basis_array_array(count, 0);
+  let ends = A.basis_array_array(count, 0);
   let observed = buffer_new();
   var blocks = 0;
-  var previous = 0-1;
+  var previous = 0 - 1;
   for i in 0 .. count
   {
-    let row = CSV.line(raw,i+4);
-    CSV.require_width(row,7);
-    let price = number(row,0,1000000000000);
-    let assigned = number(row,1,1000000);
-    let kept = number(row,2,1000000);
-    let cancelled = number(row,3,1000000);
-    let nonpurchase = number(row,4,1000000);
-    let unavailable = number(row,5,1000000);
-    let unresolved = number(row,6,1000000);
-    if price <= previous || assigned != kept+cancelled+nonpurchase+unavailable+unresolved
-    { tool_fail("demand fit: prices must increase and counts must reconcile to assignments"); }
+    let row = CSV.line(raw, i + 4);
+    CSV.require_width(row, 7);
+    let price = number(row, 0, 1000000000000);
+    let assigned = number(row, 1, 1000000);
+    let kept = number(row, 2, 1000000);
+    let cancelled = number(row, 3, 1000000);
+    let nonpurchase = number(row, 4, 1000000);
+    let unavailable = number(row, 5, 1000000);
+    let unresolved = number(row, 6, 1000000);
+    if price <= previous || assigned != kept + cancelled + nonpurchase + unavailable + unresolved
+    {
+      tool_fail("demand fit: prices must increase and counts must reconcile to assignments");
+    }
     previous = price;
     if assigned < 20 || unavailable != 0 || unresolved != 0
-    { tool_fail("demand fit: insufficient_demand_evidence; each arm needs 20 finalized, bookable assignments and no unavailable or unresolved outcomes"); }
-    A.basis_array_update(prices,i,price);
-    A.basis_array_update(numerator,blocks,kept);
-    A.basis_array_update(denominator,blocks,assigned);
-    A.basis_array_update(ends,blocks,i+1);
-    blocks = blocks+1;
+    {
+      tool_fail("demand fit: insufficient_demand_evidence; each arm needs 20 finalized, bookable assignments and no unavailable or unresolved outcomes");
+    }
+    A.basis_array_update(prices, i, price);
+    A.basis_array_update(numerator, blocks, kept);
+    A.basis_array_update(denominator, blocks, assigned);
+    A.basis_array_update(ends, blocks, i + 1);
+    blocks = blocks + 1;
     # Compare adjacent rates using cross multiplication, merge upward steps.
     while blocks > 1
     {
-      let left = blocks-2;
-      let right = blocks-1;
-      let ln = A.basis_array_sub(numerator,left);
-      let ld = A.basis_array_sub(denominator,left);
-      let rn = A.basis_array_sub(numerator,right);
-      let rd = A.basis_array_sub(denominator,right);
-      if ln*rd >= rn*ld { break; }
-      A.basis_array_update(numerator,left,ln+rn);
-      A.basis_array_update(denominator,left,ld+rd);
-      A.basis_array_update(ends,left,A.basis_array_sub(ends,right));
-      blocks = blocks-1;
+      let left = blocks - 2;
+      let right = blocks - 1;
+      let ln = A.basis_array_sub(numerator, left);
+      let ld = A.basis_array_sub(denominator, left);
+      let rn = A.basis_array_sub(numerator, right);
+      let rd = A.basis_array_sub(denominator, right);
+      if ln * rd >= rn * ld
+      {
+        break;
+      }
+      A.basis_array_update(numerator, left, ln + rn);
+      A.basis_array_update(denominator, left, ld + rd);
+      A.basis_array_update(ends, left, A.basis_array_sub(ends, right));
+      blocks = blocks - 1;
     }
-    if i > 0 { buffer_append(observed,","); }
+    if i > 0
+    {
+      buffer_append(observed, ",");
+    }
     let p = F.num(price);
     let a = F.num(assigned);
     let k = F.num(kept);
     let c = F.num(cancelled);
     let b = F.num(nonpurchase);
-    buffer_append(observed,"{\"price_minor\":$p,\"assigned\":$a,\"kept\":$k,\"cancelled\":$c,\"nonpurchase\":$b}");
+    buffer_append(observed,
+      "{\"price_minor\":$p,\"assigned\":$a,\"kept\":$k,\"cancelled\":$c,\"nonpurchase\":$b}");
   }
   let en = Store.digest(raw);
   let model = policy();
   let id = Store.digest("yieldcraft-demand-estimation@1\n$model\n$sd\n$en\n");
   let cost_text = F.num(cost);
   let out = buffer_new();
-  buffer_append(out,"pricing.demand@1\nscenario_blake3,observed_at,ingested_at,currency,price_basis,method,evidence_blake3,marginal_cost_minor\n");
-  buffer_append(out,"$sd,$finalized,$ingested,EUR,room_night,first_party_price_experiment,$id,$cost_text\nprice_minor,expected_room_nights_milli\n");
+  buffer_append(out,
+    "pricing.demand@1\nscenario_blake3,observed_at,ingested_at,currency,price_basis,method,evidence_blake3,marginal_cost_minor\n");
+  buffer_append(out,
+    "$sd,$finalized,$ingested,EUR,room_night,first_party_price_experiment,$id,$cost_text\nprice_minor,expected_room_nights_milli\n");
   let fitted = buffer_new();
   var start = 0;
   var first = 0;
   var last = 0;
   for b in 0 .. blocks
   {
-    let successes = A.basis_array_sub(numerator,b);
-    let trials = A.basis_array_sub(denominator,b);
-    let end = A.basis_array_sub(ends,b);
+    let successes = A.basis_array_sub(numerator, b);
+    let trials = A.basis_array_sub(denominator, b);
+    let end = A.basis_array_sub(ends, b);
     # Bound: successes/trials <= 64*10^6; target*1000 <= 10^6.
-    let demand = (2*successes*target*1000+trials)/(2*trials);
-    if b == 0 { first = demand; } else { buffer_append(fitted,","); }
+    let demand = (2 * successes * target * 1000 + trials) / (2 * trials);
+    if b == 0
+    {
+      first = demand;
+    }
+    else
+    {
+      buffer_append(fitted, ",");
+    }
     last = demand;
     let from = F.num(start);
     let to = F.num(end);
     let k = F.num(successes);
     let a = F.num(trials);
     let d = F.num(demand);
-    buffer_append(fitted,"{\"arm_start\":$from,\"arm_end_exclusive\":$to,\"kept\":$k,\"assigned\":$a,\"expected_room_nights_milli\":$d}");
+    buffer_append(fitted,
+      "{\"arm_start\":$from,\"arm_end_exclusive\":$to,\"kept\":$k,\"assigned\":$a,\"expected_room_nights_milli\":$d}");
     for i in start .. end
     {
-      let p = F.num(A.basis_array_sub(prices,i));
-      buffer_append(out,"$p,$d\n");
+      let p = F.num(A.basis_array_sub(prices, i));
+      buffer_append(out, "$p,$d\n");
     }
     start = end;
   }
@@ -166,7 +232,9 @@ fn estimate(scenario_raw:string, raw:string) -> Fit
   A.basis_array_destroy(numerator);
   A.basis_array_destroy(prices);
   if first <= last
-  { tool_fail("demand fit: insufficient_demand_evidence; fitted and rounded grid has no price response"); }
+  {
+    tool_fail("demand fit: insufficient_demand_evidence; fitted and rounded grid has no price response");
+  }
   let demand = buffer_text(out);
   let digest = Store.digest(demand);
   let t = F.num(target);
@@ -174,8 +242,14 @@ fn estimate(scenario_raw:string, raw:string) -> Fit
   let arms = buffer_text(observed);
   let pools = buffer_text(fitted);
   let report = buffer_new();
-  buffer_append(report,"{\"kind\":\"pricing.demand-estimation\",\"version\":1,\"id\":\"blake3:$id\",\"policy\":\"$model\",\"scenario\":\"blake3:$sd\",\"exposure\":\"blake3:$en\",\"demand\":\"blake3:$digest\",");
-  buffer_append(report,"\"property\":\"$property\",\"product\":\"$product\",\"cohort\":\"$cohort\",\"started_at\":\"$started\",\"ended_at\":\"$ended\",\"finalized_at\":\"$finalized\",\"ingested_at\":\"$ingested\",\"decision_at\":\"$cutoff\",");
-  buffer_append(report,"\"target_exposures\":$t,\"available_room_nights\":$avail,\"marginal_cost_minor\":$cost_text,\"arms\":[$arms],\"pools\":[$pools]}\n");
-  return record<Fit>{id:sx_string(id),demand:sx_string(demand),evidence:sx_string(buffer_text(report))};
+  buffer_append(report,
+    "{\"kind\":\"pricing.demand-estimation\",\"version\":1,\"id\":\"blake3:$id\",\"policy\":\"$model\",\"scenario\":\"blake3:$sd\",\"exposure\":\"blake3:$en\",\"demand\":\"blake3:$digest\",");
+  buffer_append(report,
+    "\"property\":\"$property\",\"product\":\"$product\",\"cohort\":\"$cohort\",\"started_at\":\"$started\",\"ended_at\":\"$ended\",\"finalized_at\":\"$finalized\",\"ingested_at\":\"$ingested\",\"decision_at\":\"$cutoff\",");
+  buffer_append(report,
+    "\"target_exposures\":$t,\"available_room_nights\":$avail,\"marginal_cost_minor\":$cost_text,\"arms\":[$arms],\"pools\":[$pools]}\n");
+  return record < Fit >
+  {
+    id: sx_string(id), demand: sx_string(demand), evidence: sx_string(buffer_text(report))
+  };
 }

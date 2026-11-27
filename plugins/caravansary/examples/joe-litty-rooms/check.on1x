@@ -1,11 +1,15 @@
 import frontend as Caravan;
 import std.io.TextIO as IO;
-
-fn main() -> i64 {
+fn main() -> i64
+{
   let source = buffer_new();
-  buffer_append(source, IO.basis_text_io_input_all("plugins/caravansary/examples/joe-litty-rooms/reference.caf"));
-  let (config, diagnostic) = Caravan.parse_market_script(source);
-  if diagnostic != "" { tool_fail(diagnostic); }
+  buffer_append(source,
+    IO.basis_text_io_input_all("plugins/caravansary/examples/joe-litty-rooms/reference.caf"));
+  let(config, diagnostic) = Caravan.parse_market_script(source);
+  if diagnostic != ""
+  {
+    tool_fail(diagnostic);
+  }
   println(config);
   return 0;
 }

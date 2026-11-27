@@ -2,35 +2,58 @@
 import std.String as Str;
 import core.contracts as Contracts;
 import core.csv as CSV;
+fn header() -> string
+{
+  return Contracts.offer_header();
+}
 
-fn header() -> string { return Contracts.offer_header(); }
-
-fn extract(text:string, cutoff:string, received:string) -> string {
+fn extract(text: string, cutoff: string, received: string) -> string
+{
   let begin = "FINPRED_OFFER_V1 ";
   let finish = " END_FINPRED_OFFER";
-  let pos = Str.find(text,begin,0);
-  if pos < 0 { return ""; }
+  let pos = Str.find(text, begin, 0);
+  if pos < 0
+  {
+    return "";
+  }
   let start = pos + text_len(begin);
-  if Str.find(text,begin,start) >= 0 { tool_fail("dragnet: ambiguous offer markers"); }
-  let stop = Str.find(text,finish,start);
-  if stop < 0 || stop - start > 2048 {
+  if Str.find(text, begin, start) >= 0
+  {
+    tool_fail("dragnet: ambiguous offer markers");
+  }
+  let stop = Str.find(text, finish, start);
+  if stop < 0 || stop - start > 2048
+  {
     tool_fail("dragnet: incomplete or oversized offer marker");
   }
-  var row = text_slice(text,start,stop);
-  CSV.require_width(row,16);
+  var row = text_slice(text, start, stop);
+  CSV.require_width(row, 16);
   # A live fetch is learned now, not at the page's claimed ingestion time.
-  if received != "" {
+  if received != ""
+  {
     let normalized = buffer_new();
-    for c in 0 .. 16 {
-      if c > 0 { buffer_append(normalized,","); }
-      if c == 12 { buffer_append(normalized,received); }
-      else { buffer_append(normalized,CSV.field(row,c)); }
+    for c in 0 .. 16
+    {
+      if c > 0
+      {
+        buffer_append(normalized, ",");
+      }
+      if c == 12
+      {
+        buffer_append(normalized, received);
+      }
+      else
+      {
+        buffer_append(normalized, CSV.field(row, c));
+      }
     }
     row = buffer_text(normalized);
   }
   let parsed = Contracts.offer_csv(row);
-  if Str.compare(sx_text(parsed["observed_at"]),cutoff) > 0
-    || Str.compare(sx_text(parsed["ingested_at"]),cutoff) > 0 {
+  if Str.compare(sx_text(parsed["observed_at"]),
+    cutoff) > 0 || Str.compare(sx_text(parsed["ingested_at"]),
+    cutoff) > 0
+  {
     tool_fail("dragnet: offer knowledge exceeds as_of");
   }
   return row;

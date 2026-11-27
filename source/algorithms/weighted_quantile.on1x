@@ -1,39 +1,44 @@
 # Left inverse of the weighted empirical CDF, with p=0 at the minimum.
 # Inputs are one bounded whole-stay price and a positive weight per property.
 import std.collections.Array as A;
-
-fn evaluate(prices:i64, weights:i64, count:i64, percentile_bps:i64) -> i64
+fn evaluate(prices: i64, weights: i64, count: i64, percentile_bps: i64) -> i64
 {
-  if count < 1 || count > 512 || percentile_bps < 0 || percentile_bps > 10000
-    || count > A.basis_array_length(prices) || count > A.basis_array_length(weights)
-  { tool_fail("weighted quantile: invalid sample or percentile"); }
-  let ordered = A.basis_array_array(count,0);
-  let mass = A.basis_array_array(count,0);
+  if count < 1 || count > 512 || percentile_bps < 0 || percentile_bps > 10000 || count > A.basis_array_length(prices) || count > A.basis_array_length(weights)
+  {
+    tool_fail("weighted quantile: invalid sample or percentile");
+  }
+  let ordered = A.basis_array_array(count, 0);
+  let mass = A.basis_array_array(count, 0);
   var total = 0;
   for i in 0 .. count
   {
-    let p = A.basis_array_sub(prices,i);
-    let w = A.basis_array_sub(weights,i);
+    let p = A.basis_array_sub(prices, i);
+    let w = A.basis_array_sub(weights, i);
     if p < 0 || p > 4000000000000 || w < 1 || w > 10000
-    { tool_fail("weighted quantile: invalid price or property weight"); }
+    {
+      tool_fail("weighted quantile: invalid price or property weight");
+    }
     total = total + w;
     var j = i;
-    while j > 0 && A.basis_array_sub(ordered,j-1) > p
+    while j > 0 && A.basis_array_sub(ordered, j - 1) > p
     {
-      A.basis_array_update(ordered,j,A.basis_array_sub(ordered,j-1));
-      A.basis_array_update(mass,j,A.basis_array_sub(mass,j-1));
+      A.basis_array_update(ordered, j, A.basis_array_sub(ordered, j - 1));
+      A.basis_array_update(mass, j, A.basis_array_sub(mass, j - 1));
       j = j - 1;
     }
-    A.basis_array_update(ordered,j,p);
-    A.basis_array_update(mass,j,w);
+    A.basis_array_update(ordered, j, p);
+    A.basis_array_update(mass, j, w);
   }
   var cumulative = 0;
   var price = 0;
   for i in 0 .. count
   {
-    cumulative = cumulative + A.basis_array_sub(mass,i);
+    cumulative = cumulative + A.basis_array_sub(mass, i);
     if cumulative * 10000 >= total * percentile_bps
-    { price = A.basis_array_sub(ordered,i); break; }
+    {
+      price = A.basis_array_sub(ordered, i);
+      break;
+    }
   }
   A.basis_array_destroy(ordered);
   A.basis_array_destroy(mass);

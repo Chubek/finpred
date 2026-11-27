@@ -9,159 +9,314 @@ import core.money as Money;
 import sdk.callable as SDK;
 import std.String as Str;
 import yieldcraft.contribution as Policy;
+fn key() -> string
+{
+  return "yieldcraft.optimize-contribution@1";
+}
 
-fn key() -> string { return "yieldcraft.optimize-contribution@1"; }
-fn budget() -> i64 { return 1; }
+fn budget() -> i64
+{
+  return 1;
+}
+
 fn policy_text() -> string
 {
   return "yieldcraft.contribution@1;frozen-csv-preflight@1;cutoff=scenario.decision_at;positive-contribution;tie=nearest-current,lower;decision-text@1";
 }
-fn port(name:string, kind:string, unit:string, bytes:i64) -> SDK.Port
+
+fn port(name: string, kind: string, unit: string, bytes: i64) -> SDK.Port
 {
-  return record<SDK.Port>{name:sx_string(name),kind:sx_string(kind),major:1,
-    unit:sx_string(unit),currency:sx_string("EUR"),states:1,max_bytes:bytes};
+  return record < SDK.Port >
+  {
+    name: sx_string(name), kind: sx_string(kind), major: 1, unit: sx_string(unit), currency: sx_string("EUR"), states: 1, max_bytes: bytes
+  };
 }
-fn scenario() -> SDK.Port { return port("scenario","finpred.scenario-csv","none",2048); }
-fn valuation() -> SDK.Port { return port("valuation","finpred.valuation-csv","minor_per_night",2048); }
-fn demand() -> SDK.Port { return port("demand","pricing.demand","room_night",Policy.bytes_limit()); }
-fn decision() -> SDK.Port { return port("decision","pricing.contribution-decision-text","minor_per_night",8192); }
+
+fn scenario() -> SDK.Port
+{
+  return port("scenario", "finpred.scenario-csv", "none", 2048);
+}
+
+fn valuation() -> SDK.Port
+{
+  return port("valuation", "finpred.valuation-csv", "minor_per_night", 2048);
+}
+
+fn demand() -> SDK.Port
+{
+  return port("demand", "pricing.demand", "room_night", Policy.bytes_limit());
+}
+
+fn decision() -> SDK.Port
+{
+  return port("decision",
+    "pricing.contribution-decision-text",
+    "minor_per_night",
+    8192);
+}
+
 fn ports() -> sexpr
 {
-  return sx_cons(SDK.port_entry(scenario()),sx_cons(SDK.port_entry(valuation()),
-    sx_cons(SDK.port_entry(demand()),sx_nil())));
+  return sx_cons(SDK.port_entry(scenario()),
+    sx_cons(SDK.port_entry(valuation()),
+    sx_cons(SDK.port_entry(demand()),
+    sx_nil())));
 }
-fn descriptor(handler:string, code_digest:string) -> SDK.Descriptor
+
+fn descriptor(handler: string, code_digest: string) -> SDK.Descriptor
 {
-  if handler != key() || !SDK.valid_digest(sx_string(code_digest)) { return SDK.unavailable(); }
-  let pin = record<SDK.Pin>{package_name:sx_string("yieldcraft.contribution"),package_version:sx_string("1.0.0"),
-    handler_name:sx_string(handler),handler_version:sx_string("1"),abi:1,
-    code_digest:sx_string(code_digest),policy_digest:sx_string(G.digest(policy_text()))};
-  return record<SDK.Descriptor>{enabled:true,pin:pin,role:sx_string("Strategy"),mode:sx_string("recommendation"),
-    effect:sx_string("pure"),inputs:ports(),output:decision(),max_work:budget()};
+  if handler != key() || ! SDK.valid_digest(sx_string(code_digest))
+  {
+    return SDK.unavailable();
+  }
+  let pin = record < SDK.Pin >
+  {
+    package_name: sx_string("yieldcraft.contribution"), package_version: sx_string("1.0.0"), handler_name: sx_string(handler), handler_version: sx_string("1"), abi: 1, code_digest: sx_string(code_digest), policy_digest: sx_string(G.digest(policy_text()))
+  };
+  return record < SDK.Descriptor >
+  {
+    enabled: true, pin: pin, role: sx_string("Strategy"), mode: sx_string("recommendation"), effect: sx_string("pure"), inputs: ports(), output: decision(), max_work: budget()
+  };
 }
+
 fn graph() -> G.Graph
 {
-  let edges = sx_cons(G.edge("scenario","","scenario"),sx_cons(G.edge("valuation","","valuation"),
-    sx_cons(G.edge("demand","","demand"),sx_nil())));
-  return G.graph(ports(),sx_cons(G.node("optimum",key(),"pure",edges),sx_nil()),
-    sx_cons(G.output(decision(),"optimum","decision"),sx_nil()));
+  let edges = sx_cons(G.edge("scenario",
+    "",
+    "scenario"),
+    sx_cons(G.edge("valuation",
+    "",
+    "valuation"),
+    sx_cons(G.edge("demand",
+    "",
+    "demand"),
+    sx_nil())));
+  return G.graph(ports(),
+    sx_cons(G.node("optimum",
+    key(),
+    "pure",
+    edges),
+    sx_nil()),
+    sx_cons(G.output(decision(),
+    "optimum",
+    "decision"),
+    sx_nil()));
 }
 
 # After this check CSV.rows, line, columns and field are safe with checked
 # indices. Match the legacy ASCII/CRLF profile, without rewriting frozen bytes.
-fn csv_text(raw:string) -> bool
+fn csv_text(raw: string) -> bool
 {
   let size = text_len(raw);
   for i in 0 .. size
   {
-    let c = text_byte(raw,i);
+    let c = text_byte(raw, i);
     if c == 13
     {
-      if i + 1 >= size || text_byte(raw,i+1) != 10 { return false; }
+      if i + 1 >= size || text_byte(raw, i + 1) != 10
+      {
+        return false;
+      }
     }
-    else { if c != 10 && (c < 32 || c > 126 || c == 34) { return false; } }
+    else
+    {
+      if c != 10 && (c < 32 || c > 126 || c == 34)
+      {
+        return false;
+      }
+    }
   }
   return size > 0;
 }
-fn natural(text:string) -> i64
+
+fn natural(text: string) -> i64
 {
   let size = text_len(text);
-  if size < 1 || size > 19 || (size > 1 && text_byte(text,0) == 48) { return -1; }
+  if size < 1 || size > 19 || (size > 1 && text_byte(text, 0) == 48)
+  {
+    return - 1;
+  }
   var value = 0;
   for i in 0 .. size
   {
-    let digit = Date.digit(text,i);
-    if digit < 0 || value > (9223372036854775807 - digit) / 10 { return -1; }
+    let digit = Date.digit(text, i);
+    if digit < 0 || value > (9223372036854775807 - digit) / 10
+    {
+      return - 1;
+    }
     value = value * 10 + digit;
   }
   return value;
 }
-fn number(row:string, col:i64) -> i64 { return natural(CSV.field(row,col)); }
-fn chronology(observed:string, ingested:string, cutoff:string) -> bool
-{
-  return Date.utc_timestamp(observed) && Date.utc_timestamp(ingested)
-    && Str.compare(observed,ingested) <= 0 && Str.compare(ingested,cutoff) <= 0;
-}
-fn scenario_ok(raw:string, cutoff:string) -> bool
-{
-  if !csv_text(raw) || CSV.rows(raw) != 2
-    || CSV.line(raw,0) != "scenario_id,observed_at,ingested_at,decision_at,arrival,departure,adults,children,max_rooms,min_properties,target_bps,curve,currency,max_age_days,search_budget"
-  { return false; }
-  let row = CSV.line(raw,1);
-  if CSV.columns(row) != 15 { return false; }
-  if number(row,0) < 1 || CSV.field(row,3) != cutoff || !chronology(CSV.field(row,1),CSV.field(row,2),cutoff)
-    || Date.nights(CSV.field(row,4),CSV.field(row,5)) < 1 || Date.lead_days(cutoff,CSV.field(row,4)) < 0
-    || CSV.field(row,12) != "EUR" { return false; }
-  let adults = number(row,6);
-  let children = number(row,7);
-  let rooms = number(row,8);
-  let minimum = number(row,9);
-  let target = number(row,10);
-  let curve = CSV.field(row,11);
-  let age = number(row,13);
-  let search = number(row,14);
-  return adults >= 1 && adults <= 8 && children >= 0 && children <= 8
-    && rooms >= 1 && rooms <= 4 && rooms <= adults && minimum >= 3 && minimum <= 32
-    && target >= 0 && target <= 10000 && (curve == "linear" || curve == "quadratic")
-    && age >= 0 && age <= 365 && search >= 1 && search <= 1000000;
-}
-fn valuation_ok(raw:string, cutoff:string) -> bool
-{
-  if !csv_text(raw) || CSV.rows(raw) != 2
-    || CSV.line(raw,0) != "valuation_id,observed_at,ingested_at,currency,current_cents,floor_cents,cap_cents,max_move_cents,shortcut_cents"
-  { return false; }
-  let row = CSV.line(raw,1);
-  if CSV.columns(row) != 9 || number(row,0) < 1 || CSV.field(row,3) != "EUR"
-    || !chronology(CSV.field(row,1),CSV.field(row,2),cutoff) { return false; }
-  for i in 4 .. 9 { if !Money.safe_nonnegative(number(row,i)) { return false; } }
-  return number(row,5) <= number(row,6);
-}
-fn demand_ok(raw:string, s:C.Scenario, v:C.Valuation, scenario_digest:string, cutoff:string) -> bool
-{
-  if !csv_text(raw) { return false; }
-  let rows = CSV.rows(raw);
-  if rows < 6 || rows > 68 || CSV.line(raw,0) != "pricing.demand@1"
-    || CSV.line(raw,1) != "scenario_blake3,observed_at,ingested_at,currency,price_basis,method,evidence_blake3,marginal_cost_minor"
-    || CSV.line(raw,3) != "price_minor,expected_room_nights_milli" { return false; }
-  let meta = CSV.line(raw,2);
-  if CSV.columns(meta) != 8 { return false; }
-  let observed = CSV.field(meta,1);
-  let method = CSV.field(meta,5);
-  let cost = number(meta,7);
-  if !Policy.digest(scenario_digest) || CSV.field(meta,0) != scenario_digest
-    || CSV.field(meta,3) != "EUR" || CSV.field(meta,4) != "room_night"
-    || (method != "first_party_price_experiment" && method != "calibrated_booking_model")
-    || !Policy.digest(CSV.field(meta,6)) || !Money.safe_nonnegative(cost)
-    || !chronology(observed,CSV.field(meta,2),cutoff) { return false; }
-  let age = Date.date_days(text_slice(cutoff,0,10)) - Date.date_days(text_slice(observed,0,10));
-  if age > s["max_age_days"] { return false; }
 
+fn number(row: string, col: i64) -> i64
+{
+  return natural(CSV.field(row, col));
+}
+
+fn chronology(observed: string, ingested: string, cutoff: string) -> bool
+{
+  return Date.utc_timestamp(observed) && Date.utc_timestamp(ingested) && Str.compare(observed,
+    ingested) <= 0 && Str.compare(ingested,
+    cutoff) <= 0;
+}
+
+fn scenario_ok(raw: string, cutoff: string) -> bool
+{
+  if ! csv_text(raw) || CSV.rows(raw) != 2 || CSV.line(raw,
+    0) != "scenario_id,observed_at,ingested_at,decision_at,arrival,departure,adults,children,max_rooms,min_properties,target_bps,curve,currency,max_age_days,search_budget"
+  {
+    return false;
+  }
+  let row = CSV.line(raw, 1);
+  if CSV.columns(row) != 15
+  {
+    return false;
+  }
+  if number(row,
+    0) < 1 || CSV.field(row,
+    3) != cutoff || ! chronology(CSV.field(row,
+    1),
+    CSV.field(row,
+    2),
+    cutoff) || Date.nights(CSV.field(row,
+    4),
+    CSV.field(row,
+    5)) < 1 || Date.lead_days(cutoff,
+    CSV.field(row,
+    4)) < 0 || CSV.field(row,
+    12) != "EUR"
+  {
+    return false;
+  }
+  let adults = number(row, 6);
+  let children = number(row, 7);
+  let rooms = number(row, 8);
+  let minimum = number(row, 9);
+  let target = number(row, 10);
+  let curve = CSV.field(row, 11);
+  let age = number(row, 13);
+  let search = number(row, 14);
+  return adults >= 1 && adults <= 8 && children >= 0 && children <= 8 && rooms >= 1 && rooms <= 4 && rooms <= adults && minimum >= 3 && minimum <= 32 && target >= 0 && target <= 10000 && (curve == "linear" || curve == "quadratic") && age >= 0 && age <= 365 && search >= 1 && search <= 1000000;
+}
+
+fn valuation_ok(raw: string, cutoff: string) -> bool
+{
+  if ! csv_text(raw) || CSV.rows(raw) != 2 || CSV.line(raw,
+    0) != "valuation_id,observed_at,ingested_at,currency,current_cents,floor_cents,cap_cents,max_move_cents,shortcut_cents"
+  {
+    return false;
+  }
+  let row = CSV.line(raw, 1);
+  if CSV.columns(row) != 9 || number(row,
+    0) < 1 || CSV.field(row,
+    3) != "EUR" || ! chronology(CSV.field(row,
+    1),
+    CSV.field(row,
+    2),
+    cutoff)
+  {
+    return false;
+  }
+  for i in 4 .. 9
+  {
+    if ! Money.safe_nonnegative(number(row, i))
+    {
+      return false;
+    }
+  }
+  return number(row, 5) <= number(row, 6);
+}
+
+fn demand_ok(raw: string,
+  s: C.Scenario,
+  v: C.Valuation,
+  scenario_digest: string,
+  cutoff: string) -> bool
+{
+  if ! csv_text(raw)
+  {
+    return false;
+  }
+  let rows = CSV.rows(raw);
+  if rows < 6 || rows > 68 || CSV.line(raw,
+    0) != "pricing.demand@1" || CSV.line(raw,
+    1) != "scenario_blake3,observed_at,ingested_at,currency,price_basis,method,evidence_blake3,marginal_cost_minor" || CSV.line(raw,
+    3) != "price_minor,expected_room_nights_milli"
+  {
+    return false;
+  }
+  let meta = CSV.line(raw, 2);
+  if CSV.columns(meta) != 8
+  {
+    return false;
+  }
+  let observed = CSV.field(meta, 1);
+  let method = CSV.field(meta, 5);
+  let cost = number(meta, 7);
+  if ! Policy.digest(scenario_digest) || CSV.field(meta,
+    0) != scenario_digest || CSV.field(meta,
+    3) != "EUR" || CSV.field(meta,
+    4) != "room_night" || (method != "first_party_price_experiment" && method != "calibrated_booking_model") || ! Policy.digest(CSV.field(meta,
+    6)) || ! Money.safe_nonnegative(cost) || ! chronology(observed,
+    CSV.field(meta,
+    2),
+    cutoff)
+  {
+    return false;
+  }
+  let age = Date.date_days(text_slice(cutoff,
+    0,
+    10)) - Date.date_days(text_slice(observed,
+    0,
+    10));
+  if age > s["max_age_days"]
+  {
+    return false;
+  }
   let current = v["current_cents"];
   let movement = v["max_move_cents"];
   var floor = v["floor_cents"];
   var cap = v["cap_cents"];
-  if current - movement > floor { floor = current - movement; }
-  if current + movement < cap { cap = current + movement; }
-  if floor > cap { return false; }
-  var last_price = -1;
+  if current - movement > floor
+  {
+    floor = current - movement;
+  }
+  if current + movement < cap
+  {
+    cap = current + movement;
+  }
+  if floor > cap
+  {
+    return false;
+  }
+  var last_price = - 1;
   var last_demand = 1000000;
   var positive = false;
   for i in 4 .. rows
   {
-    let row = CSV.line(raw,i);
-    if CSV.columns(row) != 2 { return false; }
-    let price = number(row,0);
-    let estimate = number(row,1);
-    if !Money.safe_nonnegative(price) || price <= last_price || estimate < 0 || estimate > last_demand
-    { return false; }
+    let row = CSV.line(raw, i);
+    if CSV.columns(row) != 2
+    {
+      return false;
+    }
+    let price = number(row, 0);
+    let estimate = number(row, 1);
+    if ! Money.safe_nonnegative(price) || price <= last_price || estimate < 0 || estimate > last_demand
+    {
+      return false;
+    }
     last_price = price;
     last_demand = estimate;
-    if price >= floor && price <= cap && price > cost && estimate > 0 { positive = true; }
+    if price >= floor && price <= cap && price > cost && estimate > 0
+    {
+      positive = true;
+    }
   }
   return positive;
 }
 
-fn encode(r:Policy.Decision) -> string
+fn encode(r: Policy.Decision) -> string
 {
   let price = F.num(r["price"]);
   let cost = F.num(r["cost"]);
@@ -180,24 +335,50 @@ fn encode(r:Policy.Decision) -> string
 
 # Both descriptor and invocation receive the trusted linking host's code
 # subject. This adapter does not derive or authenticate executable identity.
-fn invoke(code_digest:string, pin:SDK.Pin, request:SDK.Request) -> SDK.Outcome
+fn invoke(code_digest: string,
+  pin: SDK.Pin,
+  request: SDK.Request) -> SDK.Outcome
 {
-  let d = descriptor(key(),code_digest);
-  if !d["enabled"] || !SDK.same_pin(d["pin"],pin) { return SDK.failure(1); }
-  if request["work"] != budget() { return SDK.failure(4); }
-  if !SDK.valid_inputs(d["inputs"],request["inputs"]) || !SDK.atom(request["cutoff"],20)
-  { return SDK.failure(3); }
+  let d = descriptor(key(), code_digest);
+  if ! d["enabled"] || ! SDK.same_pin(d["pin"], pin)
+  {
+    return SDK.failure(1);
+  }
+  if request["work"] != budget()
+  {
+    return SDK.failure(4);
+  }
+  if ! SDK.valid_inputs(d["inputs"],
+    request["inputs"]) || ! SDK.atom(request["cutoff"],
+    20)
+  {
+    return SDK.failure(3);
+  }
   let cutoff = sx_text(request["cutoff"]);
-  if !Date.utc_timestamp(cutoff) { return SDK.failure(3); }
-  let scenario_raw = sx_text(SDK.value_bytes(G.at(request["inputs"],0)));
-  let valuation_raw = sx_text(SDK.value_bytes(G.at(request["inputs"],1)));
-  let demand_raw = sx_text(SDK.value_bytes(G.at(request["inputs"],2)));
-  if !scenario_ok(scenario_raw,cutoff) || !valuation_ok(valuation_raw,cutoff) { return SDK.failure(5); }
+  if ! Date.utc_timestamp(cutoff)
+  {
+    return SDK.failure(3);
+  }
+  let scenario_raw = sx_text(SDK.value_bytes(G.at(request["inputs"], 0)));
+  let valuation_raw = sx_text(SDK.value_bytes(G.at(request["inputs"], 1)));
+  let demand_raw = sx_text(SDK.value_bytes(G.at(request["inputs"], 2)));
+  if ! scenario_ok(scenario_raw,
+    cutoff) || ! valuation_ok(valuation_raw,
+    cutoff)
+  {
+    return SDK.failure(5);
+  }
   let s = C.scenario_csv(scenario_raw);
-  let v = C.valuation_csv(valuation_raw,s);
+  let v = C.valuation_csv(valuation_raw, s);
   let digest = G.digest(scenario_raw);
-  if !SDK.valid_digest(sx_string(digest)) { return SDK.failure(5); }
-  let bare = text_slice(digest,7,71);
-  if !demand_ok(demand_raw,s,v,bare,cutoff) { return SDK.failure(5); }
-  return SDK.success(1,encode(Policy.decide(s,v,bare,demand_raw)));
+  if ! SDK.valid_digest(sx_string(digest))
+  {
+    return SDK.failure(5);
+  }
+  let bare = text_slice(digest, 7, 71);
+  if ! demand_ok(demand_raw, s, v, bare, cutoff)
+  {
+    return SDK.failure(5);
+  }
+  return SDK.success(1, encode(Policy.decide(s, v, bare, demand_raw)));
 }

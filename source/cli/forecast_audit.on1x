@@ -3,53 +3,68 @@
 import core.format as F;
 import store.artifacts as Store;
 import std.String as Str;
+fn max_targets() -> i64
+{
+  return 128;
+}
 
-fn max_targets() -> i64 { return 128; }
-fn max_bytes() -> i64 { return 65 * max_targets(); }
+fn max_bytes() -> i64
+{
+  return 65 * max_targets();
+}
 
-fn verify(index:string, replay:fn(string) -> string) -> string
+fn verify(index: string, replay: fn(string) -> string) -> string
 {
   let n = text_len(index);
   if n < 65 || n > max_bytes() || n % 65 != 0
-  { tool_fail("forecast audit: expected 1..128 LF-terminated identities"); }
+  {
+    tool_fail("forecast audit: expected 1..128 LF-terminated identities");
+  }
   let count = n / 65;
   var previous = "";
   # Check the entire index before accessing its first archived record.
   for i in 0 .. count
   {
     let offset = i * 65;
-    let key = text_slice(index,offset,offset+64);
-    if !Store.valid_hash(key) || text_byte(index,offset+64) != 10
-    { tool_fail("forecast audit: invalid canonical identity"); }
-    if i > 0 && Str.compare(previous,key) >= 0
-    { tool_fail("forecast audit: identities must be strictly increasing"); }
+    let key = text_slice(index, offset, offset + 64);
+    if ! Store.valid_hash(key) || text_byte(index, offset + 64) != 10
+    {
+      tool_fail("forecast audit: invalid canonical identity");
+    }
+    if i > 0 && Str.compare(previous, key) >= 0
+    {
+      tool_fail("forecast audit: identities must be strictly increasing");
+    }
     previous = key;
   }
   let proof = buffer_new();
-  buffer_append(proof,"finpred.forecast-audit-evidence@1\n");
+  buffer_append(proof, "finpred.forecast-audit-evidence@1\n");
   for i in 0 .. count
   {
     let offset = i * 65;
-    let key = text_slice(index,offset,offset+64);
+    let key = text_slice(index, offset, offset + 64);
     # Replay is trusted: validates original source lineage and output bytes.
     let bytes = replay(key);
     if text_len(bytes) < 1 || text_len(bytes) > 8192
-    { tool_fail("forecast audit: invalid replay output size"); }
+    {
+      tool_fail("forecast audit: invalid replay output size");
+    }
     let output_id = Store.digest(bytes);
-    buffer_append(proof,key);
-    buffer_append(proof,":");
-    buffer_append(proof,output_id);
-    buffer_append(proof,"\n");
+    buffer_append(proof, key);
+    buffer_append(proof, ":");
+    buffer_append(proof, output_id);
+    buffer_append(proof, "\n");
   }
   let list_id = Store.digest(index);
   let evidence_id = Store.digest(buffer_text(proof));
   let out = buffer_new();
-  buffer_append(out,"{\"kind\":\"analysis.forecast-audit\",\"version\":1,\"pricing_input\":false,\"read_only\":true,\"verified\":");
-  buffer_append(out,F.num(count));
-  buffer_append(out,",\"input_digest\":\"blake3:");
-  buffer_append(out,list_id);
-  buffer_append(out,"\",\"evidence_digest\":\"blake3:");
-  buffer_append(out,evidence_id);
-  buffer_append(out,"\"}\n");
+  buffer_append(out,
+    "{\"kind\":\"analysis.forecast-audit\",\"version\":1,\"pricing_input\":false,\"read_only\":true,\"verified\":");
+  buffer_append(out, F.num(count));
+  buffer_append(out, ",\"input_digest\":\"blake3:");
+  buffer_append(out, list_id);
+  buffer_append(out, "\",\"evidence_digest\":\"blake3:");
+  buffer_append(out, evidence_id);
+  buffer_append(out, "\"}\n");
   return buffer_text(out);
 }

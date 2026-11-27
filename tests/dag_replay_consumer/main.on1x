@@ -3,69 +3,128 @@ import automat.dag_replay as R;
 import std.Int as Int;
 import std.io.TextIO as IO;
 import std.os.CommandLine as Env;
+fn setting(name: string) -> string
+{
+  return Env.basis_command_line_get_env(name);
+}
 
-fn setting(name:string) -> string { return Env.basis_command_line_get_env(name); }
-
-fn dump(r:D.Outcome)
+fn dump(r: D.Outcome)
 {
   if sx_text(r["status"]) != "ok" || sx_kind(r["output_digest"]) != 2
-  { tool_fail("missing successful result"); }
+  {
+    tool_fail("missing successful result");
+  }
   IO.basis_text_io_print(sx_text(r["output_digest"]));
   IO.basis_text_io_print("\n");
   var rest = r["artifacts"];
   while sx_kind(rest) == 3
   {
     let pair = sx_head(rest);
-    if sx_kind(pair) != 3 { tool_fail("not an artifact"); }
+    if sx_kind(pair) != 3
+    {
+      tool_fail("not an artifact");
+    }
     let tail = sx_tail(pair);
-    if sx_kind(tail) != 3 { tool_fail("missing bytes"); }
+    if sx_kind(tail) != 3
+    {
+      tool_fail("missing bytes");
+    }
     if sx_kind(sx_head(pair)) != 2 || sx_kind(sx_head(tail)) != 2 || sx_kind(sx_tail(tail)) != 0
-    { tool_fail("not a two-string list"); }
+    {
+      tool_fail("not a two-string list");
+    }
     IO.basis_text_io_print(sx_text(sx_head(pair)));
     IO.basis_text_io_print("\n");
     IO.basis_text_io_print(sx_text(sx_head(tail)));
     IO.basis_text_io_print("END\n");
     rest = sx_tail(rest);
   }
-  if sx_kind(rest) != 0 { tool_fail("improper artifacts"); }
+  if sx_kind(rest) != 0
+  {
+    tool_fail("improper artifacts");
+  }
 }
 
 fn main() -> i64
 {
-  let hi = D.node("hi","maximum@1","first","second");
-  let lo = D.node("lo","minimum@1","first","second");
-  let spread = D.node("spread","distance@1","hi","lo");
-  let plan = record<D.Plan>{version:sx_string("automat.scalar-dag@1"),
-    nodes:sx_cons(spread,sx_cons(hi,sx_cons(lo,sx_nil()))),output:sx_string(setting("OUTPUT"))};
+  let hi = D.node("hi", "maximum@1", "first", "second");
+  let lo = D.node("lo", "minimum@1", "first", "second");
+  let spread = D.node("spread", "distance@1", "hi", "lo");
+  let plan = record < D.Plan >
+  {
+    version: sx_string("automat.scalar-dag@1"), nodes: sx_cons(spread,
+      sx_cons(hi,
+      sx_cons(lo,
+      sx_nil()))), output: sx_string(setting("OUTPUT"))
+  };
   let test = setting("DAG_CASE");
   var mode = "analysis";
   var first = 17;
-  if test == "denied" { mode = "execution"; }
-  if test == "input" { first = 18; }
+  if test == "denied"
+  {
+    mode = "execution";
+  }
+  if test == "input"
+  {
+    first = 18;
+  }
   if test == "dump" || test == "denied"
   {
-    let r = D.run(plan,mode,3,first,42);
-    if test == "dump" { dump(r); return 0; }
+    let r = D.run(plan, mode, 3, first, 42);
+    if test == "dump"
+    {
+      dump(r);
+      return 0;
+    }
     if sx_text(r["status"]) != "denied" || sx_kind(r["output_digest"]) != 0 || sx_kind(r["artifacts"]) != 0
-    { tool_fail("failure returned partial evidence"); }
+    {
+      tool_fail("failure returned partial evidence");
+    }
   }
   var artifacts = sx_nil();
   for j in 0 .. 5
   {
-    let idx = Int.to_string(4-j);
-    let hash = sx_string(setting(text_concat("HASH",idx)));
-    let bytes = sx_string(setting(text_concat("BYTES",idx)));
-    var entry = sx_cons(hash,sx_cons(bytes,sx_nil()));
-    if j == 0 && test == "pair_short" { entry = sx_cons(hash,sx_nil()); }
-    if j == 0 && test == "pair_long" { entry = sx_cons(hash,sx_cons(bytes,sx_cons(bytes,sx_nil()))); }
-    if j == 0 && test == "bytes_type" { entry = sx_cons(hash,sx_cons(sx_nil(),sx_nil())); }
-    if j != 0 || test != "missing" { artifacts = sx_cons(entry,artifacts); }
-    if j == 0 && test == "extra" { artifacts = sx_cons(entry,artifacts); }
+    let idx = Int.to_string(4 - j);
+    let hash = sx_string(setting(text_concat("HASH", idx)));
+    let bytes = sx_string(setting(text_concat("BYTES", idx)));
+    var entry = sx_cons(hash, sx_cons(bytes, sx_nil()));
+    if j == 0 && test == "pair_short"
+    {
+      entry = sx_cons(hash, sx_nil());
+    }
+    if j == 0 && test == "pair_long"
+    {
+      entry = sx_cons(hash, sx_cons(bytes, sx_cons(bytes, sx_nil())));
+    }
+    if j == 0 && test == "bytes_type"
+    {
+      entry = sx_cons(hash, sx_cons(sx_nil(), sx_nil()));
+    }
+    if j != 0 || test != "missing"
+    {
+      artifacts = sx_cons(entry, artifacts);
+    }
+    if j == 0 && test == "extra"
+    {
+      artifacts = sx_cons(entry, artifacts);
+    }
   }
-  if test == "nonlist" { artifacts = sx_string("not a list"); }
+  if test == "nonlist"
+  {
+    artifacts = sx_string("not a list");
+  }
   var root = sx_string(setting("ROOT_DIGEST"));
-  if test == "nil_root" { root = sx_nil(); }
-  if R.verify(plan,mode,3,first,42,artifacts,root) { IO.basis_text_io_print("true\n"); }
-  else { IO.basis_text_io_print("false\n"); }
+  if test == "nil_root"
+  {
+    root = sx_nil();
+  }
+  if R.verify(plan, mode, 3, first, 42, artifacts, root)
+  {
+    IO.basis_text_io_print("true\n");
+  }
+  else
+  {
+    IO.basis_text_io_print("false\n");
+  }
   return 0;
 }

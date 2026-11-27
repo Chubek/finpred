@@ -1,30 +1,46 @@
 # Strict, bounded, unquoted ASCII CSV profile (not general RFC 4180 CSV).
 # Commas and quotes inside fields are rejected rather than silently misparsed.
 import std.Int as Int;
-
 fn rows(input: string) -> i64
 {
   let size = text_len(input);
-  if size == 0 { return 0; }
+  if size == 0
+  {
+    return 0;
+  }
   var n = 0;
   for i in 0 .. size
   {
     let c = text_byte(input, i);
-    if c == 10 { n = n + 1; }
+    if c == 10
+    {
+      n = n + 1;
+    }
     if c == 13
     {
-      if i + 1 >= size || text_byte(input, i + 1) != 10 { tool_fail("CSV: expected CRLF"); }
+      if i + 1 >= size || text_byte(input, i + 1) != 10
+      {
+        tool_fail("CSV: expected CRLF");
+      }
     }
     if (c < 32 && c != 10 && c != 13) || c > 126 || c == 34
-    { tool_fail("CSV: expected printable unquoted ASCII"); }
+    {
+      tool_fail("CSV: expected printable unquoted ASCII");
+    }
   }
-  if text_byte(input, size - 1) != 10 { n = n + 1; }
+  if text_byte(input, size - 1) != 10
+  {
+    n = n + 1;
+  }
   return n;
 }
 
 fn line(input: string, index: i64) -> string
 {
-  if index < 0 { tool_fail("CSV: bad line index"); }
+  if index < 0
+  {
+    tool_fail("CSV: bad line index");
+  }
   var start = 0;
   var current = 0;
   for i in 0 .. text_len(input)
@@ -34,7 +50,10 @@ fn line(input: string, index: i64) -> string
       if current == index
       {
         var end = i;
-        if end > start && text_byte(input, end - 1) == 13 { end = end - 1; }
+        if end > start && text_byte(input, end - 1) == 13
+        {
+          end = end - 1;
+        }
         return text_slice(input, start, end);
       }
       current = current + 1;
@@ -55,56 +74,92 @@ fn columns(row: string) -> i64
   for i in 0 .. text_len(row)
   {
     let c = text_byte(row, i);
-    if c < 32 || c > 126 || c == 34 { tool_fail("CSV: expected printable unquoted ASCII fields"); }
-    if c == 44 { n = n + 1; }
+    if c < 32 || c > 126 || c == 34
+    {
+      tool_fail("CSV: expected printable unquoted ASCII fields");
+    }
+    if c == 44
+    {
+      n = n + 1;
+    }
   }
   return n;
 }
 
 fn field(row: string, index: i64) -> string
 {
-  if index < 0 { tool_fail("CSV: negative column"); }
+  if index < 0
+  {
+    tool_fail("CSV: negative column");
+  }
   var start = 0;
   var column = 0;
   for i in 0 .. text_len(row)
   {
     if text_byte(row, i) == 44
     {
-      if column == index { return text_slice(row, start, i); }
+      if column == index
+      {
+        return text_slice(row, start, i);
+      }
       column = column + 1;
       start = i + 1;
     }
   }
-  if column == index { return text_slice(row, start, text_len(row)); }
+  if column == index
+  {
+    return text_slice(row, start, text_len(row));
+  }
   tool_fail("CSV: column out of range");
   return "";
 }
 
 fn nat(s: string) -> i64
 {
-  if text_len(s) == 0 { tool_fail("CSV: missing integer"); }
+  if text_len(s) == 0
+  {
+    tool_fail("CSV: missing integer");
+  }
   # Int.scan accepts leading whitespace and a sign, neither is a decimal digit.
   let first = text_byte(s, 0);
-  if first < 48 || first > 57 { tool_fail("CSV: expected unsigned decimal digits"); }
+  if first < 48 || first > 57
+  {
+    tool_fail("CSV: expected unsigned decimal digits");
+  }
   let(ok, value, end) = Int.scan(s, 0);
-  if !ok || end != text_len(s) { tool_fail("CSV: invalid or overflowing integer"); }
+  if ! ok || end != text_len(s)
+  {
+    tool_fail("CSV: invalid or overflowing integer");
+  }
   return value;
 }
 
 fn bit(s: string) -> bool
 {
-  if s == "1" { return true; }
-  if s == "0" { return false; }
+  if s == "1"
+  {
+    return true;
+  }
+  if s == "0"
+  {
+    return false;
+  }
   tool_fail("CSV: expected flag 0 or 1");
   return false;
 }
 
 fn header(row: string, expected: string)
 {
-  if row != expected { tool_fail("CSV: unexpected header/schema"); }
+  if row != expected
+  {
+    tool_fail("CSV: unexpected header/schema");
+  }
 }
 
 fn require_width(row: string, expected: i64)
 {
-  if columns(row) != expected { tool_fail("CSV: unexpected column count"); }
+  if columns(row) != expected
+  {
+    tool_fail("CSV: unexpected column count");
+  }
 }

@@ -4,40 +4,62 @@ import dragnet.source_registry as Sources;
 import sdk.callable as SDK;
 import std.os.OS_FileSys as FS;
 import std.io.TextIO as IO;
-
-fn snapshot(slot:string, limit:i64) -> string
+fn snapshot(slot: string, limit: i64) -> string
 {
   let n = FS.basis_fs_file_size(slot);
   if FS.basis_fs_is_dir(slot) || n < 1 || n > limit
-  { tool_fail("feed permission: expected bounded descriptor snapshot"); }
+  {
+    tool_fail("feed permission: expected bounded descriptor snapshot");
+  }
   let bytes = IO.basis_text_io_input_all(slot);
-  if text_len(bytes) != n { tool_fail("feed permission: changed input"); }
+  if text_len(bytes) != n
+  {
+    tool_fail("feed permission: changed input");
+  }
   return bytes;
 }
 
 fn main() -> i64
 {
-  let policy = snapshot("/proc/self/fd/3",512);
-  let clock = snapshot("/proc/self/fd/4",21);
-  if text_len(clock) != 21 || text_byte(clock,20) != 10
-  { tool_fail("feed permission: malformed host clock"); }
-  let now = text_slice(clock,0,20);
-  let grant = Permission.admit(policy,now);
+  let policy = snapshot("/proc/self/fd/3", 512);
+  let clock = snapshot("/proc/self/fd/4", 21);
+  if text_len(clock) != 21 || text_byte(clock, 20) != 10
+  {
+    tool_fail("feed permission: malformed host clock");
+  }
+  let now = text_slice(clock, 0, 20);
+  let grant = Permission.admit(policy, now);
   let capture_port = Sources.capture_port();
-  let capture = snapshot("/proc/self/fd/5",capture_port["max_bytes"]);
-  Permission.check_capture(grant,capture);
-  let binding = Sources.feed_binding(capture,"analysis");
-  if !binding["enabled"] { tool_fail("feed permission: unavailable source"); }
-  let raw_port = SDK.decode_port(SDK.port_at(binding["inputs"],1));
-  let raw = snapshot("/proc/self/fd/6",raw_port["max_bytes"]);
+  let capture = snapshot("/proc/self/fd/5", capture_port["max_bytes"]);
+  Permission.check_capture(grant, capture);
+  let binding = Sources.feed_binding(capture, "analysis");
+  if ! binding["enabled"]
+  {
+    tool_fail("feed permission: unavailable source");
+  }
+  let raw_port = SDK.decode_port(SDK.port_at(binding["inputs"], 1));
+  let raw = snapshot("/proc/self/fd/6", raw_port["max_bytes"]);
   if Permission.hash_id(raw) != sx_text(grant["body"])
-  { tool_fail("feed permission: body digest mismatch"); }
-  let decode_port = SDK.decode_port(SDK.port_at(binding["inputs"],2));
-  let decode = snapshot("/proc/self/fd/7",decode_port["max_bytes"]);
+  {
+    tool_fail("feed permission: body digest mismatch");
+  }
+  let decode_port = SDK.decode_port(SDK.port_at(binding["inputs"], 2));
+  let decode = snapshot("/proc/self/fd/7", decode_port["max_bytes"]);
   if Permission.hash_id(decode) != sx_text(grant["decode"])
-  { tool_fail("feed permission: decode digest mismatch"); }
-  let values = Sources.value(capture,Sources.value(raw,Sources.value(decode,sx_nil())));
-  let result = Sources.invoke_values(Sources.public_key(),"analysis",values,sx_text(grant["cutoff"]));
-  IO.basis_text_io_print(Permission.evidence(grant,policy,now,sx_text(result["bytes"])));
+  {
+    tool_fail("feed permission: decode digest mismatch");
+  }
+  let values = Sources.value(capture,
+    Sources.value(raw,
+    Sources.value(decode,
+    sx_nil())));
+  let result = Sources.invoke_values(Sources.public_key(),
+    "analysis",
+    values,
+    sx_text(grant["cutoff"]));
+  IO.basis_text_io_print(Permission.evidence(grant,
+    policy,
+    now,
+    sx_text(result["bytes"])));
   return 0;
 }

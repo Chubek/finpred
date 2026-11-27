@@ -7,162 +7,299 @@ import sdk.callable as SDK;
 import std.io.TextIO as IO;
 import std.os.CommandLine as Env;
 import core.format as F;
+fn env(key: string) -> string
+{
+  return Env.basis_command_line_get_env(key);
+}
 
-fn env(key:string) -> string { return Env.basis_command_line_get_env(key); }
-fn port(name:string, size:i64) -> SDK.Port
+fn port(name: string, size: i64) -> SDK.Port
 {
-  return record<SDK.Port>{name:sx_string(name),kind:sx_string("test.value"),major:1,
-    unit:sx_string("none"),currency:sx_string("none"),states:1,max_bytes:size};
+  return record < SDK.Port >
+  {
+    name: sx_string(name), kind: sx_string("test.value"), major: 1, unit: sx_string("none"), currency: sx_string("none"), states: 1, max_bytes: size
+  };
 }
-fn lookup(key:string) -> SDK.Descriptor
+
+fn lookup(key: string) -> SDK.Descriptor
 {
-  var inputs = sx_cons(SDK.port_entry(port("value",64)),sx_nil());
+  var inputs = sx_cons(SDK.port_entry(port("value", 64)), sx_nil());
   if key == "test.join@1"
-  { inputs = sx_cons(SDK.port_entry(port("a",64)),sx_cons(SDK.port_entry(port("b",64)),sx_nil())); }
-  else { if key != "test.pass@1" { return SDK.unavailable(); } }
+  {
+    inputs = sx_cons(SDK.port_entry(port("a",
+      64)),
+      sx_cons(SDK.port_entry(port("b",
+      64)),
+      sx_nil()));
+  }
+  else
+  {
+    if key != "test.pass@1"
+    {
+      return SDK.unavailable();
+    }
+  }
   let dig = sx_string(G.digest(key));
-  let pin = record<SDK.Pin>{package_name:sx_string("test"),package_version:sx_string("1"),
-    handler_name:sx_string(key),handler_version:sx_string("1"),abi:1,code_digest:dig,policy_digest:dig};
-  return record<SDK.Descriptor>{enabled:true,pin:pin,role:sx_string("Transformer"),mode:sx_string("analysis"),
-    effect:sx_string("pure"),inputs:inputs,output:port("value",32),max_work:1};
+  let pin = record < SDK.Pin >
+  {
+    package_name: sx_string("test"), package_version: sx_string("1"), handler_name: sx_string(key), handler_version: sx_string("1"), abi: 1, code_digest: dig, policy_digest: dig
+  };
+  return record < SDK.Descriptor >
+  {
+    enabled: true, pin: pin, role: sx_string("Transformer"), mode: sx_string("analysis"), effect: sx_string("pure"), inputs: inputs, output: port("value",
+      32), max_work: 1
+  };
 }
-fn changed_lookup(key:string) -> SDK.Descriptor
+
+fn changed_lookup(key: string) -> SDK.Descriptor
 {
   let d = lookup(key);
-  if key != "test.join@1" { return d; }
+  if key != "test.join@1"
+  {
+    return d;
+  }
   let pin = d["pin"];
-  let changed = record<SDK.Pin>{package_name:pin["package_name"],package_version:pin["package_version"],
-    handler_name:pin["handler_name"],handler_version:pin["handler_version"],abi:pin["abi"],
-    code_digest:sx_string(G.digest("changed")),policy_digest:pin["policy_digest"]};
-  return record<SDK.Descriptor>{enabled:d["enabled"],pin:changed,role:d["role"],mode:d["mode"],
-    effect:d["effect"],inputs:d["inputs"],output:d["output"],max_work:d["max_work"]};
+  let changed = record < SDK.Pin >
+  {
+    package_name: pin["package_name"], package_version: pin["package_version"], handler_name: pin["handler_name"], handler_version: pin["handler_version"], abi: pin["abi"], code_digest: sx_string(G.digest("changed")), policy_digest: pin["policy_digest"]
+  };
+  return record < SDK.Descriptor >
+  {
+    enabled: d["enabled"], pin: changed, role: d["role"], mode: d["mode"], effect: d["effect"], inputs: d["inputs"], output: d["output"], max_work: d["max_work"]
+  };
 }
-fn call(pin:SDK.Pin, req:SDK.Request) -> SDK.Outcome
+
+fn call(pin: SDK.Pin, req: SDK.Request) -> SDK.Outcome
 {
-  let a = sx_text(SDK.value_bytes(G.at(req["inputs"],0)));
-  if sx_text(pin["handler_name"]) == "test.pass@1" { return SDK.success(1,"[$a]"); }
-  let b = sx_text(SDK.value_bytes(G.at(req["inputs"],1)));
-  return SDK.success(1,"$a+$b");
+  let a = sx_text(SDK.value_bytes(G.at(req["inputs"], 0)));
+  if sx_text(pin["handler_name"]) == "test.pass@1"
+  {
+    return SDK.success(1, "[$a]");
+  }
+  let b = sx_text(SDK.value_bytes(G.at(req["inputs"], 1)));
+  return SDK.success(1, "$a+$b");
 }
-fn forbid_call(pin:SDK.Pin, req:SDK.Request) -> SDK.Outcome
+
+fn forbid_call(pin: SDK.Pin, req: SDK.Request) -> SDK.Outcome
 {
   tool_fail("rejected v7 lowering invoked a handler");
   return SDK.failure(1);
 }
+
 fn native_graph() -> G.Graph
 {
-  let roots = sx_cons(SDK.port_entry(port("raw",64)),sx_cons(SDK.port_entry(port("extra",32)),sx_nil()));
-  let n = G.node("normalizer","test.pass@1","pure",sx_cons(G.edge("value","","raw"),sx_nil()));
-  let m = G.node("mixer","test.join@1","pure",sx_cons(G.edge("a","normalizer","value"),
-    sx_cons(G.edge("b","","extra"),sx_nil())));
-  let f = G.node("finish","test.join@1","pure",sx_cons(G.edge("a","mixer","value"),
-    sx_cons(G.edge("b","normalizer","value"),sx_nil())));
-  let outs = sx_cons(G.output(port("normalized",32),"normalizer","value"),
-    sx_cons(G.output(port("mixed",32),"mixer","value"),
-      sx_cons(G.output(port("final",32),"finish","value"),sx_nil())));
-  return G.graph(roots,sx_cons(f,sx_cons(m,sx_cons(n,sx_nil()))),outs);
+  let roots = sx_cons(SDK.port_entry(port("raw",
+    64)),
+    sx_cons(SDK.port_entry(port("extra",
+    32)),
+    sx_nil()));
+  let n = G.node("normalizer",
+    "test.pass@1",
+    "pure",
+    sx_cons(G.edge("value",
+    "",
+    "raw"),
+    sx_nil()));
+  let m = G.node("mixer",
+    "test.join@1",
+    "pure",
+    sx_cons(G.edge("a",
+    "normalizer",
+    "value"),
+    sx_cons(G.edge("b",
+    "",
+    "extra"),
+    sx_nil())));
+  let f = G.node("finish",
+    "test.join@1",
+    "pure",
+    sx_cons(G.edge("a",
+    "mixer",
+    "value"),
+    sx_cons(G.edge("b",
+    "normalizer",
+    "value"),
+    sx_nil())));
+  let outs = sx_cons(G.output(port("normalized",
+    32),
+    "normalizer",
+    "value"),
+    sx_cons(G.output(port("mixed",
+    32),
+    "mixer",
+    "value"),
+    sx_cons(G.output(port("final",
+    32),
+    "finish",
+    "value"),
+    sx_nil())));
+  return G.graph(roots, sx_cons(f, sx_cons(m, sx_cons(n, sx_nil()))), outs);
 }
-fn frame_evidence(out:buffer, result:Run.Result)
+
+fn frame_evidence(out: buffer, result: Run.Result)
 {
-  G.frame(out,sx_text(result["status"]));
-  G.frame(out,sx_text(result["graph_digest"]));
-  G.frame(out,F.num(result["invocations"]));
-  G.frame(out,sx_text(result["trace"]));
+  G.frame(out, sx_text(result["status"]));
+  G.frame(out, sx_text(result["graph_digest"]));
+  G.frame(out, F.num(result["invocations"]));
+  G.frame(out, sx_text(result["trace"]));
   var items = result["outputs"];
-  G.frame(out,F.num(G.length(items,16)));
+  G.frame(out, F.num(G.length(items, 16)));
   while sx_kind(items) == 3
   {
     let e = sx_head(items);
-    G.frame(out,G.field(e,0));
-    G.frame(out,G.field(e,1));
-    G.frame(out,sx_text(SDK.value_bytes(G.at(e,2))));
+    G.frame(out, G.field(e, 0));
+    G.frame(out, G.field(e, 1));
+    G.frame(out, sx_text(SDK.value_bytes(G.at(e, 2))));
     items = sx_tail(items);
   }
   items = result["artifacts"];
-  G.frame(out,F.num(G.length(items,48)));
+  G.frame(out, F.num(G.length(items, 48)));
   while sx_kind(items) == 3
   {
     let e = sx_head(items);
-    G.frame(out,G.field(e,0)); G.frame(out,G.field(e,1)); G.frame(out,G.field(e,2));
+    G.frame(out, G.field(e, 0));
+    G.frame(out, G.field(e, 1));
+    G.frame(out, G.field(e, 2));
     items = sx_tail(items);
   }
 }
+
 fn main() -> i64
 {
   let task = env("CASE");
   let compiler = env("COMPILER_ID");
   let source = IO.basis_text_io_input_all(env("STRATEGY"));
-  let ctx = record<Run.Context>{cutoff:sx_string("2026-11-20T10:00:00Z"),
-    strategy_digest:sx_string(G.digest("composition test"))};
-  let roots = sx_cons(Run.input("raw",1,"one"),sx_cons(Run.input("extra",1,"two"),sx_nil()));
+  let ctx = record < Run.Context >
+  {
+    cutoff: sx_string("2026-11-20T10:00:00Z"), strategy_digest: sx_string(G.digest("composition test"))
+  };
+  let roots = sx_cons(Run.input("raw",
+    1,
+    "one"),
+    sx_cons(Run.input("extra",
+    1,
+    "two"),
+    sx_nil()));
   let out = buffer_new();
   if task == "native"
   {
-    frame_evidence(out,Run.execute(native_graph(),roots,ctx,"analysis",3,lookup,call));
+    frame_evidence(out,
+      Run.execute(native_graph(),
+      roots,
+      ctx,
+      "analysis",
+      3,
+      lookup,
+      call));
     IO.basis_text_io_print(buffer_text(out));
     return 0;
   }
   if task == "legacy"
   {
-    G.frame(out,sx_text(V6.lower(source,"analysis",3,compiler,lookup)["status"]));
+    G.frame(out,
+      sx_text(V6.lower(source,
+      "analysis",
+      3,
+      compiler,
+      lookup)["status"]));
     IO.basis_text_io_print(buffer_text(out));
     return 0;
   }
   var budget = 3;
-  if task == "budget" { budget = 2; }
-  if task == "max-fragments" { budget = 4; }
-  let result = Ott.lower(source,"analysis",budget,compiler,lookup);
+  if task == "budget"
+  {
+    budget = 2;
+  }
+  if task == "max-fragments"
+  {
+    budget = 4;
+  }
+  let result = Ott.lower(source, "analysis", budget, compiler, lookup);
   let d = result["diagnostic"];
   let status = sx_text(d["status"]);
-  G.frame(out,status);
-  G.frame(out,sx_text(d["fragment"])); G.frame(out,sx_text(d["subject"]));
-  G.frame(out,F.num(d["line"])); G.frame(out,F.num(d["column"]));
-  G.frame(out,F.num(d["start"])); G.frame(out,F.num(d["end"]));
+  G.frame(out, status);
+  G.frame(out, sx_text(d["fragment"]));
+  G.frame(out, sx_text(d["subject"]));
+  G.frame(out, F.num(d["line"]));
+  G.frame(out, F.num(d["column"]));
+  G.frame(out, F.num(d["start"]));
+  G.frame(out, F.num(d["end"]));
   if status != "ok"
   {
-    if sx_kind(result["source"]) != 0 || sx_kind(result["source_digest"]) != 0
-      || sx_kind(result["graph_digest"]) != 0 || sx_kind(result["spans"]) != 0
-      || sx_kind(result["graph"]["nodes"]) != 0 || sx_kind(result["resolved"]) != 0
-    { tool_fail("failed lowering exposed partial result"); }
-    let rejected = Bridge.execute(result,roots,ctx,"analysis",3,lookup,forbid_call);
-    if sx_text(rejected["status"]) != "lowering" { tool_fail("failed lowering admitted"); }
+    if sx_kind(result["source"]) != 0 || sx_kind(result["source_digest"]) != 0 || sx_kind(result["graph_digest"]) != 0 || sx_kind(result["spans"]) != 0 || sx_kind(result["graph"]["nodes"]) != 0 || sx_kind(result["resolved"]) != 0
+    {
+      tool_fail("failed lowering exposed partial result");
+    }
+    let rejected = Bridge.execute(result,
+      roots,
+      ctx,
+      "analysis",
+      3,
+      lookup,
+      forbid_call);
+    if sx_text(rejected["status"]) != "lowering"
+    {
+      tool_fail("failed lowering admitted");
+    }
     IO.basis_text_io_print(buffer_text(out));
     return 0;
   }
-  G.frame(out,sx_text(result["source"]));
-  G.frame(out,sx_text(result["source_digest"]));
-  G.frame(out,sx_text(result["graph_digest"]));
-  G.frame(out,sx_text(result["compiler_identity"]));
-  G.frame(out,sx_text(result["lowering"]));
+  G.frame(out, sx_text(result["source"]));
+  G.frame(out, sx_text(result["source_digest"]));
+  G.frame(out, sx_text(result["graph_digest"]));
+  G.frame(out, sx_text(result["compiler_identity"]));
+  G.frame(out, sx_text(result["lowering"]));
   var spans = result["spans"];
-  G.frame(out,F.num(G.length(spans,96)));
+  G.frame(out, F.num(G.length(spans, 96)));
   while sx_kind(spans) == 3
   {
     let entry = sx_head(spans);
-    for i in 0 .. 5 { G.frame(out,G.field(entry,i)); }
+    for i in 0 .. 5
+    {
+      G.frame(out, G.field(entry, i));
+    }
     spans = sx_tail(spans);
   }
   let pins = result["resolved"];
-  G.frame(out,F.num(G.length(pins,32)));
+  G.frame(out, F.num(G.length(pins, 32)));
   var rest = pins;
   while sx_kind(rest) == 3
   {
     let entry = sx_head(rest);
-    let pin = G.decode_pin(G.at(entry,1));
-    if !SDK.same_pin(lookup(sx_text(pin["handler_name"]))["pin"],pin)
-    { tool_fail("wrong resolved handler pin"); }
-    G.frame(out,G.field(entry,0));
-    G.frame(out,sx_text(pin["handler_name"]));
+    let pin = G.decode_pin(G.at(entry, 1));
+    if ! SDK.same_pin(lookup(sx_text(pin["handler_name"]))["pin"], pin)
+    {
+      tool_fail("wrong resolved handler pin");
+    }
+    G.frame(out, G.field(entry, 0));
+    G.frame(out, sx_text(pin["handler_name"]));
     rest = sx_tail(rest);
   }
   if task == "changed"
   {
-    let denied = Bridge.execute(result,roots,ctx,"analysis",3,changed_lookup,forbid_call);
+    let denied = Bridge.execute(result,
+      roots,
+      ctx,
+      "analysis",
+      3,
+      changed_lookup,
+      forbid_call);
     if denied["invocations"] != 0 || sx_kind(denied["outputs"]) != 0 || sx_kind(denied["artifacts"]) != 0
-    { tool_fail("pin mismatch exposed evidence"); }
-    G.frame(out,sx_text(denied["status"]));
+    {
+      tool_fail("pin mismatch exposed evidence");
+    }
+    G.frame(out, sx_text(denied["status"]));
   }
-  else { frame_evidence(out,Bridge.execute(result,roots,ctx,"analysis",budget,lookup,call)); }
+  else
+  {
+    frame_evidence(out,
+      Bridge.execute(result,
+      roots,
+      ctx,
+      "analysis",
+      budget,
+      lookup,
+      call));
+  }
   IO.basis_text_io_print(buffer_text(out));
   return 0;
 }

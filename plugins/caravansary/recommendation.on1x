@@ -2,33 +2,45 @@
 # or demand-estimation capability. Independently admit inputs before calling it.
 import plugins.caravansary.planning.json as Json;
 import plugins.caravansary.stdlib.price as Price;
-
-fn field(name:string,value:sexpr,rest:sexpr) -> sexpr
+fn field(name: string, value: sexpr, rest: sexpr) -> sexpr
 {
-  return sx_cons(Json.pair(name,value),rest);
+  return sx_cons(Json.pair(name, value), rest);
 }
 
-fn review(comparables:sexpr,policy:sexpr) -> sexpr
+fn review(comparables: sexpr, policy: sexpr) -> sexpr
 {
-  let report = Price.position(comparables,policy);
-  let fields = field("kind",sx_string("caravansary.position-review@1"),
-    field("policy_sha256",sx_string(Json.digest(policy)),
-    field("comparable_sha256",sx_string(Json.digest(comparables)),
-    field("report_sha256",sx_string(Json.digest(report)),
-    field("report",report,
-    field("published",Json.boolean(false),sx_nil()))))));
+  let report = Price.position(comparables, policy);
+  let fields = field("kind",
+    sx_string("caravansary.position-review@1"),
+    field("policy_sha256",
+    sx_string(Json.digest(policy)),
+    field("comparable_sha256",
+    sx_string(Json.digest(comparables)),
+    field("report_sha256",
+    sx_string(Json.digest(report)),
+    field("report",
+    report,
+    field("published",
+    Json.boolean(false),
+    sx_nil()))))));
   return Json.object(fields);
 }
 
 # Recompute the exact result from the two independently selected immutable
 # parents. The digest and the review payload are both checked by this replay;
 # a self-consistent hash on a forged report is insufficient.
-fn verify(claim:sexpr,comparables:sexpr,policy:sexpr) -> Result<sexpr,sexpr>
+fn verify(claim: sexpr,
+  comparables: sexpr,
+  policy: sexpr) -> Result < sexpr, sexpr >
 {
   if Json.kind(claim) != "object" || Json.kind(comparables) != "array" || Json.kind(policy) != "object"
-  { return result_error(sx_string("expected a position review and both replay parents")); }
-  let regenerated = review(comparables,policy);
+  {
+    return result_error(sx_string("expected a position review and both replay parents"));
+  }
+  let regenerated = review(comparables, policy);
   if Json.render(claim) != Json.render(regenerated)
-  { return result_error(sx_string("Caravansary recommendation replay differs")); }
-  return result_ok(Json.field(regenerated,"report"));
+  {
+    return result_error(sx_string("Caravansary recommendation replay differs"));
+  }
+  return result_ok(Json.field(regenerated, "report"));
 }

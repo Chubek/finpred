@@ -6,142 +6,241 @@ import core.format as F;
 import store.artifacts as Store;
 import std.collections.Array as A;
 import std.String as Str;
-
-extern fn yieldcraft_panel_log(x:f64) -> f64;
-extern fn yieldcraft_panel_exp(x:f64) -> f64;
-extern fn yieldcraft_panel_sqrt(x:f64) -> f64;
-extern fn yieldcraft_panel_isoelastic(rate:f64, shape:f64, relative_price:f64) -> f64;
-
-record Arm { started:sexpr, ended:sexpr, finalized:sexpr, ingested:sexpr,
-  group:sexpr, price:i64, assigned:i64, kept:i64 }
-record Config { as_of:sexpr, reference:i64, log_price:bool,
-  penalty:f64, pool:f64 }
-record Result { id:sexpr, report:sexpr }
-
-fn bytes_limit() -> i64 { return 65536; }
-fn report_limit() -> i64 { return 65536; }
-fn insufficient() { tool_fail("demand panel: insufficient overlapping within-window price evidence"); }
-fn n(x:i64) -> f64 { return f64_from_i64(x); }
-fn fixed(x:f64) -> string
+extern fn yieldcraft_panel_log(x: f64) -> f64;
+extern fn yieldcraft_panel_exp(x: f64) -> f64;
+extern fn yieldcraft_panel_sqrt(x: f64) -> f64;
+extern fn yieldcraft_panel_isoelastic(rate: f64,
+  shape: f64,
+  relative_price: f64) -> f64;
+record Arm
 {
-  if !f64_is_finite(x) || x < -100000000.0 || x > 100000000.0
-  { tool_fail("demand panel: estimate outside numeric bounds"); }
-  if x < 0.0 { return F.num(f64_to_i64(x*1000000.0-0.5)); }
-  return F.num(f64_to_i64(x*1000000.0+0.5));
+  started: sexpr, ended: sexpr, finalized: sexpr, ingested: sexpr, group: sexpr, price: i64, assigned: i64, kept: i64
 }
 
-fn arm(row:string, cfg:Config) -> Arm
+record Config
 {
-  CSV.require_width(row,12);
-  let started = CSV.field(row,0);
-  let ended = CSV.field(row,1);
-  let finalized = CSV.field(row,2);
-  let ingested = CSV.field(row,3);
-  if !Legacy.utc(started) || !Legacy.utc(ended) || !Legacy.utc(finalized) || !Legacy.utc(ingested)
-    || Str.compare(started,ended) >= 0 || Str.compare(ended,finalized) > 0
-    || Str.compare(finalized,ingested) > 0 || Str.compare(ingested,sx_text(cfg["as_of"])) > 0
-  { tool_fail("demand panel: invalid or future-dated window clocks"); }
-  let group = Legacy.label(CSV.field(row,4));
-  let price = Legacy.number(row,5,1000000000000);
-  let assigned = Legacy.number(row,6,1000000);
-  let kept = Legacy.number(row,7,1000000);
-  let cancelled = Legacy.number(row,8,1000000);
-  let nonpurchase = Legacy.number(row,9,1000000);
-  let unavailable = Legacy.number(row,10,1000000);
-  let unresolved = Legacy.number(row,11,1000000);
-  if price == 0 || price*4 < cfg["reference"] || price > cfg["reference"]*4
-  { tool_fail("demand panel: price must be within [reference/4, 4*reference]"); }
-  if assigned < 20 || unavailable != 0 || unresolved != 0 || assigned != kept+cancelled+nonpurchase
-  { tool_fail("demand panel: assignments must reconcile and be finalized and bookable (minimum 20)"); }
-  return record<Arm>{started:sx_string(started),ended:sx_string(ended),finalized:sx_string(finalized),
-    ingested:sx_string(ingested),group:sx_string(group),price:price,assigned:assigned,kept:kept};
+  as_of: sexpr, reference: i64, log_price: bool, penalty: f64, pool: f64
 }
 
-fn feature(price:i64, cfg:Config) -> f64
+record Result
 {
-  let ratio = n(price)/n(cfg["reference"]);
-  if cfg["log_price"] { return yieldcraft_panel_log(ratio); }
-  return ratio-1.0;
+  id: sexpr, report: sexpr
+}
+
+fn bytes_limit() -> i64
+{
+  return 65536;
+}
+
+fn report_limit() -> i64
+{
+  return 65536;
+}
+
+fn insufficient()
+{
+  tool_fail("demand panel: insufficient overlapping within-window price evidence");
+}
+
+fn n(x: i64) -> f64
+{
+  return f64_from_i64(x);
+}
+
+fn fixed(x: f64) -> string
+{
+  if ! f64_is_finite(x) || x < - 100000000.0 || x > 100000000.0
+  {
+    tool_fail("demand panel: estimate outside numeric bounds");
+  }
+  if x < 0.0
+  {
+    return F.num(f64_to_i64(x * 1000000.0 - 0.5));
+  }
+  return F.num(f64_to_i64(x * 1000000.0 + 0.5));
+}
+
+fn arm(row: string, cfg: Config) -> Arm
+{
+  CSV.require_width(row, 12);
+  let started = CSV.field(row, 0);
+  let ended = CSV.field(row, 1);
+  let finalized = CSV.field(row, 2);
+  let ingested = CSV.field(row, 3);
+  if ! Legacy.utc(started) || ! Legacy.utc(ended) || ! Legacy.utc(finalized) || ! Legacy.utc(ingested) || Str.compare(started,
+    ended) >= 0 || Str.compare(ended,
+    finalized) > 0 || Str.compare(finalized,
+    ingested) > 0 || Str.compare(ingested,
+    sx_text(cfg["as_of"])) > 0
+  {
+    tool_fail("demand panel: invalid or future-dated window clocks");
+  }
+  let group = Legacy.label(CSV.field(row, 4));
+  let price = Legacy.number(row, 5, 1000000000000);
+  let assigned = Legacy.number(row, 6, 1000000);
+  let kept = Legacy.number(row, 7, 1000000);
+  let cancelled = Legacy.number(row, 8, 1000000);
+  let nonpurchase = Legacy.number(row, 9, 1000000);
+  let unavailable = Legacy.number(row, 10, 1000000);
+  let unresolved = Legacy.number(row, 11, 1000000);
+  if price == 0 || price * 4 < cfg["reference"] || price > cfg["reference"] * 4
+  {
+    tool_fail("demand panel: price must be within [reference/4, 4*reference]");
+  }
+  if assigned < 20 || unavailable != 0 || unresolved != 0 || assigned != kept + cancelled + nonpurchase
+  {
+    tool_fail("demand panel: assignments must reconcile and be finalized and bookable (minimum 20)");
+  }
+  return record < Arm >
+  {
+    started: sx_string(started), ended: sx_string(ended), finalized: sx_string(finalized), ingested: sx_string(ingested), group: sx_string(group), price: price, assigned: assigned, kept: kept
+  };
+}
+
+fn feature(price: i64, cfg: Config) -> f64
+{
+  let ratio = n(price) / n(cfg["reference"]);
+  if cfg["log_price"]
+  {
+    return yieldcraft_panel_log(ratio);
+  }
+  return ratio - 1.0;
 }
 
 # Predictions are kept-room-night rates for eligible assigned exposures, not raw bookings.
-fn predict(price:i64, intercept:f64, slope:f64, cfg:Config) -> f64
+fn predict(price: i64, intercept: f64, slope: f64, cfg: Config) -> f64
 {
-  let y = intercept+slope*feature(price,cfg);
-  if y >= 0.0 { return 1.0; }
-  # Guard both an irrelevant very small probability and the MuLIB scale argument.
-  if y < -100.0 { return 0.0; }
-  if cfg["log_price"] && slope <= 0.0 && intercept >= -100.0 && intercept <= 100.0
+  let y = intercept + slope * feature(price, cfg);
+  if y >= 0.0
   {
-    let rate = yieldcraft_panel_isoelastic(yieldcraft_panel_exp(intercept),-slope,n(price)/n(cfg["reference"]));
-    if rate > 1.0 { return 1.0; }
+    return 1.0;
+  }
+  # Guard both an irrelevant very small probability and the MuLIB scale argument.
+  if y < - 100.0
+  {
+    return 0.0;
+  }
+  if cfg["log_price"] && slope <= 0.0 && intercept >= - 100.0 && intercept <= 100.0
+  {
+    let rate = yieldcraft_panel_isoelastic(yieldcraft_panel_exp(intercept),
+      - slope,
+      n(price) / n(cfg["reference"]));
+    if rate > 1.0
+    {
+      return 1.0;
+    }
     return rate;
   }
   return yieldcraft_panel_exp(y);
 }
 
-fn brier(p:f64, kept:i64, assigned:i64) -> f64
+fn brier(p: f64, kept: i64, assigned: i64) -> f64
 {
-  return n(kept)*(1.0-p)*(1.0-p)+n(assigned-kept)*p*p;
+  return n(kept) * (1.0 - p) * (1.0 - p) + n(assigned - kept) * p * p;
 }
 
 # Group stride: assigned, kept, sum(w*x), sum(w*y), min price, max price,
 # window count, log intercept. The float slots hold exact binary64 bits.
-fn group_stride() -> i64 { return 8; }
-fn group_limit() -> i64 { return 8; }
-fn row_limit() -> i64 { return 256; }
-fn g(gid:i64, field:i64) -> i64 { return gid*group_stride()+field; }
+fn group_stride() -> i64
+{
+  return 8;
+}
 
-fn estimate(scenario_raw:string, raw:string) -> Result
+fn group_limit() -> i64
+{
+  return 8;
+}
+
+fn row_limit() -> i64
+{
+  return 256;
+}
+
+fn g(gid: i64, field: i64) -> i64
+{
+  return gid * group_stride() + field;
+}
+
+fn estimate(scenario_raw: string, raw: string) -> Result
 {
   if text_len(raw) > bytes_limit() || text_len(scenario_raw) > Legacy.bytes_limit()
-  { tool_fail("demand panel: input exceeds byte limit"); }
+  {
+    tool_fail("demand panel: input exceeds byte limit");
+  }
   let s = C.scenario_csv(scenario_raw);
   if s["nights"] != 1 || s["max_rooms"] != 1
-  { tool_fail("demand panel: requires a single-room, single-night scenario"); }
+  {
+    tool_fail("demand panel: requires a single-room, single-night scenario");
+  }
   let rows = CSV.rows(raw);
-  if rows < 12 || rows > row_limit()+4
-  { tool_fail("demand panel: expected 8..256 arm rows"); }
-  CSV.header(CSV.line(raw,0),"pricing.first-party-demand-panel@1");
-  CSV.header(CSV.line(raw,1),"scenario_blake3,property,product,currency,price_basis,assignment,train_as_of,reference_price_minor,target_exposures,model");
-  CSV.header(CSV.line(raw,3),"started_at,ended_at,finalized_at,ingested_at,group,price_minor,assigned,kept,cancelled,nonpurchase,unavailable,unresolved");
-  let meta = CSV.line(raw,2);
-  CSV.require_width(meta,10);
+  if rows < 12 || rows > row_limit() + 4
+  {
+    tool_fail("demand panel: expected 8..256 arm rows");
+  }
+  CSV.header(CSV.line(raw, 0), "pricing.first-party-demand-panel@1");
+  CSV.header(CSV.line(raw,
+    1),
+    "scenario_blake3,property,product,currency,price_basis,assignment,train_as_of,reference_price_minor,target_exposures,model");
+  CSV.header(CSV.line(raw,
+    3),
+    "started_at,ended_at,finalized_at,ingested_at,group,price_minor,assigned,kept,cancelled,nonpurchase,unavailable,unresolved");
+  let meta = CSV.line(raw, 2);
+  CSV.require_width(meta, 10);
   let sd = Store.digest(scenario_raw);
-  let prop = Legacy.label(CSV.field(meta,1));
-  let product = Legacy.label(CSV.field(meta,2));
+  let prop = Legacy.label(CSV.field(meta, 1));
+  let product = Legacy.label(CSV.field(meta, 2));
   let currency = sx_text(s["currency"]);
-  if CSV.field(meta,0) != sd || CSV.field(meta,3) != currency || CSV.field(meta,4) != "room_night"
-  { tool_fail("demand panel: scenario, currency or price basis mismatch"); }
-  if CSV.field(meta,5) != "observational"
-  { tool_fail("demand panel: observational panel required; use the legacy path for randomized arms"); }
-  let split = CSV.field(meta,6);
+  if CSV.field(meta,
+    0) != sd || CSV.field(meta,
+    3) != currency || CSV.field(meta,
+    4) != "room_night"
+  {
+    tool_fail("demand panel: scenario, currency or price basis mismatch");
+  }
+  if CSV.field(meta, 5) != "observational"
+  {
+    tool_fail("demand panel: observational panel required; use the legacy path for randomized arms");
+  }
+  let split = CSV.field(meta, 6);
   let as_of = sx_text(s["decision_at"]);
-  if !Legacy.utc(split) || Str.compare(split,as_of) >= 0
-  { tool_fail("demand panel: train_as_of must be before decision_at"); }
-  let reference = Legacy.number(meta,7,1000000000000);
-  let target = Legacy.number(meta,8,1000);
+  if ! Legacy.utc(split) || Str.compare(split, as_of) >= 0
+  {
+    tool_fail("demand panel: train_as_of must be before decision_at");
+  }
+  let reference = Legacy.number(meta, 7, 1000000000000);
+  let target = Legacy.number(meta, 8, 1000);
   if reference == 0 || target == 0
-  { tool_fail("demand panel: reference price and target exposures must be positive"); }
-  let model = CSV.field(meta,9);
+  {
+    tool_fail("demand panel: reference price and target exposures must be positive");
+  }
+  let model = CSV.field(meta, 9);
   let iso = model == "constant_elasticity" || model == "partially_pooled_elasticity";
-  if !iso && model != "log_linear" && model != "ridge_log_linear"
-  { tool_fail("demand panel: unknown model"); }
+  if ! iso && model != "log_linear" && model != "ridge_log_linear"
+  {
+    tool_fail("demand panel: unknown model");
+  }
   var penalty = 0.0;
   var pool = 0.0;
-  if model == "ridge_log_linear" || model == "partially_pooled_elasticity" { penalty = 0.0025; }
-  if model == "partially_pooled_elasticity" { pool = 1000.0; }
-  let cfg = record<Config>{as_of:sx_string(as_of),reference:reference,
-    log_price:iso,penalty:penalty,pool:pool};
-
+  if model == "ridge_log_linear" || model == "partially_pooled_elasticity"
+  {
+    penalty = 0.0025;
+  }
+  if model == "partially_pooled_elasticity"
+  {
+    pool = 1000.0;
+  }
+  let cfg = record < Config >
+  {
+    as_of: sx_string(as_of), reference: reference, log_price: iso, penalty: penalty, pool: pool
+  };
   let names = buffer_new();
-  let groups = A.basis_array_array(group_limit()*group_stride(),0);
-  let cross = A.basis_array_array(row_limit(),0);
-  let square = A.basis_array_array(row_limit(),0);
-  let train_prices = A.basis_array_array(row_limit(),0);
-  let train_groups = A.basis_array_array(row_limit(),0);
+  let groups = A.basis_array_array(group_limit() * group_stride(), 0);
+  let cross = A.basis_array_array(row_limit(), 0);
+  let square = A.basis_array_array(row_limit(), 0);
+  let train_prices = A.basis_array_array(row_limit(), 0);
+  let train_groups = A.basis_array_array(row_limit(), 0);
   let training = buffer_new();
-  buffer_append(training,"$meta\n");
+  buffer_append(training, "$meta\n");
   var ng = 0;
   var nw = 0;
   var nh = 0;
@@ -169,14 +268,16 @@ fn estimate(scenario_raw:string, raw:string) -> Result
   var my = 0.0;
   var wxx = 0.0;
   var wxy = 0.0;
-
   # The final sentinel flushes the last block. Within-block online weighted
   # covariance avoids subtracting nearly equal raw second moments.
-  for i in 4 .. rows+1
+  for i in 4 .. rows + 1
   {
-    var row = CSV.line(raw,4);
-    if i < rows { row = CSV.line(raw,i); }
-    let a = arm(row,cfg);
+    var row = CSV.line(raw, 4);
+    if i < rows
+    {
+      row = CSV.line(raw, i);
+    }
+    let a = arm(row, cfg);
     let a_started = sx_text(a["started"]);
     let a_ended = sx_text(a["ended"]);
     let a_finalized = sx_text(a["finalized"]);
@@ -186,49 +287,79 @@ fn estimate(scenario_raw:string, raw:string) -> Result
     let new_group = new_window || a_group != label;
     if i > 4 && new_group
     {
-      if (previous_price-first_price)*100 < first_price { insufficient(); }
+      if (previous_price - first_price) * 100 < first_price
+      {
+        insufficient();
+      }
       if train
       {
-        sxx = sxx+wxx;
-        sxy = sxy+wxy;
-        A.basis_array_update(square,nw-1,f64_to_bits(f64_from_bits(A.basis_array_sub(square,nw-1))+wxx));
-        A.basis_array_update(cross,nw-1,f64_to_bits(f64_from_bits(A.basis_array_sub(cross,nw-1))+wxy));
+        sxx = sxx + wxx;
+        sxy = sxy + wxy;
+        A.basis_array_update(square,
+          nw - 1,
+          f64_to_bits(f64_from_bits(A.basis_array_sub(square,
+          nw - 1)) + wxx));
+        A.basis_array_update(cross,
+          nw - 1,
+          f64_to_bits(f64_from_bits(A.basis_array_sub(cross,
+          nw - 1)) + wxy));
       }
     }
-    if i == rows { break; }
+    if i == rows
+    {
+      break;
+    }
     if new_window
     {
-      if i > 4 && Str.compare(a_started,ended) < 0
-      { tool_fail("demand panel: windows must be ordered and nonoverlapping"); }
+      if i > 4 && Str.compare(a_started, ended) < 0
+      {
+        tool_fail("demand panel: windows must be ordered and nonoverlapping");
+      }
       started = a_started;
       ended = a_ended;
       finalized = a_finalized;
       ingested = a_ingested;
-      train = Str.compare(ingested,split) <= 0;
+      train = Str.compare(ingested, split) <= 0;
       if train
       {
-        nw = nw+1;
-        if Str.compare(ingested,train_ingested) > 0 { train_ingested = ingested; }
+        nw = nw + 1;
+        if Str.compare(ingested, train_ingested) > 0
+        {
+          train_ingested = ingested;
+        }
       }
       else
       {
-        if Str.compare(started,split) < 0
-        { tool_fail("demand panel: window straddles training cutoff or was ingested late"); }
-        if nh == 0 { train_end = i; holdout_started = started; }
-        if Str.compare(ingested,holdout_ingested) > 0 { holdout_ingested = ingested; }
-        nh = nh+1;
+        if Str.compare(started, split) < 0
+        {
+          tool_fail("demand panel: window straddles training cutoff or was ingested late");
+        }
+        if nh == 0
+        {
+          train_end = i;
+          holdout_started = started;
+        }
+        if Str.compare(ingested, holdout_ingested) > 0
+        {
+          holdout_ingested = ingested;
+        }
+        nh = nh + 1;
       }
     }
     else
     {
       if a_ended != ended || a_finalized != finalized || a_ingested != ingested
-      { tool_fail("demand panel: inconsistent clocks for the same window"); }
+      {
+        tool_fail("demand panel: inconsistent clocks for the same window");
+      }
     }
     let price = a["price"];
     if new_group
     {
-      if !new_window && Str.compare(a_group,label) <= 0
-      { tool_fail("demand panel: groups must increase within each window"); }
+      if ! new_window && Str.compare(a_group, label) <= 0
+      {
+        tool_fail("demand panel: groups must increase within each window");
+      }
       label = a_group;
       first_price = price;
       previous_price = 0;
@@ -238,17 +369,29 @@ fn estimate(scenario_raw:string, raw:string) -> Result
         gid = ng;
         for j in 0 .. ng
         {
-          if CSV.line(seen,j) == label { gid = j; break; }
+          if CSV.line(seen, j) == label
+          {
+            gid = j;
+            break;
+          }
         }
         if gid == ng
         {
-          if ng == group_limit() { tool_fail("demand panel: at most eight training groups"); }
-          buffer_append(names,"$label\n");
-          ng = ng+1;
-          A.basis_array_update(groups,g(gid,4),price);
-          A.basis_array_update(groups,g(gid,5),price);
+          if ng == group_limit()
+          {
+            tool_fail("demand panel: at most eight training groups");
+          }
+          buffer_append(names, "$label\n");
+          ng = ng + 1;
+          A.basis_array_update(groups, g(gid, 4), price);
+          A.basis_array_update(groups, g(gid, 5), price);
         }
-        A.basis_array_update(groups,g(gid,6),A.basis_array_sub(groups,g(gid,6))+1);
+        A.basis_array_update(groups,
+          g(gid,
+          6),
+          A.basis_array_sub(groups,
+          g(gid,
+          6)) + 1);
       }
       weight = 0.0;
       mx = 0.0;
@@ -256,119 +399,188 @@ fn estimate(scenario_raw:string, raw:string) -> Result
       wxx = 0.0;
       wxy = 0.0;
     }
-    if price <= previous_price { tool_fail("demand panel: prices must increase within each window and group"); }
+    if price <= previous_price
+    {
+      tool_fail("demand panel: prices must increase within each window and group");
+    }
     previous_price = price;
     if train
     {
-      buffer_append(training,"$row\n");
+      buffer_append(training, "$row\n");
       let assigned = a["assigned"];
       let kept = a["kept"];
       let w = n(assigned);
-      let x = feature(price,cfg);
-      let y = yieldcraft_panel_log((n(kept)+0.5)/(w+1.0));
-      let dx = x-mx;
-      let dy = y-my;
-      weight = weight+w;
-      mx = mx+dx*w/weight;
-      my = my+dy*w/weight;
-      wxx = wxx+w*dx*(x-mx);
-      wxy = wxy+w*dx*(y-my);
-      total = total+assigned;
-      total_kept = total_kept+kept;
-      total_x = total_x+w*x;
-      total_y = total_y+w*y;
-      A.basis_array_update(groups,g(gid,0),A.basis_array_sub(groups,g(gid,0))+assigned);
-      A.basis_array_update(groups,g(gid,1),A.basis_array_sub(groups,g(gid,1))+kept);
-      A.basis_array_update(groups,g(gid,2),f64_to_bits(f64_from_bits(A.basis_array_sub(groups,g(gid,2)))+w*x));
-      A.basis_array_update(groups,g(gid,3),f64_to_bits(f64_from_bits(A.basis_array_sub(groups,g(gid,3)))+w*y));
-      if price < A.basis_array_sub(groups,g(gid,4)) { A.basis_array_update(groups,g(gid,4),price); }
-      if price > A.basis_array_sub(groups,g(gid,5)) { A.basis_array_update(groups,g(gid,5),price); }
-      A.basis_array_update(train_prices,i-4,price);
-      A.basis_array_update(train_groups,i-4,gid);
+      let x = feature(price, cfg);
+      let y = yieldcraft_panel_log((n(kept) + 0.5) / (w + 1.0));
+      let dx = x - mx;
+      let dy = y - my;
+      weight = weight + w;
+      mx = mx + dx * w / weight;
+      my = my + dy * w / weight;
+      wxx = wxx + w * dx * (x - mx);
+      wxy = wxy + w * dx * (y - my);
+      total = total + assigned;
+      total_kept = total_kept + kept;
+      total_x = total_x + w * x;
+      total_y = total_y + w * y;
+      A.basis_array_update(groups,
+        g(gid,
+        0),
+        A.basis_array_sub(groups,
+        g(gid,
+        0)) + assigned);
+      A.basis_array_update(groups,
+        g(gid,
+        1),
+        A.basis_array_sub(groups,
+        g(gid,
+        1)) + kept);
+      A.basis_array_update(groups,
+        g(gid,
+        2),
+        f64_to_bits(f64_from_bits(A.basis_array_sub(groups,
+        g(gid,
+        2))) + w * x));
+      A.basis_array_update(groups,
+        g(gid,
+        3),
+        f64_to_bits(f64_from_bits(A.basis_array_sub(groups,
+        g(gid,
+        3))) + w * y));
+      if price < A.basis_array_sub(groups, g(gid, 4))
+      {
+        A.basis_array_update(groups, g(gid, 4), price);
+      }
+      if price > A.basis_array_sub(groups, g(gid, 5))
+      {
+        A.basis_array_update(groups, g(gid, 5), price);
+      }
+      A.basis_array_update(train_prices, i - 4, price);
+      A.basis_array_update(train_groups, i - 4, gid);
     }
   }
-  if nw < 3 || nh < 1 || sxx < n(total)*0.000001 || total_kept == 0 || total_kept == total
-  { insufficient(); }
-  if cfg["pool"] > 0.0 && ng < 2 { tool_fail("demand panel: partial pooling needs at least two groups"); }
-  let slope = sxy/(sxx+cfg["penalty"]*n(total));
+  if nw < 3 || nh < 1 || sxx < n(total) * 0.000001 || total_kept == 0 || total_kept == total
+  {
+    insufficient();
+  }
+  if cfg["pool"] > 0.0 && ng < 2
+  {
+    tool_fail("demand panel: partial pooling needs at least two groups");
+  }
+  let slope = sxy / (sxx + cfg["penalty"] * n(total));
   let slope_text = fixed(slope);
-  let pooled = (total_y-slope*total_x)/n(total);
+  let pooled = (total_y - slope * total_x) / n(total);
   var se = "null";
   if nw >= 8 && cfg["penalty"] == 0.0
   {
     var meat = 0.0;
     for j in 0 .. nw
     {
-      let score = f64_from_bits(A.basis_array_sub(cross,j))-slope*f64_from_bits(A.basis_array_sub(square,j));
-      meat = meat+score*score;
+      let score = f64_from_bits(A.basis_array_sub(cross,
+        j)) - slope * f64_from_bits(A.basis_array_sub(square,
+        j));
+      meat = meat + score * score;
     }
-    se = fixed(yieldcraft_panel_sqrt(n(nw)/n(nw-1)*meat)/sxx);
+    se = fixed(yieldcraft_panel_sqrt(n(nw) / n(nw - 1) * meat) / sxx);
   }
   A.basis_array_destroy(cross);
   A.basis_array_destroy(square);
-
   let detail = buffer_new();
   let seen = buffer_text(names);
   for j in 0 .. ng
   {
-    let group = CSV.line(seen,j);
-    let exposures = A.basis_array_sub(groups,g(j,0));
-    let kept = A.basis_array_sub(groups,g(j,1));
-    let windows = A.basis_array_sub(groups,g(j,6));
-    if windows < 2 || kept == 0 || kept == exposures { insufficient(); }
-    let adjusted_sum = f64_from_bits(A.basis_array_sub(groups,g(j,3)))-slope*f64_from_bits(A.basis_array_sub(groups,g(j,2)));
-    let intercept = (adjusted_sum+cfg["pool"]*pooled)/(n(exposures)+cfg["pool"]);
-    A.basis_array_update(groups,g(j,7),f64_to_bits(intercept));
+    let group = CSV.line(seen, j);
+    let exposures = A.basis_array_sub(groups, g(j, 0));
+    let kept = A.basis_array_sub(groups, g(j, 1));
+    let windows = A.basis_array_sub(groups, g(j, 6));
+    if windows < 2 || kept == 0 || kept == exposures
+    {
+      insufficient();
+    }
+    let adjusted_sum = f64_from_bits(A.basis_array_sub(groups,
+      g(j,
+      3))) - slope * f64_from_bits(A.basis_array_sub(groups,
+      g(j,
+      2)));
+    let intercept = (adjusted_sum + cfg["pool"] * pooled) / (n(exposures) + cfg["pool"]);
+    A.basis_array_update(groups, g(j, 7), f64_to_bits(intercept));
     let intercept_text = fixed(intercept);
-    let low = A.basis_array_sub(groups,g(j,4));
-    let high = A.basis_array_sub(groups,g(j,5));
+    let low = A.basis_array_sub(groups, g(j, 4));
+    let high = A.basis_array_sub(groups, g(j, 5));
     let lo = F.num(low);
     let hi = F.num(high);
     let exp = F.num(exposures);
     let win = F.num(windows);
-    if j > 0 { buffer_append(detail,","); }
-    buffer_append(detail,"{\"group\":\"$group\",\"training_assigned\":$exp,\"training_windows\":$win,\"min_price_minor\":$lo,\"max_price_minor\":$hi,\"log_intercept_micros\":$intercept_text,\"predictions\":[");
+    if j > 0
+    {
+      buffer_append(detail, ",");
+    }
+    buffer_append(detail,
+      "{\"group\":\"$group\",\"training_assigned\":$exp,\"training_windows\":$win,\"min_price_minor\":$lo,\"max_price_minor\":$hi,\"log_intercept_micros\":$intercept_text,\"predictions\":[");
     var p = low;
     while p <= high
     {
-      let rate = predict(p,intercept,slope,cfg);
+      let rate = predict(p, intercept, slope, cfg);
       let pt = F.num(p);
       let rt = fixed(rate);
-      let rooms = F.num(f64_to_i64(rate*n(target)*1000.0+0.5));
-      if p > low { buffer_append(detail,","); }
-      buffer_append(detail,"{\"price_minor\":$pt,\"kept_rate_micros\":$rt,\"expected_room_nights_milli\":$rooms}");
-      var next = high+1;
-      for k in 0 .. train_end-4
+      let rooms = F.num(f64_to_i64(rate * n(target) * 1000.0 + 0.5));
+      if p > low
       {
-        let q = A.basis_array_sub(train_prices,k);
-        if A.basis_array_sub(train_groups,k) == j && q > p && q < next { next = q; }
+        buffer_append(detail, ",");
+      }
+      buffer_append(detail,
+        "{\"price_minor\":$pt,\"kept_rate_micros\":$rt,\"expected_room_nights_milli\":$rooms}");
+      var next = high + 1;
+      for k in 0 .. train_end - 4
+      {
+        let q = A.basis_array_sub(train_prices, k);
+        if A.basis_array_sub(train_groups, k) == j && q > p && q < next
+        {
+          next = q;
+        }
       }
       p = next;
     }
-    buffer_append(detail,"]}");
+    buffer_append(detail, "]}");
   }
   A.basis_array_destroy(train_prices);
   A.basis_array_destroy(train_groups);
-
   var scored = 0;
   var loss = 0.0;
   var base_loss = 0.0;
   for i in train_end .. rows
   {
-    let a = arm(CSV.line(raw,i),cfg);
+    let a = arm(CSV.line(raw, i), cfg);
     var j = 0;
     let group = sx_text(a["group"]);
-    while j < ng && CSV.line(seen,j) != group { j = j+1; }
-    if j == ng || a["price"] < A.basis_array_sub(groups,g(j,4))
-      || a["price"] > A.basis_array_sub(groups,g(j,5))
-    { tool_fail("demand panel: holdout group or price outside training support"); }
+    while j < ng && CSV.line(seen, j) != group
+    {
+      j = j + 1;
+    }
+    if j == ng || a["price"] < A.basis_array_sub(groups,
+      g(j,
+      4)) || a["price"] > A.basis_array_sub(groups,
+      g(j,
+      5))
+    {
+      tool_fail("demand panel: holdout group or price outside training support");
+    }
     let assigned = a["assigned"];
     let kept = a["kept"];
-    let rate = predict(a["price"],f64_from_bits(A.basis_array_sub(groups,g(j,7))),slope,cfg);
-    let baseline = n(A.basis_array_sub(groups,g(j,1)))/n(A.basis_array_sub(groups,g(j,0)));
-    loss = loss+brier(rate,kept,assigned);
-    base_loss = base_loss+brier(baseline,kept,assigned);
-    scored = scored+assigned;
+    let rate = predict(a["price"],
+      f64_from_bits(A.basis_array_sub(groups,
+      g(j,
+      7))),
+      slope,
+      cfg);
+    let baseline = n(A.basis_array_sub(groups,
+      g(j,
+      1))) / n(A.basis_array_sub(groups,
+      g(j,
+      0)));
+    loss = loss + brier(rate, kept, assigned);
+    base_loss = base_loss + brier(baseline, kept, assigned);
+    scored = scored + assigned;
   }
   A.basis_array_destroy(groups);
   let train_digest = Store.digest(buffer_text(training));
@@ -382,19 +594,30 @@ fn estimate(scenario_raw:string, raw:string) -> Result
   let holdout_windows = F.num(nh);
   let reference_text = F.num(reference);
   let target_text = F.num(target);
-  let variation = fixed(sxx/n(total));
-  let brier_text = fixed(loss/n(scored));
-  let baseline_text = fixed(base_loss/n(scored));
+  let variation = fixed(sxx / n(total));
+  let brier_text = fixed(loss / n(scored));
+  let baseline_text = fixed(base_loss / n(scored));
   let model_data = buffer_text(detail);
   var price_feature = "price_over_reference_minus_one";
-  if iso { price_feature = "log_price_over_reference"; }
+  if iso
+  {
+    price_feature = "log_price_over_reference";
+  }
   let penalty_text = fixed(cfg["penalty"]);
   let pool_text = F.num(f64_to_i64(cfg["pool"]));
   let out = buffer_new();
-  buffer_append(out,"{\"kind\":\"pricing.demand-estimation\",\"version\":2,\"id\":\"blake3:$eval_id\",\"model_id\":\"blake3:$id\",\"policy\":\"$policy\",\"scenario\":\"blake3:$sd\",\"exposure\":\"blake3:$source_digest\",\"training\":\"blake3:$train_digest\",");
-  buffer_append(out,"\"identification\":\"observational_association\",\"decision_eligible\":false,\"property\":\"$prop\",\"product\":\"$product\",\"currency\":\"$currency\",\"price_basis\":\"room_night\",\"exposure_basis\":\"bookable_finalized_assignments\",\"outcome\":\"kept_room_night\",");
-  buffer_append(out,"\"train_as_of\":\"$split\",\"as_of\":\"$as_of\",\"reference_price_minor\":$reference_text,\"target_exposures\":$target_text,\"model\":\"$model\",\"price_feature\":\"$price_feature\",\"slope_micros\":$slope_text,\"window_cluster_slope_se_micros\":$se,\"slope_penalty_micros\":$penalty_text,\"pooling_pseudo_exposures\":$pool_text,");
-  buffer_append(out,"\"training_assigned\":$train_assigned,\"training_windows\":$train_windows,\"training_latest_ingested_at\":\"$train_ingested\",\"within_window_feature_variance_micros\":$variation,");
-  buffer_append(out,"\"holdout\":{\"assigned\":$holdout_assigned,\"windows\":$holdout_windows,\"first_started_at\":\"$holdout_started\",\"latest_ingested_at\":\"$holdout_ingested\",\"brier_micros\":$brier_text,\"group_rate_baseline_brier_micros\":$baseline_text},\"groups\":[$model_data]}\n");
-  return record<Result>{id:sx_string("blake3:$eval_id"),report:sx_string(buffer_text(out))};
+  buffer_append(out,
+    "{\"kind\":\"pricing.demand-estimation\",\"version\":2,\"id\":\"blake3:$eval_id\",\"model_id\":\"blake3:$id\",\"policy\":\"$policy\",\"scenario\":\"blake3:$sd\",\"exposure\":\"blake3:$source_digest\",\"training\":\"blake3:$train_digest\",");
+  buffer_append(out,
+    "\"identification\":\"observational_association\",\"decision_eligible\":false,\"property\":\"$prop\",\"product\":\"$product\",\"currency\":\"$currency\",\"price_basis\":\"room_night\",\"exposure_basis\":\"bookable_finalized_assignments\",\"outcome\":\"kept_room_night\",");
+  buffer_append(out,
+    "\"train_as_of\":\"$split\",\"as_of\":\"$as_of\",\"reference_price_minor\":$reference_text,\"target_exposures\":$target_text,\"model\":\"$model\",\"price_feature\":\"$price_feature\",\"slope_micros\":$slope_text,\"window_cluster_slope_se_micros\":$se,\"slope_penalty_micros\":$penalty_text,\"pooling_pseudo_exposures\":$pool_text,");
+  buffer_append(out,
+    "\"training_assigned\":$train_assigned,\"training_windows\":$train_windows,\"training_latest_ingested_at\":\"$train_ingested\",\"within_window_feature_variance_micros\":$variation,");
+  buffer_append(out,
+    "\"holdout\":{\"assigned\":$holdout_assigned,\"windows\":$holdout_windows,\"first_started_at\":\"$holdout_started\",\"latest_ingested_at\":\"$holdout_ingested\",\"brier_micros\":$brier_text,\"group_rate_baseline_brier_micros\":$baseline_text},\"groups\":[$model_data]}\n");
+  return record < Result >
+  {
+    id: sx_string("blake3:$eval_id"), report: sx_string(buffer_text(out))
+  };
 }

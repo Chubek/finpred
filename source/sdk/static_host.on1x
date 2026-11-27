@@ -1,22 +1,27 @@
 # Legacy package compatibility API, not an engine admission gate.
 import sdk.registry as Registry;
-
-fn compatible(name:string, kind:string, inputs:sexpr, output:string, mode:string, linked:sexpr) -> bool
+fn compatible(name: string,
+  kind: string,
+  inputs: sexpr,
+  output: string,
+  mode: string,
+  linked: sexpr) -> bool
 {
-  return Registry.compatible(name,kind,inputs,output,mode,linked);
+  return Registry.compatible(name, kind, inputs, output, mode, linked);
 }
 
-fn yieldcraft(mode:string) -> bool
+fn yieldcraft(mode: string) -> bool
 {
-  return Registry.package_compatible(Registry.yieldcraft_entry(),mode);
+  return Registry.package_compatible(Registry.yieldcraft_entry(), mode);
 }
 
 fn poindexter() -> bool
 {
-  return Registry.package_compatible("poindexter.sheet.render","analysis");
+  return Registry.package_compatible("poindexter.sheet.render", "analysis");
 }
 
 fn dragnet() -> bool
 {
-  return Registry.package_compatible("dragnet.frozen_csv.offers_as_of","analysis");
+  return Registry.package_compatible("dragnet.frozen_csv.offers_as_of",
+    "analysis");
 }

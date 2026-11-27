@@ -4,24 +4,41 @@ import core.format as F;
 import core.contracts as Contracts;
 import std.io.TextIO as IO;
 import std.os.OS_FileSys as FS;
-
-fn scenario_cutoff(path:string) -> string {
-  if !FS.basis_fs_exists(path) { tool_fail("yieldcraft: missing scenario file"); }
+fn scenario_cutoff(path: string) -> string
+{
+  if ! FS.basis_fs_exists(path)
+  {
+    tool_fail("yieldcraft: missing scenario file");
+  }
   let size = FS.basis_fs_file_size(path);
-  if size < 1 || size > 2000000 { tool_fail("yieldcraft: scenario file size outside input bounds"); }
+  if size < 1 || size > 2000000
+  {
+    tool_fail("yieldcraft: scenario file size outside input bounds");
+  }
   let bytes = IO.basis_text_io_input_all(path);
-  if text_len(bytes) != size { tool_fail("yieldcraft: scenario changed or read was incomplete"); }
+  if text_len(bytes) != size
+  {
+    tool_fail("yieldcraft: scenario changed or read was incomplete");
+  }
   return sx_text(Contracts.scenario_csv(bytes)["decision_at"]);
 }
 
-fn inspect(batch:Dragnet.Batch) -> string {
+fn inspect(batch: Dragnet.Batch) -> string
+{
   var llm = 0;
   var claims = 0;
   var rest = batch["pages"];
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let page = Dragnet.page(sx_text(sx_head(rest)));
-    if sx_text(page["llm_text"]) != "" { llm = llm + 1; }
-    if page["pricing_claim"] { claims = claims + 1; }
+    if sx_text(page["llm_text"]) != ""
+    {
+      llm = llm + 1;
+    }
+    if page["pricing_claim"]
+    {
+      claims = claims + 1;
+    }
     rest = sx_tail(rest);
   }
   let provider = F.q(sx_text(batch["provider"]));
@@ -35,12 +52,24 @@ fn inspect(batch:Dragnet.Batch) -> string {
   return "{\"format\":\"finpred.dragnet-inspection@1\",\"provider\":$provider,\"extraction\":$extraction,\"transport\":$transport,\"requested_as_of\":$requested,\"batch_digest\":$digest,\"pages\":$pages,\"llm_pages\":$l,\"pricing_claims\":$c}\n";
 }
 
-fn consume(path:string, cutoff:string, project:fn(Dragnet.Batch) -> string) -> i64 {
-  if !FS.basis_fs_exists(path) { tool_fail("dragnet handoff: missing input file"); }
+fn consume(path: string,
+  cutoff: string,
+  project: fn(Dragnet.Batch) -> string) -> i64
+{
+  if ! FS.basis_fs_exists(path)
+  {
+    tool_fail("dragnet handoff: missing input file");
+  }
   let size = FS.basis_fs_file_size(path);
-  if size < 1 || size > Wire.limit() { tool_fail("dragnet handoff: file size outside input bounds"); }
+  if size < 1 || size > Wire.limit()
+  {
+    tool_fail("dragnet handoff: file size outside input bounds");
+  }
   let bytes = IO.basis_text_io_input_all(path);
-  if text_len(bytes) != size { tool_fail("dragnet handoff: file length changed or read was incomplete"); }
-  IO.basis_text_io_print(project(Dragnet.read(bytes,cutoff)));
+  if text_len(bytes) != size
+  {
+    tool_fail("dragnet handoff: file length changed or read was incomplete");
+  }
+  IO.basis_text_io_print(project(Dragnet.read(bytes, cutoff)));
   return 0;
 }

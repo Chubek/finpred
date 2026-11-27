@@ -8,127 +8,216 @@ import sdk.packages as P;
 import std.collections.List as L;
 import std.io.BinIO as Bin;
 import std.os.OS_FileSys as FS;
-
 fn header() -> string
 {
   return "package,sdk_version,package_version,kind,output,mode,effect,inputs,requested,dependencies,grants,csv_rows,bytes_per_input,rooms_per_property,maximum_rooms,adults,children,search_budget_max,runs_per_call,data_rows,columns,output_bytes_max";
 }
 
-fn invalid(subject:string, field:string) -> D.Diagnostic
+fn invalid(subject: string, field: string) -> D.Diagnostic
 {
-  return D.diagnostic(1,"invalid_value",subject,field,0-1);
+  return D.diagnostic(1, "invalid_value", subject, field, 0 - 1);
 }
 
 # Preflight so the CSV helpers won't abort on malformed user input.
-fn ascii_csv(raw:string) -> bool
+fn ascii_csv(raw: string) -> bool
 {
   let n = text_len(raw);
   for i in 0 .. n
   {
-    let c = text_byte(raw,i);
+    let c = text_byte(raw, i);
     if c == 13
     {
-      if i+1 >= n || text_byte(raw,i+1) != 10 { return false; }
+      if i + 1 >= n || text_byte(raw, i + 1) != 10
+      {
+        return false;
+      }
     }
-    if c != 13 && c != 10 && (c < 32 || c > 126 || c == 34) { return false; }
+    if c != 13 && c != 10 && (c < 32 || c > 126 || c == 34)
+    {
+      return false;
+    }
   }
   return true;
 }
 
-fn names(s:string) -> sexpr
+fn names(s: string) -> sexpr
 {
-  if s == "" { return sx_nil(); }
+  if s == ""
+  {
+    return sx_nil();
+  }
   var items = sx_nil();
   var start = 0;
   var count = 0;
   for i in 0 .. text_len(s)
   {
-    if text_byte(s,i) == 59
+    if text_byte(s, i) == 59
     {
-      items = sx_cons(sx_string(text_slice(s,start,i)),items);
-      start = i+1;
-      count = count+1;
+      items = sx_cons(sx_string(text_slice(s, start, i)), items);
+      start = i + 1;
+      count = count + 1;
       # Seventeen items suffice to report the policy's excess-count failure.
-      if count == 17 { return items; }
+      if count == 17
+      {
+        return items;
+      }
     }
   }
-  return L.basis_list_rev(sx_cons(sx_string(text_slice(s,start,text_len(s))),items));
+  return L.basis_list_rev(sx_cons(sx_string(text_slice(s,
+    start,
+    text_len(s))),
+    items));
 }
 
-fn unsigned(row:string, column:i64) -> i64 { return Decimal.decimal(CSV.field(row,column),4294967295); }
-
-fn inspect(raw:string) -> D.Diagnostic
+fn unsigned(row: string, column: i64) -> i64
 {
-  if text_len(raw) > 16384 || !ascii_csv(raw) || CSV.rows(raw) != 3
-    || CSV.line(raw,0) != "finpred-sdk-check@1" || CSV.line(raw,1) != header()
-  { return invalid("use","none"); }
-  let row = CSV.line(raw,2);
-  if CSV.columns(row) != 22 { return invalid("use","none"); }
-  let sdk = unsigned(row,1);
-  if sdk < 0 { return invalid("use","sdk_version"); }
-  let csv_rows = unsigned(row,11);
-  if csv_rows < 0 { return invalid("host","csv_rows"); }
-  let bytes_per_input = unsigned(row,12);
-  if bytes_per_input < 0 { return invalid("host","bytes_per_input"); }
-  let rooms_per_property = unsigned(row,13);
-  if rooms_per_property < 0 { return invalid("host","rooms_per_property"); }
-  let maximum_rooms = unsigned(row,14);
-  if maximum_rooms < 0 { return invalid("host","maximum_rooms"); }
-  let adults = unsigned(row,15);
-  if adults < 0 { return invalid("host","adults"); }
-  let children = unsigned(row,16);
-  if children < 0 { return invalid("host","children"); }
-  let search_budget_max = unsigned(row,17);
-  if search_budget_max < 0 { return invalid("host","search_budget_max"); }
-  let runs_per_call = unsigned(row,18);
-  if runs_per_call < 0 { return invalid("host","runs_per_call"); }
-  let data_rows = unsigned(row,19);
-  if data_rows < 0 { return invalid("host","data_rows"); }
-  let columns = unsigned(row,20);
-  if columns < 0 { return invalid("host","columns"); }
-  let output_bytes_max = unsigned(row,21);
-  if output_bytes_max < 0 { return invalid("host","output_bytes_max"); }
-  let limits = record<P.Limits>{csv_rows:csv_rows,bytes_per_input:bytes_per_input,
-    rooms_per_property:rooms_per_property,maximum_rooms:maximum_rooms,adults:adults,
-    children:children,search_budget_max:search_budget_max,runs_per_call:runs_per_call,
-    data_rows:data_rows,columns:columns,output_bytes_max:output_bytes_max};
-  let use = record<P.Use>{sdk_version:sdk,package_version:sx_string(CSV.field(row,2)),
-    kind:sx_string(CSV.field(row,3)),output:sx_string(CSV.field(row,4)),
-    mode:sx_string(CSV.field(row,5)),effect:sx_string(CSV.field(row,6)),
-    inputs:names(CSV.field(row,7)),requested:names(CSV.field(row,8))};
-  let host = record<P.Host>{dependencies:names(CSV.field(row,9)),grants:names(CSV.field(row,10)),ceilings:limits};
-  return D.check_v1(CSV.field(row,0),use,host);
+  return Decimal.decimal(CSV.field(row, column), 4294967295);
 }
 
-fn hex_nibble(c:i64) -> i64
+fn inspect(raw: string) -> D.Diagnostic
 {
-  if c >= 48 && c <= 57 { return c-48; }
-  if c >= 97 && c <= 102 { return c-87; }
-  return 0-1;
+  if text_len(raw) > 16384 || ! ascii_csv(raw) || CSV.rows(raw) != 3 || CSV.line(raw,
+    0) != "finpred-sdk-check@1" || CSV.line(raw,
+    1) != header()
+  {
+    return invalid("use", "none");
+  }
+  let row = CSV.line(raw, 2);
+  if CSV.columns(row) != 22
+  {
+    return invalid("use", "none");
+  }
+  let sdk = unsigned(row, 1);
+  if sdk < 0
+  {
+    return invalid("use", "sdk_version");
+  }
+  let csv_rows = unsigned(row, 11);
+  if csv_rows < 0
+  {
+    return invalid("host", "csv_rows");
+  }
+  let bytes_per_input = unsigned(row, 12);
+  if bytes_per_input < 0
+  {
+    return invalid("host", "bytes_per_input");
+  }
+  let rooms_per_property = unsigned(row, 13);
+  if rooms_per_property < 0
+  {
+    return invalid("host", "rooms_per_property");
+  }
+  let maximum_rooms = unsigned(row, 14);
+  if maximum_rooms < 0
+  {
+    return invalid("host", "maximum_rooms");
+  }
+  let adults = unsigned(row, 15);
+  if adults < 0
+  {
+    return invalid("host", "adults");
+  }
+  let children = unsigned(row, 16);
+  if children < 0
+  {
+    return invalid("host", "children");
+  }
+  let search_budget_max = unsigned(row, 17);
+  if search_budget_max < 0
+  {
+    return invalid("host", "search_budget_max");
+  }
+  let runs_per_call = unsigned(row, 18);
+  if runs_per_call < 0
+  {
+    return invalid("host", "runs_per_call");
+  }
+  let data_rows = unsigned(row, 19);
+  if data_rows < 0
+  {
+    return invalid("host", "data_rows");
+  }
+  let columns = unsigned(row, 20);
+  if columns < 0
+  {
+    return invalid("host", "columns");
+  }
+  let output_bytes_max = unsigned(row, 21);
+  if output_bytes_max < 0
+  {
+    return invalid("host", "output_bytes_max");
+  }
+  let limits = record < P.Limits >
+  {
+    csv_rows: csv_rows, bytes_per_input: bytes_per_input, rooms_per_property: rooms_per_property, maximum_rooms: maximum_rooms, adults: adults, children: children, search_budget_max: search_budget_max, runs_per_call: runs_per_call, data_rows: data_rows, columns: columns, output_bytes_max: output_bytes_max
+  };
+  let use = record < P.Use >
+  {
+    sdk_version: sdk, package_version: sx_string(CSV.field(row,
+      2)), kind: sx_string(CSV.field(row,
+      3)), output: sx_string(CSV.field(row,
+      4)), mode: sx_string(CSV.field(row,
+      5)), effect: sx_string(CSV.field(row,
+      6)), inputs: names(CSV.field(row,
+      7)), requested: names(CSV.field(row,
+      8))
+  };
+  let host = record < P.Host >
+  {
+    dependencies: names(CSV.field(row,
+      9)), grants: names(CSV.field(row,
+      10)), ceilings: limits
+  };
+  return D.check_v1(CSV.field(row, 0), use, host);
 }
 
-fn inspect_path(path:string) -> D.Diagnostic
+fn hex_nibble(c: i64) -> i64
 {
-  if path == "" || !FS.basis_fs_exists(path) || FS.basis_fs_is_dir(path) { return invalid("use","none"); }
+  if c >= 48 && c <= 57
+  {
+    return c - 48;
+  }
+  if c >= 97 && c <= 102
+  {
+    return c - 87;
+  }
+  return 0 - 1;
+}
+
+fn inspect_path(path: string) -> D.Diagnostic
+{
+  if path == "" || ! FS.basis_fs_exists(path) || FS.basis_fs_is_dir(path)
+  {
+    return invalid("use", "none");
+  }
   let size = FS.basis_fs_file_size(path);
-  if size < 1 || size > 16384 { return invalid("use","none"); }
+  if size < 1 || size > 16384
+  {
+    return invalid("use", "none");
+  }
   # Binary input is hex-encoded by MuLIB. Reject NUL before turning the
   # bytes into On1x text, rather than leaking a runtime trap to the caller.
   let hex = Bin.basis_bin_io_read_hex(path);
-  if text_len(hex) != 2*size { return invalid("use","none"); }
+  if text_len(hex) != 2 * size
+  {
+    return invalid("use", "none");
+  }
   let raw = buffer_new();
   for i in 0 .. size
   {
-    let high = hex_nibble(text_byte(hex,2*i));
-    let low = hex_nibble(text_byte(hex,2*i+1));
-    let byte = 16*high+low;
-    if high < 0 || low < 0 || byte == 0 || byte > 126 { return invalid("use","none"); }
-    buffer_push(raw,u8_from_i64(byte));
+    let high = hex_nibble(text_byte(hex, 2 * i));
+    let low = hex_nibble(text_byte(hex, 2 * i + 1));
+    let byte = 16 * high + low;
+    if high < 0 || low < 0 || byte == 0 || byte > 126
+    {
+      return invalid("use", "none");
+    }
+    buffer_push(raw, u8_from_i64(byte));
   }
   return inspect(buffer_text(raw));
 }
 
-fn entry(path:string) -> i64
+fn entry(path: string) -> i64
 {
   let d = inspect_path(path);
   let status = F.num(d["status"]);
@@ -136,7 +225,10 @@ fn entry(path:string) -> i64
   let subject = sx_text(d["subject"]);
   let field = sx_text(d["field"]);
   var index = "null";
-  if d["index"] >= 0 { index = F.num(d["index"]); }
+  if d["index"] >= 0
+  {
+    index = F.num(d["index"]);
+  }
   # All interpolated strings are fixed diagnostic vocabulary or decimal numbers.
   println("{\"schema\":\"finpred-sdk-diagnostic@1\",\"status\":$status,\"reason\":\"$reason\",\"subject\":\"$subject\",\"field\":\"$field\",\"index\":$index}");
   return d["status"];

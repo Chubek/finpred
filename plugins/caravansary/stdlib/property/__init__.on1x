@@ -1,104 +1,163 @@
 import plugins.caravansary.planning.inputs as Inputs;
 import plugins.caravansary.planning.json as J;
 import plugins.caravansary.stdlib.geo as Geo;
-
-fn pair(key: string, value: sexpr, tail: sexpr) -> sexpr {
+fn pair(key: string, value: sexpr, tail: sexpr) -> sexpr
+{
   return sx_cons(J.pair(key, value), tail);
 }
 
-fn text(value: sexpr, key: string) -> string {
+fn text(value: sexpr, key: string) -> string
+{
   return Inputs.nonempty_text(J.field(value, key), key);
 }
 
-fn provider(value: sexpr) -> string {
+fn provider(value: sexpr) -> string
+{
   let name = text(value, "provider");
-  if name != "agoda" && name != "booking" { tool_fail("unsupported discovery provider"); }
+  if name != "agoda" && name != "booking"
+  {
+    tool_fail("unsupported discovery provider");
+  }
   return name;
 }
 
-fn opaque_id(value: sexpr, key: string) -> string {
+fn opaque_id(value: sexpr, key: string) -> string
+{
   let id = text(value, key);
   let n = text_len(id);
-  if n > 256 { tool_fail("$key exceeds 256 UTF-8 bytes"); }
-  for i in 0 .. n {
+  if n > 256
+  {
+    tool_fail("$key exceeds 256 UTF-8 bytes");
+  }
+  for i in 0 .. n
+  {
     let b = text_byte(id, i);
-    if b < 32 || b == 127 { tool_fail("$key contains an ASCII control character"); }
+    if b < 32 || b == 127
+    {
+      tool_fail("$key contains an ASCII control character");
+    }
   }
   return id;
 }
 
-fn provider_key(source: string, provider_id: string) -> string {
-  return J.render(J.array(sx_cons(sx_string(source), sx_cons(sx_string(provider_id), sx_nil()))));
+fn provider_key(source: string, provider_id: string) -> string
+{
+  return J.render(J.array(sx_cons(sx_string(source),
+    sx_cons(sx_string(provider_id),
+    sx_nil()))));
 }
 
-fn candidate_id(source: string, provider_id: string) -> string {
+fn candidate_id(source: string, provider_id: string) -> string
+{
   let key = J.array(sx_cons(sx_string("caravansary.candidate-key@1"),
-    sx_cons(sx_string(source), sx_cons(sx_string(provider_id), sx_nil()))));
+    sx_cons(sx_string(source),
+    sx_cons(sx_string(provider_id),
+    sx_nil()))));
   return "candidate:${J.digest(key)}";
 }
 
 # Equality signals only: ASCII case + space folding, no token removal,
 # transliteration, locale guessing, punctuation removal or fuzzy similarity.
-fn identity_text(value: sexpr) -> string {
-  if !Geo.known(value) { return ""; }
+fn identity_text(value: sexpr) -> string
+{
+  if ! Geo.known(value)
+  {
+    return "";
+  }
   let text_value = J.text(value);
   let buffer = buffer_new();
   let n = text_len(text_value);
   var pending_space = false;
   var pos = 0;
-  while pos < n {
-    let (code, end) = J.utf8(text_value, pos, "identity ");
-    if Inputs.whitespace(code) { pending_space = buffer_len(buffer) > 0; }
-    else {
-      if pending_space { buffer_byte(buffer, 32); pending_space = false; }
-      if code >= 65 && code <= 90 { buffer_byte(buffer, code + 32); }
-      else { buffer_append(buffer, text_slice(text_value, pos, end)); }
+  while pos < n
+  {
+    let(code, end) = J.utf8(text_value, pos, "identity ");
+    if Inputs.whitespace(code)
+    {
+      pending_space = buffer_len(buffer) > 0;
+    }
+    else
+    {
+      if pending_space
+      {
+        buffer_byte(buffer, 32);
+        pending_space = false;
+      }
+      if code >= 65 && code <= 90
+      {
+        buffer_byte(buffer, code + 32);
+      }
+      else
+      {
+        buffer_append(buffer, text_slice(text_value, pos, end));
+      }
     }
     pos = end;
   }
   return buffer_text(buffer);
 }
 
-fn optional_text(value: sexpr, key: string, fields: sexpr) -> sexpr {
+fn optional_text(value: sexpr, key: string, fields: sexpr) -> sexpr
+{
   let item = J.get(value, key);
-  if !Geo.known(item) { return fields; }
+  if ! Geo.known(item)
+  {
+    return fields;
+  }
   let raw = Inputs.nonempty_text(item, key);
-  if text_len(raw) > 2048 { tool_fail("$key exceeds 2048 UTF-8 bytes"); }
+  if text_len(raw) > 2048
+  {
+    tool_fail("$key exceeds 2048 UTF-8 bytes");
+  }
   return pair(key, item, fields);
 }
 
-fn place(value: sexpr, where: string) -> sexpr {
+fn place(value: sexpr, where: string) -> sexpr
+{
   let name = text(value, "name");
-  if text_len(name) > 2048 { tool_fail("name exceeds 2048 UTF-8 bytes"); }
+  if text_len(name) > 2048
+  {
+    tool_fail("name exceeds 2048 UTF-8 bytes");
+  }
   var fields = pair("name", sx_string(name), sx_nil());
   fields = optional_text(value, "type", fields);
   fields = optional_text(value, "address", fields);
   let pos = Geo.position(value, where);
-  if Geo.known(pos) {
+  if Geo.known(pos)
+  {
     fields = pair("latitude", J.field(pos, "latitude"), fields);
     fields = pair("longitude", J.field(pos, "longitude"), fields);
   }
   return J.object(fields);
 }
 
-fn equal_text(a: sexpr, b: sexpr, key: string) -> bool {
+fn equal_text(a: sexpr, b: sexpr, key: string) -> bool
+{
   let x = identity_text(J.get(a, key));
   return x != "" && x == identity_text(J.get(b, key));
 }
 
-fn corroborate(a: sexpr, b: sexpr, distance: sexpr) -> sexpr {
+fn corroborate(a: sexpr, b: sexpr, distance: sexpr) -> sexpr
+{
   let name = equal_text(a, b, "name");
   let address = equal_text(a, b, "address");
   let nearby = Geo.known(distance) && J.int64(distance, "distance_m") <= 100;
   let kind = equal_text(a, b, "type");
-  return J.object(pair("name_exact", J.boolean(name),
-    pair("address_exact", J.boolean(address),
-    pair("within_100m", J.boolean(nearby),
-    pair("type_exact", J.boolean(kind), sx_nil())))));
+  return J.object(pair("name_exact",
+    J.boolean(name),
+    pair("address_exact",
+    J.boolean(address),
+    pair("within_100m",
+    J.boolean(nearby),
+    pair("type_exact",
+    J.boolean(kind),
+    sx_nil())))));
 }
 
-fn possible_same(signals: sexpr) -> bool {
-  return sx_text(J.field(signals, "name_exact")) == "true" &&
-    (sx_text(J.field(signals, "address_exact")) == "true" ||
-      sx_text(J.field(signals, "within_100m")) == "true");
+fn possible_same(signals: sexpr) -> bool
+{
+  return sx_text(J.field(signals,
+    "name_exact")) == "true" && (sx_text(J.field(signals,
+    "address_exact")) == "true" || sx_text(J.field(signals,
+    "within_100m")) == "true");
 }

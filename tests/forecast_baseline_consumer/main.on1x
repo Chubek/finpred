@@ -3,36 +3,81 @@ import forecast_baselines.model as Model;
 import sdk.callable as SDK;
 import std.io.TextIO as IO;
 import std.os.CommandLine as Env;
-
-fn env(name:string) -> string { return Env.basis_command_line_get_env(name); }
-fn lookup(name:string) -> SDK.Descriptor {
-  return Model.descriptor(name,Model.digest(env("CODE_BYTES")));
+fn env(name: string) -> string
+{
+  return Env.basis_command_line_get_env(name);
 }
-fn main() -> i64 {
+
+fn lookup(name: string) -> SDK.Descriptor
+{
+  return Model.descriptor(name, Model.digest(env("CODE_BYTES")));
+}
+
+fn main() -> i64
+{
   let mode = env("CASE");
   let snapshot = env("SNAPSHOT");
-  if mode == "digest" { println(Model.digest(snapshot)); return 0; }
+  if mode == "digest"
+  {
+    println(Model.digest(snapshot));
+    return 0;
+  }
   let cutoff = env("CUTOFF");
   let model_name = env("MODEL");
   let trusted_parent = env("PARENT");
-  let resolved = SDK.resolve(model_name,"analysis",lookup);
-  if !resolved["enabled"] { return 1; }
-  let projection = Guest.project(snapshot,trusted_parent,cutoff);
-  if projection["status"] != 0 { return 10 + projection["status"]; }
+  let resolved = SDK.resolve(model_name, "analysis", lookup);
+  if ! resolved["enabled"]
+  {
+    return 1;
+  }
+  let projection = Guest.project(snapshot, trusted_parent, cutoff);
+  if projection["status"] != 0
+  {
+    return 10 + projection["status"];
+  }
   let projected = sx_text(projection["bytes"]);
-  if mode == "project" { IO.basis_text_io_print(projected); return 0; }
+  if mode == "project"
+  {
+    IO.basis_text_io_print(projected);
+    return 0;
+  }
   var supplied = projected;
-  if mode == "verify" || mode == "model-reject" { supplied = env("PROJECTED"); }
-  if mode != "model-reject" && !Guest.verifies(snapshot,trusted_parent,cutoff,supplied) { return 20; }
-  let training = SDK.value_entry(projection["state"],supplied);
-  let request = SDK.value_entry(1,env("REQUEST"));
-  let inputs = sx_cons(training,sx_cons(request,sx_nil()));
+  if mode == "verify" || mode == "model-reject"
+  {
+    supplied = env("PROJECTED");
+  }
+  if mode != "model-reject" && ! Guest.verifies(snapshot,
+    trusted_parent,
+    cutoff,
+    supplied)
+  {
+    return 20;
+  }
+  let training = SDK.value_entry(projection["state"], supplied);
+  let request = SDK.value_entry(1, env("REQUEST"));
+  let inputs = sx_cons(training, sx_cons(request, sx_nil()));
   var work = 1;
-  if mode == "budget" { work = 0; }
-  let args = record<SDK.Request>{inputs:inputs,cutoff:sx_string(cutoff),work:work};
-  let result = SDK.invoke(resolved["pin"],"analysis",args,lookup,Model.call);
-  if result["status"] != 0 { return result["status"]; }
-  if result["state"] != 1 && result["state"] != 4 { return 90; }
+  if mode == "budget"
+  {
+    work = 0;
+  }
+  let args = record < SDK.Request >
+  {
+    inputs: inputs, cutoff: sx_string(cutoff), work: work
+  };
+  let result = SDK.invoke(resolved["pin"],
+    "analysis",
+    args,
+    lookup,
+    Model.call);
+  if result["status"] != 0
+  {
+    return result["status"];
+  }
+  if result["state"] != 1 && result["state"] != 4
+  {
+    return 90;
+  }
   IO.basis_text_io_print(sx_text(result["bytes"]));
   return 0;
 }

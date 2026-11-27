@@ -1,29 +1,68 @@
 import automat.dag as D;
 import automat.dag_artifacts as Art;
-
-record Snapshot { status:sexpr, manifest:sexpr, run_id:sexpr, artifacts:sexpr }
-
-fn failed(status:sexpr) -> Snapshot
+record Snapshot
 {
-  return record<Snapshot>{status:status,manifest:sx_nil(),run_id:sx_nil(),artifacts:sx_nil()};
+  status: sexpr, manifest: sexpr, run_id: sexpr, artifacts: sexpr
 }
 
-fn freeze_with(plan:D.Plan, mode:string, budget:i64, first:i64, second:i64, memoized:bool,
-  lookup:fn(string,string) -> D.Descriptor, call:fn(string,i64,i64) -> i64) -> Snapshot
+fn failed(status: sexpr) -> Snapshot
 {
-  if budget < 1 || budget > 16 { return failed(sx_string("budget")); }
-  let r = D.run_with(plan,mode,budget,first,second,memoized,lookup,call);
-  if sx_text(r["status"]) != "ok" { return failed(r["status"]); }
+  return record < Snapshot >
+  {
+    status: status, manifest: sx_nil(), run_id: sx_nil(), artifacts: sx_nil()
+  };
+}
 
+fn freeze_with(plan: D.Plan,
+  mode: string,
+  budget: i64,
+  first: i64,
+  second: i64,
+  memoized: bool,
+  lookup: fn(string,
+  string) -> D.Descriptor,
+  call: fn(string,
+  i64,
+  i64) -> i64) -> Snapshot
+{
+  if budget < 1 || budget > 16
+  {
+    return failed(sx_string("budget"));
+  }
+  let r = D.run_with(plan,
+    mode,
+    budget,
+    first,
+    second,
+    memoized,
+    lookup,
+    call);
+  if sx_text(r["status"]) != "ok"
+  {
+    return failed(r["status"]);
+  }
   let plan_version = sx_text(plan["version"]);
   var format = "";
-  if plan_version == "automat.scalar-dag@1" { format = "scalar-run@1"; }
-  if plan_version == "automat.scalar-dag@2" { format = "scalar-run@2"; }
-  if plan_version == "automat.scalar-dag@3" { format = "scalar-run@3"; }
-  if format == "" { return failed(sx_string("version")); }
+  if plan_version == "automat.scalar-dag@1"
+  {
+    format = "scalar-run@1";
+  }
+  if plan_version == "automat.scalar-dag@2"
+  {
+    format = "scalar-run@2";
+  }
+  if plan_version == "automat.scalar-dag@3"
+  {
+    format = "scalar-run@3";
+  }
+  if format == ""
+  {
+    return failed(sx_string("version"));
+  }
   let select_allowed = plan_version != "automat.scalar-dag@1";
   let b = buffer_new();
-  buffer_append(b,"""$format
+  buffer_append(b,
+    """$format
 plan=$plan_version
 mode=analysis
 budget=$budget
@@ -31,35 +70,62 @@ first=$first
 second=$second
 output=${sx_text(plan["output"])}
 """);
-
   var nodes = plan["nodes"];
   while sx_kind(nodes) == 3
   {
     let n = sx_head(nodes);
-    let op = D.field(n,1);
-    buffer_append(b,"node=${D.field(n,0)},$op,${D.field(n,2)},${D.field(n,3)}");
-    if select_allowed && op == "select@1" { buffer_append(b,",${D.field(n,4)}"); }
-    buffer_append(b,"\n");
+    let op = D.field(n, 1);
+    buffer_append(b,
+      "node=${D.field(n,0)},$op,${D.field(n,2)},${D.field(n,3)}");
+    if select_allowed && op == "select@1"
+    {
+      buffer_append(b, ",${D.field(n,4)}");
+    }
+    buffer_append(b, "\n");
     nodes = sx_tail(nodes);
   }
   var entries = r["artifacts"];
   while sx_kind(entries) == 3
   {
-    buffer_append(b,"artifact=${sx_text(sx_head(sx_head(entries)))}\n");
+    buffer_append(b, "artifact=${sx_text(sx_head(sx_head(entries)))}\n");
     entries = sx_tail(entries);
   }
-  buffer_append(b,"root=${sx_text(r["output_digest"])}\n");
+  buffer_append(b, "root=${sx_text(r["output_digest"])}\n");
   let bytes = buffer_text(b);
-  return record<Snapshot>{status:r["status"],manifest:sx_string(bytes),
-    run_id:sx_string(Art.digest(bytes)),artifacts:r["artifacts"]};
+  return record < Snapshot >
+  {
+    status: r["status"], manifest: sx_string(bytes), run_id: sx_string(Art.digest(bytes)), artifacts: r["artifacts"]
+  };
 }
 
-fn freeze(plan:D.Plan, mode:string, budget:i64, first:i64, second:i64) -> Snapshot
+fn freeze(plan: D.Plan,
+  mode: string,
+  budget: i64,
+  first: i64,
+  second: i64) -> Snapshot
 {
-  return freeze_with(plan,mode,budget,first,second,false,D.no_binding,D.no_invoke);
+  return freeze_with(plan,
+    mode,
+    budget,
+    first,
+    second,
+    false,
+    D.no_binding,
+    D.no_invoke);
 }
 
-fn freeze_memoized(plan:D.Plan, mode:string, budget:i64, first:i64, second:i64) -> Snapshot
+fn freeze_memoized(plan: D.Plan,
+  mode: string,
+  budget: i64,
+  first: i64,
+  second: i64) -> Snapshot
 {
-  return freeze_with(plan,mode,budget,first,second,true,D.no_binding,D.no_invoke);
+  return freeze_with(plan,
+    mode,
+    budget,
+    first,
+    second,
+    true,
+    D.no_binding,
+    D.no_invoke);
 }

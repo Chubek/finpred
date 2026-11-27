@@ -1,84 +1,149 @@
 from . import json_wire as J;
-
 # Status totals and source totals are projections of the two-by-five matrix.
 # Freshness is orthogonal to status. No other cell values are retained.
-record Counts { total:i64, pairs:array<i64,10>, freshness:array<i64,3> }
+record Counts
+{
+  total: i64, pairs: array < i64, 10 >, freshness: array < i64, 3 >
+}
 
 fn empty() -> Counts
 {
-  return record<Counts>{total:0,pairs:array[0,0,0,0,0,0,0,0,0,0],freshness:array[0,0,0]};
+  return record < Counts >
+  {
+    total: 0, pairs: array[0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0], freshness: array[0,
+      0,
+      0]
+  };
 }
 
-fn label_index(s:string, field:string) -> i64
+fn label_index(s: string, field: string) -> i64
 {
-  if field == "source" { return match s with { "booking" => 0, "agoda" => 1, _ => -1 }; }
+  if field == "source"
+  {
+    return match s with
+    {
+      "booking" => 0, "agoda" => 1, _ => - 1
+    };
+  }
   if field == "status"
   {
     return match s with
-    { "pending" => 0, "priced" => 1, "unavailable" => 2, "unsupported" => 3, "failed" => 4, _ => -1 };
+    {
+      "pending" => 0, "priced" => 1, "unavailable" => 2, "unsupported" => 3, "failed" => 4, _ => - 1
+    };
   }
-  return match s with { "fresh" => 0, "stale" => 1, "none" => 2, _ => -1 };
+  return match s with
+  {
+    "fresh" => 0, "stale" => 1, "none" => 2, _ => - 1
+  };
 }
 
-fn label(v:sexpr, field:string, quoted:bool) -> Result<i64,sexpr>
+fn label(v: sexpr, field: string, quoted: bool) -> Result < i64, sexpr >
 {
-  if !J.string_value(v) { return J.fail!(format("transform {} label must be text",field)); }
+  if ! J.string_value(v)
+  {
+    return J.fail!(format("transform {} label must be text", field));
+  }
   var s = sx_text(v);
-  if quoted { s = J.plain(v); }
-  let index = label_index(s,field);
+  if quoted
+  {
+    s = J.plain(v);
+  }
+  let index = label_index(s, field);
   if index < 0
   {
-    return J.fail!(format("transform unknown {} label: {}",field,sx_text(v)));
+    return J.fail!(format("transform unknown {} label: {}",
+      field,
+      sx_text(v)));
   }
   return result_ok(index);
 }
 
-fn tick(index:i64, n:i64) -> i64
+fn tick(index: i64, n: i64) -> i64
 {
-  if index == n { return 1; }
+  if index == n
+  {
+    return 1;
+  }
   return 0;
 }
 
-fn increment(counts:Counts, source:i64, status:i64, fresh:i64) -> Counts
+fn increment(counts: Counts, source: i64, status: i64, fresh: i64) -> Counts
 {
   let pair = source * 5 + status;
   let p = counts["pairs"];
   let f = counts["freshness"];
-  return record<Counts>{
-    total:counts["total"] + 1,
-    pairs:array[p[0]+tick(pair,0),p[1]+tick(pair,1),p[2]+tick(pair,2),p[3]+tick(pair,3),
-      p[4]+tick(pair,4),p[5]+tick(pair,5),p[6]+tick(pair,6),p[7]+tick(pair,7),
-      p[8]+tick(pair,8),p[9]+tick(pair,9)],
-    freshness:array[f[0]+tick(fresh,0),f[1]+tick(fresh,1),f[2]+tick(fresh,2)]
+  return record < Counts >
+  {
+    total: counts["total"] + 1, pairs: array[p[0] + tick(pair,
+      0),
+      p[1] + tick(pair,
+      1),
+      p[2] + tick(pair,
+      2),
+      p[3] + tick(pair,
+      3),
+      p[4] + tick(pair,
+      4),
+      p[5] + tick(pair,
+      5),
+      p[6] + tick(pair,
+      6),
+      p[7] + tick(pair,
+      7),
+      p[8] + tick(pair,
+      8),
+      p[9] + tick(pair,
+      9)], freshness: array[f[0] + tick(fresh,
+      0),
+      f[1] + tick(fresh,
+      1),
+      f[2] + tick(fresh,
+      2)]
   };
 }
 
-fn get(counts:Counts, name:string, args:sexpr) -> Result<i64,sexpr>
+fn get(counts: Counts, name: string, args: sexpr) -> Result < i64, sexpr >
 {
-  if name == "total_cells" { return result_ok(counts["total"]); }
+  if name == "total_cells"
+  {
+    return result_ok(counts["total"]);
+  }
   let p = counts["pairs"];
   if name == "source_status_count"
   {
-    let source = label(J.at(args,0),"source",true)?;
-    let status = label(J.at(args,1),"status",true)?;
-    return result_ok(p[source*5+status]);
+    let source = label(J.at(args, 0), "source", true)?;
+    let status = label(J.at(args, 1), "status", true)?;
+    return result_ok(p[source * 5 + status]);
   }
   if name == "source_count"
   {
-    let source = label(J.at(args,0),"source",true)?;
+    let source = label(J.at(args, 0), "source", true)?;
     var total = 0;
-    for i in (source*5) .. (source*5+5) { total = total + p[i]; }
+    for i in (source * 5) ..(source * 5 + 5)
+    {
+      total = total + p[i];
+    }
     return result_ok(total);
   }
   if name == "status_count"
   {
-    let status = label(J.at(args,0),"status",true)?;
-    return result_ok(p[status]+p[status+5]);
+    let status = label(J.at(args, 0), "status", true)?;
+    return result_ok(p[status] + p[status + 5]);
   }
   if name == "freshness_count"
   {
     let f = counts["freshness"];
-    let freshness = label(J.at(args,0),"freshness",true)?;
+    let freshness = label(J.at(args, 0), "freshness", true)?;
     return result_ok(f[freshness]);
   }
   return J.fail!("transform invalid builtin call");
@@ -86,141 +151,213 @@ fn get(counts:Counts, name:string, args:sexpr) -> Result<i64,sexpr>
 
 # For a selected key, retain only a JSON string; skip non-string values for
 # a type diagnostic without building a tree (a report may contain offers).
-fn label_value(s:buffer, start:i64, keep:bool) -> Result<(sexpr,i64),sexpr>
+fn label_value(s: buffer,
+  start: i64,
+  keep: bool) -> Result < (sexpr,
+  i64), sexpr >
 {
-  let i = J.space(s,start);
-  if keep && J.input_byte(s,i) == 34 { return J.input_quoted(s,i,true); }
-  return J.read(s,i,3,false);
+  let i = J.space(s, start);
+  if keep && J.input_byte(s, i) == 34
+  {
+    return J.input_quoted(s, i, true);
+  }
+  return J.read(s, i, 3, false);
 }
 
-fn cell(s:buffer, start:i64, counts:Counts) -> Result<(Counts,i64),sexpr>
+fn cell(s: buffer,
+  start: i64,
+  counts: Counts) -> Result < (Counts,
+  i64), sexpr >
 {
-  if J.input_byte(s,start) != 123 { return J.fail!("transform coverage cell must be an object"); }
-  var i = J.space(s,start+1);
+  if J.input_byte(s, start) != 123
+  {
+    return J.fail!("transform coverage cell must be an object");
+  }
+  var i = J.space(s, start + 1);
   var source = sx_nil();
   var status = sx_nil();
   var fresh = sx_nil();
   var seen_source = false;
   var seen_status = false;
   var seen_fresh = false;
-  if J.input_byte(s,i) != 125
+  if J.input_byte(s, i) != 125
   {
     loop
     {
-      let (key,key_end) = J.input_quoted(s,i,true)?;
+      let(key, key_end) = J.input_quoted(s, i, true)?;
       let name = J.plain(key);
-      let colon = J.space(s,key_end);
-      if J.input_byte(s,colon) != 58 { return J.fail!("expected JSON colon"); }
-      let (value,end) = label_value(s,colon+1,name == "source" || name == "status" || name == "freshness")?;
+      let colon = J.space(s, key_end);
+      if J.input_byte(s, colon) != 58
+      {
+        return J.fail!("expected JSON colon");
+      }
+      let(value,
+        end) = label_value(s,
+        colon + 1,
+        name == "source" || name == "status" || name == "freshness")?;
       if name == "source"
       {
-        if seen_source { return J.fail!("duplicate source in transform coverage cell"); }
+        if seen_source
+        {
+          return J.fail!("duplicate source in transform coverage cell");
+        }
         seen_source = true;
         source = value;
       }
       if name == "status"
       {
-        if seen_status { return J.fail!("duplicate status in transform coverage cell"); }
+        if seen_status
+        {
+          return J.fail!("duplicate status in transform coverage cell");
+        }
         seen_status = true;
         status = value;
       }
       if name == "freshness"
       {
-        if seen_fresh { return J.fail!("duplicate freshness in transform coverage cell"); }
+        if seen_fresh
+        {
+          return J.fail!("duplicate freshness in transform coverage cell");
+        }
         seen_fresh = true;
         fresh = value;
       }
-      i = J.space(s,end);
-      if J.input_byte(s,i) == 125 { break; }
-      if J.input_byte(s,i) != 44 { return J.fail!("expected JSON comma or closing brace"); }
-      i = J.space(s,i+1);
+      i = J.space(s, end);
+      if J.input_byte(s, i) == 125
+      {
+        break;
+      }
+      if J.input_byte(s, i) != 44
+      {
+        return J.fail!("expected JSON comma or closing brace");
+      }
+      i = J.space(s, i + 1);
     }
   }
-  let source_id = label(source,"source",true)?;
-  let status_id = label(status,"status",true)?;
-  let fresh_id = label(fresh,"freshness",true)?;
-  return result_ok((increment(counts,source_id,status_id,fresh_id),i+1));
+  let source_id = label(source, "source", true)?;
+  let status_id = label(status, "status", true)?;
+  let fresh_id = label(fresh, "freshness", true)?;
+  return result_ok((increment(counts, source_id, status_id, fresh_id), i + 1));
 }
 
-fn cells(s:buffer, start:i64) -> Result<(Counts,i64),sexpr>
+fn cells(s: buffer, start: i64) -> Result < (Counts, i64), sexpr >
 {
-  let left = J.space(s,start);
-  if J.input_byte(s,left) != 91 { return J.fail!("transform requires a coverage report with a cells list"); }
+  let left = J.space(s, start);
+  if J.input_byte(s, left) != 91
+  {
+    return J.fail!("transform requires a coverage report with a cells list");
+  }
   var counts = empty();
-  var i = J.space(s,left+1);
-  if J.input_byte(s,i) != 93
+  var i = J.space(s, left + 1);
+  if J.input_byte(s, i) != 93
   {
     loop
     {
-      let (tally,end) = cell(s,i,counts)?;
+      let(tally, end) = cell(s, i, counts)?;
       counts = tally;
-      i = J.space(s,end);
-      if J.input_byte(s,i) == 93 { break; }
-      if J.input_byte(s,i) != 44 { return J.fail!("expected JSON comma or closing bracket"); }
-      i = J.space(s,i+1);
+      i = J.space(s, end);
+      if J.input_byte(s, i) == 93
+      {
+        break;
+      }
+      if J.input_byte(s, i) != 44
+      {
+        return J.fail!("expected JSON comma or closing bracket");
+      }
+      i = J.space(s, i + 1);
     }
   }
-  return result_ok((counts,i+1));
+  return result_ok((counts, i + 1));
 }
 
-fn prepare(source:string) -> Result<Counts,sexpr>
+fn prepare(source: string) -> Result < Counts, sexpr >
 {
   let s = buffer_new();
-  buffer_append(s,source);
-  let left = J.space(s,0);
-  if J.input_byte(s,left) != 123 { return J.fail!("transform requires a coverage report with a cells list"); }
-  var i = J.space(s,left+1);
+  buffer_append(s, source);
+  let left = J.space(s, 0);
+  if J.input_byte(s, left) != 123
+  {
+    return J.fail!("transform requires a coverage report with a cells list");
+  }
+  var i = J.space(s, left + 1);
   var counts = empty();
   var found = false;
-  if J.input_byte(s,i) != 125
+  if J.input_byte(s, i) != 125
   {
     loop
     {
-      let (key,key_end) = J.input_quoted(s,i,true)?;
-      let colon = J.space(s,key_end);
-      if J.input_byte(s,colon) != 58 { return J.fail!("expected JSON colon"); }
+      let(key, key_end) = J.input_quoted(s, i, true)?;
+      let colon = J.space(s, key_end);
+      if J.input_byte(s, colon) != 58
+      {
+        return J.fail!("expected JSON colon");
+      }
       if J.plain(key) == "cells"
       {
-        if found { return J.fail!("duplicate cells in transform coverage report"); }
-        let (tally,end) = cells(s,colon+1)?;
+        if found
+        {
+          return J.fail!("duplicate cells in transform coverage report");
+        }
+        let(tally, end) = cells(s, colon + 1)?;
         counts = tally;
-        i = J.space(s,end);
+        i = J.space(s, end);
         found = true;
       }
       else
       {
-        let (_,end) = J.read(s,colon+1,1,false)?;
-        i = J.space(s,end);
+        let(_, end) = J.read(s, colon + 1, 1, false)?;
+        i = J.space(s, end);
       }
-      if J.input_byte(s,i) == 125 { break; }
-      if J.input_byte(s,i) != 44 { return J.fail!("expected JSON comma or closing brace"); }
-      i = J.space(s,i+1);
+      if J.input_byte(s, i) == 125
+      {
+        break;
+      }
+      if J.input_byte(s, i) != 44
+      {
+        return J.fail!("expected JSON comma or closing brace");
+      }
+      i = J.space(s, i + 1);
     }
   }
-  if !found { return J.fail!("transform requires a coverage report with a cells list"); }
-  if J.space(s,i+1) != buffer_len(s) { return J.fail!("trailing coverage report JSON input"); }
+  if ! found
+  {
+    return J.fail!("transform requires a coverage report with a cells list");
+  }
+  if J.space(s, i + 1) != buffer_len(s)
+  {
+    return J.fail!("trailing coverage report JSON input");
+  }
   return result_ok(counts);
 }
 
 # The report worker already has a parsed, validated planning.json value.
 # This path avoids rendering and reparsing ignored report details. Only the
 # host's object/array shape and raw JSON string atoms are needed.
-fn prepare_report(report:sexpr) -> Result<Counts,sexpr>
+fn prepare_report(report: sexpr) -> Result < Counts, sexpr >
 {
-  if !J.tag(report,"object") { return J.fail!("transform requires a coverage report with a cells list"); }
-  let cells = J.field(sx_tail(report),"cells");
-  if !J.tag(cells,"array") { return J.fail!("transform requires a coverage report with a cells list"); }
+  if ! J.tag(report, "object")
+  {
+    return J.fail!("transform requires a coverage report with a cells list");
+  }
+  let cells = J.field(sx_tail(report), "cells");
+  if ! J.tag(cells, "array")
+  {
+    return J.fail!("transform requires a coverage report with a cells list");
+  }
   var tally = empty();
   var rows = sx_tail(cells);
   while sx_kind(rows) == 3
   {
     let row = sx_head(rows);
-    if !J.tag(row,"object") { return J.fail!("transform coverage cell must be an object"); }
+    if ! J.tag(row, "object")
+    {
+      return J.fail!("transform coverage cell must be an object");
+    }
     let fields = sx_tail(row);
-    let source = label(J.field(fields,"source"),"source",false)?;
-    let status = label(J.field(fields,"status"),"status",false)?;
-    let freshness = label(J.field(fields,"freshness"),"freshness",false)?;
-    tally = increment(tally,source,status,freshness);
+    let source = label(J.field(fields, "source"), "source", false)?;
+    let status = label(J.field(fields, "status"), "status", false)?;
+    let freshness = label(J.field(fields, "freshness"), "freshness", false)?;
+    tally = increment(tally, source, status, freshness);
     rows = sx_tail(rows);
   }
   return result_ok(tally);

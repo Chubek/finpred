@@ -16,9 +16,14 @@ engine_namespaces = {'algorithms', 'automat', 'core', 'ottomat', 'sdk', 'store'}
 external_namespaces = {'cli', 'plugins', 'strategies',
                        *(path.name for path in packages + strategies)}
 package_catalog = {'sdk.packages', 'sdk.registry', 'sdk.sdk', 'sdk.static_host'}
+# bin/build.sh builds the graph host separately: it passes graph_main.on1x
+# directly and adds graph_check.on1x to the staged manifest. check_build_paths.py
+# verifies both steps.
+graph_host_sources = {Path('cli/graph_main.on1x'), Path('cli/graph_check.on1x')}
 for module in sources:
     text = module.read_text()
-    namespace = module.relative_to(root/'source').parts[0]
+    relative = module.relative_to(root/'source')
+    namespace = relative.parts[0]
     if namespace in engine_namespaces:
         imports = set(re.findall(r'^\s*import\s+([\w.]+)\b', text, re.MULTILINE))
         external = {name for name in imports if name.partition('.')[0] in external_namespaces}
@@ -36,8 +41,9 @@ for module in sources:
         elif c in ')]}':
             assert stack and stack.pop() == pairs[c], module
     assert not stack, module
-    manifest = module.parent / 'On1xfile.m'
-    assert manifest.exists() and f'"{module.name}"' in manifest.read_text(), module
+    if relative not in graph_host_sources:
+        manifest = module.parent / 'On1xfile.m'
+        assert manifest.exists() and f'"{module.name}"' in manifest.read_text(), module
     assert not re.search(r'"[^"\n]*"\s*\+\s*[A-Za-z_]', stripped), module
 schemas = sorted((root/'contracts').glob('*.json'))
 historical = {

@@ -2,59 +2,122 @@
 # Effects are checked independently of any strategy configuration setting.
 record Node
 {
-  id: i64,
-  family: sexpr,
-  accepts: sexpr,
-  produces: sexpr,
-  effect: sexpr
+  id: i64, family: sexpr, accepts: sexpr, produces: sexpr, effect: sexpr
 }
 
-fn make_node(id: i64, family: string, accepts: string, produces: string, effect: string) -> Node
+fn make_node(id: i64,
+  family: string,
+  accepts: string,
+  produces: string,
+  effect: string) -> Node
 {
-  return record<Node>{id:id, family:sx_string(family), accepts:sx_string(accepts),
-    produces:sx_string(produces), effect:sx_string(effect)};
+  return record < Node >
+  {
+    id: id, family: sx_string(family), accepts: sx_string(accepts), produces: sx_string(produces), effect: sx_string(effect)
+  };
 }
 
 fn node(id: i64) -> Node
 {
-  if id == 0 { return make_node(id,"input","none","hospitality.scenario@1","read"); }
-  if id == 1 { return make_node(id,"source","hospitality.scenario@1","hospitality.offer@1","read"); }
-  if id == 2 { return make_node(id,"transform","hospitality.offer@1","hospitality.offer@1","pure"); }
-  if id == 3 { return make_node(id,"algorithm","hospitality.offer@1","pricing.distribution@1","pure"); }
-  if id == 4 { return make_node(id,"strategy","pricing.distribution@1","pricing.recommendation@1","pure"); }
-  if id == 5 { return make_node(id,"gate","pricing.recommendation@1","pricing.recommendation@1","pure"); }
-  if id == 6 { return make_node(id,"output","pricing.recommendation@1","pricing.recommendation@1","record"); }
+  if id == 0
+  {
+    return make_node(id, "input", "none", "hospitality.scenario@1", "read");
+  }
+  if id == 1
+  {
+    return make_node(id,
+      "source",
+      "hospitality.scenario@1",
+      "hospitality.offer@1",
+      "read");
+  }
+  if id == 2
+  {
+    return make_node(id,
+      "transform",
+      "hospitality.offer@1",
+      "hospitality.offer@1",
+      "pure");
+  }
+  if id == 3
+  {
+    return make_node(id,
+      "algorithm",
+      "hospitality.offer@1",
+      "pricing.distribution@1",
+      "pure");
+  }
+  if id == 4
+  {
+    return make_node(id,
+      "strategy",
+      "pricing.distribution@1",
+      "pricing.recommendation@1",
+      "pure");
+  }
+  if id == 5
+  {
+    return make_node(id,
+      "gate",
+      "pricing.recommendation@1",
+      "pricing.recommendation@1",
+      "pure");
+  }
+  if id == 6
+  {
+    return make_node(id,
+      "output",
+      "pricing.recommendation@1",
+      "pricing.recommendation@1",
+      "record");
+  }
   tool_fail("automat: unknown node id");
-  return make_node(id,"error","none","none","none");
+  return make_node(id, "error", "none", "none", "none");
 }
 
 record Plan
 {
-  input: Node,
-  source: Node,
-  transform: Node,
-  algorithm: Node,
-  strategy: Node,
-  gate: Node,
-  output: Node,
-  profile: sexpr
+  input: Node, source: Node, transform: Node, algorithm: Node, strategy: Node, gate: Node, output: Node, profile: sexpr
 }
 
 fn fixed_plan(profile: string) -> Plan
 {
-  return record<Plan>{input:node(0),source:node(1),transform:node(2),
-    algorithm:node(3),strategy:node(4),gate:node(5),output:node(6),profile:sx_string(profile)};
+  return record < Plan >
+  {
+    input: node(0), source: node(1), transform: node(2), algorithm: node(3), strategy: node(4), gate: node(5), output: node(6), profile: sx_string(profile)
+  };
 }
 
 fn step(plan: Plan, id: i64) -> Node
 {
-  if id == 0 { return plan["input"]; }
-  if id == 1 { return plan["source"]; }
-  if id == 2 { return plan["transform"]; }
-  if id == 3 { return plan["algorithm"]; }
-  if id == 4 { return plan["strategy"]; }
-  if id == 5 { return plan["gate"]; }
-  if id == 6 { return plan["output"]; }
+  if id == 0
+  {
+    return plan["input"];
+  }
+  if id == 1
+  {
+    return plan["source"];
+  }
+  if id == 2
+  {
+    return plan["transform"];
+  }
+  if id == 3
+  {
+    return plan["algorithm"];
+  }
+  if id == 4
+  {
+    return plan["strategy"];
+  }
+  if id == 5
+  {
+    return plan["gate"];
+  }
+  if id == 6
+  {
+    return plan["output"];
+  }
   tool_fail("automat: unknown plan slot");
   return plan["output"];
 }
@@ -67,29 +130,53 @@ fn text_is(atom: sexpr, expected: string) -> bool
 fn validate_plan(plan: Plan, mode: string) -> bool
 {
   if mode != "analysis" && mode != "recommendation" && mode != "simulation"
-  { return false; }
+  {
+    return false;
+  }
   # Each native handler has exactly one slot. Check all slots before invoking
   # any handler; a matching edge alone cannot authorize a substituted effect.
   var incoming = "none";
   for id in 0 .. 7
   {
-    let n = step(plan,id);
+    let n = step(plan, id);
     let handler = node(id);
-    if n["id"] != id || !text_is(n["family"],sx_text(handler["family"]))
-      || !text_is(n["accepts"],incoming) || !text_is(n["accepts"],sx_text(handler["accepts"]))
-      || !text_is(n["produces"],sx_text(handler["produces"])) { return false; }
+    if n["id"] != id || ! text_is(n["family"],
+      sx_text(handler["family"])) || ! text_is(n["accepts"],
+      incoming) || ! text_is(n["accepts"],
+      sx_text(handler["accepts"])) || ! text_is(n["produces"],
+      sx_text(handler["produces"]))
+    {
+      return false;
+    }
     var effect = "pure";
-    if id < 2 { effect = "read"; }
-    if id == 6 { effect = "record"; }
-    if !text_is(n["effect"],effect) { return false; }
+    if id < 2
+    {
+      effect = "read";
+    }
+    if id == 6
+    {
+      effect = "record";
+    }
+    if ! text_is(n["effect"], effect)
+    {
+      return false;
+    }
     incoming = sx_text(n["produces"]);
   }
-  if sx_kind(plan["profile"]) != 2 { return false; }
+  if sx_kind(plan["profile"]) != 2
+  {
+    return false;
+  }
   let policy = sx_text(plan["profile"]);
-  return policy == "scenario" || policy == "value-p40" || policy == "balanced-p55"
-    || policy == "premium-p75" || policy == "lead-linear" || policy == "lead-quadratic";
+  return policy == "scenario" || policy == "value-p40" || policy == "balanced-p55" || policy == "premium-p75" || policy == "lead-linear" || policy == "lead-quadratic";
 }
 
-fn validate(mode: string) -> bool { return validate_plan(fixed_plan("scenario"),mode); }
+fn validate(mode: string) -> bool
+{
+  return validate_plan(fixed_plan("scenario"), mode);
+}
 
-fn version() -> string { return "automat.fixed-graph@1"; }
+fn version() -> string
+{
+  return "automat.fixed-graph@1";
+}

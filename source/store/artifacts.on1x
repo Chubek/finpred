@@ -2,45 +2,77 @@
 import std.crypto.crypto as Crypto;
 import std.io.TextIO as IO;
 import std.os.OS_FileSys as FS;
-
 fn valid_hash(hash: string) -> bool
 {
-  if text_len(hash) != 64 { return false; }
+  if text_len(hash) != 64
+  {
+    return false;
+  }
   for i in 0 .. 64
   {
-    let c = text_byte(hash,i);
-    if !((c >= 48 && c <= 57) || (c >= 97 && c <= 102)) { return false; }
+    let c = text_byte(hash, i);
+    if !((c >= 48 && c <= 57) || (c >= 97 && c <= 102))
+    {
+      return false;
+    }
   }
   return true;
 }
+
 fn digest(content: string) -> string
 {
-  let (status, hash) = Crypto.basis_crypto_blake3(content);
-  if status != 0 || !valid_hash(hash) { tool_fail("artifact: digest provider failure"); }
+  let(status, hash) = Crypto.basis_crypto_blake3(content);
+  if status != 0 || ! valid_hash(hash)
+  {
+    tool_fail("artifact: digest provider failure");
+  }
   return hash;
 }
-fn base(home: string) -> string { return text_concat(home, "/artifacts/"); }
+
+fn base(home: string) -> string
+{
+  return text_concat(home, "/artifacts/");
+}
+
 fn artifact_path(home: string, hash: string) -> string
 {
-  if !valid_hash(hash) { tool_fail("artifact: malformed BLAKE3 digest"); }
-  return text_concat(text_concat(base(home), "blake3-"), text_concat(hash, ".txt"));
+  if ! valid_hash(hash)
+  {
+    tool_fail("artifact: malformed BLAKE3 digest");
+  }
+  return text_concat(text_concat(base(home),
+    "blake3-"),
+    text_concat(hash,
+    ".txt"));
 }
+
 fn run_path(home: string, id: string) -> string
 {
-  if !valid_hash(id) { tool_fail("run: malformed identity"); }
+  if ! valid_hash(id)
+  {
+    tool_fail("run: malformed identity");
+  }
   return text_concat(text_concat(home, "/runs/"), text_concat(id, ".txt"));
 }
+
 fn check_directory_type(path: string, role: string)
 {
-  if FS.basis_fs_exists(path) && !FS.basis_fs_is_dir(path)
-  { tool_fail(text_concat("store: expected directory: ", role)); }
+  if FS.basis_fs_exists(path) && ! FS.basis_fs_is_dir(path)
+  {
+    tool_fail(text_concat("store: expected directory: ", role));
+  }
 }
+
 fn ensure_directory(path: string, role: string)
 {
   # A second writer may have created the directory since our first check.
-  if FS.basis_fs_is_dir(path) || FS.basis_fs_mkdir(path) || FS.basis_fs_is_dir(path) { return; }
+  if FS.basis_fs_is_dir(path) || FS.basis_fs_mkdir(path) || FS.basis_fs_is_dir(path)
+  {
+    return;
+  }
   tool_fail(text_concat("artifact: store directory unavailable: ", role));
 }
+
 fn ensure(home: string)
 {
   let artifacts = text_concat(home, "/artifacts");
@@ -53,38 +85,73 @@ fn ensure(home: string)
   ensure_directory(artifacts, "artifacts");
   ensure_directory(runs, "runs");
 }
+
 fn entry_error(kind: string, id: string, reason: string)
 {
-  tool_fail(text_concat(text_concat(kind, ": "), text_concat(reason, text_concat("; key=", id))));
+  tool_fail(text_concat(text_concat(kind,
+    ": "),
+    text_concat(reason,
+    text_concat("; key=",
+    id))));
 }
-fn already_published(path: string, content: string, kind: string, id: string) -> bool
+
+fn already_published(path: string,
+  content: string,
+  kind: string,
+  id: string) -> bool
 {
-  if !FS.basis_fs_exists(path) { return false; }
+  if ! FS.basis_fs_exists(path)
+  {
+    return false;
+  }
   if FS.basis_fs_is_dir(path)
-  { entry_error(kind, id, "immutable path conflict: destination is a directory"); }
+  {
+    entry_error(kind,
+      id,
+      "immutable path conflict: destination is a directory");
+  }
   if FS.basis_fs_file_size(path) != text_len(content) || IO.basis_text_io_input_all(path) != content
-  { entry_error(kind, id, "immutable path conflict"); }
+  {
+    entry_error(kind, id, "immutable path conflict");
+  }
   return true;
 }
-fn abort_stage(reservation: string, staged: string, kind: string, id: string, diagnostic: string)
+
+fn abort_stage(reservation: string,
+  staged: string,
+  kind: string,
+  id: string,
+  diagnostic: string)
 {
   # Only after our own mkdir, in the private cooperating-writer store. A write
   # failure can leave a partial file or no file. Successful removal of the
   # directory proves it was empty; do not recurse or remove a final name.
   FS.basis_fs_remove(staged);
-  if !FS.basis_fs_remove(reservation)
-  { entry_error(kind, id, text_concat(diagnostic, "; owned stage cleanup failed")); }
+  if ! FS.basis_fs_remove(reservation)
+  {
+    entry_error(kind,
+      id,
+      text_concat(diagnostic,
+      "; owned stage cleanup failed"));
+  }
   entry_error(kind, id, diagnostic);
 }
+
 fn put_at(path: string, content: string, kind: string, id: string)
 {
-  if already_published(path, content, kind, id) { return; }
+  if already_published(path, content, kind, id)
+  {
+    return;
+  }
   # mkdir is exclusive even when the name is already a dangling link. Never
   # open or clean another process's stage. A dead owner requires offline cleanup.
   let reservation = text_concat(path, ".pending");
-  if !FS.basis_fs_mkdir(reservation)
+  if ! FS.basis_fs_mkdir(reservation)
   {
-    if already_published(path, content, kind, id) { return; }
+    if already_published(path, content, kind, id)
+    {
+      return;
+    }
     entry_error(kind, id, "publication reservation unavailable");
   }
   # A writer could have completed and released between the first check and mkdir.
@@ -92,67 +159,135 @@ fn put_at(path: string, content: string, kind: string, id: string)
   {
     # Published names are immutable under this protocol. Release our empty
     # stage before checking bytes: even a conflict must not strand a reservation.
-    if !FS.basis_fs_remove(reservation) { entry_error(kind, id, "publication reservation cleanup failed"); }
-    if already_published(path, content, kind, id) { return; }
+    if ! FS.basis_fs_remove(reservation)
+    {
+      entry_error(kind, id, "publication reservation cleanup failed");
+    }
+    if already_published(path, content, kind, id)
+    {
+      return;
+    }
     entry_error(kind, id, "published entry disappeared");
   }
   let staged = text_concat(reservation, "/payload");
-  if !IO.basis_text_io_output(staged, content)
-  { abort_stage(reservation, staged, kind, id, "staged write failed"); }
+  if ! IO.basis_text_io_output(staged, content)
+  {
+    abort_stage(reservation, staged, kind, id, "staged write failed");
+  }
   # The stdlib checks fwrite and fclose. Same-filesystem POSIX rename gives
   # atomic visibility; the reservation excludes other cooperating publishers.
-  if !FS.basis_fs_rename(staged, path)
-  { abort_stage(reservation, staged, kind, id, "publication rename failed"); }
-  if !FS.basis_fs_remove(reservation)
-  { entry_error(kind, id, "file published; reservation cleanup failed"); }
+  if ! FS.basis_fs_rename(staged, path)
+  {
+    abort_stage(reservation, staged, kind, id, "publication rename failed");
+  }
+  if ! FS.basis_fs_remove(reservation)
+  {
+    entry_error(kind, id, "file published; reservation cleanup failed");
+  }
 }
+
 fn put(home: string, content: string) -> string
 {
   let hash = digest(content);
   put_at(artifact_path(home, hash), content, "artifact", hash);
   return hash;
 }
-fn missing_entry(home: string, role: string, path: string, kind: string, id: string, reason: string)
+
+fn missing_entry(home: string,
+  role: string,
+  path: string,
+  kind: string,
+  id: string,
+  reason: string)
 {
   # The bridge supplies stat booleans, not errno or a lock-owner query.
   check_directory_type(home, "home");
   let parent = text_concat(text_concat(home, "/"), role);
   check_directory_type(parent, role);
-  if !FS.basis_fs_is_dir(home) { entry_error(kind, id, "directory unavailable: home"); }
-  if !FS.basis_fs_is_dir(parent)
-  { entry_error(kind, id, text_concat("directory unavailable: ", role)); }
+  if ! FS.basis_fs_is_dir(home)
+  {
+    entry_error(kind, id, "directory unavailable: home");
+  }
+  if ! FS.basis_fs_is_dir(parent)
+  {
+    entry_error(kind, id, text_concat("directory unavailable: ", role));
+  }
   let reservation = text_concat(path, ".pending");
   if FS.basis_fs_exists(reservation)
-  { entry_error(kind, id, "publication reservation present; no published entry observed"); }
+  {
+    entry_error(kind,
+      id,
+      "publication reservation present; no published entry observed");
+  }
   entry_error(kind, id, reason);
 }
+
 fn fetch(home: string, hash: string) -> string
 {
   let path = artifact_path(home, hash);
-  if !FS.basis_fs_exists(path) { missing_entry(home, "artifacts", path, "artifact", hash, "missing snapshot"); }
-  if FS.basis_fs_is_dir(path) { entry_error("artifact", hash, "snapshot is a directory"); }
+  if ! FS.basis_fs_exists(path)
+  {
+    missing_entry(home,
+      "artifacts",
+      path,
+      "artifact",
+      hash,
+      "missing snapshot");
+  }
+  if FS.basis_fs_is_dir(path)
+  {
+    entry_error("artifact", hash, "snapshot is a directory");
+  }
   # A published snapshot cannot exceed the BLAKE3 bridge's 2 MiB input limit.
   let size = FS.basis_fs_file_size(path);
-  if size < 0 { entry_error("artifact", hash, "snapshot size unavailable"); }
-  if size > 2097152 { entry_error("artifact", hash, "snapshot size outside digest profile"); }
+  if size < 0
+  {
+    entry_error("artifact", hash, "snapshot size unavailable");
+  }
+  if size > 2097152
+  {
+    entry_error("artifact", hash, "snapshot size outside digest profile");
+  }
   let value = IO.basis_text_io_input_all(path);
-  if text_len(value) != size { entry_error("artifact", hash, "incomplete snapshot read"); }
-  if digest(value) != hash { entry_error("artifact", hash, "snapshot digest mismatch"); }
+  if text_len(value) != size
+  {
+    entry_error("artifact", hash, "incomplete snapshot read");
+  }
+  if digest(value) != hash
+  {
+    entry_error("artifact", hash, "snapshot digest mismatch");
+  }
   return value;
 }
+
 fn put_run(home: string, id: string, content: string)
 {
   put_at(run_path(home, id), content, "run", id);
 }
+
 fn read_run(home: string, id: string) -> string
 {
   let path = run_path(home, id);
-  if !FS.basis_fs_exists(path) { missing_entry(home, "runs", path, "run", id, "unknown id"); }
-  if FS.basis_fs_is_dir(path) { entry_error("replay", id, "malformed run manifest: destination is a directory"); }
+  if ! FS.basis_fs_exists(path)
+  {
+    missing_entry(home, "runs", path, "run", id, "unknown id");
+  }
+  if FS.basis_fs_is_dir(path)
+  {
+    entry_error("replay",
+      id,
+      "malformed run manifest: destination is a directory");
+  }
   # Pricing manifests are exactly 404 bytes (docs/RUN_FORMAT.md). The CLI
   # dispatches by version and verifies canonical bytes and references.
-  if FS.basis_fs_file_size(path) != 404 { entry_error("replay", id, "malformed run manifest"); }
+  if FS.basis_fs_file_size(path) != 404
+  {
+    entry_error("replay", id, "malformed run manifest");
+  }
   let manifest = IO.basis_text_io_input_all(path);
-  if text_len(manifest) != 404 { entry_error("replay", id, "malformed run manifest"); }
+  if text_len(manifest) != 404
+  {
+    entry_error("replay", id, "malformed run manifest");
+  }
   return manifest;
 }

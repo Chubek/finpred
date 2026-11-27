@@ -6,224 +6,432 @@ import std.ppx.json as Ppx;
 import std.String as Str;
 import std.Int as Int;
 from . import host as Host;
+fn pair(key: string, value: sexpr) -> sexpr
+{
+  return sx_cons(sx_string(key), sx_cons(value, sx_nil()));
+}
 
-fn pair(key: string, value: sexpr) -> sexpr { return sx_cons(sx_string(key), sx_cons(value, sx_nil())); }
-fn pair_value(entry: sexpr) -> sexpr { return sx_head(sx_tail(entry)); }
-fn array(items: sexpr) -> sexpr { return sx_cons(sx_symbol("array"), items); }
-fn null_value() -> sexpr { return sx_symbol("null"); }
-fn boolean(value: bool) -> sexpr {
-  if value { return sx_symbol("true"); }
+fn pair_value(entry: sexpr) -> sexpr
+{
+  return sx_head(sx_tail(entry));
+}
+
+fn array(items: sexpr) -> sexpr
+{
+  return sx_cons(sx_symbol("array"), items);
+}
+
+fn null_value() -> sexpr
+{
+  return sx_symbol("null");
+}
+
+fn boolean(value: bool) -> sexpr
+{
+  if value
+  {
+    return sx_symbol("true");
+  }
   return sx_symbol("false");
 }
-fn integer(value: i64) -> sexpr { return sx_symbol(Int.to_string(value)); }
 
-fn kind(value: sexpr) -> string {
+fn integer(value: i64) -> sexpr
+{
+  return sx_symbol(Int.to_string(value));
+}
+
+fn kind(value: sexpr) -> string
+{
   let tag = sx_kind(value);
-  if tag == 0 { return "missing"; }
-  if tag == 2 { return "string"; }
-  if tag == 3 { return sx_text(sx_head(value)); }
+  if tag == 0
+  {
+    return "missing";
+  }
+  if tag == 2
+  {
+    return "string";
+  }
+  if tag == 3
+  {
+    return sx_text(sx_head(value));
+  }
   let literal = sx_text(value);
-  if literal == "true" || literal == "false" { return "boolean"; }
-  if literal == "null" { return "null"; }
-  if Str.contains(literal, ".") || Str.contains(literal, "e") { return "float"; }
+  if literal == "true" || literal == "false"
+  {
+    return "boolean";
+  }
+  if literal == "null"
+  {
+    return "null";
+  }
+  if Str.contains(literal, ".") || Str.contains(literal, "e")
+  {
+    return "float";
+  }
   return "integer";
 }
 
-fn get(value: sexpr, key: string) -> sexpr {
-  if kind(value) != "object" { return sx_nil(); }
+fn get(value: sexpr, key: string) -> sexpr
+{
+  if kind(value) != "object"
+  {
+    return sx_nil();
+  }
   var fields = sx_tail(value);
-  while sx_kind(fields) == 3 {
+  while sx_kind(fields) == 3
+  {
     let field = sx_head(fields);
     let cmp = Str.compare(sx_text(sx_head(field)), key);
-    if cmp == 0 { return pair_value(field); }
-    if cmp > 0 { return sx_nil(); }
+    if cmp == 0
+    {
+      return pair_value(field);
+    }
+    if cmp > 0
+    {
+      return sx_nil();
+    }
     fields = sx_tail(fields);
   }
   return sx_nil();
 }
 
-fn field(value: sexpr, key: string) -> sexpr {
+fn field(value: sexpr, key: string) -> sexpr
+{
   let v = get(value, key);
-  if sx_kind(v) == 0 { tool_fail("missing JSON field '$key'"); }
+  if sx_kind(v) == 0
+  {
+    tool_fail("missing JSON field '$key'");
+  }
   return v;
 }
 
-fn text(value: sexpr) -> string {
-  if sx_kind(value) != 2 { tool_fail("expected a JSON string"); }
+fn text(value: sexpr) -> string
+{
+  if sx_kind(value) != 2
+  {
+    tool_fail("expected a JSON string");
+  }
   return sx_text(value);
 }
 
-fn items(value: sexpr) -> sexpr {
-  if kind(value) != "array" { tool_fail("expected a JSON array"); }
+fn items(value: sexpr) -> sexpr
+{
+  if kind(value) != "array"
+  {
+    tool_fail("expected a JSON array");
+  }
   return sx_tail(value);
 }
 
-fn int64(value: sexpr, where: string) -> i64 {
-  if kind(value) != "integer" { tool_fail("$where must be an integer"); }
+fn int64(value: sexpr, where: string) -> i64
+{
+  if kind(value) != "integer"
+  {
+    tool_fail("$where must be an integer");
+  }
   let s = sx_text(value);
   # Accumulate negatively so the full signed range is representable.
   let negative = text_byte(s, 0) == 45;
   var start = 0;
   var last = 7;
-  if negative { start = 1; last = 8; }
+  if negative
+  {
+    start = 1;
+    last = 8;
+  }
   var n = 0;
-  for i in start .. text_len(s) {
+  for i in start .. text_len(s)
+  {
     let digit = text_byte(s, i) - 48;
-    if n < -922337203685477580 || (n == -922337203685477580 && digit > last) {
+    if n < - 922337203685477580 || (n == - 922337203685477580 && digit > last)
+    {
       tool_fail("$where exceeds signed 64-bit range");
     }
     n = n * 10 - digit;
   }
-  if negative { return n; }
-  return -n;
+  if negative
+  {
+    return n;
+  }
+  return - n;
 }
 
-fn positive_integer_text(value: sexpr, where: string) -> string {
-  if kind(value) != "integer" { tool_fail("$where must be a positive integer"); }
+fn positive_integer_text(value: sexpr, where: string) -> string
+{
+  if kind(value) != "integer"
+  {
+    tool_fail("$where must be a positive integer");
+  }
   let s = sx_text(value);
-  if s == "0" || text_byte(s, 0) == 45 { tool_fail("$where must be a positive integer"); }
+  if s == "0" || text_byte(s, 0) == 45
+  {
+    tool_fail("$where must be a positive integer");
+  }
   return s;
 }
 
-fn sort_key(value: sexpr, pairs: bool, numeric: bool) -> string {
-  if pairs { return sx_text(sx_head(value)); }
-  if numeric { return sx_text(value); }
+fn sort_key(value: sexpr, pairs: bool, numeric: bool) -> string
+{
+  if pairs
+  {
+    return sx_text(sx_head(value));
+  }
+  if numeric
+  {
+    return sx_text(value);
+  }
   return text(value);
 }
 
-fn sort_count(vals: sexpr, n: i64, pairs: bool, numeric: bool) -> sexpr {
-  if n < 2 { return vals; }
+fn sort_count(vals: sexpr, n: i64, pairs: bool, numeric: bool) -> sexpr
+{
+  if n < 2
+  {
+    return vals;
+  }
   var head = sx_nil();
   var tail = vals;
-  for _ in 0 .. n / 2 {
+  for _ in 0 .. n / 2
+  {
     head = sx_cons(sx_head(tail), head);
     tail = sx_tail(tail);
   }
   var left = sort_count(Sx.sexpr_reverse(head), n / 2, pairs, numeric);
   var right = sort_count(tail, n - n / 2, pairs, numeric);
   var merged = sx_nil();
-  while sx_kind(left) == 3 && sx_kind(right) == 3 {
+  while sx_kind(left) == 3 && sx_kind(right) == 3
+  {
     let lhs = sort_key(sx_head(left), pairs, numeric);
     let rhs = sort_key(sx_head(right), pairs, numeric);
     var cmp = Str.compare(lhs, rhs);
-    if numeric && text_len(lhs) != text_len(rhs) { cmp = text_len(lhs) - text_len(rhs); }
-    if cmp <= 0 { merged = sx_cons(sx_head(left), merged); left = sx_tail(left); }
-    else { merged = sx_cons(sx_head(right), merged); right = sx_tail(right); }
+    if numeric && text_len(lhs) != text_len(rhs)
+    {
+      cmp = text_len(lhs) - text_len(rhs);
+    }
+    if cmp <= 0
+    {
+      merged = sx_cons(sx_head(left), merged);
+      left = sx_tail(left);
+    }
+    else
+    {
+      merged = sx_cons(sx_head(right), merged);
+      right = sx_tail(right);
+    }
   }
   var result = right;
-  if sx_kind(left) == 3 { result = left; }
-  while sx_kind(merged) == 3 {
+  if sx_kind(left) == 3
+  {
+    result = left;
+  }
+  while sx_kind(merged) == 3
+  {
     result = sx_cons(sx_head(merged), result);
     merged = sx_tail(merged);
   }
   return result;
 }
 
-fn object_unique(fields: sexpr, duplicate_label: string) -> sexpr {
+fn object_unique(fields: sexpr, duplicate_label: string) -> sexpr
+{
   let sorted = sort_count(fields, Sx.sexpr_size(fields), true, false);
   var rest = sorted;
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let previous = sx_head(rest);
     rest = sx_tail(rest);
-    if sx_kind(rest) == 3 {
+    if sx_kind(rest) == 3
+    {
       let key = sx_text(sx_head(previous));
-      if key == sx_text(sx_head(sx_head(rest))) { tool_fail("$duplicate_label '$key'"); }
+      if key == sx_text(sx_head(sx_head(rest)))
+      {
+        tool_fail("$duplicate_label '$key'");
+      }
     }
   }
   return sx_cons(sx_symbol("object"), sorted);
 }
 
-fn object_at(fields: sexpr, origin: string) -> sexpr { return object_unique(fields, "${origin}duplicate JSON field"); }
-fn object(fields: sexpr) -> sexpr { return object_at(fields, ""); }
+fn object_at(fields: sexpr, origin: string) -> sexpr
+{
+  return object_unique(fields, "${origin}duplicate JSON field");
+}
 
-fn sorted_array(value: sexpr, numeric: bool) -> sexpr {
+fn object(fields: sexpr) -> sexpr
+{
+  return object_at(fields, "");
+}
+
+fn sorted_array(value: sexpr, numeric: bool) -> sexpr
+{
   let values = items(value);
   return array(sort_count(values, Sx.sexpr_size(values), false, numeric));
 }
 
-fn replace(obj: sexpr, key: string, value: sexpr) -> sexpr {
+fn replace(obj: sexpr, key: string, value: sexpr) -> sexpr
+{
   var rest = sx_tail(obj);
   var fields = sx_cons(pair(key, value), sx_nil());
-  while sx_kind(rest) == 3 {
+  while sx_kind(rest) == 3
+  {
     let entry = sx_head(rest);
-    if sx_text(sx_head(entry)) != key { fields = sx_cons(entry, fields); }
+    if sx_text(sx_head(entry)) != key
+    {
+      fields = sx_cons(entry, fields);
+    }
     rest = sx_tail(rest);
   }
   return object(fields);
 }
 
-fn utf8(s: string, pos: i64, where: string) -> (i64, i64) {
+fn utf8(s: string, pos: i64, where: string) ->(i64, i64)
+{
   let first = text_byte(s, pos);
-  if first < 128 { return (first, pos + 1); }
+  if first < 128
+  {
+    return (first, pos + 1);
+  }
   var width = 0;
   var minimum = 0;
   var code = 0;
-  if first >= 194 && first <= 223 { width = 2; minimum = 128; code = first - 192; }
-  if first >= 224 && first <= 239 { width = 3; minimum = 2048; code = first - 224; }
-  if first >= 240 && first <= 244 { width = 4; minimum = 65536; code = first - 240; }
-  if width == 0 || pos + width > text_len(s) { tool_fail("${where}must be UTF-8 text"); }
-  for i in pos + 1 .. pos + width {
+  if first >= 194 && first <= 223
+  {
+    width = 2;
+    minimum = 128;
+    code = first - 192;
+  }
+  if first >= 224 && first <= 239
+  {
+    width = 3;
+    minimum = 2048;
+    code = first - 224;
+  }
+  if first >= 240 && first <= 244
+  {
+    width = 4;
+    minimum = 65536;
+    code = first - 240;
+  }
+  if width == 0 || pos + width > text_len(s)
+  {
+    tool_fail("${where}must be UTF-8 text");
+  }
+  for i in pos + 1 .. pos + width
+  {
     let byte = text_byte(s, i);
-    if byte < 128 || byte >= 192 { tool_fail("${where}must be UTF-8 text"); }
+    if byte < 128 || byte >= 192
+    {
+      tool_fail("${where}must be UTF-8 text");
+    }
     code = code * 64 + byte - 128;
   }
-  if code < minimum || code > 1114111 || (code >= 55296 && code <= 57343) {
+  if code < minimum || code > 1114111 || (code >= 55296 && code <= 57343)
+  {
     tool_fail("${where}must be UTF-8 text");
   }
   return (code, pos + width);
 }
 
-fn validate_utf8(s: string, where: string) {
+fn validate_utf8(s: string, where: string)
+{
   var pos = 0;
-  while pos < text_len(s) {
-    let (_code, end) = utf8(s, pos, where);
+  while pos < text_len(s)
+  {
+    let(_code, end) = utf8(s, pos, where);
     pos = end;
   }
 }
 
-fn digit(c: i64) -> bool { return c >= 48 && c <= 57; }
+fn digit(c: i64) -> bool
+{
+  return c >= 48 && c <= 57;
+}
 
-fn skip_digits(s: string, start: i64) -> i64 {
+fn skip_digits(s: string, start: i64) -> i64
+{
   var pos = start;
-  while pos < text_len(s) && digit(text_byte(s, pos)) { pos = pos + 1; }
+  while pos < text_len(s) && digit(text_byte(s, pos))
+  {
+    pos = pos + 1;
+  }
   return pos;
 }
 
-fn append_zeros(out: buffer, count: i64) {
-  for _ in 0 .. count { buffer_byte(out, 48); }
+fn append_zeros(out: buffer, count: i64)
+{
+  for _ in 0 .. count
+  {
+    buffer_byte(out, 48);
+  }
 }
 
-fn real(value: f64) -> sexpr {
+fn real(value: f64) -> sexpr
+{
   let scientific = Host.caravansary_float_digits(value);
   let n = text_len(scientific);
   let negative = text_byte(scientific, 0) == 45;
   var start = 0;
-  if negative { start = 1; }
+  if negative
+  {
+    start = 1;
+  }
   var e = start + 1;
-  while text_byte(scientific, e) != 101 { e = e + 1; }
+  while text_byte(scientific, e) != 101
+  {
+    e = e + 1;
+  }
   var exponent = 0;
-  for i in e + 2 .. n { exponent = exponent * 10 + text_byte(scientific, i) - 48; }
-  if text_byte(scientific, e + 1) == 45 { exponent = -exponent; }
-  if exponent < -4 || exponent >= 16 { return sx_symbol(scientific); }
-
+  for i in e + 2 .. n
+  {
+    exponent = exponent * 10 + text_byte(scientific, i) - 48;
+  }
+  if text_byte(scientific, e + 1) == 45
+  {
+    exponent = - exponent;
+  }
+  if exponent < - 4 || exponent >= 16
+  {
+    return sx_symbol(scientific);
+  }
   let digits = buffer_new();
-  for i in start .. e {
+  for i in start .. e
+  {
     let c = text_byte(scientific, i);
-    if c != 46 { buffer_byte(digits, c); }
+    if c != 46
+    {
+      buffer_byte(digits, c);
+    }
   }
   let out = buffer_new();
-  if negative { buffer_byte(out, 45); }
+  if negative
+  {
+    buffer_byte(out, 45);
+  }
   let raw = buffer_text(digits);
   let count = text_len(raw);
   let dot = exponent + 1;
-  if dot <= 0 {
-    buffer_append(out, "0."); append_zeros(out, -dot); buffer_append(out, raw);
-  } else {
-    if dot >= count {
-      buffer_append(out, raw); append_zeros(out, dot - count); buffer_append(out, ".0");
-    } else {
-      for i in 0 .. count {
-        if i == dot { buffer_byte(out, 46); }
+  if dot <= 0
+  {
+    buffer_append(out, "0.");
+    append_zeros(out, - dot);
+    buffer_append(out, raw);
+  }
+  else
+  {
+    if dot >= count
+    {
+      buffer_append(out, raw);
+      append_zeros(out, dot - count);
+      buffer_append(out, ".0");
+    }
+    else
+    {
+      for i in 0 .. count
+      {
+        if i == dot
+        {
+          buffer_byte(out, 46);
+        }
         buffer_byte(out, text_byte(raw, i));
       }
     }
@@ -231,89 +439,172 @@ fn real(value: f64) -> sexpr {
   return sx_symbol(buffer_text(out));
 }
 
-fn number(s: string, start: i64, origin: string) -> (sexpr, i64) {
+fn number(s: string, start: i64, origin: string) ->(sexpr, i64)
+{
   let n = text_len(s);
   var pos = start;
-  if text_byte(s, pos) == 45 { pos = pos + 1; }
-  if pos >= n || !digit(text_byte(s, pos)) { tool_fail("${origin}invalid JSON number"); }
-  if text_byte(s, pos) == 48 { pos = pos + 1; }
-  else { pos = skip_digits(s, pos); }
+  if text_byte(s, pos) == 45
+  {
+    pos = pos + 1;
+  }
+  if pos >= n || ! digit(text_byte(s, pos))
+  {
+    tool_fail("${origin}invalid JSON number");
+  }
+  if text_byte(s, pos) == 48
+  {
+    pos = pos + 1;
+  }
+  else
+  {
+    pos = skip_digits(s, pos);
+  }
   var floating = false;
-  if pos < n && text_byte(s, pos) == 46 {
+  if pos < n && text_byte(s, pos) == 46
+  {
     let end = skip_digits(s, pos + 1);
-    if end == pos + 1 { tool_fail("${origin}invalid JSON number"); }
+    if end == pos + 1
+    {
+      tool_fail("${origin}invalid JSON number");
+    }
     pos = end;
     floating = true;
   }
   let mantissa_end = pos;
-  if pos < n && (text_byte(s, pos) == 101 || text_byte(s, pos) == 69) {
+  if pos < n && (text_byte(s, pos) == 101 || text_byte(s, pos) == 69)
+  {
     pos = pos + 1;
-    if pos < n && (text_byte(s, pos) == 43 || text_byte(s, pos) == 45) { pos = pos + 1; }
+    if pos < n && (text_byte(s, pos) == 43 || text_byte(s, pos) == 45)
+    {
+      pos = pos + 1;
+    }
     let end = skip_digits(s, pos);
-    if end == pos { tool_fail("${origin}invalid JSON number"); }
+    if end == pos
+    {
+      tool_fail("${origin}invalid JSON number");
+    }
     pos = end;
     floating = true;
   }
   let literal = text_slice(s, start, pos);
-  if !floating {
-    if pos - start > 4301 || (pos - start == 4301 && text_byte(s, start) != 45) {
+  if ! floating
+  {
+    if pos - start > 4301 || (pos - start == 4301 && text_byte(s, start) != 45)
+    {
       tool_fail("${origin}JSON integer exceeds supported digit limit");
     }
-    if literal == "-0" { return (integer(0), pos); }
+    if literal == "-0"
+    {
+      return (integer(0), pos);
+    }
     return (sx_symbol(literal), pos);
   }
   let val = Host.caravansary_parse_float(literal);
-  if !f64_is_finite(val) { tool_fail("${origin}JSON number exceeds floating-point range"); }
-  if val == 0.0 {
-    for i in start .. mantissa_end {
+  if ! f64_is_finite(val)
+  {
+    tool_fail("${origin}JSON number exceeds floating-point range");
+  }
+  if val == 0.0
+  {
+    for i in start .. mantissa_end
+    {
       let c = text_byte(s, i);
-      if c > 48 && c <= 57 { tool_fail("${origin}nonzero JSON number underflows to zero"); }
+      if c > 48 && c <= 57
+      {
+        tool_fail("${origin}nonzero JSON number underflows to zero");
+      }
     }
   }
   return (real(val), pos);
 }
 
-fn read_value(s: string, start: i64, depth: i64, origin: string) -> (sexpr, i64) {
-  if depth >= 128 { tool_fail("${origin}JSON nesting is too deep"); }
+fn read_value(s: string, start: i64, depth: i64, origin: string) ->(sexpr, i64)
+{
+  if depth >= 128
+  {
+    tool_fail("${origin}JSON nesting is too deep");
+  }
   let n = text_len(s);
   var pos = Sx.sexpr_skip(s, start);
-  if pos == n { tool_fail("${origin}unexpected end of JSON input"); }
+  if pos == n
+  {
+    tool_fail("${origin}unexpected end of JSON input");
+  }
   let c = text_byte(s, pos);
-  if c == 34 {
-    let (value, end) = Ppx.ppx_json_quoted(s, pos);
+  if c == 34
+  {
+    let(value, end) = Ppx.ppx_json_quoted(s, pos);
     return (sx_string(value), end);
   }
-  if c == 45 || digit(c) { return number(s, pos, origin); }
-  if c == 110 && pos + 4 <= n && text_slice(s, pos, pos + 4) == "null" { return (null_value(), pos + 4); }
-  if c == 116 && pos + 4 <= n && text_slice(s, pos, pos + 4) == "true" { return (boolean(true), pos + 4); }
-  if c == 102 && pos + 5 <= n && text_slice(s, pos, pos + 5) == "false" { return (boolean(false), pos + 5); }
-  if c == 123 || c == 91 {
+  if c == 45 || digit(c)
+  {
+    return number(s, pos, origin);
+  }
+  if c == 110 && pos + 4 <= n && text_slice(s, pos, pos + 4) == "null"
+  {
+    return (null_value(), pos + 4);
+  }
+  if c == 116 && pos + 4 <= n && text_slice(s, pos, pos + 4) == "true"
+  {
+    return (boolean(true), pos + 4);
+  }
+  if c == 102 && pos + 5 <= n && text_slice(s, pos, pos + 5) == "false"
+  {
+    return (boolean(false), pos + 5);
+  }
+  if c == 123 || c == 91
+  {
     let close = c + 2;
     var rev = sx_nil();
     pos = Sx.sexpr_skip(s, pos + 1);
-    if pos < n && text_byte(s, pos) == close {
-      if c == 123 { return (object_at(rev, origin), pos + 1); }
+    if pos < n && text_byte(s, pos) == close
+    {
+      if c == 123
+      {
+        return (object_at(rev, origin), pos + 1);
+      }
       return (array(rev), pos + 1);
     }
-    loop {
+    loop
+    {
       var key = "";
-      if c == 123 {
-        let (name, end) = Ppx.ppx_json_quoted(s, pos);
+      if c == 123
+      {
+        let(name, end) = Ppx.ppx_json_quoted(s, pos);
         key = name;
         pos = Sx.sexpr_skip(s, end);
-        if pos == n || text_byte(s, pos) != 58 { tool_fail("${origin}expected ':' in JSON object"); }
+        if pos == n || text_byte(s, pos) != 58
+        {
+          tool_fail("${origin}expected ':' in JSON object");
+        }
         pos = pos + 1;
       }
-      let (value, end) = read_value(s, pos, depth + 1, origin);
-      if c == 123 { rev = sx_cons(pair(key, value), rev); }
-      else { rev = sx_cons(value, rev); }
+      let(value, end) = read_value(s, pos, depth + 1, origin);
+      if c == 123
+      {
+        rev = sx_cons(pair(key, value), rev);
+      }
+      else
+      {
+        rev = sx_cons(value, rev);
+      }
       pos = Sx.sexpr_skip(s, end);
-      if pos == n { tool_fail("${origin}unterminated JSON collection"); }
-      if text_byte(s, pos) == close {
-        if c == 123 { return (object_at(rev, origin), pos + 1); }
+      if pos == n
+      {
+        tool_fail("${origin}unterminated JSON collection");
+      }
+      if text_byte(s, pos) == close
+      {
+        if c == 123
+        {
+          return (object_at(rev, origin), pos + 1);
+        }
         return (array(Sx.sexpr_reverse(rev)), pos + 1);
       }
-      if text_byte(s, pos) != 44 { tool_fail("${origin}expected ',' in JSON collection"); }
+      if text_byte(s, pos) != 44
+      {
+        tool_fail("${origin}expected ',' in JSON collection");
+      }
       pos = Sx.sexpr_skip(s, pos + 1);
     }
   }
@@ -321,21 +612,33 @@ fn read_value(s: string, start: i64, depth: i64, origin: string) -> (sexpr, i64)
   return (sx_nil(), pos);
 }
 
-fn parse_at(s: string, origin: string) -> sexpr {
+fn parse_at(s: string, origin: string) -> sexpr
+{
   validate_utf8(s, text_concat(origin, "JSON "));
-  let (value, end) = read_value(s, 0, 0, origin);
-  if Sx.sexpr_skip(s, end) != text_len(s) { tool_fail("${origin}trailing data after JSON value"); }
+  let(value, end) = read_value(s, 0, 0, origin);
+  if Sx.sexpr_skip(s, end) != text_len(s)
+  {
+    tool_fail("${origin}trailing data after JSON value");
+  }
   return value;
 }
 
-fn parse(s: string) -> sexpr { return parse_at(s, ""); }
+fn parse(s: string) -> sexpr
+{
+  return parse_at(s, "");
+}
 
-fn hex_digit(n: i64) -> i64 {
-  if n < 10 { return 48 + n; }
+fn hex_digit(n: i64) -> i64
+{
+  if n < 10
+  {
+    return 48 + n;
+  }
   return 87 + n;
 }
 
-fn append_hex(out: buffer, code: i64) {
+fn append_hex(out: buffer, code: i64)
+{
   buffer_append(out, "\\u");
   buffer_byte(out, hex_digit(code / 4096));
   buffer_byte(out, hex_digit(code / 256 % 16));
@@ -343,33 +646,60 @@ fn append_hex(out: buffer, code: i64) {
   buffer_byte(out, hex_digit(code % 16));
 }
 
-fn append_quoted(out: buffer, s: string) {
+fn append_quoted(out: buffer, s: string)
+{
   buffer_byte(out, 34);
   # Keys, tags, dates and hashes usually need no escaping. Matching in the
   # native byte DFA avoids a snapshot-table lookup for every ASCII byte.
-  if (match /[\x20-\x21\x23-\x5b\x5d-\x7e]*/ ~ s) {
+  if (match /[\x20-\x21\x23-\x5b\x5d-\x7e]*/ ~ s)
+  {
     buffer_append(out, s);
     buffer_byte(out, 34);
     return;
   }
   var pos = 0;
   let length = text_len(s);
-  while pos < length {
-    let (code, end) = utf8(s, pos, "JSON string ");
-    match code with {
-      8 => { buffer_append(out, "\\b"); },
-      9 => { buffer_append(out, "\\t"); },
-      10 => { buffer_append(out, "\\n"); },
-      12 => { buffer_append(out, "\\f"); },
-      13 => { buffer_append(out, "\\r"); },
-      34 | 92 => { buffer_byte(out, 92); buffer_byte(out, code); },
-      _ => {
-        if code < 32 || code == 127 || (code >= 128 && code < 65536) { append_hex(out, code); }
-        else {
-          if code >= 65536 {
+  while pos < length
+  {
+    let(code, end) = utf8(s, pos, "JSON string ");
+    match code with
+    {
+      8 =>
+      {
+        buffer_append(out, "\\b");
+      }, 9 =>
+      {
+        buffer_append(out, "\\t");
+      }, 10 =>
+      {
+        buffer_append(out, "\\n");
+      }, 12 =>
+      {
+        buffer_append(out, "\\f");
+      }, 13 =>
+      {
+        buffer_append(out, "\\r");
+      }, 34 | 92 =>
+      {
+        buffer_byte(out, 92);
+        buffer_byte(out, code);
+      }, _ =>
+      {
+        if code < 32 || code == 127 || (code >= 128 && code < 65536)
+        {
+          append_hex(out, code);
+        }
+        else
+        {
+          if code >= 65536
+          {
             append_hex(out, 55296 + (code - 65536) / 1024);
             append_hex(out, 56320 + (code - 65536) % 1024);
-          } else { buffer_byte(out, code); }
+          }
+          else
+          {
+            buffer_byte(out, code);
+          }
         }
       }
     };
@@ -378,34 +708,72 @@ fn append_quoted(out: buffer, s: string) {
   buffer_byte(out, 34);
 }
 
-fn emit(out: buffer, value: sexpr) {
+fn emit(out: buffer, value: sexpr)
+{
   let value_kind = sx_kind(value);
-  if value_kind == 0 { tool_fail("cannot render a missing JSON value"); }
-  if value_kind == 1 { buffer_append(out, sx_text(value)); return; }
-  if value_kind == 2 { append_quoted(out, sx_text(value)); return; }
+  if value_kind == 0
+  {
+    tool_fail("cannot render a missing JSON value");
+  }
+  if value_kind == 1
+  {
+    buffer_append(out, sx_text(value));
+    return;
+  }
+  if value_kind == 2
+  {
+    append_quoted(out, sx_text(value));
+    return;
+  }
   let dictionary = kind(value) == "object";
-  if dictionary { buffer_byte(out, 123); }
-  else { buffer_byte(out, 91); }
+  if dictionary
+  {
+    buffer_byte(out, 123);
+  }
+  else
+  {
+    buffer_byte(out, 91);
+  }
   var rest = sx_tail(value);
   var comma = false;
-  while sx_kind(rest) == 3 {
-    if comma { buffer_byte(out, 44); }
+  while sx_kind(rest) == 3
+  {
+    if comma
+    {
+      buffer_byte(out, 44);
+    }
     comma = true;
     let item = sx_head(rest);
-    if dictionary {
-      append_quoted(out, sx_text(sx_head(item))); buffer_byte(out, 58);
+    if dictionary
+    {
+      append_quoted(out, sx_text(sx_head(item)));
+      buffer_byte(out, 58);
       emit(out, pair_value(item));
-    } else { emit(out, item); }
+    }
+    else
+    {
+      emit(out, item);
+    }
     rest = sx_tail(rest);
   }
-  if dictionary { buffer_byte(out, 125); }
-  else { buffer_byte(out, 93); }
+  if dictionary
+  {
+    buffer_byte(out, 125);
+  }
+  else
+  {
+    buffer_byte(out, 93);
+  }
 }
 
-fn render(value: sexpr) -> string {
+fn render(value: sexpr) -> string
+{
   let out = buffer_new();
   emit(out, value);
   return buffer_text(out);
 }
 
-fn digest(value: sexpr) -> string { return Host.caravansary_sha256(render(value)); }
+fn digest(value: sexpr) -> string
+{
+  return Host.caravansary_sha256(render(value));
+}

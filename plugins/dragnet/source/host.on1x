@@ -5,22 +5,29 @@ import dragnet.frozen_csv as Dragnet;
 import sdk.registry as Registry;
 import std.os.OS_FileSys as FS;
 import std.io.TextIO as IO;
-
 fn snapshot(slot: string) -> string
 {
   let size = FS.basis_fs_file_size(slot);
   if FS.basis_fs_is_dir(slot) || size < 1 || size > 2000000
-  { tool_fail("dragnet host: supply nonempty frozen CSVs on fd 3 and 4 (max 2000000 bytes each)"); }
+  {
+    tool_fail("dragnet host: supply nonempty frozen CSVs on fd 3 and 4 (max 2000000 bytes each)");
+  }
   let bytes = IO.basis_text_io_input_all(slot);
-  if text_len(bytes) != size { tool_fail("dragnet host: incomplete or changed input"); }
+  if text_len(bytes) != size
+  {
+    tool_fail("dragnet host: incomplete or changed input");
+  }
   return bytes;
 }
 
 fn main() -> i64
 {
-  if !Registry.admits("dragnet.frozen_csv.offers_as_of","analysis") { tool_fail("sdk: incompatible frozen CSV source"); }
+  if ! Registry.admits("dragnet.frozen_csv.offers_as_of", "analysis")
+  {
+    tool_fail("sdk: incompatible frozen CSV source");
+  }
   let scenario = C.scenario_csv(snapshot("/proc/self/fd/3"));
   let offers = snapshot("/proc/self/fd/4");
-  IO.basis_text_io_print(Dragnet.offers_as_of(offers,scenario));
+  IO.basis_text_io_print(Dragnet.offers_as_of(offers, scenario));
   return 0;
 }

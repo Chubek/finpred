@@ -6,115 +6,191 @@ import std.String as Str;
 import std.collections.List as L;
 import std.crypto.crypto as Crypto;
 import automat.schedule as Schedule;
-
-record Graph { version:sexpr, inputs:sexpr, nodes:sexpr, outputs:sexpr }
-record Prepared { status:sexpr, subject:sexpr, canonical:sexpr, order:sexpr, work:i64 }
-record Compilation {
-  prepared:Prepared, roots:sexpr, steps:sexpr, exports:sexpr,
-  edges:i64, depth:i64, max_root_bytes:i64, max_read_bytes:i64, max_emitted_bytes:i64
+record Graph
+{
+  version: sexpr, inputs: sexpr, nodes: sexpr, outputs: sexpr
 }
 
-fn version() -> string { return "automat.financial-graph@1"; }
-fn graph(inputs:sexpr, nodes:sexpr, outputs:sexpr) -> Graph
+record Prepared
 {
-  return record<Graph>{version:sx_string(version()),inputs:inputs,nodes:nodes,outputs:outputs};
+  status: sexpr, subject: sexpr, canonical: sexpr, order: sexpr, work: i64
 }
 
-fn at(value:sexpr, position:i64) -> sexpr { return SDK.port_at(value,position); }
-fn field(value:sexpr, position:i64) -> string
+record Compilation
 {
-  let atom = at(value,position);
-  if sx_kind(atom) != 2 { return ""; }
+  prepared: Prepared, roots: sexpr, steps: sexpr, exports: sexpr, edges: i64, depth: i64, max_root_bytes: i64, max_read_bytes: i64, max_emitted_bytes: i64
+}
+
+fn version() -> string
+{
+  return "automat.financial-graph@1";
+}
+
+fn graph(inputs: sexpr, nodes: sexpr, outputs: sexpr) -> Graph
+{
+  return record < Graph >
+  {
+    version: sx_string(version()), inputs: inputs, nodes: nodes, outputs: outputs
+  };
+}
+
+fn at(value: sexpr, position: i64) -> sexpr
+{
+  return SDK.port_at(value, position);
+}
+
+fn field(value: sexpr, position: i64) -> string
+{
+  let atom = at(value, position);
+  if sx_kind(atom) != 2
+  {
+    return "";
+  }
   return sx_text(atom);
 }
-fn length(value:sexpr, limit:i64) -> i64
+
+fn length(value: sexpr, limit: i64) -> i64
 {
   var rest = value;
   var n = 0;
   while sx_kind(rest) == 3
   {
-    if n >= limit { return -1; }
+    if n >= limit
+    {
+      return - 1;
+    }
     n = n + 1;
     rest = sx_tail(rest);
   }
-  if sx_kind(rest) != 0 { return -1; }
+  if sx_kind(rest) != 0
+  {
+    return - 1;
+  }
   return n;
 }
 
 # A producer of "" means a graph input; its port is the graph input name.
-fn edge(input_port:string, producer:string, output_port:string) -> sexpr
+fn edge(input_port: string, producer: string, output_port: string) -> sexpr
 {
-  return sx_cons(sx_string(input_port),sx_cons(sx_string(producer),
-    sx_cons(sx_string(output_port),sx_nil())));
-}
-fn node(id:string, handler:string, effect:string, edges:sexpr) -> sexpr
-{
-  return sx_cons(sx_string(id),sx_cons(sx_string(handler),sx_cons(sx_string(effect),
-    sx_cons(edges,sx_nil()))));
-}
-fn output(port:SDK.Port, producer:string, output_port:string) -> sexpr
-{
-  return sx_cons(port["name"],sx_cons(SDK.port_entry(port),sx_cons(sx_string(producer),
-    sx_cons(sx_string(output_port),sx_nil()))));
+  return sx_cons(sx_string(input_port),
+    sx_cons(sx_string(producer),
+    sx_cons(sx_string(output_port),
+    sx_nil())));
 }
 
-fn lower(c:i64) -> bool { return c >= 97 && c <= 122; }
-fn decimal(c:i64) -> bool { return c >= 48 && c <= 57; }
-fn identifier(name:string) -> bool
+fn node(id: string, handler: string, effect: string, edges: sexpr) -> sexpr
+{
+  return sx_cons(sx_string(id),
+    sx_cons(sx_string(handler),
+    sx_cons(sx_string(effect),
+    sx_cons(edges,
+    sx_nil()))));
+}
+
+fn output(port: SDK.Port, producer: string, output_port: string) -> sexpr
+{
+  return sx_cons(port["name"],
+    sx_cons(SDK.port_entry(port),
+    sx_cons(sx_string(producer),
+    sx_cons(sx_string(output_port),
+    sx_nil()))));
+}
+
+fn lower(c: i64) -> bool
+{
+  return c >= 97 && c <= 122;
+}
+
+fn decimal(c: i64) -> bool
+{
+  return c >= 48 && c <= 57;
+}
+
+fn identifier(name: string) -> bool
 {
   let size = text_len(name);
-  if size < 1 || size > 63 || !lower(text_byte(name,0)) { return false; }
+  if size < 1 || size > 63 || ! lower(text_byte(name, 0))
+  {
+    return false;
+  }
   for i in 1 .. size
   {
-    let c = text_byte(name,i);
-    if !lower(c) && !decimal(c) && c != 95 && c != 45 { return false; }
+    let c = text_byte(name, i);
+    if ! lower(c) && ! decimal(c) && c != 95 && c != 45
+    {
+      return false;
+    }
   }
   return true;
 }
-fn handler_key(key:string) -> bool
+
+fn handler_key(key: string) -> bool
 {
-  if text_len(key) < 3 || text_len(key) > 127 || !lower(text_byte(key,0)) { return false; }
-  var major_at = -1;
+  if text_len(key) < 3 || text_len(key) > 127 || ! lower(text_byte(key, 0))
+  {
+    return false;
+  }
+  var major_at = - 1;
   for i in 1 .. text_len(key)
   {
-    let c = text_byte(key,i);
+    let c = text_byte(key, i);
     if major_at >= 0
     {
-      if !decimal(c) || (i == major_at + 1 && c == 48) { return false; }
+      if ! decimal(c) || (i == major_at + 1 && c == 48)
+      {
+        return false;
+      }
     }
     else
     {
-      if c == 64 { major_at = i; }
-      else { if !lower(c) && !decimal(c) && c != 95 && c != 45 && c != 46 { return false; } }
+      if c == 64
+      {
+        major_at = i;
+      }
+      else
+      {
+        if ! lower(c) && ! decimal(c) && c != 95 && c != 45 && c != 46
+        {
+          return false;
+        }
+      }
     }
   }
-  return major_at > 0 && major_at < text_len(key) - 1
-    && text_len(key) - major_at - 1 <= 3;
+  return major_at > 0 && major_at < text_len(key) - 1 && text_len(key) - major_at - 1 <= 3;
 }
-fn lookup(list:sexpr, name:string) -> sexpr
+
+fn lookup(list: sexpr, name: string) -> sexpr
 {
   var rest = list;
   while sx_kind(rest) == 3
   {
     let entry = sx_head(rest);
-    if field(entry,0) == name { return entry; }
+    if field(entry, 0) == name
+    {
+      return entry;
+    }
     rest = sx_tail(rest);
   }
   return sx_nil();
 }
-fn remove(list:sexpr, name:string) -> sexpr
+
+fn remove(list: sexpr, name: string) -> sexpr
 {
   var rest = list;
   var keep = sx_nil();
   while sx_kind(rest) == 3
   {
     let item = sx_head(rest);
-    if field(item,0) != name { keep = sx_cons(item,keep); }
+    if field(item, 0) != name
+    {
+      keep = sx_cons(item, keep);
+    }
     rest = sx_tail(rest);
   }
   return L.basis_list_rev(keep);
 }
-fn sorted(list:sexpr) -> sexpr
+
+fn sorted(list: sexpr) -> sexpr
 {
   var rest = list;
   var result = sx_nil();
@@ -125,229 +201,326 @@ fn sorted(list:sexpr) -> sexpr
     while sx_kind(items) == 3
     {
       let item = sx_head(items);
-      if Str.compare(field(item,0),field(best,0)) < 0 { best = item; }
+      if Str.compare(field(item, 0), field(best, 0)) < 0
+      {
+        best = item;
+      }
       items = sx_tail(items);
     }
-    result = sx_cons(best,result);
-    rest = remove(rest,field(best,0));
+    result = sx_cons(best, result);
+    rest = remove(rest, field(best, 0));
   }
   return L.basis_list_rev(result);
 }
-fn frame(out:buffer, text:string)
+
+fn frame(out: buffer, text: string)
 {
-  buffer_append(out,F.num(text_len(text)));
-  buffer_append(out,":");
-  buffer_append(out,text);
+  buffer_append(out, F.num(text_len(text)));
+  buffer_append(out, ":");
+  buffer_append(out, text);
 }
-fn frame_port(out:buffer, port:SDK.Port)
+
+fn frame_port(out: buffer, port: SDK.Port)
 {
   var items = SDK.port_entry(port);
   while sx_kind(items) == 3
   {
-    frame(out,sx_text(sx_head(items)));
+    frame(out, sx_text(sx_head(items)));
     items = sx_tail(items);
   }
 }
-fn pin_entry(pin:SDK.Pin) -> sexpr
+
+fn pin_entry(pin: SDK.Pin) -> sexpr
 {
-  return sx_cons(pin["package_name"],sx_cons(pin["package_version"],sx_cons(pin["handler_name"],
-    sx_cons(pin["handler_version"],sx_cons(sx_string(F.num(pin["abi"])),sx_cons(pin["code_digest"],
-    sx_cons(pin["policy_digest"],sx_nil())))))));
+  return sx_cons(pin["package_name"],
+    sx_cons(pin["package_version"],
+    sx_cons(pin["handler_name"],
+    sx_cons(pin["handler_version"],
+    sx_cons(sx_string(F.num(pin["abi"])),
+    sx_cons(pin["code_digest"],
+    sx_cons(pin["policy_digest"],
+    sx_nil())))))));
 }
-fn decode_pin(entry:sexpr) -> SDK.Pin
+
+fn decode_pin(entry: sexpr) -> SDK.Pin
 {
-  return record<SDK.Pin>{package_name:at(entry,0),package_version:at(entry,1),
-    handler_name:at(entry,2),handler_version:at(entry,3),abi:SDK.nat(at(entry,4)),
-    code_digest:at(entry,5),policy_digest:at(entry,6)};
+  return record < SDK.Pin >
+  {
+    package_name: at(entry,
+      0), package_version: at(entry,
+      1), handler_name: at(entry,
+      2), handler_version: at(entry,
+      3), abi: SDK.nat(at(entry,
+      4)), code_digest: at(entry,
+      5), policy_digest: at(entry,
+      6)
+  };
 }
-fn frame_pin(out:buffer, pin:SDK.Pin)
+
+fn frame_pin(out: buffer, pin: SDK.Pin)
 {
   var items = pin_entry(pin);
   while sx_kind(items) == 3
   {
-    frame(out,sx_text(sx_head(items)));
+    frame(out, sx_text(sx_head(items)));
     items = sx_tail(items);
   }
 }
-fn digest(bytes:string) -> string
+
+fn digest(bytes: string) -> string
 {
-  let (status, hash) = Crypto.basis_crypto_blake3(bytes);
-  if status != 0 || text_len(hash) != 64 { tool_fail("financial graph: digest failed"); }
-  return text_concat("blake3:",hash);
+  let(status, hash) = Crypto.basis_crypto_blake3(bytes);
+  if status != 0 || text_len(hash) != 64
+  {
+    tool_fail("financial graph: digest failed");
+  }
+  return text_concat("blake3:", hash);
 }
-fn reject(status:string, subject:string) -> Prepared
+
+fn reject(status: string, subject: string) -> Prepared
 {
-  return record<Prepared>{status:sx_string(status),subject:sx_string(subject),
-    canonical:sx_nil(),order:sx_nil(),work:0};
+  return record < Prepared >
+  {
+    status: sx_string(status), subject: sx_string(subject), canonical: sx_nil(), order: sx_nil(), work: 0
+  };
 }
 
 # Pending/planned entries: (id, pin, input signatures, output signature,
 # work, role, named edges). These are private verified planner products.
-fn planned(id:sexpr, d:SDK.Descriptor, edges:sexpr) -> sexpr
+fn planned(id: sexpr, d: SDK.Descriptor, edges: sexpr) -> sexpr
 {
-  return sx_cons(id,sx_cons(pin_entry(d["pin"]),sx_cons(d["inputs"],
-    sx_cons(SDK.port_entry(d["output"]),sx_cons(sx_string(F.num(d["max_work"])),
-    sx_cons(d["role"],sx_cons(edges,sx_nil())))))));
+  return sx_cons(id,
+    sx_cons(pin_entry(d["pin"]),
+    sx_cons(d["inputs"],
+    sx_cons(SDK.port_entry(d["output"]),
+    sx_cons(sx_string(F.num(d["max_work"])),
+    sx_cons(d["role"],
+    sx_cons(edges,
+    sx_nil())))))));
 }
-fn same_port(a:SDK.Port, b:SDK.Port) -> bool
+
+fn same_port(a: SDK.Port, b: SDK.Port) -> bool
 {
-  return SDK.same(a["name"],b["name"]) && SDK.same(a["kind"],b["kind"]) && a["major"] == b["major"]
-    && SDK.same(a["unit"],b["unit"]) && SDK.same(a["currency"],b["currency"])
-    && a["states"] == b["states"] && a["max_bytes"] == b["max_bytes"];
+  return SDK.same(a["name"],
+    b["name"]) && SDK.same(a["kind"],
+    b["kind"]) && a["major"] == b["major"] && SDK.same(a["unit"],
+    b["unit"]) && SDK.same(a["currency"],
+    b["currency"]) && a["states"] == b["states"] && a["max_bytes"] == b["max_bytes"];
 }
-fn same_ports(a:sexpr, b:sexpr) -> bool
+
+fn same_ports(a: sexpr, b: sexpr) -> bool
 {
   var left = a;
   var right = b;
   var n = 0;
   while sx_kind(left) == 3 && sx_kind(right) == 3
   {
-    if n >= 16 || !same_port(SDK.decode_port(sx_head(left)),SDK.decode_port(sx_head(right))) { return false; }
+    if n >= 16 || ! same_port(SDK.decode_port(sx_head(left)),
+      SDK.decode_port(sx_head(right)))
+    {
+      return false;
+    }
     left = sx_tail(left);
     right = sx_tail(right);
     n = n + 1;
   }
   return sx_kind(left) == 0 && sx_kind(right) == 0;
 }
-fn matches_signature(entry:sexpr, d:SDK.Descriptor) -> bool
+
+fn matches_signature(entry: sexpr, d: SDK.Descriptor) -> bool
 {
-  return d["max_work"] == SDK.nat(at(entry,4)) && SDK.same(d["role"],at(entry,5))
-    && same_port(d["output"],SDK.decode_port(at(entry,3))) && same_ports(d["inputs"],at(entry,2));
+  return d["max_work"] == SDK.nat(at(entry,
+    4)) && SDK.same(d["role"],
+    at(entry,
+    5)) && same_port(d["output"],
+    SDK.decode_port(at(entry,
+    3))) && same_ports(d["inputs"],
+    at(entry,
+    2));
 }
-fn consistent_binding(entries:sexpr, d:SDK.Descriptor) -> bool
+
+fn consistent_binding(entries: sexpr, d: SDK.Descriptor) -> bool
 {
   var rest = entries;
   let pin = d["pin"];
   while sx_kind(rest) == 3
   {
     let entry = sx_head(rest);
-    let previous = decode_pin(at(entry,1));
-    if SDK.same(previous["handler_name"],pin["handler_name"])
-    { return SDK.same_pin(previous,pin) && matches_signature(entry,d); }
+    let previous = decode_pin(at(entry, 1));
+    if SDK.same(previous["handler_name"], pin["handler_name"])
+    {
+      return SDK.same_pin(previous, pin) && matches_signature(entry, d);
+    }
     rest = sx_tail(rest);
   }
   return true;
 }
-fn producer_port(inputs:sexpr, nodes:sexpr, producer:string, port:string) -> SDK.Port
+
+fn producer_port(inputs: sexpr,
+  nodes: sexpr,
+  producer: string,
+  port: string) -> SDK.Port
 {
-  if producer == "" { return SDK.decode_port(lookup(inputs,port)); }
-  let entry = at(lookup(nodes,producer),3);
-  if field(entry,0) != port { return SDK.decode_port(sx_nil()); }
+  if producer == ""
+  {
+    return SDK.decode_port(lookup(inputs, port));
+  }
+  let entry = at(lookup(nodes, producer), 3);
+  if field(entry, 0) != port
+  {
+    return SDK.decode_port(sx_nil());
+  }
   return SDK.decode_port(entry);
 }
-fn edges_valid(edges:sexpr, ports:sexpr) -> bool
+
+fn edges_valid(edges: sexpr, ports: sexpr) -> bool
 {
-  let n = length(edges,16);
-  if n < 0 || n != length(ports,16) { return false; }
+  let n = length(edges, 16);
+  if n < 0 || n != length(ports, 16)
+  {
+    return false;
+  }
   var rest = edges;
   var seen = sx_nil();
   while sx_kind(rest) == 3
   {
     let e = sx_head(rest);
-    let name = field(e,0);
-    let producer = field(e,1);
-    if length(e,3) != 3 || !identifier(name) || sx_kind(at(e,1)) != 2
-      || (producer != "" && !identifier(producer)) || !identifier(field(e,2))
-      || sx_kind(lookup(ports,name)) == 0 || sx_kind(lookup(seen,name)) != 0 { return false; }
-    seen = sx_cons(e,seen);
+    let name = field(e, 0);
+    let producer = field(e, 1);
+    if length(e,
+      3) != 3 || ! identifier(name) || sx_kind(at(e,
+      1)) != 2 || (producer != "" && ! identifier(producer)) || ! identifier(field(e,
+      2)) || sx_kind(lookup(ports,
+      name)) == 0 || sx_kind(lookup(seen,
+      name)) != 0
+    {
+      return false;
+    }
+    seen = sx_cons(e, seen);
     rest = sx_tail(rest);
   }
   return true;
 }
-fn order_nodes(entries:sexpr) -> sexpr
+
+fn order_nodes(entries: sexpr) -> sexpr
 {
   var items = entries;
   var rows = sx_nil();
   while sx_kind(items) == 3
   {
     let entry = sx_head(items);
-    var edges = at(entry,6);
+    var edges = at(entry, 6);
     var parents = sx_nil();
     while sx_kind(edges) == 3
     {
-      let producer = at(sx_head(edges),1);
-      if sx_text(producer) != "" { parents = sx_cons(producer,parents); }
+      let producer = at(sx_head(edges), 1);
+      if sx_text(producer) != ""
+      {
+        parents = sx_cons(producer, parents);
+      }
       edges = sx_tail(edges);
     }
-    rows = sx_cons(sx_cons(sx_head(entry),parents),rows);
+    rows = sx_cons(sx_cons(sx_head(entry), parents), rows);
     items = sx_tail(items);
   }
-  var ordered = Schedule.order(version(),rows);
+  var ordered = Schedule.order(version(), rows);
   var result = sx_nil();
   while sx_kind(ordered) == 3
   {
-    result = sx_cons(lookup(entries,sx_text(sx_head(ordered))),result);
+    result = sx_cons(lookup(entries, sx_text(sx_head(ordered))), result);
     ordered = sx_tail(ordered);
   }
   return L.basis_list_rev(result);
 }
 
-fn canonical_bytes(g:Graph, mode:string, ordered:sexpr) -> string
+fn canonical_bytes(g: Graph, mode: string, ordered: sexpr) -> string
 {
   let out = buffer_new();
-  frame(out,version());
-  frame(out,mode);
+  frame(out, version());
+  frame(out, mode);
   var inputs = sorted(g["inputs"]);
-  frame(out,F.num(length(inputs,16)));
+  frame(out, F.num(length(inputs, 16)));
   while sx_kind(inputs) == 3
   {
-    frame_port(out,SDK.decode_port(sx_head(inputs)));
+    frame_port(out, SDK.decode_port(sx_head(inputs)));
     inputs = sx_tail(inputs);
   }
   var nodes = ordered;
-  frame(out,F.num(length(nodes,32)));
+  frame(out, F.num(length(nodes, 32)));
   while sx_kind(nodes) == 3
   {
     let entry = sx_head(nodes);
-    frame(out,field(entry,0));
-    frame_pin(out,decode_pin(at(entry,1)));
-    frame(out,"pure");
-    frame(out,field(entry,4));
-    frame(out,field(entry,5));
-    frame_port(out,SDK.decode_port(at(entry,3)));
-    var ports = at(entry,2);
-    frame(out,F.num(length(ports,16)));
+    frame(out, field(entry, 0));
+    frame_pin(out, decode_pin(at(entry, 1)));
+    frame(out, "pure");
+    frame(out, field(entry, 4));
+    frame(out, field(entry, 5));
+    frame_port(out, SDK.decode_port(at(entry, 3)));
+    var ports = at(entry, 2);
+    frame(out, F.num(length(ports, 16)));
     while sx_kind(ports) == 3
     {
       let p = sx_head(ports);
-      let e = lookup(at(entry,6),field(p,0));
-      frame_port(out,SDK.decode_port(p));
-      frame(out,field(e,1));
-      frame(out,field(e,2));
+      let e = lookup(at(entry, 6), field(p, 0));
+      frame_port(out, SDK.decode_port(p));
+      frame(out, field(e, 1));
+      frame(out, field(e, 2));
       ports = sx_tail(ports);
     }
     nodes = sx_tail(nodes);
   }
   var outputs = sorted(g["outputs"]);
-  frame(out,F.num(length(outputs,16)));
+  frame(out, F.num(length(outputs, 16)));
   while sx_kind(outputs) == 3
   {
     let item = sx_head(outputs);
-    frame_port(out,SDK.decode_port(at(item,1)));
-    frame(out,field(item,2));
-    frame(out,field(item,3));
+    frame_port(out, SDK.decode_port(at(item, 1)));
+    frame(out, field(item, 2));
+    frame(out, field(item, 3));
     outputs = sx_tail(outputs);
   }
   return buffer_text(out);
 }
 
-fn prepare_declarations(g:Graph, mode:string, budget:i64, resolve:fn(string) -> SDK.Descriptor) -> Prepared
+fn prepare_declarations(g: Graph,
+  mode: string,
+  budget: i64,
+  resolve: fn(string) -> SDK.Descriptor) -> Prepared
 {
-  if !SDK.same(g["version"],sx_string(version())) { return reject("version",""); }
-  if mode != "analysis" && mode != "recommendation" { return reject("denied",""); }
-  if budget < 1 || budget > 10000000 { return reject("budget",""); }
-  if length(g["inputs"],16) < 1 || length(g["nodes"],32) < 1 || length(g["outputs"],16) < 1
-  { return reject("graph_shape",""); }
+  if ! SDK.same(g["version"], sx_string(version()))
+  {
+    return reject("version", "");
+  }
+  if mode != "analysis" && mode != "recommendation"
+  {
+    return reject("denied", "");
+  }
+  if budget < 1 || budget > 10000000
+  {
+    return reject("budget", "");
+  }
+  if length(g["inputs"],
+    16) < 1 || length(g["nodes"],
+    32) < 1 || length(g["outputs"],
+    16) < 1
+  {
+    return reject("graph_shape", "");
+  }
   var rest = g["inputs"];
   var input_names = sx_nil();
   while sx_kind(rest) == 3
   {
     let item = sx_head(rest);
-    let name = field(item,0);
-    if !identifier(name) || !SDK.valid_port(SDK.decode_port(item))
-    { return reject("port",name); }
-    if sx_kind(lookup(input_names,name)) != 0 { return reject("duplicate_id",name); }
-    input_names = sx_cons(item,input_names);
+    let name = field(item, 0);
+    if ! identifier(name) || ! SDK.valid_port(SDK.decode_port(item))
+    {
+      return reject("port", name);
+    }
+    if sx_kind(lookup(input_names, name)) != 0
+    {
+      return reject("duplicate_id", name);
+    }
+    input_names = sx_cons(item, input_names);
     rest = sx_tail(rest);
   }
   rest = g["nodes"];
@@ -356,21 +529,43 @@ fn prepare_declarations(g:Graph, mode:string, budget:i64, resolve:fn(string) -> 
   while sx_kind(rest) == 3
   {
     let item = sx_head(rest);
-    let id = field(item,0);
-    let handler = field(item,1);
-    if length(item,4) != 4 || !identifier(id) || !handler_key(handler) { return reject("node",id); }
-    if sx_kind(lookup(entries,id)) != 0 || sx_kind(lookup(g["inputs"],id)) != 0
-    { return reject("duplicate_id",id); }
-    if field(item,2) != "pure" { return reject("denied",id); }
-    let d = SDK.resolve(handler,mode,resolve);
-    if !d["enabled"] { return reject("unknown_handler",id); }
-    if !consistent_binding(entries,d) { return reject("descriptor_mismatch",id); }
-    let edges = at(item,3);
-    if !identifier(sx_text(d["output"]["name"])) || !edges_valid(edges,d["inputs"])
-    { return reject("port",id); }
+    let id = field(item, 0);
+    let handler = field(item, 1);
+    if length(item, 4) != 4 || ! identifier(id) || ! handler_key(handler)
+    {
+      return reject("node", id);
+    }
+    if sx_kind(lookup(entries,
+      id)) != 0 || sx_kind(lookup(g["inputs"],
+      id)) != 0
+    {
+      return reject("duplicate_id", id);
+    }
+    if field(item, 2) != "pure"
+    {
+      return reject("denied", id);
+    }
+    let d = SDK.resolve(handler, mode, resolve);
+    if ! d["enabled"]
+    {
+      return reject("unknown_handler", id);
+    }
+    if ! consistent_binding(entries, d)
+    {
+      return reject("descriptor_mismatch", id);
+    }
+    let edges = at(item, 3);
+    if ! identifier(sx_text(d["output"]["name"])) || ! edges_valid(edges,
+      d["inputs"])
+    {
+      return reject("port", id);
+    }
     work = work + d["max_work"];
-    if work > budget { return reject("budget",id); }
-    entries = sx_cons(planned(at(item,0),d,edges),entries);
+    if work > budget
+    {
+      return reject("budget", id);
+    }
+    entries = sx_cons(planned(at(item, 0), d, edges), entries);
     rest = sx_tail(rest);
   }
   rest = entries;
@@ -378,61 +573,108 @@ fn prepare_declarations(g:Graph, mode:string, budget:i64, resolve:fn(string) -> 
   while sx_kind(rest) == 3
   {
     let entry = sx_head(rest);
-    var ports = at(entry,2);
+    var ports = at(entry, 2);
     while sx_kind(ports) == 3
     {
       let port = SDK.decode_port(sx_head(ports));
-      let edge = lookup(at(entry,6),sx_text(port["name"]));
-      let from = producer_port(g["inputs"],entries,field(edge,1),field(edge,2));
-      if !SDK.valid_port(from) { return reject("unknown_reference",field(entry,0)); }
-      if !SDK.connects(from,port) && mistyped == "" { mistyped = field(entry,0); }
+      let edge = lookup(at(entry, 6), sx_text(port["name"]));
+      let from = producer_port(g["inputs"],
+        entries,
+        field(edge,
+        1),
+        field(edge,
+        2));
+      if ! SDK.valid_port(from)
+      {
+        return reject("unknown_reference", field(entry, 0));
+      }
+      if ! SDK.connects(from, port) && mistyped == ""
+      {
+        mistyped = field(entry, 0);
+      }
       ports = sx_tail(ports);
     }
     rest = sx_tail(rest);
   }
   let order = order_nodes(entries);
-  if sx_kind(order) == 0 { return reject("cycle",""); }
-  if mistyped != "" { return reject("edge_type",mistyped); }
+  if sx_kind(order) == 0
+  {
+    return reject("cycle", "");
+  }
+  if mistyped != ""
+  {
+    return reject("edge_type", mistyped);
+  }
   rest = g["outputs"];
   var output_names = sx_nil();
   while sx_kind(rest) == 3
   {
     let item = sx_head(rest);
-    let name = field(item,0);
-    let port = SDK.decode_port(at(item,1));
-    if length(item,4) != 4 || !identifier(name) || !SDK.same(at(item,0),port["name"])
-      || !sdk_output_ref(item) || !SDK.valid_port(port) { return reject("port",name); }
-    if sx_kind(lookup(output_names,name)) != 0 { return reject("duplicate_id",name); }
-    let from = producer_port(g["inputs"],entries,field(item,2),field(item,3));
-    if !SDK.valid_port(from) { return reject("unknown_reference",name); }
-    if !SDK.connects(from,port) { return reject("edge_type",name); }
-    output_names = sx_cons(item,output_names);
+    let name = field(item, 0);
+    let port = SDK.decode_port(at(item, 1));
+    if length(item,
+      4) != 4 || ! identifier(name) || ! SDK.same(at(item,
+      0),
+      port["name"]) || ! sdk_output_ref(item) || ! SDK.valid_port(port)
+    {
+      return reject("port", name);
+    }
+    if sx_kind(lookup(output_names, name)) != 0
+    {
+      return reject("duplicate_id", name);
+    }
+    let from = producer_port(g["inputs"],
+      entries,
+      field(item,
+      2),
+      field(item,
+      3));
+    if ! SDK.valid_port(from)
+    {
+      return reject("unknown_reference", name);
+    }
+    if ! SDK.connects(from, port)
+    {
+      return reject("edge_type", name);
+    }
+    output_names = sx_cons(item, output_names);
     rest = sx_tail(rest);
   }
-  return record<Prepared>{status:sx_string("ok"),subject:sx_string(""),
-    canonical:sx_string(canonical_bytes(g,mode,order)),order:order,work:work};
+  return record < Prepared >
+  {
+    status: sx_string("ok"), subject: sx_string(""), canonical: sx_string(canonical_bytes(g,
+      mode,
+      order)), order: order, work: work
+  };
 }
 
 # Slot metadata is indexed by the unique artifact ID (root name or node ID).
 # Roots have depth 0; a handler without node predecessors has depth 1.
-fn slot_entry(id:sexpr, slot:i64, depth:i64, bytes:i64) -> sexpr
+fn slot_entry(id: sexpr, slot: i64, depth: i64, bytes: i64) -> sexpr
 {
-  return sx_cons(id,sx_cons(sx_string(F.num(slot)),sx_cons(sx_string(F.num(depth)),
-    sx_cons(sx_string(F.num(bytes)),sx_nil()))));
+  return sx_cons(id,
+    sx_cons(sx_string(F.num(slot)),
+    sx_cons(sx_string(F.num(depth)),
+    sx_cons(sx_string(F.num(bytes)),
+    sx_nil()))));
 }
 
 # Compile only validated declarations. The legacy canonical bytes remain
 # independent of the slot encoding. No runtime values or handler calls enter
 # compilation, and the byte bounds below do not reject a graph.
-fn compile(g:Graph, mode:string, budget:i64, resolve:fn(string) -> SDK.Descriptor) -> Compilation
+fn compile(g: Graph,
+  mode: string,
+  budget: i64,
+  resolve: fn(string) -> SDK.Descriptor) -> Compilation
 {
-  let prepared = prepare_declarations(g,mode,budget,resolve);
+  let prepared = prepare_declarations(g, mode, budget, resolve);
   if sx_text(prepared["status"]) != "ok"
   {
-    return record<Compilation>{prepared:prepared,roots:sx_nil(),steps:sx_nil(),exports:sx_nil(),
-      edges:0,depth:0,max_root_bytes:0,max_read_bytes:0,max_emitted_bytes:0};
+    return record < Compilation >
+    {
+      prepared: prepared, roots: sx_nil(), steps: sx_nil(), exports: sx_nil(), edges: 0, depth: 0, max_root_bytes: 0, max_read_bytes: 0, max_emitted_bytes: 0
+    };
   }
-
   let roots = sorted(g["inputs"]);
   var items = roots;
   var slots = sx_nil();
@@ -441,12 +683,15 @@ fn compile(g:Graph, mode:string, budget:i64, resolve:fn(string) -> SDK.Descripto
   while sx_kind(items) == 3
   {
     let port = SDK.decode_port(sx_head(items));
-    slots = sx_cons(slot_entry(port["name"],slot,0,port["max_bytes"]),slots);
+    slots = sx_cons(slot_entry(port["name"],
+      slot,
+      0,
+      port["max_bytes"]),
+      slots);
     root_bytes = root_bytes + port["max_bytes"];
     slot = slot + 1;
     items = sx_tail(items);
   }
-
   var steps = sx_nil();
   var edge_count = 0;
   var depth = 0;
@@ -456,114 +701,156 @@ fn compile(g:Graph, mode:string, budget:i64, resolve:fn(string) -> SDK.Descripto
   while sx_kind(items) == 3
   {
     let entry = sx_head(items);
-    var ports = at(entry,2);
+    var ports = at(entry, 2);
     var operands = sx_nil();
     var node_depth = 1;
     while sx_kind(ports) == 3
     {
-      let name = at(sx_head(ports),0);
-      let edge = lookup(at(entry,6),sx_text(name));
-      let producer = field(edge,1);
+      let name = at(sx_head(ports), 0);
+      let edge = lookup(at(entry, 6), sx_text(name));
+      let producer = field(edge, 1);
       var source = producer;
-      if source == "" { source = field(edge,2); }
-      let origin = lookup(slots,source);
-      operands = sx_cons(sx_cons(name,sx_cons(at(origin,1),sx_tail(edge))),operands);
+      if source == ""
+      {
+        source = field(edge, 2);
+      }
+      let origin = lookup(slots, source);
+      operands = sx_cons(sx_cons(name,
+        sx_cons(at(origin,
+        1),
+        sx_tail(edge))),
+        operands);
       # The operand retains both named endpoints for @1 artifact evidence.
       # Charge a producer's bound once per binding, not once per predecessor.
-      let next_depth = SDK.nat(at(origin,2)) + 1;
-      if next_depth > node_depth { node_depth = next_depth; }
+      let next_depth = SDK.nat(at(origin, 2)) + 1;
+      if next_depth > node_depth
+      {
+        node_depth = next_depth;
+      }
       edge_count = edge_count + 1;
-      read_bytes = read_bytes + SDK.nat(at(origin,3));
+      read_bytes = read_bytes + SDK.nat(at(origin, 3));
       ports = sx_tail(ports);
     }
-    let output = SDK.decode_port(at(entry,3));
-    slots = sx_cons(slot_entry(at(entry,0),slot,node_depth,output["max_bytes"]),slots);
-    steps = sx_cons(sx_cons(entry,sx_cons(L.basis_list_rev(operands),sx_nil())),steps);
-    if node_depth > depth { depth = node_depth; }
+    let output = SDK.decode_port(at(entry, 3));
+    slots = sx_cons(slot_entry(at(entry,
+      0),
+      slot,
+      node_depth,
+      output["max_bytes"]),
+      slots);
+    steps = sx_cons(sx_cons(entry,
+      sx_cons(L.basis_list_rev(operands),
+      sx_nil())),
+      steps);
+    if node_depth > depth
+    {
+      depth = node_depth;
+    }
     emitted_bytes = emitted_bytes + output["max_bytes"];
     slot = slot + 1;
     items = sx_tail(items);
   }
-
   var exports = sx_nil();
   items = sorted(g["outputs"]);
   while sx_kind(items) == 3
   {
     let item = sx_head(items);
-    let origin = lookup(slots,field(item,2));
-    exports = sx_cons(sx_cons(item,sx_cons(at(origin,1),sx_nil())),exports);
+    let origin = lookup(slots, field(item, 2));
+    exports = sx_cons(sx_cons(item,
+      sx_cons(at(origin,
+      1),
+      sx_nil())),
+      exports);
     items = sx_tail(items);
   }
-  return record<Compilation>{prepared:prepared,roots:roots,steps:L.basis_list_rev(steps),
-    exports:L.basis_list_rev(exports),edges:edge_count,depth:depth,max_root_bytes:root_bytes,
-    max_read_bytes:read_bytes,max_emitted_bytes:emitted_bytes};
+  return record < Compilation >
+  {
+    prepared: prepared, roots: roots, steps: L.basis_list_rev(steps), exports: L.basis_list_rev(exports), edges: edge_count, depth: depth, max_root_bytes: root_bytes, max_read_bytes: read_bytes, max_emitted_bytes: emitted_bytes
+  };
 }
 
-fn prepare(g:Graph, mode:string, budget:i64, resolve:fn(string) -> SDK.Descriptor) -> Prepared
+fn prepare(g: Graph,
+  mode: string,
+  budget: i64,
+  resolve: fn(string) -> SDK.Descriptor) -> Prepared
 {
-  return prepare_declarations(g,mode,budget,resolve);
+  return prepare_declarations(g, mode, budget, resolve);
 }
 
-fn sdk_output_ref(item:sexpr) -> bool
+fn sdk_output_ref(item: sexpr) -> bool
 {
   # No external-input passthrough in the first slice: a declared emit must
   # come from a host-admitted and executed handler.
-  return identifier(field(item,2)) && identifier(field(item,3));
+  return identifier(field(item, 2)) && identifier(field(item, 3));
 }
 
 # Connect an exported port of the left graph to a root of the right graph.
 # IDs remain public and are never silently renamed or merged.
-record Composition { status:sexpr, subject:sexpr, graph:Graph, prepared:Prepared }
-
-fn link(root:string, export_name:string) -> sexpr
+record Composition
 {
-  return sx_cons(sx_string(root),sx_cons(sx_string(export_name),sx_nil()));
+  status: sexpr, subject: sexpr, graph: Graph, prepared: Prepared
 }
 
-fn composition_failure(p:Prepared) -> Composition
+fn link(root: string, export_name: string) -> sexpr
 {
-  return record<Composition>{status:p["status"],subject:p["subject"],
-    graph:graph(sx_nil(),sx_nil(),sx_nil()),prepared:p};
+  return sx_cons(sx_string(root), sx_cons(sx_string(export_name), sx_nil()));
 }
 
-fn rebind_right(nodes:sexpr, wired:sexpr, exports:sexpr) -> sexpr
+fn composition_failure(p: Prepared) -> Composition
+{
+  return record < Composition >
+  {
+    status: p["status"], subject: p["subject"], graph: graph(sx_nil(),
+      sx_nil(),
+      sx_nil()), prepared: p
+  };
+}
+
+fn rebind_right(nodes: sexpr, wired: sexpr, exports: sexpr) -> sexpr
 {
   var rest = nodes;
   var result = sx_nil();
   while sx_kind(rest) == 3
   {
     let item = sx_head(rest);
-    var edges = at(item,3);
+    var edges = at(item, 3);
     var rewritten = sx_nil();
     while sx_kind(edges) == 3
     {
       let e = sx_head(edges);
       var replacement = e;
-      if field(e,1) == ""
+      if field(e, 1) == ""
       {
-        let wire = lookup(wired,field(e,2));
+        let wire = lookup(wired, field(e, 2));
         if sx_kind(wire) == 3
         {
-          let output = lookup(exports,field(wire,1));
-          replacement = edge(field(e,0),field(output,2),field(output,3));
+          let output = lookup(exports, field(wire, 1));
+          replacement = edge(field(e, 0), field(output, 2), field(output, 3));
         }
       }
-      rewritten = sx_cons(replacement,rewritten);
+      rewritten = sx_cons(replacement, rewritten);
       edges = sx_tail(edges);
     }
-    result = sx_cons(node(field(item,0),field(item,1),field(item,2),L.basis_list_rev(rewritten)),result);
+    result = sx_cons(node(field(item,
+      0),
+      field(item,
+      1),
+      field(item,
+      2),
+      L.basis_list_rev(rewritten)),
+      result);
     rest = sx_tail(rest);
   }
   return L.basis_list_rev(result);
 }
 
-fn concat(left:sexpr, right:sexpr) -> sexpr
+fn concat(left: sexpr, right: sexpr) -> sexpr
 {
   var items = L.basis_list_rev(left);
   var result = right;
   while sx_kind(items) == 3
   {
-    result = sx_cons(sx_head(items),result);
+    result = sx_cons(sx_head(items), result);
     items = sx_tail(items);
   }
   return result;
@@ -572,37 +859,66 @@ fn concat(left:sexpr, right:sexpr) -> sexpr
 # Validate each fragment and the flattened product with the same trusted host
 # resolver. A link must match the declared export signature, even when the
 # underlying concrete producer happens to offer a narrower signature.
-fn compose(left:Graph, right:Graph, links:sexpr, mode:string, budget:i64,
-  resolve:fn(string) -> SDK.Descriptor) -> Composition
+fn compose(left: Graph,
+  right: Graph,
+  links: sexpr,
+  mode: string,
+  budget: i64,
+  resolve: fn(string) -> SDK.Descriptor) -> Composition
 {
-  if length(links,16) < 1 { return composition_failure(reject("link_shape","")); }
-  let left_plan = prepare(left,mode,budget,resolve);
-  if !SDK.same(left_plan["status"],sx_string("ok")) { return composition_failure(left_plan); }
-  let right_plan = prepare(right,mode,budget,resolve);
-  if !SDK.same(right_plan["status"],sx_string("ok")) { return composition_failure(right_plan); }
+  if length(links, 16) < 1
+  {
+    return composition_failure(reject("link_shape", ""));
+  }
+  let left_plan = prepare(left, mode, budget, resolve);
+  if ! SDK.same(left_plan["status"], sx_string("ok"))
+  {
+    return composition_failure(left_plan);
+  }
+  let right_plan = prepare(right, mode, budget, resolve);
+  if ! SDK.same(right_plan["status"], sx_string("ok"))
+  {
+    return composition_failure(right_plan);
+  }
   var wires = links;
   var remaining = right["inputs"];
   while sx_kind(wires) == 3
   {
     let item = sx_head(wires);
-    let root = field(item,0);
-    let export_name = field(item,1);
-    if length(item,2) != 2 || !identifier(root) || !identifier(export_name)
-    { return composition_failure(reject("link_shape",root)); }
-    let target = lookup(remaining,root);
-    let origin = lookup(left["outputs"],export_name);
+    let root = field(item, 0);
+    let export_name = field(item, 1);
+    if length(item, 2) != 2 || ! identifier(root) || ! identifier(export_name)
+    {
+      return composition_failure(reject("link_shape", root));
+    }
+    let target = lookup(remaining, root);
+    let origin = lookup(left["outputs"], export_name);
     if sx_kind(origin) == 0 || sx_kind(target) == 0
-    { return composition_failure(reject("link_reference",root)); }
-    if !SDK.connects(SDK.decode_port(at(origin,1)),SDK.decode_port(target))
-    { return composition_failure(reject("edge_type",root)); }
-    remaining = remove(remaining,root);
+    {
+      return composition_failure(reject("link_reference", root));
+    }
+    if ! SDK.connects(SDK.decode_port(at(origin, 1)), SDK.decode_port(target))
+    {
+      return composition_failure(reject("edge_type", root));
+    }
+    remaining = remove(remaining, root);
     wires = sx_tail(wires);
   }
-  let merged = graph(concat(left["inputs"],remaining),
-    concat(left["nodes"],rebind_right(right["nodes"],links,left["outputs"])),
-    concat(left["outputs"],right["outputs"]));
-  let prepared = prepare(merged,mode,budget,resolve);
-  if !SDK.same(prepared["status"],sx_string("ok")) { return composition_failure(prepared); }
-  return record<Composition>{status:prepared["status"],subject:prepared["subject"],
-    graph:merged,prepared:prepared};
+  let merged = graph(concat(left["inputs"],
+    remaining),
+    concat(left["nodes"],
+    rebind_right(right["nodes"],
+    links,
+    left["outputs"])),
+    concat(left["outputs"],
+    right["outputs"]));
+  let prepared = prepare(merged, mode, budget, resolve);
+  if ! SDK.same(prepared["status"], sx_string("ok"))
+  {
+    return composition_failure(prepared);
+  }
+  return record < Composition >
+  {
+    status: prepared["status"], subject: prepared["subject"], graph: merged, prepared: prepared
+  };
 }

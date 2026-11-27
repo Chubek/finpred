@@ -9,106 +9,234 @@ import sdk.callable as SDK;
 import std.collections.List as L;
 import std.io.TextIO as IO;
 import std.os.CommandLine as Env;
+fn env(name: string) -> string
+{
+  return Env.basis_command_line_get_env(name);
+}
 
-fn env(name:string) -> string { return Env.basis_command_line_get_env(name); }
-fn lookup(key:string) -> SDK.Descriptor { return Model.descriptor(key,env("CODE_DIGEST")); }
-fn port(name:string, profile:SDK.Port) -> SDK.Port {
-  return record<SDK.Port>{name:sx_string(name),kind:profile["kind"],major:profile["major"],
-    unit:profile["unit"],currency:profile["currency"],states:profile["states"],max_bytes:profile["max_bytes"]};
+fn lookup(key: string) -> SDK.Descriptor
+{
+  return Model.descriptor(key, env("CODE_DIGEST"));
 }
-fn model_node(name:string, handler:string, root:string) -> sexpr {
-  let edges = sx_cons(G.edge("training","",root),sx_cons(G.edge("request","","request"),sx_nil()));
-  return G.node(name,handler,"pure",edges);
+
+fn port(name: string, profile: SDK.Port) -> SDK.Port
+{
+  return record < SDK.Port >
+  {
+    name: sx_string(name), kind: profile["kind"], major: profile["major"], unit: profile["unit"], currency: profile["currency"], states: profile["states"], max_bytes: profile["max_bytes"]
+  };
 }
-fn graph() -> G.Graph {
+
+fn model_node(name: string, handler: string, root: string) -> sexpr
+{
+  let edges = sx_cons(G.edge("training",
+    "",
+    root),
+    sx_cons(G.edge("request",
+    "",
+    "request"),
+    sx_nil()));
+  return G.node(name, handler, "pure", edges);
+}
+
+fn graph() -> G.Graph
+{
   let training = Model.training_port();
   let forecast = Model.forecast_port();
-  let ports = sx_cons(SDK.port_entry(port("moving-history",training)),
-    sx_cons(SDK.port_entry(port("seasonal-history",training)),
-    sx_cons(SDK.port_entry(Model.request_port()),sx_nil())));
-  let nodes = sx_cons(model_node("moving",Model.moving_average(),"moving-history"),
-    sx_cons(model_node("seasonal",Model.seasonal_naive(),"seasonal-history"),sx_nil()));
-  let outputs = sx_cons(G.output(port("moving-estimate",forecast),"moving","forecast"),
-    sx_cons(G.output(port("seasonal-estimate",forecast),"seasonal","forecast"),sx_nil()));
-  return G.graph(ports,nodes,outputs);
+  let ports = sx_cons(SDK.port_entry(port("moving-history",
+    training)),
+    sx_cons(SDK.port_entry(port("seasonal-history",
+    training)),
+    sx_cons(SDK.port_entry(Model.request_port()),
+    sx_nil())));
+  let nodes = sx_cons(model_node("moving",
+    Model.moving_average(),
+    "moving-history"),
+    sx_cons(model_node("seasonal",
+    Model.seasonal_naive(),
+    "seasonal-history"),
+    sx_nil()));
+  let outputs = sx_cons(G.output(port("moving-estimate",
+    forecast),
+    "moving",
+    "forecast"),
+    sx_cons(G.output(port("seasonal-estimate",
+    forecast),
+    "seasonal",
+    "forecast"),
+    sx_nil()));
+  return G.graph(ports, nodes, outputs);
 }
 
-fn read_frame(bytes:string, offset:i64) -> (i64,string) {
-  if offset < 0 || offset >= text_len(bytes) { return (-1,""); }
+fn read_frame(bytes: string, offset: i64) ->(i64, string)
+{
+  if offset < 0 || offset >= text_len(bytes)
+  {
+    return (- 1, "");
+  }
   var colon = offset;
-  while colon < text_len(bytes) && colon - offset <= 5 && text_byte(bytes,colon) != 58 {
+  while colon < text_len(bytes) && colon - offset <= 5 && text_byte(bytes,
+    colon) != 58
+  {
     colon = colon + 1;
   }
-  if colon >= text_len(bytes) || colon - offset > 5 { return (-1,""); }
-  let count = Guest.nat(text_slice(bytes,offset,colon),5);
+  if colon >= text_len(bytes) || colon - offset > 5
+  {
+    return (- 1, "");
+  }
+  let count = Guest.nat(text_slice(bytes, offset, colon), 5);
   let start = colon + 1;
-  if count < 0 || start + count > text_len(bytes) { return (-1,""); }
-  return (start+count,text_slice(bytes,start,start+count));
+  if count < 0 || start + count > text_len(bytes)
+  {
+    return (- 1, "");
+  }
+  return (start + count, text_slice(bytes, start, start + count));
 }
-fn replay(graph:G.Graph, roots:sexpr, ctx:Run.Context, bytes:string) -> Run.Result {
-  if text_len(bytes) > 40000 { return Run.error("invalid_expectation",""); }
-  let (a,graph_id) = read_frame(bytes,0);
-  let (b,invocations) = read_frame(bytes,a);
-  let (c,trace) = read_frame(bytes,b);
+
+fn replay(graph: G.Graph,
+  roots: sexpr,
+  ctx: Run.Context,
+  bytes: string) -> Run.Result
+{
+  if text_len(bytes) > 40000
+  {
+    return Run.error("invalid_expectation", "");
+  }
+  let(a, graph_id) = read_frame(bytes, 0);
+  let(b, invocations) = read_frame(bytes, a);
+  let(c, trace) = read_frame(bytes, b);
   var offset = c;
   var expected = sx_nil();
-  for i in 0 .. 5 {
-    let (d,id) = read_frame(bytes,offset);
-    let (e,hash) = read_frame(bytes,d);
-    let (f,artifact) = read_frame(bytes,e);
-    if f < 0 || !G.identifier(id) || !Guest.digest(hash) { return Run.error("invalid_expectation",""); }
-    expected = sx_cons(sx_cons(sx_string(id),sx_cons(sx_string(hash),
-      sx_cons(sx_string(artifact),sx_nil()))),expected);
+  for i in 0 .. 5
+  {
+    let(d, id) = read_frame(bytes, offset);
+    let(e, hash) = read_frame(bytes, d);
+    let(f, artifact) = read_frame(bytes, e);
+    if f < 0 || ! G.identifier(id) || ! Guest.digest(hash)
+    {
+      return Run.error("invalid_expectation", "");
+    }
+    expected = sx_cons(sx_cons(sx_string(id),
+      sx_cons(sx_string(hash),
+      sx_cons(sx_string(artifact),
+      sx_nil()))),
+      expected);
     offset = f;
   }
-  if offset != text_len(bytes) { return Run.error("invalid_expectation",""); }
-  return Run.replay(graph,roots,ctx,"analysis",2,lookup,Model.call,
-    sx_string(graph_id),L.basis_list_rev(expected));
+  if offset != text_len(bytes)
+  {
+    return Run.error("invalid_expectation", "");
+  }
+  return Run.replay(graph,
+    roots,
+    ctx,
+    "analysis",
+    2,
+    lookup,
+    Model.call,
+    sx_string(graph_id),
+    L.basis_list_rev(expected));
 }
-fn report(result:Run.Result) {
+
+fn report(result: Run.Result)
+{
   let status = sx_text(result["status"]);
   IO.basis_text_io_print("$status\n");
-  if status != "ok" { return; }
+  if status != "ok"
+  {
+    return;
+  }
   let outputs = result["outputs"];
-  if G.length(outputs,2) != 2 { tool_fail("expected two selected forecasts"); }
-  let moving = G.lookup(outputs,"moving-estimate");
-  let seasonal = G.lookup(outputs,"seasonal-estimate");
-  if G.field(moving,1) != G.field(G.lookup(result["artifacts"],"moving"),1)
-    || G.field(seasonal,1) != G.field(G.lookup(result["artifacts"],"seasonal"),1) {
+  if G.length(outputs, 2) != 2
+  {
+    tool_fail("expected two selected forecasts");
+  }
+  let moving = G.lookup(outputs, "moving-estimate");
+  let seasonal = G.lookup(outputs, "seasonal-estimate");
+  if G.field(moving,
+    1) != G.field(G.lookup(result["artifacts"],
+    "moving"),
+    1) || G.field(seasonal,
+    1) != G.field(G.lookup(result["artifacts"],
+    "seasonal"),
+    1)
+  {
     tool_fail("selected forecasts do not match the model artifacts");
   }
   let out = buffer_new();
-  G.frame(out,sx_text(result["graph_digest"]));
-  G.frame(out,F.num(result["invocations"]));
-  G.frame(out,sx_text(result["trace"]));
+  G.frame(out, sx_text(result["graph_digest"]));
+  G.frame(out, F.num(result["invocations"]));
+  G.frame(out, sx_text(result["trace"]));
   var entries = Run.expectation(result);
-  while sx_kind(entries) == 3 {
+  while sx_kind(entries) == 3
+  {
     let a = sx_head(entries);
-    G.frame(out,G.field(a,0)); G.frame(out,G.field(a,1)); G.frame(out,G.field(a,2));
+    G.frame(out, G.field(a, 0));
+    G.frame(out, G.field(a, 1));
+    G.frame(out, G.field(a, 2));
     entries = sx_tail(entries);
   }
   IO.basis_text_io_print(buffer_text(out));
 }
-fn main() -> i64 {
+
+fn main() -> i64
+{
   let task = env("CASE");
-  if task == "digest" { println(G.digest(env("BYTES"))); return 0; }
-  if task == "normalize" {
-    IO.basis_text_io_print(Feed.normalize(env("CAPTURE"),env("RAW"),env("DECODE"),env("AS_OF")));
+  if task == "digest"
+  {
+    println(G.digest(env("BYTES")));
+    return 0;
+  }
+  if task == "normalize"
+  {
+    IO.basis_text_io_print(Feed.normalize(env("CAPTURE"),
+      env("RAW"),
+      env("DECODE"),
+      env("AS_OF")));
     return 0;
   }
   let cutoff = env("CUTOFF");
-  let moving = Guest.project(env("MOVING_SNAPSHOT"),env("MOVING_PARENT"),cutoff);
-  if moving["status"] != 0 { return 10 + moving["status"]; }
-  let seasonal = Guest.project(env("SEASONAL_SNAPSHOT"),env("SEASONAL_PARENT"),cutoff);
-  if seasonal["status"] != 0 { return 20 + seasonal["status"]; }
-  let roots = sx_cons(Run.input("moving-history",moving["state"],sx_text(moving["bytes"])),
-    sx_cons(Run.input("seasonal-history",seasonal["state"],sx_text(seasonal["bytes"])),
-    sx_cons(Run.input("request",1,env("REQUEST")),sx_nil())));
-  let ctx = record<Run.Context>{cutoff:sx_string(cutoff),strategy_digest:sx_string(env("STRATEGY_DIGEST"))};
-  if task == "replay" {
-    report(replay(graph(),roots,ctx,env("EVIDENCE")));
-  } else {
-    report(Run.execute(graph(),roots,ctx,"analysis",2,lookup,Model.call));
+  let moving = Guest.project(env("MOVING_SNAPSHOT"),
+    env("MOVING_PARENT"),
+    cutoff);
+  if moving["status"] != 0
+  {
+    return 10 + moving["status"];
+  }
+  let seasonal = Guest.project(env("SEASONAL_SNAPSHOT"),
+    env("SEASONAL_PARENT"),
+    cutoff);
+  if seasonal["status"] != 0
+  {
+    return 20 + seasonal["status"];
+  }
+  let roots = sx_cons(Run.input("moving-history",
+    moving["state"],
+    sx_text(moving["bytes"])),
+    sx_cons(Run.input("seasonal-history",
+    seasonal["state"],
+    sx_text(seasonal["bytes"])),
+    sx_cons(Run.input("request",
+    1,
+    env("REQUEST")),
+    sx_nil())));
+  let ctx = record < Run.Context >
+  {
+    cutoff: sx_string(cutoff), strategy_digest: sx_string(env("STRATEGY_DIGEST"))
+  };
+  if task == "replay"
+  {
+    report(replay(graph(), roots, ctx, env("EVIDENCE")));
+  }
+  else
+  {
+    report(Run.execute(graph(),
+      roots,
+      ctx,
+      "analysis",
+      2,
+      lookup,
+      Model.call));
   }
   return 0;
 }
