@@ -51,6 +51,38 @@ offline-worker check passed. The compiled baseline and candidate gates
 are separate from these results. `strace` is available; the full plugin
 suite additionally needs `Xvfb` and `xvfb-run`, absent on this host.
 
+## Staged component check
+
+Independently extracted broker commit
+`34a34eb8521a852332f81ebb5fe24bc40318f558` into a private `git archive`
+snapshot. The MuLIB and LibStone checkouts matched the pins above; the
+fresh toolchain fingerprints were:
+
+| Tool | SHA-256 |
+| --- | --- |
+| `on1xc` | `b27704b426e3f3546be246b2c18e5251798caa41c978faf1384532a35c24e774` |
+| `on1x-ppx-GrammarEmbed` | `7353cdd5e341e0368137af3aff863ce459d3c5b3fa0a82a24bc7d4f12603806b` |
+| `category.schema.json` | `e2a26a3ca3620e43ec2289ef749746b1f6a956d087e0676cd225d02bb7fadeaa` |
+
+`tests/check_core_numerics.py` (native exact-rational oracle),
+`tests/check_core_numerics_on1x.py` (compiled C11 consumer),
+`tests/check_python_sdk.py` (relocated C/CMake and Python diagnostics,
+with legacy-symbol compatibility), and `tests/check_build_paths.py` passed.
+These are component checks, not validation of an assembled release.
+
+**Enable temporal explicitly.** Plain `make native-test` ran the three
+standalone store CTests and did not select temporal. With the following
+configuration, all four tests passed, including
+`native_temporal_oracle_and_recovery`:
+
+```sh
+cmake -S native -B build/verify-temporal -DBUILD_TESTING=ON \
+  -DFINPRED_TEMPORAL_MULIB_ROOT="$MULIB_ROOT" \
+  -DCMAKE_C_FLAGS='-Wall -Wextra -Werror -pedantic'
+cmake --build build/verify-temporal --parallel 4
+ctest --test-dir build/verify-temporal --output-on-failure --no-tests=error
+```
+
 ## Development coordination IPC
 
 This is a separate Linux development utility, not a FinPRED runtime
