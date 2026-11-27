@@ -145,7 +145,7 @@ Native Archon, ArchVirt, and Cephyr execution backends were not configured
 in this build; the separate Cephyr build-host library is not execution
 evidence for those backends.
 
-## Coordination protocol v1 (Linux/glibc)
+## Coordination protocol v1 (Linux, glibc 2.34 or newer)
 
 `bin/overhaul-coord.py` is a development utility, not part of the analysis
 bundle. Use Python 3, a private journal path and a fresh session name:

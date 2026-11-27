@@ -194,3 +194,53 @@ Keep that private journal available, at the same inode, until cleanup;
 deleting or substituting it can prevent cleanup before queue unlink.
 An interrupted init with no valid slot is handled separately. The queue
 poll deadline does not bound all I/O, lock acquisition, or CLI startup.
+
+## Combined C11 gates and descriptive timings
+
+The combined candidate at `fdb7bc3` (including the SDK launcher) passed
+`compiler`, `pricing`, `forecasting`, `storage`, and `security`. The checkout
+used the pinned compiler fingerprints above. New gates exercised seven
+financial-type rejections, native Ottomat v7 parity and v6 compatibility,
+106 SDK policy diagnostics plus malformed wire inputs, exact-rational
+forecast and score oracles, and IPC crash recovery. The four v2 triples and
+the two read-only v1 archives still passed. Legacy Dragnet search and source
+adapter suites passed separately; native storage (3), native temporal (1),
+and Poindexter viewport (3) CTests passed as well.
+
+The plugin selector reached the final display prerequisite after its offline
+checks, including Caravansary, Dragnet, package/SDK, and Poindexter terminal
+checks. It exited 2 because `xvfb-run`/`Xvfb` are unavailable. The standalone
+GUI native/worksheet check passed with the real-window test explicitly skipped.
+No external financial action or hosted CI run was performed.
+
+The broker's supplemental IPC gate passed with four forced deaths: status
+publication, initialization, after `mq_send` and after `mq_receive`. It
+exercised an orphan-frame rejection followed by retry, and broker revocation
+plus fresh admission for a frame removed before the recipient committed.
+
+Two independent output layouts produced the following SHA-256 identities:
+
+| C11 host | SHA-256 |
+| --- | --- |
+| `finpred` | `9f61110f3684ffe9853ead520a6ced326224a1e599bd9248d498d852c3ce1827` |
+| `finpred-cube` | `47c4018be68ed666d70e99d822c9f9f0e14e7661069db4d8480dd3d4998ad2db` |
+| `finpred-forecast` | `495bbd13979e2439d539b1215691934f3a0d8c658347b0095cbffc2645d3bd43` |
+
+`tests/check_cli_release.py` separately confirmed deterministic USTAR/gzip
+output across two builds with different paths and umasks, rejected eight
+malformed archives, and replayed from a relocated bundle. This uses one
+installed compiler, not two independently reproduced compiler builds.
+
+For the five-node financial fixture, five 20-iteration batches gave median
+CPU times of 0.90 ms (`prepare`), 0.98 ms (`compile`), and 4.23 ms
+(`execute`, including compilation and handlers). A 1,000-iteration process
+exceeded the exploratory timeout. This is not a throughput or speedup
+claim for long-lived workers.
+
+`python3 -B tests/benchmark_coord.py` includes Python startup, journal
+appends, slot access, and queue system calls. In one local run, 64 status
+updates gave 45.4 ms median and 21.4 updates/s with one process at a time;
+with eight concurrent lanes, 61.1 ms median and 115.3 updates/s. Sixteen
+already-admitted send/receive/ack exchanges took 136.7 ms median across the
+three CLI invocations. These are development tool timings, not kernel-only
+latencies or isolated serialization costs.

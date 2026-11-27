@@ -313,6 +313,36 @@ def test_writer_crash(session):
     assert after["sequence"] == expected and after["workers"]["7"]["status"] == "post-crash"
 
 
+def test_queue_crashes(session):
+    key = session.request()
+    session.grant(key)
+    message = "retry a send whose state was not published"
+    session.invoke(1, "send", key, message, fault="send")
+    assert session.item(key)["phase"] == "granted"
+    session.receive(2, diagnostic="rejected queued message")
+    session.send(1, key, message)
+    assert session.receive(2) == session.message(key, message)
+    session.invoke(2, "ack", key)
+
+    key = session.request()
+    session.grant(key)
+    session.send(1, key, "not automatically redelivered")
+    before = session.snapshot()
+    session.invoke(2, "recv", "--wait", 0, fault="receive")
+    assert session.snapshot() == before and session.item(key)["phase"] == "sent"
+    session.receive(2, diagnostic="receive timed out")
+    session.invoke(2, "revoke", key, diagnostic="only worker 0")
+    session.invoke(0, "revoke", key)
+    session.send(1, key, "must request a new grant", diagnostic="no live granted")
+
+    replacement = session.request()
+    assert replacement != key
+    session.grant(replacement)
+    session.send(1, replacement, "replacement")
+    assert session.receive(2) == session.message(replacement, "replacement")
+    session.invoke(2, "ack", replacement)
+
+
 def test_new_epoch(session, old):
     session.invoke(0, "cleanup")
     session.resources_absent()
@@ -372,6 +402,7 @@ def main():
             test_expiry_and_backpressure(session)
             test_concurrent_publication(session)
             test_writer_crash(session)
+            test_queue_crashes(session)
             test_new_epoch(session, old)
         finally:
             session.invoke(0, "cleanup")
@@ -380,7 +411,7 @@ def main():
         second.mkdir()
         test_crashed_initialization(Session(coord, second))
     print("core_overhaul_ipc_ok=true linux_mqueue=true concurrent_updates=29 "
-          "forced_sigkill=2 epoch_reset=true")
+          "forced_sigkill=4 epoch_reset=true")
 
 
 if __name__ == "__main__":
