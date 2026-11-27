@@ -146,9 +146,10 @@ def main():
 
         for name in KERNELS:
             module = f"mulib.{name}"
-            header = f"include/mulib-{name}.h"
-            if catalog.get(name, {}).get("header") != header or not (sdk / header).is_file():
-                raise ValueError(f"{module}: expected {header} registered in {catalog_path}")
+            header = catalog.get(name, {}).get("header")
+            if (header not in (f"kernels/mulib-{name}.h", f"include/mulib-{name}.h")
+                    or not (sdk / header).is_file()):
+                raise ValueError(f"{module}: expected matching MuLIB header registered in {catalog_path}")
 
             for linkage in ("static", "dynlib"):
                 check_import(root / f"{name}-{linkage}", module, linkage,

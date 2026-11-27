@@ -2,6 +2,7 @@
 """Offline lexer, script schema, and synthetic credential resolution checks."""
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -179,7 +180,8 @@ for bad_bytes in (
 ):
     invalid(resolve, cookie_config, "agoda", approved_files={approval: bad_bytes})
 
-booking_fixture = ROOT / "third_party/mulib/tests/fixtures/elvi-script/booking-cookies.json"
+booking_fixture = (Path(os.environ.get("MULIB_ROOT", ROOT / "third_party/mulib"))
+                   / "tests/fixtures/elvi-script/booking-cookies.json")
 booking_config = parse(with_credentials('booking { cookies = "booking-fixture.json"; }'))
 booking_secrets = resolve(booking_config, "booking", approved_files={
     ("booking", "cookies", "booking-fixture.json"): booking_fixture.read_bytes(),

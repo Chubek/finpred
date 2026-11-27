@@ -112,7 +112,7 @@ def main():
         libs = shlex.split(subprocess.check_output(pc + ["--libs", *dependencies], text=True))
         subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-O2", "-Wall", "-Wextra",
                         "-Werror", "-pedantic", "-ffunction-sections", "-fdata-sections",
-                        "-isystem", mulib / "include", *cflags, dragnet / "feed_decode.c",
+                        "-isystem", mulib / "kernels", *cflags, dragnet / "feed_decode.c",
                         "-Wl,--gc-sections", "-lm", *libs, "-o", decoder],
                        cwd=work, env=build_env, check=True, timeout=90)
         subprocess.run([sys.executable, mulib / "on1x/tools/on1x-build.py",

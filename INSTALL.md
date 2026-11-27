@@ -103,6 +103,12 @@ path. To qualify Yellowstone generation separately, pass
 an independently built matching host generator. Neither configuration
 proves that FinPRED runs on On1x's other backends.
 
+MuLIB now keeps headers under `kernels/`. FinPRED's Make targets and
+verification helpers provide unchanged legacy plugin builders with a
+disposable `include/` view of the same checkout. To run such a legacy
+builder directly, prefix its command with `sh bin/with-legacy-mulib.sh`.
+The helper does not change MuLIB or its gitlinks.
+
 Expect `On1x scanner: LibStone ASDL+Aurocks generated frontend` during
 configuration and `selftest_ok=true` from the last command. The [build wrapper](bin/build.sh)
 uses MuLIB’s `on1x-build.py` to link the main FinPRED host and its trusted

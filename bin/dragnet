@@ -27,7 +27,7 @@ while [ "$#" -gt 0 ]; do
         DRAGNET_OFFER_HOSTS=${DRAGNET_OFFER_HOSTS:+$DRAGNET_OFFER_HOSTS,}$2
       fi
       shift 2 ;;
-    --build) exec sh "$ROOT/plugins/dragnet/build.sh" ;;
+    --build) exec sh "$ROOT/bin/with-legacy-mulib.sh" sh "$ROOT/plugins/dragnet/build.sh" ;;
     --help)
       echo "Usage: bin/dragnet [--config Dragnet.json] [--daemon] [--handoff|--offers-csv] [--require-offers] [--allow-host HOST]... [--allow-offer-host HOST]... [--allow-llm]"
       echo "Offline by default. Daemon stays in foreground; SIGINT/SIGTERM cancel."

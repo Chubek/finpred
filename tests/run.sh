@@ -275,6 +275,14 @@ if [ "$#" -gt 1 ]; then
 fi
 suite=${1-all}
 case "$suite" in
+  plugins|dragnet-legacy|dragnet-search)
+    sdk=${MULIB_ROOT:-"$ROOT/third_party/mulib"}
+    if [ -d "$sdk/kernels" ] && [ ! -d "$sdk/include" ]; then
+      exec sh "$ROOT/bin/with-legacy-mulib.sh" "$ROOT/tests/run.sh" "$suite"
+    fi
+    ;;
+esac
+case "$suite" in
   all)
     result=0
     for group in compiler pricing forecasting plugins storage security; do

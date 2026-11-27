@@ -28,6 +28,8 @@ case "$command" in
   build)
     [ "$#" -eq 1 ] || die "build takes no arguments"
     MULIB_ROOT=${MULIB_ROOT:-"$ROOT/third_party/mulib"}
+    mulib_headers="$MULIB_ROOT/kernels"
+    [ -d "$mulib_headers" ] || mulib_headers="$MULIB_ROOT/include"
     ON1XC=${ON1XC:-"$(finpred_mulib_build_dir "$ROOT")/on1xc"}
     [ -x "$ON1XC" ] || die "missing On1x compiler; run make mulib or set ON1XC"
     finpred_build_env "$ROOT"
@@ -37,7 +39,7 @@ case "$command" in
     trap 'exit 1' HUP INT TERM
     python3 "$MULIB_ROOT/on1x/tools/on1x-build.py" "$ROOT/plugins/yieldcraft/demand_main.on1x" \
       --backend c11 --cc "${CC:-cc}" --on1xc "$ON1XC" --mulib-root "$MULIB_ROOT" \
-      --extra-c "$ROOT/plugins/yieldcraft/demand_panel_math.c" --cflag="-I$MULIB_ROOT/include" --cflag=-lm \
+      --extra-c "$ROOT/plugins/yieldcraft/demand_panel_math.c" --cflag="-I$mulib_headers" --cflag=-lm \
       -I "$ROOT/source" -I "$ROOT" -o "$stage"
     mv -fT -- "$stage" "$out"
     exit 0 ;;
