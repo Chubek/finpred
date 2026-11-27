@@ -4,12 +4,13 @@ CMAKE ?= cmake
 CTEST ?= ctest
 MULIB_JOBS ?= 4
 NATIVE_BUILD_DIR ?= build/native
+NATIVE_TEMPORAL_BUILD_DIR ?= build/native-temporal
 TUI_REVIEW_BUILD_DIR ?= build/poindexter-tui-review
 
 TEST_SUITES := compiler pricing forecasting plugins storage security
 TEST_TARGETS := $(addprefix test-,$(TEST_SUITES))
 
-.PHONY: all build mulib test $(TEST_TARGETS) caravansary caravansary-test caravansary-market-test dragnet dragnet-test dragnet-search-test forecast-score-test native-test poindexter poindexter-gui poindexter-gui-test poindexter-tui-review
+.PHONY: all build mulib test $(TEST_TARGETS) caravansary caravansary-test caravansary-market-test dragnet dragnet-test dragnet-search-test forecast-score-test native-test native-temporal-test poindexter poindexter-gui poindexter-gui-test poindexter-tui-review
 
 all: build
 
@@ -23,6 +24,7 @@ test: build
 	status=0; \
 		env -u FINPRED_EXE ./tests/run.sh || status=1; \
 		$(MAKE) native-test || status=1; \
+		$(MAKE) native-temporal-test || status=1; \
 		$(MAKE) poindexter-tui-review || status=1; \
 		exit $$status
 
@@ -31,7 +33,7 @@ test: build
 $(TEST_TARGETS): test-%:
 	./tests/run.sh $*
 
-test-storage: native-test
+test-storage: native-test native-temporal-test
 
 test-plugins: poindexter-tui-review
 
@@ -60,6 +62,14 @@ native-test:
 	$(CMAKE) -S native -B "$(NATIVE_BUILD_DIR)" -DBUILD_TESTING=ON -DCMAKE_C_FLAGS='-Wall -Wextra -Werror -pedantic'
 	$(CMAKE) --build "$(NATIVE_BUILD_DIR)"
 	$(CTEST) --test-dir "$(NATIVE_BUILD_DIR)" --output-on-failure --no-tests=error
+
+native-temporal-test:
+	$(CMAKE) -S native -B "$(NATIVE_TEMPORAL_BUILD_DIR)" -DBUILD_TESTING=ON \
+	  -DFINPRED_TEMPORAL_MULIB_ROOT="$${MULIB_ROOT:-$(CURDIR)/third_party/mulib}" \
+	  -DCMAKE_C_FLAGS='-Wall -Wextra -Werror -pedantic'
+	$(CMAKE) --build "$(NATIVE_TEMPORAL_BUILD_DIR)"
+	$(CTEST) --test-dir "$(NATIVE_TEMPORAL_BUILD_DIR)" --output-on-failure --no-tests=error \
+	  -R '^native_temporal_oracle_and_recovery$$'
 
 poindexter:
 	./bin/poindexter --build

@@ -296,7 +296,7 @@ case "$suite" in
     ;;
   compiler)
     python3 tests/validate_static.py
-    checks build_paths on1x_features environ_argv ottomat_plan reproducible_build
+    checks build_paths on1x_features core_financial_types environ_argv ottomat_plan reproducible_build
     ;;
   pricing)
     require_tools strace
@@ -304,14 +304,15 @@ case "$suite" in
       yieldcraft_contribution yieldcraft_demand yieldcraft_demand_panel \
       yieldcraft_inventory yieldcraft_coupled_inventory yieldcraft_risk_contribution \
       contribution_dag competitor_cube fixed_runner hospitality_adapters \
-      financial_graph ottomat_financial pricing_cli profiles_cli
+      financial_graph ottomat_financial ottomat_composition pricing_cli profiles_cli
     fixture_home
     bin/finpred selftest >"$work/selftest"
     grep -Fx 'selftest_ok=true' "$work/selftest"
     fixture_runs
     ;;
   forecasting)
-    checks fx_reference forecast_baselines forecast_cli forecast_graph forecast_scores forecast_vintages
+    checks fx_reference forecast_baselines forecast_cli forecast_graph forecast_scores forecast_vintages \
+      core_numerics core_numerics_on1x
     ;;
   plugins)
     caravansary_checks
@@ -337,6 +338,7 @@ case "$suite" in
     python3 tests/check_cli_environ.py "$exe"
     checks dag ingestion_cli ottomat_scalar scalar_memo scalar_selection
     python3 tests/check_tui_kernel_admission.py --expect-dynlib-syntax
+    checks core_overhaul
     fixture_home
     security_denials
     checks offline_worker

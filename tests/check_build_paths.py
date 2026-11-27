@@ -25,7 +25,8 @@ def main():
         "MULIB_ROOT", "ON1XC", "FINPRED_MULIB_BUILD_DIR", "FINPRED_STDPPX_DIR", "FINPRED_BUILD_DIR",
         "FINPRED_STAGE_PARENT",
         "FINPRED_EXE", "FINPRED_DRAGNET_BUILD_DIR", "FINPRED_MODE", "MAKEFLAGS",
-        "MFLAGS", "MAKEOVERRIDES", "NATIVE_BUILD_DIR", "TUI_REVIEW_BUILD_DIR",
+        "MFLAGS", "MAKEOVERRIDES", "NATIVE_BUILD_DIR", "NATIVE_TEMPORAL_BUILD_DIR",
+        "TUI_REVIEW_BUILD_DIR",
     ):
         env.pop(name, None)
 
@@ -123,6 +124,7 @@ printf 'suite=%s\\n' "${1:-all}"
         assert tested.returncode == 0, tested.stdout
         assert tested.stdout.splitlines().count("suite=all") == 1, tested.stdout
         assert "--test-dir \"build/native\"" in tested.stdout, tested.stdout
+        assert "--test-dir \"build/native-temporal\"" in tested.stdout, tested.stdout
         assert "--test-dir \"build/poindexter-tui-review\"" in tested.stdout, tested.stdout
 
         custom = str(root / "build/custom CLI/finpred")

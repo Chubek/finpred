@@ -21,3 +21,4 @@ esac
 mkdir "$out"
 stat -f -c 'native store filesystem: %T (%t)' "$out"
 echo "NATIVE_BUILD_DIR=$out" >> "$GITHUB_ENV"
+echo "NATIVE_TEMPORAL_BUILD_DIR=${out}-temporal" >> "$GITHUB_ENV"

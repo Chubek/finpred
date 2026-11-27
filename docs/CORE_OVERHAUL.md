@@ -90,6 +90,61 @@ justified by an upstream test that provisions its own signed test recipes.
 | JSON, CBOR, Artifact | Byte/object codecs and bounded artifact envelopes | `missing-views`; no substitution without canonical-byte and resource proofs. Artifact is not a durable store. |
 | POSIX queues/shared memory | `on1x/tools/on1x-module-coord.c` uses `mq_open` and `shm_open` at this revision | Reference for POSIX APIs, distinct from MuLIB System V IPC. It does not broker grants. FinPRED development coordination is separate from engine FFI. |
 
+The clean build classified 2,077 catalogue entries (1,755 missing views,
+322 unsupported, zero malformed) and emitted one executable recipe:
+`stdffi.clamp`. A signed-64-bit boundary probe for saturation and clamping
+matched a Python integer oracle in direct C11, MIR-generated C11, the
+reference evaluator, and a separately emitted and verified VM image run by
+`on1x-vm`. This probe did not admit saturation as a financial checked
+operation, or qualify any FinPRED host on MIR/VM. The unchecked reversed
+interval also returned the recipe-defined value; callers cannot infer an
+invalid-interval diagnostic.
+
+## Baseline evidence
+
+The source pins above were verified before the build. Local build host:
+Linux x86-64 6.18.52-1-lts, glibc 2.44, GNU ld 2.47, Clang/Clang++
+22.1.8 for the compiler and GrammarEmbed, GCC 16.2.1 20260810 for generated
+host C, CMake 4.4.3, Make 4.4.1, Python 3.14.7, Perl 5.42.2 and
+pkg-config 3.0.7. The observed dependency versions were LibYAML 0.2.5,
+libxml2 2.15.4, Jansson 2.15.1, curl 8.22.0, OpenSSL 3.6.4 and X11 1.8.13.
+Local schema-test versions: `jsonschema` 4.26.0, `referencing` 0.37.0,
+`jsonschema-specifications` 2025.9.1, `attrs` 26.1.0 and `rpds-py`
+2026.6.3. This is a host observation, not a claim to match CI's wheel lock.
+
+| Local toolchain artifact | SHA-256 |
+| --- | --- |
+| `on1xc` | `b27704b426e3f3546be246b2c18e5251798caa41c978faf1384532a35c24e774` |
+| GrammarEmbed | `7353cdd5e341e0368137af3aff863ce459d3c5b3fa0a82a24bc7d4f12603806b` |
+| GrammarEmbed schema | `e2a26a3ca3620e43ec2289ef749746b1f6a956d087e0676cd225d02bb7fadeaa` |
+| host `libcephyr.so` | `01c9f1e1caab86931465abde7a06f61202dbc161b8d6349c9a847f3362242562` |
+| generated `stdffi/mulib/index.json` | `d5a37ea74d370bcf2b13315ecc6001982dfb9b868b1f614775e17a5a94f44acb` |
+| application `cc` | `8aac907d6fbf40394b424b5fa4a2ad1aa291dac7d3a0315c5b415c1f5ace1287` |
+| compiler-build `clang` | `67ad17f2e61ed725abd3cefdd3fa1c24dc5c09ec3ed064dc03c0798e66fe8955` |
+| compiler-build `clang++` | `b621028947ed7d2b0c0d8cdae1cb886ac8371fd47f8d25162568812eb9ccfe` |
+| compiler-build `llvm-ar` | `a6d906986e7840289870d48f29a69f0178c352c299eb5c72802b256482943c60` |
+
+Fresh app build and selftest passed. The baseline `pricing` and `storage`
+suites passed; they cover 17,100 / 16,000 / 18,000 / 17,001 minor units,
+four exact v2 digest triples and both v1 read-only replays. Baseline app
+reproducibility compared all three hosts across clean output paths with the
+same installed toolchain. `compiler`, `forecasting` and `security` initially
+failed on an inherited test-build path and stale MuLIB `include/` references.
+All three passed against the same baseline app after repairing the harness.
+The release wrapper passed two same-toolchain bundle builds with different
+paths and umasks, relocated execution/replay, and eight malformed archives.
+This is not identical compiler outputs across independent clean compilers.
+
+Upstream GrammarEmbed, bridge, stdlib project, module visibility, opaque
+module, recipe compiler, nominal-data source, operators, ownership and
+backend-capability gates passed after building the relevant test targets.
+Pinned upstream `on1x.nominal_hir` failed with `invalid nominal HIR/wire
+admitted`, also documented upstream before this application change. Do not
+qualify arbitrary imported HIR or extend trusted execution from that gate.
+Native Archon, ArchVirt, and Cephyr execution backends were not configured
+in this build; the separate Cephyr build-host library is not execution
+evidence for those backends.
+
 ## Coordination protocol v1 (Linux/glibc)
 
 `bin/overhaul-coord.py` is a development utility, not part of the analysis
