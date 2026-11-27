@@ -28,6 +28,11 @@ ROOT_IDS = {
     "": "blake3:cb09c71eef28de3e81cb110a0a17a0a3fb9cce49395fb12e9e383abd41bd82d8",
     "_multiroom": "blake3:34ed09d793bfc3b19a59c489ee1b2b5e689186efe47af6c61bc2d80cbc4be07b",
 }
+# Captured from the named-edge executor before slot compilation.
+ARCHIVE_IDS = {
+    "": b"blake3:2747af62e0ce067c049a293ec50fa616131696a4b083a9657836fd056f5073bb",
+    "_multiroom": b"blake3:e8b3814afdf1c02a2195f56dcdc9834789105fa511d9f883da129287af8401aa",
+}
 
 
 def frames(raw):
@@ -66,8 +71,13 @@ def main():
     with tempfile.TemporaryDirectory(prefix="finpred-financial-graph-") as temp:
         work = Path(temp)
         exe = compile_consumer(work, "financial_graph_consumer")
+        schedule = compile_consumer(work, "financial_schedule_consumer")
         empty = work / "empty"
         empty.mkdir()
+        scheduled = subprocess.run([schedule], cwd=empty, capture_output=True, timeout=15)
+        assert (scheduled.returncode, scheduled.stdout, scheduled.stderr) == (0, b"financial_schedule_ok=true\n", b""), scheduled
+        assert not list(empty.iterdir()), scheduled
+
         def run(case, suffix="", **extra):
             p = subprocess.run([exe], cwd=empty, capture_output=True, timeout=15,
                                env={**os.environ, "FINPRED_HOME": str(empty / "store"),
@@ -97,6 +107,7 @@ def main():
             captured = run("archive-capture", suffix)
             assert captured == run("archive-reordered", suffix)
             digest, raw = captured.split(b"\n", 1)
+            assert digest == ARCHIVE_IDS[suffix]
             items = frames(raw)
             assert items[:4] == [b"automat.financial-replay@1", b"recommendation", graph_digest.encode(),
                                  b"2026-11-20T10:00:00Z"]

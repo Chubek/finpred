@@ -13,6 +13,25 @@ host-supplied [`sdk.callable`](../sdk/README.md#internal-typed-calls) resolver a
 invoker; the graph and Ottomat source cannot register handlers or grant
 effects. This slice accepts only pure work and has no CLI route.
 
+`financial_graph.compile` performs the same validation as `prepare` and
+returns its `Prepared` result alongside an in-memory schedule. Roots are
+sorted by name and assigned the first zero-based artifact slots. Each step
+is `(planned_entry, operands)` in execution order and gets the next slot.
+Its operands are `(input_name, source_slot, producer_id, output_port)` in SDK
+input order; an empty producer ID identifies a root. Exports are
+`(output_entry, source_slot)` in export-name order. Slots are decimal strings
+in these lists. The runtime uses the compiled slots for operands and exports
+and executes every step, even if no export depends on it.
+
+The schedule reports edge count (one per input binding), depth (the longest
+path counting nodes, not roots), and declared upper bounds on root, read, and
+emitted payload bytes. The read bound counts repeat uses of a value separately;
+the emitted bound counts every node, including memo hits. These bounds are
+estimates, not new admission limits: the work budget still sums each
+declaration's maximum work, and the runtime still enforces its existing
+actual-byte limits. A failed compilation has no schedule or metrics. Schedules
+are not persisted and cannot be supplied as executable authority.
+
 An external hospitality host binds normalization, whole-stay comparables,
 a sample diagnostic, a policy
 decision, and guardrail validation. The normalizer retains the rejected-row count and records

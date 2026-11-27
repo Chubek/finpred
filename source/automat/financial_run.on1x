@@ -76,7 +76,12 @@ fn encode_artifact(role:string, id:string, port:SDK.Port, value:sexpr, metadata:
 }
 fn root_artifacts(ports:sexpr, roots:sexpr, ctx:Context) -> sexpr
 {
-  var rest = G.sorted(ports);
+  return ordered_root_artifacts(G.sorted(ports),roots,ctx);
+}
+
+fn ordered_root_artifacts(ports:sexpr, roots:sexpr, ctx:Context) -> sexpr
+{
+  var rest = ports;
   var entries = sx_nil();
   while sx_kind(rest) == 3
   {
@@ -182,51 +187,52 @@ fn execute_expected(g:G.Graph, roots:sexpr, ctx:Context, mode:string, budget:i64
   resolve:fn(string) -> SDK.Descriptor, call:fn(SDK.Pin, SDK.Request) -> SDK.Outcome,
   expected_digest:sexpr, evidence:sexpr, replaying:bool) -> Result
 {
-  let plan = G.prepare(g,mode,budget,resolve);
+  let compilation = G.compile(g,mode,budget,resolve);
+  let plan = compilation["prepared"];
   let status = sx_text(plan["status"]);
   if status != "ok" { return error(status,sx_text(plan["subject"])); }
   let plan_digest = G.digest(sx_text(plan["canonical"]));
   if sx_kind(expected_digest) != 0 && !SDK.same(expected_digest,sx_string(plan_digest))
   { return error("graph_mismatch",""); }
-  if !valid_context(ctx) || !valid_roots(g["inputs"],roots) { return error("input",""); }
-  let inputs = root_artifacts(g["inputs"],roots,ctx);
+  let root_ports = compilation["roots"];
+  if !valid_context(ctx) || !valid_roots(root_ports,roots) { return error("input",""); }
+  let inputs = ordered_root_artifacts(root_ports,roots,ctx);
   if replaying && !evidence_inventory(inputs,plan["order"],evidence) { return error("replay_mismatch",""); }
   var artifacts = L.basis_list_rev(inputs);
-  var nodes = plan["order"];
+  var nodes = compilation["steps"];
   var memo = sx_nil();
   let trace = buffer_new();
   var invocations = 0;
   var emitted_bytes = 0;
   var read_bytes = 0;
+  # Artifacts are prepended, so slot 0 is the last of the accumulated list.
+  var slots = G.length(root_ports,16);
   while sx_kind(nodes) == 3
   {
-    let node = sx_head(nodes);
+    let step = sx_head(nodes);
+    let node = G.at(step,0);
     let id = G.field(node,0);
     let pin = G.decode_pin(G.at(node,1));
     let work = SDK.nat(G.at(node,4));
     let port = SDK.decode_port(G.at(node,3));
     let parents = buffer_new();
-    var ports = G.at(node,2);
+    var operands = G.at(step,1);
     var values = sx_nil();
-    G.frame(parents,F.num(G.length(ports,16)));
-    while sx_kind(ports) == 3
+    G.frame(parents,F.num(G.length(operands,16)));
+    while sx_kind(operands) == 3
     {
-      let name = G.field(sx_head(ports),0);
-      let edge = G.lookup(G.at(node,6),name);
-      let producer = G.field(edge,1);
-      let output_port = G.field(edge,2);
-      var origin = G.lookup(artifacts,producer);
-      if producer == "" { origin = G.lookup(inputs,output_port); }
-      if sx_kind(origin) == 0 { return error("unknown_reference",id); }
-      G.frame(parents,name);
-      G.frame(parents,producer);
-      G.frame(parents,output_port);
+      let operand = sx_head(operands);
+      let source = SDK.nat(G.at(operand,1));
+      let origin = G.at(artifacts,slots-1-source);
+      G.frame(parents,G.field(operand,0));
+      G.frame(parents,G.field(operand,2));
+      G.frame(parents,G.field(operand,3));
       G.frame(parents,G.field(origin,1));
       let value = G.at(origin,3);
       read_bytes = read_bytes + text_len(sx_text(SDK.value_bytes(value)));
       if read_bytes > 24000000 { return error("budget",id); }
       values = sx_cons(value,values);
-      ports = sx_tail(ports);
+      operands = sx_tail(operands);
     }
     values = L.basis_list_rev(values);
     # Recheck current pin even when no handler call is needed (memo hit).
@@ -254,18 +260,19 @@ fn execute_expected(g:G.Graph, roots:sexpr, ctx:Context, mode:string, budget:i64
     if emitted_bytes > 8000000 { return error("budget",id); }
     let result = encode_artifact("node",id,port,value,node_metadata(pin,plan_digest),buffer_text(parents),ctx);
     artifacts = sx_cons(result,artifacts);
+    slots = slots + 1;
     buffer_append(trace,id); buffer_append(trace,"=");
     buffer_append(trace,sx_text(pin["handler_name"])); buffer_append(trace,":");
     buffer_append(trace,G.field(result,1)); buffer_append(trace,"\n");
     nodes = sx_tail(nodes);
   }
-  var selected = G.sorted(g["outputs"]);
+  var selected = compilation["exports"];
   var outputs = sx_nil();
   while sx_kind(selected) == 3
   {
-    let item = sx_head(selected);
-    let result = G.lookup(artifacts,G.field(item,2));
-    outputs = sx_cons(sx_cons(G.at(item,0),sx_cons(G.at(result,1),
+    let export = sx_head(selected);
+    let result = G.at(artifacts,slots-1-SDK.nat(G.at(export,1)));
+    outputs = sx_cons(sx_cons(G.at(G.at(export,0),0),sx_cons(G.at(result,1),
       sx_cons(G.at(result,3),sx_nil()))),outputs);
     selected = sx_tail(selected);
   }

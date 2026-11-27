@@ -8,6 +8,10 @@ import std.crypto.crypto as Crypto;
 
 record Graph { version:sexpr, inputs:sexpr, nodes:sexpr, outputs:sexpr }
 record Prepared { status:sexpr, subject:sexpr, canonical:sexpr, order:sexpr, work:i64 }
+record Compilation {
+  prepared:Prepared, roots:sexpr, steps:sexpr, exports:sexpr,
+  edges:i64, depth:i64, max_root_bytes:i64, max_read_bytes:i64, max_emitted_bytes:i64
+}
 
 fn version() -> string { return "automat.financial-graph@1"; }
 fn graph(inputs:sexpr, nodes:sexpr, outputs:sexpr) -> Graph
@@ -330,7 +334,7 @@ fn canonical_bytes(g:Graph, mode:string, ordered:sexpr) -> string
   return buffer_text(out);
 }
 
-fn prepare(g:Graph, mode:string, budget:i64, resolve:fn(string) -> SDK.Descriptor) -> Prepared
+fn prepare_declarations(g:Graph, mode:string, budget:i64, resolve:fn(string) -> SDK.Descriptor) -> Prepared
 {
   if !SDK.same(g["version"],sx_string(version())) { return reject("version",""); }
   if mode != "analysis" && mode != "recommendation" { return reject("denied",""); }
@@ -410,6 +414,98 @@ fn prepare(g:Graph, mode:string, budget:i64, resolve:fn(string) -> SDK.Descripto
   }
   return record<Prepared>{status:sx_string("ok"),subject:sx_string(""),
     canonical:sx_string(canonical_bytes(g,mode,order)),order:order,work:work};
+}
+
+# Slot metadata is indexed by the unique artifact ID (root name or node ID).
+# Roots have depth 0; a handler without node predecessors has depth 1.
+fn slot_entry(id:sexpr, slot:i64, depth:i64, bytes:i64) -> sexpr
+{
+  return sx_cons(id,sx_cons(sx_string(F.num(slot)),sx_cons(sx_string(F.num(depth)),
+    sx_cons(sx_string(F.num(bytes)),sx_nil()))));
+}
+
+# Compile only validated declarations. The legacy canonical bytes remain
+# independent of the slot encoding. No runtime values or handler calls enter
+# compilation, and the byte bounds below do not reject a graph.
+fn compile(g:Graph, mode:string, budget:i64, resolve:fn(string) -> SDK.Descriptor) -> Compilation
+{
+  let prepared = prepare_declarations(g,mode,budget,resolve);
+  if sx_text(prepared["status"]) != "ok"
+  {
+    return record<Compilation>{prepared:prepared,roots:sx_nil(),steps:sx_nil(),exports:sx_nil(),
+      edges:0,depth:0,max_root_bytes:0,max_read_bytes:0,max_emitted_bytes:0};
+  }
+
+  let roots = sorted(g["inputs"]);
+  var items = roots;
+  var slots = sx_nil();
+  var slot = 0;
+  var root_bytes = 0;
+  while sx_kind(items) == 3
+  {
+    let port = SDK.decode_port(sx_head(items));
+    slots = sx_cons(slot_entry(port["name"],slot,0,port["max_bytes"]),slots);
+    root_bytes = root_bytes + port["max_bytes"];
+    slot = slot + 1;
+    items = sx_tail(items);
+  }
+
+  var steps = sx_nil();
+  var edge_count = 0;
+  var depth = 0;
+  var read_bytes = 0;
+  var emitted_bytes = 0;
+  items = prepared["order"];
+  while sx_kind(items) == 3
+  {
+    let entry = sx_head(items);
+    var ports = at(entry,2);
+    var operands = sx_nil();
+    var node_depth = 1;
+    while sx_kind(ports) == 3
+    {
+      let name = at(sx_head(ports),0);
+      let edge = lookup(at(entry,6),sx_text(name));
+      let producer = field(edge,1);
+      var source = producer;
+      if source == "" { source = field(edge,2); }
+      let origin = lookup(slots,source);
+      operands = sx_cons(sx_cons(name,sx_cons(at(origin,1),sx_tail(edge))),operands);
+      # The operand retains both named endpoints for @1 artifact evidence.
+      # Charge a producer's bound once per binding, not once per predecessor.
+      let next_depth = SDK.nat(at(origin,2)) + 1;
+      if next_depth > node_depth { node_depth = next_depth; }
+      edge_count = edge_count + 1;
+      read_bytes = read_bytes + SDK.nat(at(origin,3));
+      ports = sx_tail(ports);
+    }
+    let output = SDK.decode_port(at(entry,3));
+    slots = sx_cons(slot_entry(at(entry,0),slot,node_depth,output["max_bytes"]),slots);
+    steps = sx_cons(sx_cons(entry,sx_cons(L.basis_list_rev(operands),sx_nil())),steps);
+    if node_depth > depth { depth = node_depth; }
+    emitted_bytes = emitted_bytes + output["max_bytes"];
+    slot = slot + 1;
+    items = sx_tail(items);
+  }
+
+  var exports = sx_nil();
+  items = sorted(g["outputs"]);
+  while sx_kind(items) == 3
+  {
+    let item = sx_head(items);
+    let origin = lookup(slots,field(item,2));
+    exports = sx_cons(sx_cons(item,sx_cons(at(origin,1),sx_nil())),exports);
+    items = sx_tail(items);
+  }
+  return record<Compilation>{prepared:prepared,roots:roots,steps:L.basis_list_rev(steps),
+    exports:L.basis_list_rev(exports),edges:edge_count,depth:depth,max_root_bytes:root_bytes,
+    max_read_bytes:read_bytes,max_emitted_bytes:emitted_bytes};
+}
+
+fn prepare(g:Graph, mode:string, budget:i64, resolve:fn(string) -> SDK.Descriptor) -> Prepared
+{
+  let compilation = compile(g,mode,budget,resolve);
+  return compilation["prepared"];
 }
 
 fn sdk_output_ref(item:sexpr) -> bool
