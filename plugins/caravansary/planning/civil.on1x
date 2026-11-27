@@ -63,8 +63,10 @@ fn date(s: string) -> i64
   let year = digits(s, 0, 4);
   let month = digits(s, 5, 7);
   let day = digits(s, 8, 10);
-  if year < 1 || month < 1 || month > 12 || day < 1 || day > month_days(year,
-    month)
+  if year < 1 || month < 1 || month > 12 || day < 1 || day > month_days(
+    year,
+    month
+  )
   {
     return 0;
   }
@@ -149,10 +151,10 @@ fn timestamp(s: string, where: string) -> i64
   {
     end = length - 6;
   }
-  if end >= 19 && end <= 26 && text_byte(s,
-    10) == 84 && text_byte(s,
-    13) == 58 && text_byte(s,
-    16) == 58
+  if end >= 19 && end <= 26 && text_byte(s, 10) == 84 && text_byte(
+    s,
+    13
+  ) == 58 && text_byte(s, 16) == 58
   {
     let day = date(text_slice(s, 0, 10));
     let h = digits(s, 11, 13);

@@ -19,10 +19,12 @@ fn object_values(value: sexpr) -> sexpr
 
 fn normalization(data: sexpr) -> sexpr
 {
-  Inputs.object_fields(data,
+  Inputs.object_fields(
+    data,
     "radius_m",
     "min_score max_candidates excluded_types excluded_provider_ids",
-    "discovery policy");
+    "discovery policy"
+  );
   let radius = J.int64(J.field(data, "radius_m"), "radius_m");
   if radius < 1 || radius > 20015115
   {
@@ -77,56 +79,81 @@ fn normalization(data: sexpr) -> sexpr
     while sx_kind(items) == 3
     {
       let item = sx_head(items);
-      Inputs.object_fields(item,
+      Inputs.object_fields(
+        item,
         "provider provider_property_id",
         "",
-        "excluded provider identity");
-      let key = Property.provider_key(Property.provider(item),
-        Property.opaque_id(item,
-        "provider_property_id"));
+        "excluded provider identity"
+      );
+      let key = Property.provider_key(
+        Property.provider(item),
+        Property.opaque_id(item, "provider_property_id")
+      );
       provider_fields = Property.pair(key, item, provider_fields);
       items = sx_tail(items);
     }
   }
-  return J.object(Property.pair("radius_m",
+  return J.object(Property.pair(
+    "radius_m",
     J.integer(radius),
-    Property.pair("min_score",
-    J.integer(score),
-    Property.pair("max_candidates",
-    J.integer(count),
-    Property.pair("excluded_types",
-    object_values(J.object_unique(type_fields,
-    "duplicate excluded type")),
-    Property.pair("excluded_provider_ids",
-    object_values(J.object_unique(provider_fields,
-    "duplicate excluded provider identity")),
-    sx_nil()))))));
+    Property.pair(
+      "min_score",
+      J.integer(score),
+      Property.pair(
+        "max_candidates",
+        J.integer(count),
+        Property.pair(
+          "excluded_types",
+          object_values(J.object_unique(
+            type_fields,
+            "duplicate excluded type"
+          )),
+          Property.pair(
+            "excluded_provider_ids",
+            object_values(J.object_unique(
+              provider_fields,
+              "duplicate excluded provider identity"
+            )),
+            sx_nil()
+          )
+        )
+      )
+    )
+  ));
 }
 
 fn subject(input: sexpr) -> sexpr
 {
-  Inputs.object_fields(input,
+  Inputs.object_fields(
+    input,
     "id name",
     "latitude longitude type address",
-    "discovery subject");
+    "discovery subject"
+  );
   let metadata = Property.place(input, "subject");
   return J.replace(metadata, "id", sx_string(Property.opaque_id(input, "id")));
 }
 
 fn fact(input: sexpr) -> sexpr
 {
-  Inputs.object_fields(input,
+  Inputs.object_fields(
+    input,
     "provider provider_property_id name",
     "latitude longitude type address url evidence_ref",
-    "discovery fact");
+    "discovery fact"
+  );
   let source = Property.provider(input);
   let provider_id = Property.opaque_id(input, "provider_property_id");
   let metadata = Property.place(input, "listing fact");
-  var fields = Property.pair("provider",
+  var fields = Property.pair(
+    "provider",
     sx_string(source),
-    Property.pair("provider_property_id",
-    sx_string(provider_id),
-    sx_tail(metadata)));
+    Property.pair(
+      "provider_property_id",
+      sx_string(provider_id),
+      sx_tail(metadata)
+    )
+  );
   let url = J.get(input, "url");
   if Geo.known(url)
   {
@@ -159,9 +186,13 @@ fn excluded_provider(exclusions: sexpr, source: sexpr, id: sexpr) -> bool
   while sx_kind(rest) == 3
   {
     let current = sx_head(rest);
-    if sx_text(J.field(current,
-      "provider")) == sx_text(source) && sx_text(J.field(current,
-      "provider_property_id")) == sx_text(id)
+    if sx_text(J.field(
+      current,
+      "provider"
+    )) == sx_text(source) && sx_text(J.field(
+      current,
+      "provider_property_id"
+    )) == sx_text(id)
     {
       return true;
     }
@@ -180,11 +211,13 @@ fn url_key(fact_value: sexpr) -> string
   return Property.provider_key(Property.provider(fact_value), sx_text(url));
 }
 
-fn candidate(subject_value: sexpr,
+fn candidate(
+  subject_value: sexpr,
   rules: sexpr,
   id: string,
   facts: sexpr,
-  urls: sexpr) -> sexpr
+  urls: sexpr
+) -> sexpr
 {
   let current = sx_head(facts);
   let source = J.field(current, "provider");
@@ -215,10 +248,11 @@ fn candidate(subject_value: sexpr,
   {
     reasons = sx_cons(sx_string("conflicting_provider_url"), reasons);
   }
-  if excluded_provider(J.field(rules,
-    "excluded_provider_ids"),
+  if excluded_provider(
+    J.field(rules, "excluded_provider_ids"),
     source,
-    provider_id)
+    provider_id
+  )
   {
     reasons = sx_cons(sx_string("excluded_provider_identity"), reasons);
   }
@@ -234,16 +268,17 @@ fn candidate(subject_value: sexpr,
   {
     listing = material;
     let listing_type = Property.identity_text(J.get(current, "type"));
-    if Inputs.contains_atom(J.items(J.field(rules,
-      "excluded_types")),
-      listing_type)
+    if Inputs.contains_atom(
+      J.items(J.field(rules, "excluded_types")),
+      listing_type
+    )
     {
       reasons = sx_cons(sx_string("excluded_type"), reasons);
     }
-    distance = Geo.distance_m(Geo.position(subject_value,
-      "subject"),
-      Geo.position(current,
-      "listing"));
+    distance = Geo.distance_m(
+      Geo.position(subject_value, "subject"),
+      Geo.position(current, "listing")
+    );
     signals = Property.corroborate(subject_value, current, distance);
     if Property.possible_same(signals)
     {
@@ -289,10 +324,11 @@ fn candidate(subject_value: sexpr,
   fields = Property.pair("score", score, fields);
   fields = Property.pair("subject_signals", signals, fields);
   fields = Property.pair("status", sx_string(status), fields);
-  fields = Property.pair("reasons",
-    J.sorted_array(J.array(reasons),
-    false),
-    fields);
+  fields = Property.pair(
+    "reasons",
+    J.sorted_array(J.array(reasons), false),
+    fields
+  );
   return J.object(fields);
 }
 
@@ -308,26 +344,27 @@ fn compare_candidates(a: sexpr, b: sexpr) -> sexpr
   {
     return J.null_value();
   }
-  let distance = Geo.distance_m(Geo.position(left,
-    "listing"),
-    Geo.position(right,
-    "listing"));
+  let distance = Geo.distance_m(
+    Geo.position(left, "listing"),
+    Geo.position(right, "listing")
+  );
   let signals = Property.corroborate(left, right, distance);
   if ! Property.possible_same(signals)
   {
     return J.null_value();
   }
-  return J.object(Property.pair("candidate_ids",
-    J.array(sx_cons(J.field(a,
-    "candidate_id"),
-    sx_cons(J.field(b,
-    "candidate_id"),
-    sx_nil()))),
-    Property.pair("distance_m",
-    distance,
-    Property.pair("signals",
-    signals,
-    sx_nil()))));
+  return J.object(Property.pair(
+    "candidate_ids",
+    J.array(sx_cons(
+      J.field(a, "candidate_id"),
+      sx_cons(J.field(b, "candidate_id"), sx_nil())
+    )),
+    Property.pair(
+      "distance_m",
+      distance,
+      Property.pair("signals", signals, sx_nil())
+    )
+  ));
 }
 
 fn advisory(candidates: sexpr) -> sexpr
@@ -367,9 +404,11 @@ fn apply_limit(candidates: sexpr, limit: i64) -> sexpr
     {
       let score = J.int64(J.field(value, "score"), "score");
       let id = J.field(value, "candidate_id");
-      packed = Property.pair("${Int.to_string(200 - score)} ${sx_text(id)}",
+      packed = Property.pair(
+        "${Int.to_string(200 - score)} ${sx_text(id)}",
         id,
-        packed);
+        packed
+      );
     }
     rest = sx_tail(rest);
   }
@@ -379,9 +418,11 @@ fn apply_limit(candidates: sexpr, limit: i64) -> sexpr
   while sx_kind(rest) == 3
   {
     rank = rank + 1;
-    ranks = Property.pair(sx_text(J.pair_value(sx_head(rest))),
+    ranks = Property.pair(
+      sx_text(J.pair_value(sx_head(rest))),
       J.integer(rank),
-      ranks);
+      ranks
+    );
     rest = sx_tail(rest);
   }
   let by_id = J.object(ranks);
@@ -397,10 +438,11 @@ fn apply_limit(candidates: sexpr, limit: i64) -> sexpr
       if J.int64(order, "candidate rank") > limit
       {
         value = J.replace(value, "status", sx_string("excluded"));
-        value = J.replace(value,
+        value = J.replace(
+          value,
           "reasons",
-          J.array(sx_cons(sx_string("candidate_limit"),
-          sx_nil())));
+          J.array(sx_cons(sx_string("candidate_limit"), sx_nil()))
+        );
       }
     }
     output = sx_cons(value, output);
@@ -423,10 +465,10 @@ fn run(subject_input: sexpr, policy: sexpr, facts: sexpr) -> sexpr
   while sx_kind(rest) == 3
   {
     let normalized = fact(sx_head(rest));
-    let id = Property.candidate_id(J.text(J.field(normalized,
-      "provider")),
-      J.text(J.field(normalized,
-      "provider_property_id")));
+    let id = Property.candidate_id(
+      J.text(J.field(normalized, "provider")),
+      J.text(J.field(normalized, "provider_property_id"))
+    );
     let url = url_key(normalized);
     if url != ""
     {
@@ -468,34 +510,44 @@ fn run(subject_input: sexpr, policy: sexpr, facts: sexpr) -> sexpr
       }
       rest = sx_tail(rest);
     }
-    candidates = sx_cons(candidate(target,
-      rules,
-      id,
-      Sx.sexpr_reverse(details),
-      urls),
-      candidates);
+    candidates = sx_cons(
+      candidate(target, rules, id, Sx.sexpr_reverse(details), urls),
+      candidates
+    );
   }
-  let ordered = apply_limit(Sx.sexpr_reverse(candidates),
-    J.int64(J.field(rules,
-    "max_candidates"),
-    "max_candidates"));
-  let payload = J.object(Property.pair("kind",
+  let ordered = apply_limit(
+    Sx.sexpr_reverse(candidates),
+    J.int64(J.field(rules, "max_candidates"), "max_candidates")
+  );
+  let payload = J.object(Property.pair(
+    "kind",
     sx_string("caravansary.discovery@1"),
-    Property.pair("subject",
-    target,
-    Property.pair("policy",
-    rules,
-    Property.pair("candidates",
-    J.array(ordered),
-    Property.pair("possible_cross_provider_matches",
-    advisory(ordered),
-    sx_nil()))))));
+    Property.pair(
+      "subject",
+      target,
+      Property.pair(
+        "policy",
+        rules,
+        Property.pair(
+          "candidates",
+          J.array(ordered),
+          Property.pair(
+            "possible_cross_provider_matches",
+            advisory(ordered),
+            sx_nil()
+          )
+        )
+      )
+    )
+  ));
   return J.replace(payload, "discovery_id", sx_string(J.digest(payload)));
 }
 
-fn fixture_provenance(capture: sexpr,
+fn fixture_provenance(
+  capture: sexpr,
   source: string,
-  operation: string) -> sexpr
+  operation: string
+) -> sexpr
 {
   let provenance = J.field(capture, "provenance");
   if Property.text(provenance, "qualification") != "fictional-frozen-html"
@@ -523,23 +575,28 @@ fn fixture_provenance(capture: sexpr,
   };
   var fields = Property.pair("provider", sx_string(source), sx_nil());
   fields = Property.pair("operation", sx_string(operation), fields);
-  fields = Property.pair("qualification",
+  fields = Property.pair(
+    "qualification",
     sx_string("fictional-frozen-html"),
-    fields);
+    fields
+  );
   fields = Property.pair("fixture_id", sx_string(fixture_id), fields);
   fields = Property.pair("source_url", sx_string(source_url), fields);
   fields = Property.pair("observed_at", sx_string(instant), fields);
   fields = Property.optional_text(provenance, "content_sha256", fields);
-  fields = Property.pair("extractor",
-    sx_string(Property.text(provenance,
-    "extractor")),
-    fields);
+  fields = Property.pair(
+    "extractor",
+    sx_string(Property.text(provenance, "extractor")),
+    fields
+  );
   return J.object(fields);
 }
 
-fn from_observations(subject_input: sexpr,
+fn from_observations(
+  subject_input: sexpr,
   policy: sexpr,
-  captures: sexpr) -> sexpr
+  captures: sexpr
+) -> sexpr
 {
   var rest = J.items(captures);
   if Sx.sexpr_size(rest) > 256
@@ -588,16 +645,20 @@ fn from_observations(subject_input: sexpr,
       }
       let name = J.get(listing, "name");
       var fields = Property.pair("provider", sx_string(source), sx_nil());
-      fields = Property.pair("provider_property_id",
+      fields = Property.pair(
+        "provider_property_id",
         sx_string(provider_id),
-        fields);
+        fields
+      );
       fields = Property.pair("evidence_ref", sx_string(reference), fields);
       fields = Property.pair("url", url, fields);
       if ! Geo.known(name)
       {
-        let row = J.object(Property.pair("reason",
+        let row = J.object(Property.pair(
+          "reason",
           sx_string("name_unknown"),
-          fields));
+          fields
+        ));
         skipped = J.replace(skipped, J.render(row), row);
       }
       else

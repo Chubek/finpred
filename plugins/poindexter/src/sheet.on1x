@@ -28,13 +28,15 @@ fn pricing_columns() -> string
   return "view,source_run,source_recommendation,source_valuation,currency,price_basis,current_minor,recommended_minor,change_minor,reason,published";
 }
 
-fn append_prices(b: buffer,
+fn append_prices(
+  b: buffer,
   view: string,
   run_id: string,
   recommendation_digest: string,
   valuation_digest: string,
   current_minor: i64,
-  recommended_minor: i64)
+  recommended_minor: i64
+)
 {
   buffer_append(b, view);
   buffer_append(b, ",run:");
@@ -51,7 +53,8 @@ fn append_prices(b: buffer,
   buffer_append(b, Int.to_string(recommended_minor - current_minor));
 }
 
-fn render(run_id: string,
+fn render(
+  run_id: string,
   recommendation_digest: string,
   valuation_digest: string,
   currency: string,
@@ -59,8 +62,8 @@ fn render(run_id: string,
   current_minor: i64,
   recommended_minor: i64,
   reason: string,
-  published: bool) ->(bool,
-  string)
+  published: bool
+) ->(bool, string)
 {
   if ! hex_digest(run_id) || ! hex_digest(recommendation_digest) || ! hex_digest(valuation_digest)
   {
@@ -88,20 +91,23 @@ fn render(run_id: string,
   let b = buffer_new();
   buffer_append(b, pricing_columns());
   buffer_byte(b, 10);
-  append_prices(b,
+  append_prices(
+    b,
     "poindexter.pricing-sheet@1",
     run_id,
     recommendation_digest,
     valuation_digest,
     current_minor,
-    recommended_minor);
+    recommended_minor
+  );
   buffer_append(b, ",");
   buffer_append(b, reason);
   buffer_append(b, ",false\n");
   return (true, buffer_text(b));
 }
 
-fn render_contribution(run_id: string,
+fn render_contribution(
+  run_id: string,
   recommendation_digest: string,
   raw_valuation_digest: string,
   raw_demand_digest: string,
@@ -112,8 +118,8 @@ fn render_contribution(run_id: string,
   marginal_cost_minor: i64,
   expected_room_nights_milli: i64,
   expected_contribution_minor_milli: i64,
-  scale: i64) ->(bool,
-  string)
+  scale: i64
+) ->(bool, string)
 {
   if ! hex_digest(run_id) || ! hex_digest(recommendation_digest) || ! hex_digest(raw_valuation_digest) || ! hex_digest(raw_demand_digest)
   {
@@ -138,15 +144,19 @@ fn render_contribution(run_id: string,
   }
   let b = buffer_new();
   buffer_append(b, pricing_columns());
-  buffer_append(b,
-    ",source_demand,marginal_cost_minor,expected_room_nights_milli,expected_contribution_minor_milli,scale\n");
-  append_prices(b,
+  buffer_append(
+    b,
+    ",source_demand,marginal_cost_minor,expected_room_nights_milli,expected_contribution_minor_milli,scale\n"
+  );
+  append_prices(
+    b,
     "poindexter.contribution-sheet@1",
     run_id,
     recommendation_digest,
     raw_valuation_digest,
     current_minor,
-    recommended_minor);
+    recommended_minor
+  );
   buffer_append(b, ",max_expected_contribution,false,blake3:");
   buffer_append(b, raw_demand_digest);
   buffer_append(b, ",");

@@ -17,28 +17,47 @@ macro fail
 }
 
 record Limits
-{
-  tick: i64, age: i64, minimum: i64, max_retries: i64, initial: i64, maximum: i64
+{ tick       : i64
+, age        : i64
+, minimum    : i64
+, max_retries: i64
+, initial    : i64
+, maximum    : i64
 }
 
 record History
-{
-  oldest: sexpr, newest: sexpr, count: i64
+{ oldest: sexpr
+, newest: sexpr
+, count : i64
 }
 
 record Source
-{
-  name: sexpr, budget: i64, concurrency: i64, active: i64, fairness: i64, hours: History
+{ name       : sexpr
+, budget     : i64
+, concurrency: i64
+, active     : i64
+, fairness   : i64
+, hours      : History
 }
 
 record State
-{
-  limits: Limits, first: Source, second: Source, cells: sexpr, active: sexpr, next_id: i64, last_tick: i64, clock: i64
+{ limits   : Limits
+, first    : Source
+, second   : Source
+, cells    : sexpr
+, active   : sexpr
+, next_id  : i64
+, last_tick: i64
+, clock    : i64
 }
 
 record Cell
-{
-  last_attempt: i64, last_success: i64, not_before: i64, retries: i64, backoff: i64, active: bool
+{ last_attempt: i64
+, last_success: i64
+, not_before  : i64
+, retries     : i64
+, backoff     : i64
+, active      : bool
 }
 
 fn min(a: i64, b: i64) -> i64
@@ -72,15 +91,20 @@ fn integer(v: sexpr, name: string, minimum: i64) -> Result < i64, sexpr >
 fn source(refresh: sexpr, name: sexpr) -> Result < Source, sexpr >
 {
   let label = J.plain(name);
-  let empty = record < History >
-  {
-    oldest: sx_nil(), newest: sx_nil(), count: 0
+  let empty = record<History>
+  { oldest: sx_nil()
+  , newest: sx_nil()
+  , count : 0
   };
   if J.absent(name)
   {
-    return result_ok(record < Source >
-    {
-      name: name, budget: 0, concurrency: 0, active: 0, fairness: 0, hours: empty
+    return result_ok(record<Source>
+    { name       : name
+    , budget     : 0
+    , concurrency: 0
+    , active     : 0
+    , fairness   : 0
+    , hours      : empty
     });
   }
   if label != "booking" && label != "agoda"
@@ -90,22 +114,29 @@ fn source(refresh: sexpr, name: sexpr) -> Result < Source, sexpr >
   let budget_key = "${label}_requests_per_hour";
   let concurrency_key = "${label}_concurrency";
   let budget = integer(J.get(refresh, budget_key), budget_key, 1)?;
-  let concurrency = integer(J.get(refresh,
-    concurrency_key),
+  let concurrency = integer(
+    J.get(refresh, concurrency_key),
     concurrency_key,
-    1)?;
-  return result_ok(record < Source >
-  {
-    name: name, budget: budget, concurrency: concurrency, active: 0, fairness: 0, hours: empty
+    1
+  )?;
+  return result_ok(record<Source>
+  { name       : name
+  , budget     : budget
+  , concurrency: concurrency
+  , active     : 0
+  , fairness   : 0
+  , hours      : empty
   });
 }
 
-fn create(refresh: sexpr,
+fn create(
+  refresh: sexpr,
   sources: sexpr,
   minimum_service_every: i64,
   max_retries: i64,
   backoff_initial_seconds: i64,
-  backoff_max_seconds: i64) -> Result < State, sexpr >
+  backoff_max_seconds: i64
+) -> Result < State, sexpr >
 {
   let tick = integer(J.get(refresh, "tick_seconds"), "tick_seconds", 1)?;
   let age = integer(J.get(refresh, "max_age_seconds"), "max_age_seconds", 1)?;
@@ -142,13 +173,23 @@ fn create(refresh: sexpr,
     }
   }
   let second = source(refresh, second_name)?;
-  let limits = record < Limits >
-  {
-    tick: tick, age: age, minimum: minimum_service_every, max_retries: max_retries, initial: backoff_initial_seconds, maximum: backoff_max_seconds
+  let limits = record<Limits>
+  { tick       : tick
+  , age        : age
+  , minimum    : minimum_service_every
+  , max_retries: max_retries
+  , initial    : backoff_initial_seconds
+  , maximum    : backoff_max_seconds
   };
-  return result_ok(record < State >
-  {
-    limits: limits, first: first, second: second, cells: sx_nil(), active: sx_nil(), next_id: 1, last_tick: 0, clock: 0
+  return result_ok(record<State>
+  { limits   : limits
+  , first    : first
+  , second   : second
+  , cells    : sx_nil()
+  , active   : sx_nil()
+  , next_id  : 1
+  , last_tick: 0
+  , clock    : 0
   });
 }
 
@@ -263,10 +304,12 @@ fn capacity_source(limits: Limits, src: Source, rows: sexpr) -> sexpr
     rest = sx_tail(rest);
   }
   let budget_ok = ratio_le(eligible, budget, age, 3600);
-  let tick_ok = eligible == 0 || (tick <= age && ratio_le(eligible,
+  let tick_ok = eligible == 0 || (tick <= age && ratio_le(
+    eligible,
     slots,
     age,
-    tick));
+    tick
+  ));
   let hourly = f64_from_i64(eligible * 3600) / f64_from_i64(age);
   var out = J.object(sx_nil());
   out = J.set(out, "eligible_cells", J.integer(eligible));
@@ -280,9 +323,11 @@ fn capacity_source(limits: Limits, src: Source, rows: sexpr) -> sexpr
   out = J.set(out, "max_age_seconds", J.integer(age));
   out = J.set(out, "necessary_budget_condition_met", J.boolean(budget_ok));
   out = J.set(out, "necessary_tick_condition_met", J.boolean(tick_ok));
-  out = J.set(out,
+  out = J.set(
+    out,
     "necessary_capacity_condition_met",
-    J.boolean(budget_ok && tick_ok));
+    J.boolean(budget_ok && tick_ok)
+  );
   return out;
 }
 
@@ -292,25 +337,27 @@ fn state_capacity(state: State, rows: sexpr) -> Result < sexpr, sexpr >
   let a = state["first"];
   let b = state["second"];
   var out = J.object(sx_nil());
-  out = J.set(out,
+  out = J.set(
+    out,
     sx_text(a["name"]),
-    capacity_source(state["limits"],
-    a,
-    one));
+    capacity_source(state["limits"], a, one)
+  );
   if ! J.absent(b["name"])
   {
-    out = J.set(out,
+    out = J.set(
+      out,
       sx_text(b["name"]),
-      capacity_source(state["limits"],
-      b,
-      two));
+      capacity_source(state["limits"], b, two)
+    );
   }
   return result_ok(out);
 }
 
-fn capacity(refresh: sexpr,
+fn capacity(
+  refresh: sexpr,
   sources: sexpr,
-  rows: sexpr) -> Result < sexpr, sexpr >
+  rows: sexpr
+) -> Result < sexpr, sexpr >
 {
   return state_capacity(defaults(refresh, sources)?, rows);
 }
@@ -346,19 +393,26 @@ fn expire(source_value: Source, instant: i64) -> Source
     front = sx_tail(front);
     count = count - 1;
   }
-  return record < Source >
-  {
-    name: source_value["name"], budget: source_value["budget"], concurrency: source_value["concurrency"], active: source_value["active"], fairness: source_value["fairness"], hours: record < History >
-    {
-      oldest: front, newest: back, count: count
+  return record<Source>
+  { name       : source_value["name"]
+  , budget     : source_value["budget"]
+  , concurrency: source_value["concurrency"]
+  , active     : source_value["active"]
+  , fairness   : source_value["fairness"]
+  , hours      : record<History>
+    { oldest: front
+    , newest: back
+    , count : count
     }
   };
 }
 
 fn slots(src: Source) -> i64
 {
-  return min(src["concurrency"] - src["active"],
-    src["budget"] - src["hours"]["count"]);
+  return min(
+    src["concurrency"] - src["active"],
+    src["budget"] - src["hours"]["count"]
+  );
 }
 
 fn clock(state: State, as_of: string) -> Result < i64, sexpr >
@@ -375,30 +429,47 @@ fn unpack_cell(v: sexpr) -> Cell
 {
   if J.absent(v)
   {
-    return record < Cell >
-    {
-      last_attempt: 0, last_success: 0, not_before: 0, retries: 0, backoff: 0, active: false
+    return record<Cell>
+    { last_attempt: 0
+    , last_success: 0
+    , not_before  : 0
+    , retries     : 0
+    , backoff     : 0
+    , active      : false
     };
   }
   let second = sx_tail(v);
   let third = sx_tail(second);
   let fourth = sx_tail(third);
   let fifth = sx_tail(fourth);
-  return record < Cell >
-  {
-    last_attempt: unpack_integer(sx_head(v)), last_success: unpack_integer(sx_head(second)), not_before: unpack_integer(sx_head(third)), retries: unpack_integer(sx_head(fourth)), backoff: unpack_integer(sx_head(fifth)), active: J.truth(sx_head(sx_tail(fifth)))
+  return record<Cell>
+  { last_attempt: unpack_integer(sx_head(v))
+  , last_success: unpack_integer(sx_head(second))
+  , not_before  : unpack_integer(sx_head(third))
+  , retries     : unpack_integer(sx_head(fourth))
+  , backoff     : unpack_integer(sx_head(fifth))
+  , active      : J.truth(sx_head(sx_tail(fifth)))
   };
 }
 
 fn pack_cell(c: Cell) -> sexpr
 {
-  return sx_cons(J.integer(c["last_attempt"]),
-    sx_cons(J.integer(c["last_success"]),
-    sx_cons(J.integer(c["not_before"]),
-    sx_cons(J.integer(c["retries"]),
-    sx_cons(J.integer(c["backoff"]),
-    sx_cons(J.boolean(c["active"]),
-    sx_nil()))))));
+  return sx_cons(
+    J.integer(c["last_attempt"]),
+    sx_cons(
+      J.integer(c["last_success"]),
+      sx_cons(
+        J.integer(c["not_before"]),
+        sx_cons(
+          J.integer(c["retries"]),
+          sx_cons(
+            J.integer(c["backoff"]),
+            sx_cons(J.boolean(c["active"]), sx_nil())
+          )
+        )
+      )
+    )
+  );
 }
 
 fn timestamp(v: sexpr, name: string) -> Result < i64, sexpr >
@@ -417,9 +488,10 @@ fn receipt(row: sexpr, field: string) -> Result < i64, sexpr >
   {
     return result_ok(0);
   }
-  return Clock.parse(J.plain(J.get(record_value,
-    "received_at")),
-    "received_at");
+  return Clock.parse(
+    J.plain(J.get(record_value, "received_at")),
+    "received_at"
+  );
 }
 
 fn candidate(row: sexpr, state: State, now: i64) -> Result < sexpr, sexpr >
@@ -435,9 +507,10 @@ fn candidate(row: sexpr, state: State, now: i64) -> Result < sexpr, sexpr >
     return result_ok(sx_nil());
   }
   let success = max(local["last_success"], receipt(row, "latest_success")?);
-  let last_attempt = max(local["last_attempt"],
-    receipt(row,
-    "latest_attempt")?);
+  let last_attempt = max(
+    local["last_attempt"],
+    receipt(row, "latest_attempt")?
+  );
   var due = timestamp(J.get(row, "next_due_at"), "next_due_at")?;
   if success > 0
   {
@@ -463,12 +536,16 @@ fn candidate(row: sexpr, state: State, now: i64) -> Result < sexpr, sexpr >
   {
     return fail!("invalid scheduler weight for '$key'");
   }
-  return result_ok(sx_cons(row,
-    sx_cons(J.integer(due),
-    sx_cons(J.integer(max(last_attempt,
-    success)),
-    sx_cons(J.integer(success),
-    sx_nil())))));
+  return result_ok(sx_cons(
+    row,
+    sx_cons(
+      J.integer(due),
+      sx_cons(
+        J.integer(max(last_attempt, success)),
+        sx_cons(J.integer(success), sx_nil())
+      )
+    )
+  ));
 }
 
 fn decimal_cmp(a: string, b: string) -> i64
@@ -594,10 +671,10 @@ fn rank(a: sexpr, b: sexpr, weighted: bool) -> i64
   {
     return success;
   }
-  return Index.compare(J.plain(J.get(x,
-    "cell_key")),
-    J.plain(J.get(y,
-    "cell_key")));
+  return Index.compare(
+    J.plain(J.get(x, "cell_key")),
+    J.plain(J.get(y, "cell_key"))
+  );
 }
 
 fn sort_rows(items: sexpr, count: i64, weighted: bool) -> sexpr
@@ -644,14 +721,17 @@ fn sort_rows(items: sexpr, count: i64, weighted: bool) -> sexpr
 }
 
 record Due
-{
-  any: sexpr, positive: sexpr, count: i64
+{ any     : sexpr
+, positive: sexpr
+, count   : i64
 }
 
-fn due_rows(items: sexpr,
+fn due_rows(
+  items: sexpr,
   state: State,
   now: i64,
-  free: i64) -> Result < Due, sexpr >
+  free: i64
+) -> Result < Due, sexpr >
 {
   var rows = sx_nil();
   var positive = sx_nil();
@@ -675,20 +755,19 @@ fn due_rows(items: sexpr,
     }
     rest = sx_tail(rest);
   }
-  return result_ok(record < Due >
-  {
-    any: sort_rows(rows,
-      n,
-      false), positive: sort_rows(positive,
-      p,
-      true), count: min(free,
-      n)
+  return result_ok(record<Due>
+  { any     : sort_rows(rows, n, false)
+  , positive: sort_rows(positive, p, true)
+  , count   : min(free, n)
   });
 }
 
 record Selection
-{
-  source: Source, cells: sexpr, active: sexpr, next_id: i64, rev: sexpr
+{ source : Source
+, cells  : sexpr
+, active : sexpr
+, next_id: i64
+, rev    : sexpr
 }
 
 fn skip_selected(queue: sexpr, selected: sexpr) -> sexpr
@@ -706,11 +785,13 @@ fn skip_selected(queue: sexpr, selected: sexpr) -> sexpr
   return rest;
 }
 
-fn reserve(state: State,
+fn reserve(
+  state: State,
   src: Source,
   due: Due,
   previous: Selection,
-  now: i64) -> Selection
+  now: i64
+) -> Selection
 {
   var weighted = due["positive"];
   var rotating = due["any"];
@@ -747,47 +828,65 @@ fn reserve(state: State,
     let key = sx_text(cell_key);
     let local = unpack_cell(Index.get(cells, key));
     selected = Index.put_atom(selected, cell_key, J.boolean(true));
-    cells = Index.put_atom(cells, cell_key, pack_cell(record < Cell >
-    {
-      last_attempt: now, last_success: local["last_success"], not_before: local["not_before"], retries: local["retries"], backoff: local["backoff"], active: true
+    cells = Index.put_atom(cells, cell_key, pack_cell(record<Cell>
+    { last_attempt: now
+    , last_success: local["last_success"]
+    , not_before  : local["not_before"]
+    , retries     : local["retries"]
+    , backoff     : local["backoff"]
+    , active      : true
     }));
     newest = sx_cons(J.integer(now), newest);
-    active = Index.put(active,
+    active = Index.put(
+      active,
       "$next_id",
-      sx_cons(src["name"],
-      sx_cons(cell_key,
-      sx_nil())));
+      sx_cons(src["name"], sx_cons(cell_key, sx_nil()))
+    );
     rev = sx_cons(J.set(row, "reservation_id", J.integer(next_id)), rev);
     next_id = next_id + 1;
   }
-  let source_value = record < Source >
-  {
-    name: src["name"], budget: src["budget"], concurrency: src["concurrency"], active: src["active"] + count, fairness: fairness, hours: record < History >
-    {
-      oldest: old_hours["oldest"], newest: newest, count: old_hours["count"] + count
+  let source_value = record<Source>
+  { name       : src["name"]
+  , budget     : src["budget"]
+  , concurrency: src["concurrency"]
+  , active     : src["active"] + count
+  , fairness   : fairness
+  , hours      : record<History>
+    { oldest: old_hours["oldest"]
+    , newest: newest
+    , count : old_hours["count"] + count
     }
   };
-  return record < Selection >
-  {
-    source: source_value, cells: cells, active: active, next_id: next_id, rev: rev
+  return record<Selection>
+  { source : source_value
+  , cells  : cells
+  , active : active
+  , next_id: next_id
+  , rev    : rev
   };
 }
 
 # Spend no more than one tick, taking a trailing-hour budget and a concurrent
 # slot at reservation time. The returned reservations are a tagged JSON array.
-fn schedule(state: State,
-  rows: sexpr,
-  as_of: string) -> Result < (State,
-  sexpr), sexpr >
+fn schedule(state: State, rows: sexpr, as_of: string) -> Result < (
+  State,
+  sexpr
+), sexpr >
 {
   let now = clock(state, as_of)?;
   let limits = state["limits"];
   let prev = state["last_tick"];
   if prev > 0 && now < Clock.add_seconds(prev, limits["tick"])
   {
-    return result_ok((record < State >
-    {
-      limits: limits, first: state["first"], second: state["second"], cells: state["cells"], active: state["active"], next_id: state["next_id"], last_tick: prev, clock: now
+    return result_ok((record<State>
+    { limits   : limits
+    , first    : state["first"]
+    , second   : state["second"]
+    , cells    : state["cells"]
+    , active   : state["active"]
+    , next_id  : state["next_id"]
+    , last_tick: prev
+    , clock    : now
     }, J.array(sx_nil())));
   }
   let first = expire(state["first"], now);
@@ -808,33 +907,48 @@ fn schedule(state: State,
   {
     return fail!("scheduler reservation ID range exhausted");
   }
-  let seed = record < Selection >
-  {
-    source: first, cells: state["cells"], active: state["active"], next_id: state["next_id"], rev: sx_nil()
+  let seed = record<Selection>
+  { source : first
+  , cells  : state["cells"]
+  , active : state["active"]
+  , next_id: state["next_id"]
+  , rev    : sx_nil()
   };
   let a = reserve(state, first, due_one, seed, now);
   let b = reserve(state, second, due_two, a, now);
-  return result_ok((record < State >
-  {
-    limits: limits, first: a["source"], second: b["source"], cells: b["cells"], active: b["active"], next_id: b["next_id"], last_tick: now, clock: now
+  return result_ok((record<State>
+  { limits   : limits
+  , first    : a["source"]
+  , second   : b["source"]
+  , cells    : b["cells"]
+  , active   : b["active"]
+  , next_id  : b["next_id"]
+  , last_tick: now
+  , clock    : now
   }, J.array(List.basis_list_rev(b["rev"]))));
 }
 
 fn released(src: Source) -> Source
 {
-  return record < Source >
-  {
-    name: src["name"], budget: src["budget"], concurrency: src["concurrency"], active: src["active"] - 1, fairness: src["fairness"], hours: src["hours"]
+  return record<Source>
+  { name       : src["name"]
+  , budget     : src["budget"]
+  , concurrency: src["concurrency"]
+  , active     : src["active"] - 1
+  , fairness   : src["fairness"]
+  , hours      : src["hours"]
   };
 }
 
 # Finishing releases concurrency, not the issued attempt. Retryable failures
 # back off exponentially; a successful or ended chain resumes at normal age.
-fn finish(state: State,
+fn finish(
+  state: State,
   reservation_id: i64,
   as_of: string,
   success: bool,
-  retryable: bool) -> Result < State, sexpr >
+  retryable: bool
+) -> Result < State, sexpr >
 {
   let now = clock(state, as_of)?;
   let id = "$reservation_id";
@@ -888,16 +1002,22 @@ fn finish(state: State,
       delay = max(delay, prior_backoff);
     }
   }
-  let changed = record < Cell >
-  {
-    last_attempt: local["last_attempt"], last_success: last_success, not_before: Clock.add_seconds(now,
-      delay), retries: retries, backoff: backoff, active: false
+  let changed = record<Cell>
+  { last_attempt: local["last_attempt"]
+  , last_success: last_success
+  , not_before  : Clock.add_seconds(now, delay)
+  , retries     : retries
+  , backoff     : backoff
+  , active      : false
   };
-  return result_ok(record < State >
-  {
-    limits: limits, first: first, second: second, cells: Index.put_atom(state["cells"],
-      cell_key,
-      pack_cell(changed)), active: Index.remove(state["active"],
-      id), next_id: state["next_id"], last_tick: state["last_tick"], clock: now
+  return result_ok(record<State>
+  { limits   : limits
+  , first    : first
+  , second   : second
+  , cells    : Index.put_atom(state["cells"], cell_key, pack_cell(changed))
+  , active   : Index.remove(state["active"], id)
+  , next_id  : state["next_id"]
+  , last_tick: state["last_tick"]
+  , clock    : now
   });
 }

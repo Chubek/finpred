@@ -38,9 +38,11 @@ fn require_json(result: Result < sexpr, sexpr >) -> sexpr
   return sx_nil();
 }
 
-fn apply_metrics(base: sexpr,
+fn apply_metrics(
+  base: sexpr,
   ast: sexpr,
-  program: MetricTypes.Program) -> string
+  program: MetricTypes.Program
+) -> string
 {
   if sx_kind(ast) == 0
   {
@@ -52,15 +54,19 @@ fn apply_metrics(base: sexpr,
     Args.bad(error);
   }
   let base_text = Json.render(base);
-  let details = Json.object(sx_cons(Json.pair("kind",
-    sx_string("caravansary.transformation@1")),
-    sx_cons(Json.pair("program_digest",
-    sx_string(Json.digest(ast))),
-    sx_cons(Json.pair("base_report_digest",
-    sx_string(Host.caravansary_sha256(base_text))),
-    sx_cons(Json.pair("metrics",
-    Json.parse(metrics)),
-    sx_nil())))));
+  let details = Json.object(sx_cons(
+    Json.pair("kind", sx_string("caravansary.transformation@1")),
+    sx_cons(
+      Json.pair("program_digest", sx_string(Json.digest(ast))),
+      sx_cons(
+        Json.pair(
+          "base_report_digest",
+          sx_string(Host.caravansary_sha256(base_text))
+        ),
+        sx_cons(Json.pair("metrics", Json.parse(metrics)), sx_nil())
+      )
+    )
+  ));
   # In the fixed coverage@1 schema, `transformation` sorts after every base
   # member. Reuse the exact canonical bytes hashed above rather than
   # walking and escaping the whole matrix again.
@@ -114,13 +120,16 @@ fn main() -> i64
       Args.bad("pilot-booking requires a script with exactly one matrix cell");
     }
     let property = Json.field(Plan.config(plan), "property");
-    let today = Plan.local_date(Json.text(Json.field(property,
-      "timezone")),
-      now);
+    let today = Plan.local_date(
+      Json.text(Json.field(property, "timezone")),
+      now
+    );
     let query = Booking.request(Plan.row_value(plan, 0), today);
     let(_has_token, token) = Env.getenv("CARAVANSARY_BOOKING_API_TOKEN");
-    let(_has_affiliate,
-      affiliate) = Env.getenv("CARAVANSARY_BOOKING_AFFILIATE_ID");
+    let(
+      _has_affiliate,
+      affiliate
+    ) = Env.getenv("CARAVANSARY_BOOKING_AFFILIATE_ID");
     let probe = Booking.run(query, token, affiliate);
     println(Json.render(probe));
     if Booking.field(probe, "outcome") == "failed"
@@ -141,19 +150,22 @@ fn main() -> i64
   let refresh = Json.field(config, "refresh");
   let sources = Json.field(config, "sources");
   let capacity = require_json(Scheduler.capacity(refresh, sources, rows));
-  let max_age = Json.int64(Json.field(refresh,
-    "max_age_seconds"),
-    "max_age_seconds");
+  let max_age = Json.int64(
+    Json.field(refresh, "max_age_seconds"),
+    "max_age_seconds"
+  );
   var log = "";
   if observations != ""
   {
     log = Plan.observation_text(observations);
   }
-  let base = require_json(Coverage.report(rows,
+  let base = require_json(Coverage.report(
+    rows,
     log,
     Plan.utc_text(now),
     max_age,
-    capacity));
+    capacity
+  ));
   println(apply_metrics(base, ast, program));
   return 0;
 }

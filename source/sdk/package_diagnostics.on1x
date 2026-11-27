@@ -2,19 +2,27 @@
 # The legacy check remains authoritative; no dispatch registry imports this.
 import sdk.packages as P;
 record Diagnostic
-{
-  status: i64, reason: sexpr, subject: sexpr, field: sexpr, index: i64
+{ status : i64
+, reason : sexpr
+, subject: sexpr
+, field  : sexpr
+, index  : i64
 }
 
-fn diagnostic(status: i64,
+fn diagnostic(
+  status: i64,
   reason: string,
   subject: string,
   field: string,
-  index: i64) -> Diagnostic
+  index: i64
+) -> Diagnostic
 {
-  return record < Diagnostic >
-  {
-    status: status, reason: sx_string(reason), subject: sx_string(subject), field: sx_string(field), index: index
+  return record<Diagnostic>
+  { status : status
+  , reason : sx_string(reason)
+  , subject: sx_string(subject)
+  , field  : sx_string(field)
+  , index  : index
   };
 }
 
@@ -223,11 +231,7 @@ fn denied_use(p: P.Package, use: P.Use, host: P.Host) -> Diagnostic
   let undeclared = first_missing(use["requested"], p["capabilities"]);
   if undeclared >= 0
   {
-    return diagnostic(4,
-      "not_declared",
-      "package",
-      "capabilities",
-      undeclared);
+    return diagnostic(4, "not_declared", "package", "capabilities", undeclared);
   }
   let unrequested = first_missing(p["capabilities"], use["requested"]);
   if unrequested >= 0

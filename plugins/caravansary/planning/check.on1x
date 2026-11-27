@@ -43,11 +43,13 @@ fn selected_check(mode: string)
   }
   if mode == "emit"
   {
-    let plan = Plan.load(fixture(),
+    let plan = Plan.load(
+      fixture(),
       "docs/caravansary/examples/riviera.crs",
       sx_nil(),
       "2026-11-26",
-      Civil.clock("2026-11-27T00:30:00Z"));
+      Civil.clock("2026-11-27T00:30:00Z")
+    );
     for index in 0 .. Plan.row_count(plan)
     {
       println(Plan.row_at(plan, index));
@@ -71,8 +73,10 @@ fn main() -> i64
   # value; the adjacent short decimal must be tried to match Python bytes.
   assert(Json.render(Json.parse("7.120236347223045e-307")) == "7.120236347223045e-307");
   assert(Json.digest(Json.parse("null")) == "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b");
-  assert(Json.int64(Json.parse("-9223372036854775808"),
-    "test") == - 9223372036854775808);
+  assert(Json.int64(
+    Json.parse("-9223372036854775808"),
+    "test"
+  ) == - 9223372036854775808);
   assert(Civil.date("1900-02-29") == 0);
   assert(Civil.date("2000-02-29") > 0);
   assert(Civil.date_text(1) == "0001-01-01");
@@ -80,8 +84,10 @@ fn main() -> i64
   assert(Civil.clock("1969-12-31T23:59:59.999999Z") == - 1);
   assert(Civil.utc_text(- 1) == "1969-12-31T23:59:59.999999Z");
   assert(Civil.utc_text(Civil.clock("2040-02-29T12:23:56.5+00:00")) == "2040-02-29T12:23:56.500000Z");
-  assert(Civil.local_date("Europe/Paris",
-    Civil.clock("2026-11-26T23:30:00Z")) == "2026-11-27");
+  assert(Civil.local_date(
+    "Europe/Paris",
+    Civil.clock("2026-11-26T23:30:00Z")
+  ) == "2026-11-27");
   let family = Json.parse(r!"""{"id":"famille","rooms":2,"adults":100000000000000000001,
     "child_ages":[1,17,1],"allocation":[{"adults":100000000000000000000,"child_ages":[17,1]},
                                        {"adults":1,"child_ages":[1]}]}""");
@@ -90,26 +96,32 @@ fn main() -> i64
   Inputs.coordinate(sx_string("+000090.0000000000000000000000"), 90, "sample");
   let config = fixture();
   let path = "docs/caravansary/examples/riviera.crs";
-  let plan = Plan.load(config,
+  let plan = Plan.load(
+    config,
     path,
     sx_nil(),
     "2026-11-26",
-    Civil.clock("2026-11-27T00:30:00Z"));
+    Civil.clock("2026-11-27T00:30:00Z")
+  );
   assert(Plan.row_count(plan) == 8760);
   assert(Plan.config_id(plan) == "78af9a0abf954beb1ff7dfd9b5864b9ceddbfc3dc373eb262a451a06534eb472");
   let first = Plan.row_value(plan, 0);
   let last = Plan.row_value(plan, Plan.row_count(plan) - 1);
-  assert(Json.text(Json.field(first,
-    "cell_key")) == "fe49003f4a74bc828c447d079755398d91a745429cb4755d2249fc122116d531");
+  assert(Json.text(Json.field(
+    first,
+    "cell_key"
+  )) == "fe49003f4a74bc828c447d079755398d91a745429cb4755d2249fc122116d531");
   assert(Json.text(Json.field(first, "reason")) == "mapping_missing");
   assert(Json.text(Json.field(last, "source")) == "agoda");
   assert(Json.text(Json.field(last, "checkin")) == "2027-11-25");
   assert(Json.text(Json.field(last, "checkout")) == "2027-11-28");
-  let rolled = Plan.load(config,
+  let rolled = Plan.load(
+    config,
     path,
     sx_nil(),
     "",
-    Civil.clock("2026-11-26T23:30:00Z"));
+    Civil.clock("2026-11-26T23:30:00Z")
+  );
   assert(Plan.row_at(plan, 6) == Plan.row_at(rolled, 0));
   return 0;
 }

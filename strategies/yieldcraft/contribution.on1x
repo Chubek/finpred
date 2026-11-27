@@ -6,18 +6,30 @@ import core.format as F;
 import core.money as Money;
 import std.String as Str;
 record Decision
-{
-  price: i64, cost: i64, demand: i64, score: i64, method: sexpr, source: sexpr, observed: sexpr, ingested: sexpr, floor: i64, cap: i64, candidates: sexpr
+{ price     : i64
+, cost      : i64
+, demand    : i64
+, score     : i64
+, method    : sexpr
+, source    : sexpr
+, observed  : sexpr
+, ingested  : sexpr
+, floor     : i64
+, cap       : i64
+, candidates: sexpr
 }
 
 record Snapshot
-{
-  cost: i64, method: sexpr, source: sexpr, observed: sexpr, ingested: sexpr
+{ cost    : i64
+, method  : sexpr
+, source  : sexpr
+, observed: sexpr
+, ingested: sexpr
 }
 
 record Bounds
-{
-  floor: i64, cap: i64
+{ floor: i64
+, cap  : i64
 }
 
 fn bytes_limit() -> i64
@@ -79,9 +91,10 @@ fn snapshot(s: C.Scenario, scenario_digest: string, raw: string) -> Snapshot
     tool_fail("yieldcraft demand: at most 64 price estimates");
   }
   CSV.header(CSV.line(raw, 0), "pricing.demand@1");
-  CSV.header(CSV.line(raw,
-    1),
-    "scenario_blake3,observed_at,ingested_at,currency,price_basis,method,evidence_blake3,marginal_cost_minor");
+  CSV.header(
+    CSV.line(raw, 1),
+    "scenario_blake3,observed_at,ingested_at,currency,price_basis,method,evidence_blake3,marginal_cost_minor"
+  );
   let meta = CSV.line(raw, 2);
   CSV.require_width(meta, 8);
   let observed = CSV.field(meta, 1);
@@ -89,10 +102,16 @@ fn snapshot(s: C.Scenario, scenario_digest: string, raw: string) -> Snapshot
   let method = CSV.field(meta, 5);
   let source = CSV.field(meta, 6);
   let cost = number(meta, 7);
-  if ! digest(scenario_digest) || CSV.field(meta,
-    0) != scenario_digest || CSV.field(meta,
-    3) != sx_text(s["currency"]) || CSV.field(meta,
-    4) != "room_night" || ! Money.safe_nonnegative(cost)
+  if ! digest(scenario_digest) || CSV.field(
+    meta,
+    0
+  ) != scenario_digest || CSV.field(
+    meta,
+    3
+  ) != sx_text(s["currency"]) || CSV.field(
+    meta,
+    4
+  ) != "room_night" || ! Money.safe_nonnegative(cost)
   {
     tool_fail("yieldcraft demand: scenario, money or price basis mismatch");
   }
@@ -101,25 +120,29 @@ fn snapshot(s: C.Scenario, scenario_digest: string, raw: string) -> Snapshot
     tool_fail("yieldcraft demand: unsupported method or malformed evidence reference");
   }
   let cutoff = sx_text(s["decision_at"]);
-  if ! Date.utc_timestamp(observed) || ! Date.utc_timestamp(ingested) || Str.compare(observed,
-    ingested) > 0 || Str.compare(ingested,
-    cutoff) > 0
+  if ! Date.utc_timestamp(observed) || ! Date.utc_timestamp(ingested) || Str.compare(
+    observed,
+    ingested
+  ) > 0 || Str.compare(ingested, cutoff) > 0
   {
     tool_fail("yieldcraft demand: invalid or future-dated provenance");
   }
-  let age = Date.date_days(text_slice(cutoff,
+  let age = Date.date_days(text_slice(
+    cutoff,
     0,
-    10)) - Date.date_days(text_slice(observed,
-    0,
-    10));
+    10
+  )) - Date.date_days(text_slice(observed, 0, 10));
   if age > s["max_age_days"]
   {
     tool_fail("yieldcraft: insufficient_demand_evidence; snapshot is stale");
   }
   CSV.header(CSV.line(raw, 3), "price_minor,expected_room_nights_milli");
-  return record < Snapshot >
-  {
-    cost: cost, method: sx_string(method), source: sx_string(source), observed: sx_string(observed), ingested: sx_string(ingested)
+  return record<Snapshot>
+  { cost    : cost
+  , method  : sx_string(method)
+  , source  : sx_string(source)
+  , observed: sx_string(observed)
+  , ingested: sx_string(ingested)
   };
 }
 
@@ -141,16 +164,18 @@ fn bounds(v: C.Valuation) -> Bounds
   {
     tool_fail("yieldcraft: guardrail_conflict; floor, cap and movement do not intersect");
   }
-  return record < Bounds >
-  {
-    floor: floor, cap: cap
+  return record<Bounds>
+  { floor: floor
+  , cap  : cap
   };
 }
 
-fn decide(s: C.Scenario,
+fn decide(
+  s: C.Scenario,
   v: C.Valuation,
   scenario_digest: string,
-  raw: string) -> Decision
+  raw: string
+) -> Decision
 {
   let evidence = snapshot(s, scenario_digest, raw);
   let rows = CSV.rows(raw);
@@ -210,8 +235,17 @@ fn decide(s: C.Scenario,
   {
     tool_fail("yieldcraft: no_positive_expected_contribution; no price recommended");
   }
-  return record < Decision >
-  {
-    price: best_price, cost: cost, demand: best_demand, score: best_score, method: evidence["method"], source: evidence["source"], observed: evidence["observed"], ingested: evidence["ingested"], floor: floor, cap: cap, candidates: sx_string(buffer_text(candidates))
+  return record<Decision>
+  { price     : best_price
+  , cost      : cost
+  , demand    : best_demand
+  , score     : best_score
+  , method    : evidence["method"]
+  , source    : evidence["source"]
+  , observed  : evidence["observed"]
+  , ingested  : evidence["ingested"]
+  , floor     : floor
+  , cap       : cap
+  , candidates: sx_string(buffer_text(candidates))
   };
 }

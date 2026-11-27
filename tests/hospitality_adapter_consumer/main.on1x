@@ -16,18 +16,20 @@ fn input(key: string) -> string
   return IO.basis_text_io_input_all(env(key));
 }
 
-fn request(first: string,
+fn request(
+  first: string,
   second: string,
   cutoff: sexpr,
-  work: i64) -> SDK.Request
+  work: i64
+) -> SDK.Request
 {
-  return record < SDK.Request >
-  {
-    inputs: sx_cons(SDK.value_entry(1,
-      first),
-      sx_cons(SDK.value_entry(1,
-      second),
-      sx_nil())), cutoff: cutoff, work: work
+  return record<SDK.Request>
+  { inputs: sx_cons(
+    SDK.value_entry(1, first),
+    sx_cons(SDK.value_entry(1, second), sx_nil())
+  )
+  , cutoff: cutoff
+  , work  : work
   };
 }
 
@@ -41,22 +43,28 @@ fn main() -> i64
   let task = env("GRAPH_CASE");
   if task == "request_bounds"
   {
-    let normalized = H.normalize_call(request(scenario_raw,
+    let normalized = H.normalize_call(request(
+      scenario_raw,
       offers,
       scenario["decision_at"],
-      1));
-    let late = H.normalize_call(request(scenario_raw,
+      1
+    ));
+    let late = H.normalize_call(request(
+      scenario_raw,
       offers,
       sx_string("2026-11-20T09:59:59Z"),
-      1));
+      1
+    ));
     if normalized["status"] != 0 || late["status"] != 5 || sx_kind(late["bytes"]) != 0
     {
       tool_fail("adapter request cutoff not enforced");
     }
-    let under = H.comparables_call(request(scenario_raw,
+    let under = H.comparables_call(request(
+      scenario_raw,
       sx_text(normalized["bytes"]),
       scenario["decision_at"],
-      scenario["search_budget"] - 1));
+      scenario["search_budget"] - 1
+    ));
     if under["status"] != 4 || sx_kind(under["bytes"]) != 0
     {
       tool_fail("adapter request budget not enforced");
@@ -77,32 +85,38 @@ fn main() -> i64
   {
     sample = "sample@1,0,0,0,0\n";
   }
-  let candidate = H.recommendation_bytes(H.decide(scenario,
+  let candidate = H.recommendation_bytes(H.decide(
+    scenario,
     valuation,
     distribution,
     sample,
-    profile));
+    profile
+  ));
   if ! H.guardrails(scenario, valuation, candidate)
   {
     tool_fail("adapter guardrail rejected candidate");
   }
-  let legacy = Y.recommend_profile(scenario,
+  let legacy = Y.recommend_profile(
+    scenario,
     valuation,
     offers,
     profile,
     false,
-    buffer_new());
+    buffer_new()
+  );
   if candidate != H.recommendation_bytes(legacy)
   {
     tool_fail("adapter differs from legacy");
   }
-  IO.basis_text_io_print(JSON.recommendation(scenario,
+  IO.basis_text_io_print(JSON.recommendation(
+    scenario,
     H.recommendation(candidate),
     env("GRAPH_RUN"),
     env("GRAPH_SD"),
     env("GRAPH_OD"),
     env("GRAPH_VD"),
     env("GRAPH_TD"),
-    "yieldcraft.percentile@1"));
+    "yieldcraft.percentile@1"
+  ));
   return 0;
 }

@@ -12,52 +12,65 @@ fn no_evidence() -> sexpr
 # Only trusted argv selects this separate, fictional coverage evidence. HTML
 # listings establish candidate IDs but never synthesize a stay, a price basis,
 # a tax treatment, availability, clocks, or a verified property link.
-fn compare(config: sexpr,
+fn compare(
+  config: sexpr,
   discovery: sexpr,
   supplied: sexpr,
-  now: string) -> sexpr
+  now: string
+) -> sexpr
 {
-  Inputs.object_fields(supplied,
+  Inputs.object_fields(
+    supplied,
     "kind policy verified_links evidence",
     "",
-    "market pricing input");
-  if Json.text(Json.field(supplied,
-    "kind")) != "caravansary.market-pricing-input@1"
+    "market pricing input"
+  );
+  if Json.text(Json.field(
+    supplied,
+    "kind"
+  )) != "caravansary.market-pricing-input@1"
   {
     tool_fail("expected caravansary.market-pricing-input@1");
   }
   let input_policy = Json.field(supplied, "policy");
-  Inputs.object_fields(input_policy,
+  Inputs.object_fields(
+    input_policy,
     "scope min_properties max_age_seconds quantile_bps current_minor max_move_minor",
     "",
-    "market pricing policy");
+    "market pricing policy"
+  );
   let declared = Json.field(config, "pricing");
   let scope = Json.field(input_policy, "scope");
-  if Json.text(Json.field(scope,
-    "currency")) != Json.text(Json.field(declared,
-    "currency"))
+  if Json.text(Json.field(scope, "currency")) != Json.text(Json.field(
+    declared,
+    "currency"
+  ))
   {
     tool_fail("market pricing scope currency does not match the script; no currency conversion");
   }
   var fields = sx_tail(input_policy);
-  fields = Artifacts.put(fields,
+  fields = Artifacts.put(
+    fields,
     "kind",
-    sx_string("caravansary.price-policy@1"));
-  fields = Artifacts.put(fields,
+    sx_string("caravansary.price-policy@1")
+  );
+  fields = Artifacts.put(
+    fields,
     "subject_property_id",
-    Json.field(Json.field(config,
-    "target"),
-    "id"));
+    Json.field(Json.field(config, "target"), "id")
+  );
   fields = Artifacts.put(fields, "as_of", sx_string(now));
   fields = Artifacts.put(fields, "qualification", sx_string("fixture"));
-  fields = Artifacts.put(fields,
+  fields = Artifacts.put(
+    fields,
     "floor_minor",
-    Json.field(declared,
-    "floor_minor"));
-  fields = Artifacts.put(fields,
+    Json.field(declared, "floor_minor")
+  );
+  fields = Artifacts.put(
+    fields,
     "ceiling_minor",
-    Json.field(declared,
-    "ceiling_minor"));
+    Json.field(declared, "ceiling_minor")
+  );
   let policy = Json.object(fields);
   let links = Json.field(supplied, "verified_links");
   ignore(Json.items(links));
@@ -71,17 +84,19 @@ fn compare(config: sexpr,
   while sx_kind(rest) == 3
   {
     let entry = sx_head(rest);
-    Inputs.object_fields(entry,
+    Inputs.object_fields(
+      entry,
       "planner_row observation",
       "",
-      "market pricing evidence");
-    let result = Comparables.select(discovery,
+      "market pricing evidence"
+    );
+    let result = Comparables.select(
+      discovery,
       links,
-      Json.field(entry,
-      "planner_row"),
-      Json.field(entry,
-      "observation"),
-      "fixture");
+      Json.field(entry, "planner_row"),
+      Json.field(entry, "observation"),
+      "fixture"
+    );
     match result with
     {
       Ok(values) =>

@@ -12,10 +12,10 @@ macro fail
   };
 }
 
-fn next_line(text: string,
-  begin: i64,
-  number: i64) -> Result < (sexpr,
-  i64), sexpr >
+fn next_line(text: string, begin: i64, number: i64) -> Result < (
+  sexpr,
+  i64
+), sexpr >
 {
   let size = text_len(text);
   var end = begin;
@@ -24,9 +24,10 @@ fn next_line(text: string,
     end = end + 1;
   }
   var next = end + 1;
-  if end < size && text_byte(text,
-    end) == 13 && next < size && text_byte(text,
-    next) == 10
+  if end < size && text_byte(text, end) == 13 && next < size && text_byte(
+    text,
+    next
+  ) == 10
   {
     next = next + 1;
   }
@@ -37,9 +38,11 @@ fn next_line(text: string,
       return result_ok((r, next));
     }, Err(message) =>
     {
-      return fail!(format("observation log line {}: {}",
+      return fail!(format(
+        "observation log line {}: {}",
         number,
-        sx_text(message)));
+        sx_text(message)
+      ));
     }
   };
 }
@@ -89,10 +92,10 @@ fn planner_index(rows: sexpr) -> Result < sexpr, sexpr >
   return result_ok(tree);
 }
 
-fn inspect_record(v: sexpr,
-  rows: sexpr,
-  seen: sexpr) -> Result < (sexpr,
-  Obs.Order), sexpr >
+fn inspect_record(v: sexpr, rows: sexpr, seen: sexpr) -> Result < (
+  sexpr,
+  Obs.Order
+), sexpr >
 {
   let key = Obs.key(v)?;
   let time = Obs.validate(v, Index.get(rows, sx_text(key)))?;
@@ -109,69 +112,82 @@ fn newer(t: Obs.Order, old: sexpr) -> Result < bool, sexpr >
   {
     return result_ok(true);
   }
-  let received = Clock.parse(J.plain(J.get(old,
-    "received_at")),
-    "received_at")?;
+  let received = Clock.parse(
+    J.plain(J.get(old, "received_at")),
+    "received_at"
+  )?;
   if t["received"] != received
   {
     return result_ok(t["received"] > received);
   }
-  let ingested = Clock.parse(J.plain(J.get(old,
-    "ingested_at")),
-    "ingested_at")?;
+  let ingested = Clock.parse(
+    J.plain(J.get(old, "ingested_at")),
+    "ingested_at"
+  )?;
   if t["ingested"] != ingested
   {
     return result_ok(t["ingested"] > ingested);
   }
   # UTF-8 unsigned byte ordering is Unicode scalar ordering.
-  return result_ok(Index.compare(sx_text(t["id"]),
-    sx_text(J.get(old,
-    "observation_id"))) > 0);
+  return result_ok(Index.compare(
+    sx_text(t["id"]),
+    sx_text(J.get(old, "observation_id"))
+  ) > 0);
 }
 
-fn tally(pending: i64,
+fn tally(
+  pending: i64,
   priced: i64,
   unavailable: i64,
   unsupported: i64,
-  failed: i64) -> sexpr
+  failed: i64
+) -> sexpr
 {
-  return J.object(sx_cons(J.member("pending",
-    J.integer(pending)),
-    sx_cons(J.member("priced",
-    J.integer(priced)),
-    sx_cons(J.member("unavailable",
-    J.integer(unavailable)),
-    sx_cons(J.member("unsupported",
-    J.integer(unsupported)),
-    sx_cons(J.member("failed",
-    J.integer(failed)),
-    sx_nil()))))));
+  return J.object(sx_cons(
+    J.member("pending", J.integer(pending)),
+    sx_cons(
+      J.member("priced", J.integer(priced)),
+      sx_cons(
+        J.member("unavailable", J.integer(unavailable)),
+        sx_cons(
+          J.member("unsupported", J.integer(unsupported)),
+          sx_cons(J.member("failed", J.integer(failed)), sx_nil())
+        )
+      )
+    )
+  ));
 }
 
 fn freshness_tally(fresh: i64, stale: i64, none: i64) -> sexpr
 {
-  return J.object(sx_cons(J.member("fresh",
-    J.integer(fresh)),
-    sx_cons(J.member("stale",
-    J.integer(stale)),
-    sx_cons(J.member("none",
-    J.integer(none)),
-    sx_nil()))));
+  return J.object(sx_cons(
+    J.member("fresh", J.integer(fresh)),
+    sx_cons(
+      J.member("stale", J.integer(stale)),
+      sx_cons(J.member("none", J.integer(none)), sx_nil())
+    )
+  ));
 }
 
 record Replay
-{
-  expected: sexpr, seen: sexpr, attempts: sexpr, successes: sexpr, now: i64
+{ expected : sexpr
+, seen     : sexpr
+, attempts : sexpr
+, successes: sexpr
+, now      : i64
 }
 
 record Winners
-{
-  attempts: sexpr, successes: sexpr, now: i64
+{ attempts : sexpr
+, successes: sexpr
+, now      : i64
 }
 
-fn start(rows: sexpr,
+fn start(
+  rows: sexpr,
   as_of: string,
-  max_age_seconds: i64) -> Result < Replay, sexpr >
+  max_age_seconds: i64
+) -> Result < Replay, sexpr >
 {
   let now = Clock.parse(as_of, "as_of")?;
   if max_age_seconds <= 0
@@ -184,15 +200,20 @@ fn start(rows: sexpr,
     return fail!("now or max_age_seconds is outside supported bounds");
   }
   let expected = planner_index(rows)?;
-  return result_ok(record < Replay >
-  {
-    expected: expected, seen: sx_nil(), attempts: sx_nil(), successes: sx_nil(), now: now
+  return result_ok(record<Replay>
+  { expected : expected
+  , seen     : sx_nil()
+  , attempts : sx_nil()
+  , successes: sx_nil()
+  , now      : now
   });
 }
 
-fn ingest(state: Replay,
+fn ingest(
+  state: Replay,
   record_value: sexpr,
-  number: i64) -> Result < Replay, sexpr >
+  number: i64
+) -> Result < Replay, sexpr >
 {
   let now = state["now"];
   let checked = inspect_record(record_value, state["expected"], state["seen"]);
@@ -210,10 +231,10 @@ fn ingest(state: Replay,
   if time["ingested"] <= now
   {
     let update_attempt = newer(time, Index.get(attempts, key))?;
-    let update_success = J.truth(J.get(record_value,
-      "complete")) && newer(time,
-      Index.get(successes,
-      key))?;
+    let update_success = J.truth(J.get(record_value, "complete")) && newer(
+      time,
+      Index.get(successes, key)
+    )?;
     if update_attempt || update_success
     {
       let normalized = Obs.canonical(record_value, time);
@@ -227,18 +248,23 @@ fn ingest(state: Replay,
       }
     }
   }
-  return result_ok(record < Replay >
-  {
-    expected: state["expected"], seen: seen, attempts: attempts, successes: successes, now: now
+  return result_ok(record<Replay>
+  { expected : state["expected"]
+  , seen     : seen
+  , attempts : attempts
+  , successes: successes
+  , now      : now
   });
 }
 
-fn materialize(rows: sexpr,
+fn materialize(
+  rows: sexpr,
   now: i64,
   max_age_seconds: i64,
   capacity: sexpr,
   attempts: sexpr,
-  successes: sexpr) -> Result < sexpr, sexpr >
+  successes: sexpr
+) -> Result < sexpr, sexpr >
 {
   let stamp = J.ascii(Clock.utc_text(now));
   # Share immutable default fields across cells. The matrix and report coexist
@@ -278,10 +304,10 @@ fn materialize(rows: sexpr,
       {
         reason_pair = J.member("reason", reason);
       }
-      tail_fields = sx_cons(reason_pair,
-        sx_cons(J.member("status",
-        status),
-        tail_fields));
+      tail_fields = sx_cons(
+        reason_pair,
+        sx_cons(J.member("status", status), tail_fields)
+      );
       attempt_pair = J.member("latest_attempt", attempt);
     }
     else
@@ -316,9 +342,10 @@ fn materialize(rows: sexpr,
     var success_pair = no_success;
     if ! J.absent(success)
     {
-      let receipt = Clock.parse(J.plain(J.get(success,
-        "received_at")),
-        "received_at")?;
+      let receipt = Clock.parse(
+        J.plain(J.get(success, "received_at")),
+        "received_at"
+      )?;
       let deadline = Clock.add_seconds(receipt, max_age_seconds);
       if deadline > Clock.latest()
       {
@@ -342,36 +369,44 @@ fn materialize(rows: sexpr,
     {
       none = none + 1;
     }
-    let fields = sx_cons(freshness_pair,
-      sx_cons(attempt_pair,
-      sx_cons(success_pair,
-      sx_cons(next_due,
-      tail_fields))));
+    let fields = sx_cons(
+      freshness_pair,
+      sx_cons(
+        attempt_pair,
+        sx_cons(success_pair, sx_cons(next_due, tail_fields))
+      )
+    );
     let cell = J.merge(row, fields);
     cells = sx_cons(cell, cells);
     rest = sx_tail(rest);
   }
-  let counts_by_status = tally(pending,
+  let counts_by_status = tally(
+    pending,
     priced,
     unavailable,
     unsupported,
-    failed);
+    failed
+  );
   let counts_by_freshness = freshness_tally(fresh, stale, none);
   var report_value = J.object(sx_nil());
-  report_value = J.set(report_value,
-    "kind",
-    J.ascii("caravansary.coverage@1"));
+  report_value = J.set(report_value, "kind", J.ascii("caravansary.coverage@1"));
   report_value = J.set(report_value, "as_of", stamp);
-  report_value = J.set(report_value,
+  report_value = J.set(
+    report_value,
     "max_age_seconds",
-    J.integer(max_age_seconds));
+    J.integer(max_age_seconds)
+  );
   report_value = J.set(report_value, "counts_by_status", counts_by_status);
-  report_value = J.set(report_value,
+  report_value = J.set(
+    report_value,
     "counts_by_freshness",
-    counts_by_freshness);
-  report_value = J.set(report_value,
+    counts_by_freshness
+  );
+  report_value = J.set(
+    report_value,
     "cells",
-    J.array(List.basis_list_rev(cells)));
+    J.array(List.basis_list_rev(cells))
+  );
   if ! J.absent(capacity) && ! J.is_null(capacity)
   {
     report_value = J.set(report_value, "capacity", capacity);
@@ -379,10 +414,12 @@ fn materialize(rows: sexpr,
   return result_ok(report_value);
 }
 
-fn fold_records(rows: sexpr,
+fn fold_records(
+  rows: sexpr,
   records: sexpr,
   as_of: string,
-  max_age_seconds: i64) -> Result < Winners, sexpr >
+  max_age_seconds: i64
+) -> Result < Winners, sexpr >
 {
   var state = start(rows, as_of, max_age_seconds)?;
   if ! J.is_array(records)
@@ -397,16 +434,19 @@ fn fold_records(rows: sexpr,
     state = ingest(state, sx_head(rest), number)?;
     rest = sx_tail(rest);
   }
-  return result_ok(record < Winners >
-  {
-    now: state["now"], attempts: state["attempts"], successes: state["successes"]
+  return result_ok(record<Winners>
+  { now      : state["now"]
+  , attempts : state["attempts"]
+  , successes: state["successes"]
   });
 }
 
-fn fold_lines(rows: sexpr,
+fn fold_lines(
+  rows: sexpr,
   raw_jsonl: string,
   as_of: string,
-  max_age_seconds: i64) -> Result < Winners, sexpr >
+  max_age_seconds: i64
+) -> Result < Winners, sexpr >
 {
   var state = start(rows, as_of, max_age_seconds)?;
   let size = text_len(raw_jsonl);
@@ -419,41 +459,50 @@ fn fold_lines(rows: sexpr,
     state = ingest(state, r, number)?;
     begin = next;
   }
-  return result_ok(record < Winners >
-  {
-    now: state["now"], attempts: state["attempts"], successes: state["successes"]
+  return result_ok(record<Winners>
+  { now      : state["now"]
+  , attempts : state["attempts"]
+  , successes: state["successes"]
   });
 }
 
 # All observations are validated, including ones ingested after as_of.
 # The caller scopes the log and supplies trusted planner rows and capacity.
-fn coverage(rows: sexpr,
+fn coverage(
+  rows: sexpr,
   records: sexpr,
   as_of: string,
   max_age_seconds: i64,
-  capacity: sexpr) -> Result < sexpr, sexpr >
+  capacity: sexpr
+) -> Result < sexpr, sexpr >
 {
   let state = fold_records(rows, records, as_of, max_age_seconds)?;
-  return materialize(rows,
+  return materialize(
+    rows,
     state["now"],
     max_age_seconds,
     capacity,
     state["attempts"],
-    state["successes"]);
+    state["successes"]
+  );
 }
 
 # Parse and validate in log order, keeping just the winners and unique IDs.
-fn report(rows: sexpr,
+fn report(
+  rows: sexpr,
   raw_jsonl: string,
   as_of: string,
   max_age_seconds: i64,
-  capacity: sexpr) -> Result < sexpr, sexpr >
+  capacity: sexpr
+) -> Result < sexpr, sexpr >
 {
   let state = fold_lines(rows, raw_jsonl, as_of, max_age_seconds)?;
-  return materialize(rows,
+  return materialize(
+    rows,
     state["now"],
     max_age_seconds,
     capacity,
     state["attempts"],
-    state["successes"]);
+    state["successes"]
+  );
 }

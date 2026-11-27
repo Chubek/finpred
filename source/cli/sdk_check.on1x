@@ -63,10 +63,10 @@ fn names(s: string) -> sexpr
       }
     }
   }
-  return L.basis_list_rev(sx_cons(sx_string(text_slice(s,
-    start,
-    text_len(s))),
-    items));
+  return L.basis_list_rev(sx_cons(
+    sx_string(text_slice(s, start, text_len(s))),
+    items
+  ));
 }
 
 fn unsigned(row: string, column: i64) -> i64
@@ -76,9 +76,10 @@ fn unsigned(row: string, column: i64) -> i64
 
 fn inspect(raw: string) -> D.Diagnostic
 {
-  if text_len(raw) > 16384 || ! ascii_csv(raw) || CSV.rows(raw) != 3 || CSV.line(raw,
-    0) != "finpred-sdk-check@1" || CSV.line(raw,
-    1) != header()
+  if text_len(raw) > 16384 || ! ascii_csv(raw) || CSV.rows(raw) != 3 || CSV.line(
+    raw,
+    0
+  ) != "finpred-sdk-check@1" || CSV.line(raw, 1) != header()
   {
     return invalid("use", "none");
   }
@@ -147,26 +148,33 @@ fn inspect(raw: string) -> D.Diagnostic
   {
     return invalid("host", "output_bytes_max");
   }
-  let limits = record < P.Limits >
-  {
-    csv_rows: csv_rows, bytes_per_input: bytes_per_input, rooms_per_property: rooms_per_property, maximum_rooms: maximum_rooms, adults: adults, children: children, search_budget_max: search_budget_max, runs_per_call: runs_per_call, data_rows: data_rows, columns: columns, output_bytes_max: output_bytes_max
+  let limits = record<P.Limits>
+  { csv_rows          : csv_rows
+  , bytes_per_input   : bytes_per_input
+  , rooms_per_property: rooms_per_property
+  , maximum_rooms     : maximum_rooms
+  , adults            : adults
+  , children          : children
+  , search_budget_max : search_budget_max
+  , runs_per_call     : runs_per_call
+  , data_rows         : data_rows
+  , columns           : columns
+  , output_bytes_max  : output_bytes_max
   };
-  let use = record < P.Use >
-  {
-    sdk_version: sdk, package_version: sx_string(CSV.field(row,
-      2)), kind: sx_string(CSV.field(row,
-      3)), output: sx_string(CSV.field(row,
-      4)), mode: sx_string(CSV.field(row,
-      5)), effect: sx_string(CSV.field(row,
-      6)), inputs: names(CSV.field(row,
-      7)), requested: names(CSV.field(row,
-      8))
+  let use = record<P.Use>
+  { sdk_version    : sdk
+  , package_version: sx_string(CSV.field(row, 2))
+  , kind           : sx_string(CSV.field(row, 3))
+  , output         : sx_string(CSV.field(row, 4))
+  , mode           : sx_string(CSV.field(row, 5))
+  , effect         : sx_string(CSV.field(row, 6))
+  , inputs         : names(CSV.field(row, 7))
+  , requested      : names(CSV.field(row, 8))
   };
-  let host = record < P.Host >
-  {
-    dependencies: names(CSV.field(row,
-      9)), grants: names(CSV.field(row,
-      10)), ceilings: limits
+  let host = record<P.Host>
+  { dependencies: names(CSV.field(row, 9))
+  , grants      : names(CSV.field(row, 10))
+  , ceilings    : limits
   };
   return D.check_v1(CSV.field(row, 0), use, host);
 }

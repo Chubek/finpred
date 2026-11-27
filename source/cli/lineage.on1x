@@ -59,12 +59,14 @@ fn policy(out: buffer, profile: string)
   field(out, "guardrail", "yieldcraft.floor-cap-movement-intersection@1");
 }
 
-fn start(out: buffer,
+fn start(
+  out: buffer,
   scenario: string,
   offers: string,
   valuation: string,
   strategy: string,
-  profile: string)
+  profile: string
+)
 {
   buffer_append(out, "finpred-run-lineage@2\n");
   policy(out, profile);

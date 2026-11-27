@@ -4,12 +4,14 @@ import core.contracts as C;
 import std.os.CommandLine as Env;
 import std.io.TextIO as IO;
 # This callback is a test policy, not a linked plugin.
-fn evaluate(s: C.Scenario,
+fn evaluate(
+  s: C.Scenario,
   v: C.Valuation,
   offers: string,
   profile: string,
   collect: bool,
-  evidence: buffer) -> C.Recommendation
+  evidence: buffer
+) -> C.Recommendation
 {
   let test = Env.basis_command_line_get_env("RUNNER_CASE");
   if test != "premium" && test != "out_of_range" && test != "over_budget" && test != "negative_search"
@@ -33,9 +35,18 @@ fn evaluate(s: C.Scenario,
   {
     searched = 0 - 1;
   }
-  return record < C.Recommendation >
-  {
-    intended_bps: 7500, selected_bps: 7500, intended_cents: price, lower_cents: price, candidate_cents: price, recommended_cents: price, property_count: 5, rejected: 0, infeasible: 0, search_nodes: searched, reason: sx_string("test")
+  return record<C.Recommendation>
+  { intended_bps     : 7500
+  , selected_bps     : 7500
+  , intended_cents   : price
+  , lower_cents      : price
+  , candidate_cents  : price
+  , recommended_cents: price
+  , property_count   : 5
+  , rejected         : 0
+  , infeasible       : 0
+  , search_nodes     : searched
+  , reason           : sx_string("test")
   };
 }
 
@@ -52,27 +63,33 @@ fn main() -> i64
   var mode = "recommendation";
   if test == "algorithm_effect"
   {
-    algorithm = G.make_node(3,
+    algorithm = G.make_node(
+      3,
       "algorithm",
       "hospitality.offer@1",
       "pricing.distribution@1",
-      "read");
+      "read"
+    );
   }
   if test == "output_effect"
   {
-    output = G.make_node(6,
+    output = G.make_node(
+      6,
       "output",
       "pricing.recommendation@1",
       "pricing.recommendation@1",
-      "external_action");
+      "external_action"
+    );
   }
   if test == "gate_edge"
   {
-    gate = G.make_node(5,
+    gate = G.make_node(
+      5,
       "gate",
       "pricing.distribution@1",
       "pricing.recommendation@1",
-      "pure");
+      "pure"
+    );
   }
   if test == "gate_order"
   {
@@ -86,9 +103,15 @@ fn main() -> i64
   {
     mode = test;
   }
-  let plan = record < G.Plan >
-  {
-    input: premium["input"], source: premium["source"], transform: premium["transform"], algorithm: algorithm, strategy: premium["strategy"], gate: gate, output: output, profile: policy
+  let plan = record<G.Plan>
+  { input    : premium["input"]
+  , source   : premium["source"]
+  , transform: premium["transform"]
+  , algorithm: algorithm
+  , strategy : premium["strategy"]
+  , gate     : gate
+  , output   : output
+  , profile  : policy
   };
   var scenario = "";
   var offers = "";
@@ -100,14 +123,16 @@ fn main() -> i64
     valuation = IO.basis_text_io_input_all(Env.basis_command_line_get_env("RUNNER_VALUATION"));
   }
   let evidence = buffer_new();
-  let result = Runner.run(plan,
+  let result = Runner.run(
+    plan,
     mode,
     scenario,
     offers,
     valuation,
     true,
     evidence,
-    evaluate);
+    evaluate
+  );
   let r = result["recommendation"];
   assert(buffer_text(evidence) == "test witness\n");
   println(r["intended_bps"]);

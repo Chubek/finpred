@@ -49,17 +49,21 @@ fn main() -> i64
   {
     tool_fail("feed permission: decode digest mismatch");
   }
-  let values = Sources.value(capture,
-    Sources.value(raw,
-    Sources.value(decode,
-    sx_nil())));
-  let result = Sources.invoke_values(Sources.public_key(),
+  let values = Sources.value(
+    capture,
+    Sources.value(raw, Sources.value(decode, sx_nil()))
+  );
+  let result = Sources.invoke_values(
+    Sources.public_key(),
     "analysis",
     values,
-    sx_text(grant["cutoff"]));
-  IO.basis_text_io_print(Permission.evidence(grant,
+    sx_text(grant["cutoff"])
+  );
+  IO.basis_text_io_print(Permission.evidence(
+    grant,
     policy,
     now,
-    sx_text(result["bytes"])));
+    sx_text(result["bytes"])
+  ));
   return 0;
 }

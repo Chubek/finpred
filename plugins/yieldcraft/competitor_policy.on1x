@@ -5,13 +5,29 @@ import core.competitor as C;
 import core.csv as CSV;
 import core.money as Money;
 record Policy
-{
-  id: i64, curve: sexpr, near: i64, far: i64, horizon: i64, shape: i64, knot: i64, weighted: bool, lower: i64, shortcut: sexpr, threshold: i64, floor: i64, cap: i64
+{ id       : i64
+, curve    : sexpr
+, near     : i64
+, far      : i64
+, horizon  : i64
+, shape    : i64
+, knot     : i64
+, weighted : bool
+, lower    : i64
+, shortcut : sexpr
+, threshold: i64
+, floor    : i64
+, cap      : i64
 }
 
 record Decision
-{
-  target: i64, intended: i64, lower: i64, selected: i64, candidate: i64, price: i64, reason: sexpr
+{ target   : i64
+, intended : i64
+, lower    : i64
+, selected : i64
+, candidate: i64
+, price    : i64
+, reason   : sexpr
 }
 
 fn parse(row: string) -> Policy
@@ -66,9 +82,20 @@ fn parse(row: string) -> Policy
   {
     tool_fail("competitor policy: invalid shortcut");
   }
-  return record < Policy >
-  {
-    id: id, curve: sx_string(curve), near: near, far: far, horizon: horizon, shape: shape, knot: knot, weighted: method == "weighted", lower: lower, shortcut: sx_string(shortcut), threshold: threshold, floor: floor, cap: cap
+  return record<Policy>
+  { id       : id
+  , curve    : sx_string(curve)
+  , near     : near
+  , far      : far
+  , horizon  : horizon
+  , shape    : shape
+  , knot     : knot
+  , weighted : method == "weighted"
+  , lower    : lower
+  , shortcut : sx_string(shortcut)
+  , threshold: threshold
+  , floor    : floor
+  , cap      : cap
   };
 }
 
@@ -84,8 +111,10 @@ fn power(base: i64, exponent: i64) -> i64
 
 fn interpolate(a: i64, b: i64, numerator: i64, denominator: i64) -> i64
 {
-  return Money.half_up(a * (denominator - numerator) + b * numerator,
-    denominator);
+  return Money.half_up(
+    a * (denominator - numerator) + b * numerator,
+    denominator
+  );
 }
 
 fn target(p: Policy, lead: i64) -> i64
@@ -120,20 +149,23 @@ fn target(p: Policy, lead: i64) -> i64
     # Normalized powers of two; linear interpolation between adjacent knots.
     let step = power(2, lead * shape / horizon);
     let fraction = (lead * shape) % horizon;
-    return interpolate(near,
+    return interpolate(
+      near,
       far,
       (step - 1) * horizon + step * fraction,
-      (power(2,
-      shape) - 1) * horizon);
+      (power(2, shape) - 1) * horizon
+    );
   }
   return interpolate(near, far, lead, horizon);
 }
 
-fn quantile(p: Policy,
+fn quantile(
+  p: Policy,
   prices: i64,
   weights: i64,
   count: i64,
-  percentile: i64) -> i64
+  percentile: i64
+) -> i64
 {
   if p["weighted"]
   {
@@ -142,11 +174,13 @@ fn quantile(p: Policy,
   return Q.type7(prices, count, percentile);
 }
 
-fn decide(p: Policy,
+fn decide(
+  p: Policy,
   lead: i64,
   prices: i64,
   weights: i64,
-  count: i64) -> Decision
+  count: i64
+) -> Decision
 {
   let bps = target(p, lead);
   let intended = quantile(p, prices, weights, count, bps);
@@ -167,8 +201,13 @@ fn decide(p: Policy,
   {
     reason = "guardrail_adjustment";
   }
-  return record < Decision >
-  {
-    target: bps, intended: intended, lower: lower, selected: selected, candidate: candidate, price: price, reason: sx_string(reason)
+  return record<Decision>
+  { target   : bps
+  , intended : intended
+  , lower    : lower
+  , selected : selected
+  , candidate: candidate
+  , price    : price
+  , reason   : sx_string(reason)
   };
 }

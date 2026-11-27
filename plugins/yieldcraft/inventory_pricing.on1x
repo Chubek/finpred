@@ -60,9 +60,10 @@ fn solve(raw: string) -> string
     tool_fail("inventory pricing: requires 1..12 periods with 1..8 candidates each");
   }
   CSV.header(CSV.line(raw, 0), "pricing.inventory-input@1");
-  CSV.header(CSV.line(raw,
-    1),
-    "initial_stock,unit_cost_minor,terminal_stock_value_minor");
+  CSV.header(
+    CSV.line(raw, 1),
+    "initial_stock,unit_cost_minor,terminal_stock_value_minor"
+  );
   let meta = CSV.line(raw, 2);
   CSV.require_width(meta, 3);
   let stock = number(meta, 0, stock_limit());
@@ -157,10 +158,14 @@ fn solve(raw: string) -> string
   let value = F.num(initial);
   let increment = F.num(initial - stock * terminal * scale);
   let grid_scale = F.num(scale);
-  buffer_append(out,
-    "{\"kind\":\"pricing.inventory-policy\",\"version\":1,\"published\":false,\"scale\":$grid_scale,\"initial_stock\":$initial_stock,\"periods\":$horizon,");
-  buffer_append(out,
-    "\"unit_cost_minor\":$c,\"terminal_stock_value_minor\":$end_value,\"initial_expected_value_minor_milli\":$value,\"initial_expected_incremental_over_hold_minor_milli\":$increment,\"states\":[");
+  buffer_append(
+    out,
+    "{\"kind\":\"pricing.inventory-policy\",\"version\":1,\"published\":false,\"scale\":$grid_scale,\"initial_stock\":$initial_stock,\"periods\":$horizon,"
+  );
+  buffer_append(
+    out,
+    "\"unit_cost_minor\":$c,\"terminal_stock_value_minor\":$end_value,\"initial_expected_value_minor_milli\":$value,\"initial_expected_incremental_over_hold_minor_milli\":$increment,\"states\":["
+  );
   for t in 0 .. periods
   {
     let period = F.num(t + 1);
@@ -174,19 +179,25 @@ fn solve(raw: string) -> string
       let choice = A.basis_array_sub(choices, idx);
       let remain = F.num(s);
       let state_value = F.num(A.basis_array_sub(values, idx));
-      buffer_append(out,
-        "{\"period\":$period,\"stock\":$remain,\"expected_value_minor_milli\":$state_value,");
+      buffer_append(
+        out,
+        "{\"period\":$period,\"stock\":$remain,\"expected_value_minor_milli\":$state_value,"
+      );
       if choice < 0
       {
-        buffer_append(out,
-          "\"action\":\"hold\",\"price_minor\":null,\"net_sale_bps\":null}");
+        buffer_append(
+          out,
+          "\"action\":\"hold\",\"price_minor\":null,\"net_sale_bps\":null}"
+        );
       }
       else
       {
         let p = F.num(A.basis_array_sub(price, choice));
         let q = F.num(A.basis_array_sub(probability, choice));
-        buffer_append(out,
-          "\"action\":\"offer\",\"price_minor\":$p,\"net_sale_bps\":$q}");
+        buffer_append(
+          out,
+          "\"action\":\"offer\",\"price_minor\":$p,\"net_sale_bps\":$q}"
+        );
       }
     }
   }

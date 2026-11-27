@@ -1,15 +1,21 @@
 # Closed-by-default On1x extension descriptor policy (MVP).
 # No arbitrary native DLLs, Lua, filesystem, network, brokerage or publishing.
 record Descriptor
-{
-  name: sexpr, sdk_version: i64, kind: sexpr, contract: sexpr, effect: sexpr
+{ name       : sexpr
+, sdk_version: i64
+, kind       : sexpr
+, contract   : sexpr
+, effect     : sexpr
 }
 
 fn yieldcraft_descriptor() -> Descriptor
 {
-  return record < Descriptor >
-  {
-    name: sx_string("yieldcraft.percentile"), sdk_version: 1, kind: sx_string("Strategy"), contract: sx_string("pricing.recommendation@1"), effect: sx_string("pure")
+  return record<Descriptor>
+  { name       : sx_string("yieldcraft.percentile")
+  , sdk_version: 1
+  , kind       : sx_string("Strategy")
+  , contract   : sx_string("pricing.recommendation@1")
+  , effect     : sx_string("pure")
   };
 }
 
@@ -32,9 +38,10 @@ fn admit(plugin: Descriptor, mode: string) -> bool
   {
     return false;
   }
-  if ! text_is(plugin["kind"],
-    "Strategy") || ! text_is(plugin["contract"],
-    "pricing.recommendation@1")
+  if ! text_is(plugin["kind"], "Strategy") || ! text_is(
+    plugin["contract"],
+    "pricing.recommendation@1"
+  )
   {
     return false;
   }

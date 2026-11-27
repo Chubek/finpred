@@ -1,8 +1,7 @@
 # Build-host GrammarEmbed compiles these trusted declarations into ordinary
 # On1x lexers and parsers. Strategy files never register a PPX.
 import std.collections.List as L;
-@GrammarEmbed("grammar",
-  r!"""grammar FixedOttomat :lexer<dfa> :parser<lalr1> {
+@GrammarEmbed("grammar", r!"""grammar FixedOttomat :lexer<dfa> :parser<lalr1> {
   token CONTRACT { [a-z][-_a-z0-9]* '.' [a-z][-_a-z0-9]* '@1' }
   token ATOM { [!-~]+ }
   token EOL { \r?\n }
@@ -18,8 +17,7 @@ import std.collections.List as L;
 {
 }
 
-@GrammarEmbed("grammar",
-  r!"""grammar ScalarOttomat :lexer<dfa> :parser<lalr1> {
+@GrammarEmbed("grammar", r!"""grammar ScalarOttomat :lexer<dfa> :parser<lalr1> {
   token ATOM { [!-~]+ }
   token EOL { \n }
   rule TOP { <header> <input> <input> <effect> (<import> | <binding>)* <output> }

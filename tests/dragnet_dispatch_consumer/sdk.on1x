@@ -81,12 +81,14 @@ fn fx(trial: string) -> i64
   }
   if trial == "fx-verify"
   {
-    if FX.verifies(snapshot,
+    if FX.verifies(
+      snapshot,
       parent,
       cutoff,
       base,
       quote_currency,
-      payload("DRAGNET_SDK_2"))
+      payload("DRAGNET_SDK_2")
+    )
     {
       return 0;
     }
@@ -128,8 +130,10 @@ fn main() -> i64
   }
   if trial == "identity" || trial == "bundle-digest"
   {
-    let(status,
-      hash) = Crypto.basis_crypto_blake3(payload("DRAGNET_SDK_BUNDLE"));
+    let(
+      status,
+      hash
+    ) = Crypto.basis_crypto_blake3(payload("DRAGNET_SDK_BUNDLE"));
     if trial == "bundle-digest" && status == 0
     {
       println(hash);
@@ -146,13 +150,17 @@ fn main() -> i64
   if key == "dragnet.frozen_csv@1"
   {
     let ports = d["inputs"];
-    if ! port_matches(sx_head(ports),
+    if ! port_matches(
+      sx_head(ports),
       "scenario",
       "hospitality.scenario",
-      2000000) || ! port_matches(sx_head(sx_tail(ports)),
+      2000000
+    ) || ! port_matches(
+      sx_head(sx_tail(ports)),
       "offers",
       "finpred.offers.csv",
-      2000000) || sx_kind(sx_tail(sx_tail(ports))) != 0 || d["max_work"] != 1
+      2000000
+    ) || sx_kind(sx_tail(sx_tail(ports))) != 0 || d["max_work"] != 1
     {
       return 92;
     }
@@ -173,42 +181,48 @@ fn main() -> i64
     if key == "dragnet.crossref@1"
     {
       let ports = d["inputs"];
-      if ! port_matches(SDK.port_at(ports,
-        0),
+      if ! port_matches(
+        SDK.port_at(ports, 0),
         "request",
         "dragnet.crossref-request",
-        1024) || ! port_matches(SDK.port_at(ports,
-        1),
+        1024
+      ) || ! port_matches(
+        SDK.port_at(ports, 1),
         "search_raw",
         "dragnet.crossref-search-json",
-        262144) || ! port_matches(SDK.port_at(ports,
-        2),
+        262144
+      ) || ! port_matches(
+        SDK.port_at(ports, 2),
         "work_raw",
         "dragnet.crossref-work-json",
-        262144) || ! port_matches(SDK.port_at(ports,
-        3),
+        262144
+      ) || ! port_matches(
+        SDK.port_at(ports, 3),
         "search_decode",
         "dragnet.crossref-search-decode",
-        16384) || ! port_matches(SDK.port_at(ports,
-        4),
+        16384
+      ) || ! port_matches(
+        SDK.port_at(ports, 4),
         "work_decode",
         "dragnet.crossref-work-decode",
-        16384) || sx_kind(SDK.port_at(ports,
-        5)) != 0
+        16384
+      ) || sx_kind(SDK.port_at(ports, 5)) != 0
       {
         return 96;
       }
-      inputs = sx_cons(SDK.value_entry(1,
-        payload("DRAGNET_SDK_1")),
-        sx_cons(SDK.value_entry(1,
-        payload("DRAGNET_SDK_2")),
-        sx_cons(SDK.value_entry(1,
-        payload("DRAGNET_SDK_3")),
-        sx_cons(SDK.value_entry(1,
-        payload("DRAGNET_SDK_4")),
-        sx_cons(SDK.value_entry(1,
-        payload("DRAGNET_SDK_5")),
-        sx_nil())))));
+      inputs = sx_cons(
+        SDK.value_entry(1, payload("DRAGNET_SDK_1")),
+        sx_cons(
+          SDK.value_entry(1, payload("DRAGNET_SDK_2")),
+          sx_cons(
+            SDK.value_entry(1, payload("DRAGNET_SDK_3")),
+            sx_cons(
+              SDK.value_entry(1, payload("DRAGNET_SDK_4")),
+              sx_cons(SDK.value_entry(1, payload("DRAGNET_SDK_5")), sx_nil())
+            )
+          )
+        )
+      );
     }
     else
     {
@@ -220,26 +234,32 @@ fn main() -> i64
         raw_kind = "dragnet.eurostat-jsonstat";
         decode_kind = "dragnet.eurostat-decode";
       }
-      if ! port_matches(sx_head(ports),
+      if ! port_matches(
+        sx_head(ports),
         "capture",
         "dragnet.feed-capture",
-        512) || ! port_matches(sx_head(sx_tail(ports)),
+        512
+      ) || ! port_matches(
+        sx_head(sx_tail(ports)),
         "raw",
         raw_kind,
-        65536) || ! port_matches(sx_head(sx_tail(sx_tail(ports))),
+        65536
+      ) || ! port_matches(
+        sx_head(sx_tail(sx_tail(ports))),
         "decode",
         decode_kind,
-        4096) || sx_kind(sx_tail(sx_tail(sx_tail(ports)))) != 0
+        4096
+      ) || sx_kind(sx_tail(sx_tail(sx_tail(ports)))) != 0
       {
         return 93;
       }
-      inputs = sx_cons(SDK.value_entry(1,
-        payload("DRAGNET_SDK_1")),
-        sx_cons(SDK.value_entry(1,
-        payload("DRAGNET_SDK_2")),
-        sx_cons(SDK.value_entry(1,
-        payload("DRAGNET_SDK_3")),
-        sx_nil())));
+      inputs = sx_cons(
+        SDK.value_entry(1, payload("DRAGNET_SDK_1")),
+        sx_cons(
+          SDK.value_entry(1, payload("DRAGNET_SDK_2")),
+          sx_cons(SDK.value_entry(1, payload("DRAGNET_SDK_3")), sx_nil())
+        )
+      );
     }
   }
   if trial == "legacy"
@@ -256,13 +276,19 @@ fn main() -> i64
   {
     policy = sx_string("blake3:0000000000000000000000000000000000000000000000000000000000000000");
   }
-  let pin = record < SDK.Pin >
-  {
-    package_name: p["package_name"], package_version: p["package_version"], handler_name: p["handler_name"], handler_version: p["handler_version"], abi: p["abi"], code_digest: p["code_digest"], policy_digest: policy
+  let pin = record<SDK.Pin>
+  { package_name   : p["package_name"]
+  , package_version: p["package_version"]
+  , handler_name   : p["handler_name"]
+  , handler_version: p["handler_version"]
+  , abi            : p["abi"]
+  , code_digest    : p["code_digest"]
+  , policy_digest  : policy
   };
-  let request = record < SDK.Request >
-  {
-    inputs: inputs, cutoff: sx_string(env("DRAGNET_SDK_CUTOFF")), work: work
+  let request = record<SDK.Request>
+  { inputs: inputs
+  , cutoff: sx_string(env("DRAGNET_SDK_CUTOFF"))
+  , work  : work
   };
   let result = SDK.invoke(pin, mode, request, Sources.lookup, Sources.call);
   if result["status"] != 0

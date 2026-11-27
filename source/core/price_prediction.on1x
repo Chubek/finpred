@@ -1,29 +1,37 @@
 # Pure calculation over prefiltered price observations. This is a forecast of
 # the observed price series, not a recommendation, demand forecast or action.
 import core.csv as CSV;
-extern fn finpred_on1x_price_predict(history: string,
+extern fn finpred_on1x_price_predict(
+  history: string,
   model: string,
   horizon: i64,
-  season: i64) -> string;
+  season: i64
+) -> string;
 extern fn finpred_on1x_price_history_count(history: string) -> i64;
 extern fn finpred_on1x_price_measure(rows: string) -> string;
 record Prediction
-{
-  status: sexpr, observations: i64, point_minor: i64, dispersion_minor: i64
+{ status          : sexpr
+, observations    : i64
+, point_minor     : i64
+, dispersion_minor: i64
 }
 
 fn rejected(status: string) -> Prediction
 {
-  return record < Prediction >
-  {
-    status: sx_string(status), observations: 0, point_minor: 0, dispersion_minor: 0
+  return record<Prediction>
+  { status          : sx_string(status)
+  , observations    : 0
+  , point_minor     : 0
+  , dispersion_minor: 0
   };
 }
 
-fn predict(history: string,
+fn predict(
+  history: string,
   model: string,
   horizon: i64,
-  season: i64) -> Prediction
+  season: i64
+) -> Prediction
 {
   let wire = finpred_on1x_price_predict(history, model, horizon, season);
   if CSV.columns(wire) != 3
@@ -36,11 +44,11 @@ fn predict(history: string,
   {
     dispersion = CSV.nat(spread);
   }
-  return record < Prediction >
-  {
-    status: sx_string("ok"), observations: CSV.nat(CSV.field(wire,
-      0)), point_minor: CSV.nat(CSV.field(wire,
-      1)), dispersion_minor: dispersion
+  return record<Prediction>
+  { status          : sx_string("ok")
+  , observations    : CSV.nat(CSV.field(wire, 0))
+  , point_minor     : CSV.nat(CSV.field(wire, 1))
+  , dispersion_minor: dispersion
   };
 }
 

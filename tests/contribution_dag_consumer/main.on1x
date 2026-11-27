@@ -48,20 +48,17 @@ fn main() -> i64
   let demand = file("DEMAND");
   let cutoff = env("CUTOFF");
   let strategy = sx_string(G.digest("contribution DAG test policy context"));
-  let ctx = record < Run.Context >
-  {
-    cutoff: sx_string(cutoff), strategy_digest: strategy
+  let ctx = record<Run.Context>
+  { cutoff         : sx_string(cutoff)
+  , strategy_digest: strategy
   };
-  let roots = sx_cons(Run.input("scenario",
-    1,
-    scenario),
-    sx_cons(Run.input("valuation",
-    1,
-    valuation),
-    sx_cons(Run.input("demand",
-    1,
-    demand),
-    sx_nil())));
+  let roots = sx_cons(
+    Run.input("scenario", 1, scenario),
+    sx_cons(
+      Run.input("valuation", 1, valuation),
+      sx_cons(Run.input("demand", 1, demand), sx_nil())
+    )
+  );
   var mode = "recommendation";
   var budget = Contribution.budget();
   if task == "analysis"
@@ -97,18 +94,19 @@ fn main() -> i64
   {
     let s = C.scenario_csv(scenario);
     let v = C.valuation_csv(valuation, s);
-    let previous = Policy.decide(s,
+    let previous = Policy.decide(
+      s,
       v,
-      text_slice(G.digest(scenario),
-      7,
-      71),
-      demand);
+      text_slice(G.digest(scenario), 7, 71),
+      demand
+    );
     if output != Contribution.encode(previous)
     {
       tool_fail("current policy and DAG decision differ");
     }
     let expected = Run.expectation(result);
-    let replay = Run.replay(graph,
+    let replay = Run.replay(
+      graph,
       roots,
       ctx,
       mode,
@@ -116,7 +114,8 @@ fn main() -> i64
       resolve,
       call,
       result["graph_digest"],
-      expected);
+      expected
+    );
     if sx_text(replay["status"]) != "ok"
     {
       tool_fail("contribution evidence did not replay");
@@ -133,17 +132,15 @@ fn main() -> i64
       }
       alternate = text_slice(demand, 0, end);
     }
-    let changed = sx_cons(Run.input("scenario",
-      1,
-      scenario),
-      sx_cons(Run.input("valuation",
-      1,
-      valuation),
-      sx_cons(Run.input("demand",
-      1,
-      alternate),
-      sx_nil())));
-    let rejected = Run.replay(graph,
+    let changed = sx_cons(
+      Run.input("scenario", 1, scenario),
+      sx_cons(
+        Run.input("valuation", 1, valuation),
+        sx_cons(Run.input("demand", 1, alternate), sx_nil())
+      )
+    );
+    let rejected = Run.replay(
+      graph,
       changed,
       ctx,
       mode,
@@ -151,7 +148,8 @@ fn main() -> i64
       resolve,
       call,
       result["graph_digest"],
-      expected);
+      expected
+    );
     if sx_text(rejected["status"]) != "replay_mismatch"
     {
       tool_fail("different frozen demand replay was not rejected");

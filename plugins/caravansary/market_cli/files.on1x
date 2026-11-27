@@ -29,9 +29,10 @@ fn root_paths(inputs: sexpr) -> sexpr
   {
     let path = sx_text(sx_head(rest));
     check_path(path, "--input-root");
-    roots = sx_cons(sx_string(Paths.directory(Path.basis_path_join(cwd,
-      path))),
-      roots);
+    roots = sx_cons(
+      sx_string(Paths.directory(Path.basis_path_join(cwd, path))),
+      roots
+    );
     rest = sx_tail(rest);
   }
   return roots;

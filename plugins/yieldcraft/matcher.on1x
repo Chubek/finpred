@@ -6,8 +6,17 @@ import core.contracts as Contract;
 import core.format as F;
 import std.collections.Array as A;
 record Pool
-{
-  properties: i64, rooms: i64, adults: i64, children: i64, capacity: i64, gross: i64, count: i64, rejected: i64, evidence: bool, source_rows: i64, source_properties: i64
+{ properties       : i64
+, rooms            : i64
+, adults           : i64
+, children         : i64
+, capacity         : i64
+, gross            : i64
+, count            : i64
+, rejected         : i64
+, evidence         : bool
+, source_rows      : i64
+, source_properties: i64
 }
 
 # Decimal CSV fields after the first field on each audit line.
@@ -17,10 +26,12 @@ fn field(out: buffer, n: i64)
   buffer_append(out, F.num(n));
 }
 
-fn ingest_mode(csv: string,
+fn ingest_mode(
+  csv: string,
   scenario: Contract.Scenario,
   collect: bool,
-  out: buffer) -> Pool
+  out: buffer
+) -> Pool
 {
   if text_len(csv) > 2000000
   {
@@ -31,9 +42,10 @@ fn ingest_mode(csv: string,
   {
     tool_fail("offers: expected 1..512 rows");
   }
-  CSV.header(CSV.line(csv,
-    0),
-    "property_id,room_id,arrival,departure,adult_cap,child_cap,total_cap,total_cents,fees_cents,taxes_cents,currency,observed_at,ingested_at,valid_from,valid_to,bookable");
+  CSV.header(
+    CSV.line(csv, 0),
+    "property_id,room_id,arrival,departure,adult_cap,child_cap,total_cap,total_cents,fees_cents,taxes_cents,currency,observed_at,ingested_at,valid_from,valid_to,bookable"
+  );
   let property = A.basis_array_array(512, 0);
   let room = A.basis_array_array(512, 0);
   let adult = A.basis_array_array(512, 0);
@@ -71,9 +83,13 @@ fn ingest_mode(csv: string,
     }
     for j in 0 .. n
     {
-      if A.basis_array_sub(property,
-        j) == offer["property_id"] && A.basis_array_sub(room,
-        j) == offer["room_id"]
+      if A.basis_array_sub(
+        property,
+        j
+      ) == offer["property_id"] && A.basis_array_sub(
+        room,
+        j
+      ) == offer["room_id"]
       {
         tool_fail("offers: duplicate bookable room inventory unit");
       }
@@ -90,9 +106,18 @@ fn ingest_mode(csv: string,
     }
     n = n + 1;
   }
-  return record < Pool >
-  {
-    properties: property, rooms: room, adults: adult, children: child, capacity: total, gross: gross, count: n, rejected: rejected, evidence: collect, source_rows: source_rows, source_properties: source_properties
+  return record<Pool>
+  { properties       : property
+  , rooms            : room
+  , adults           : adult
+  , children         : child
+  , capacity         : total
+  , gross            : gross
+  , count            : n
+  , rejected         : rejected
+  , evidence         : collect
+  , source_rows      : source_rows
+  , source_properties: source_properties
   };
 }
 
@@ -101,9 +126,11 @@ fn ingest(csv: string, scenario: Contract.Scenario) -> Pool
   return ingest_mode(csv, scenario, false, buffer_new());
 }
 
-fn ingest_with_evidence(csv: string,
+fn ingest_with_evidence(
+  csv: string,
   scenario: Contract.Scenario,
-  out: buffer) -> Pool
+  out: buffer
+) -> Pool
 {
   return ingest_mode(csv, scenario, true, out);
 }
@@ -130,12 +157,14 @@ fn chosen(mask: i64, bit: i64) -> bool
 
 # Each selected room must contain >=1 adult. Both room total capacity
 # and separate adult/child capacities are respected exactly.
-fn occupancy(pool: Pool,
+fn occupancy(
+  pool: Pool,
   indices: i64,
   count: i64,
   mask: i64,
   scenario: Contract.Scenario,
-  collect: bool) -> i64
+  collect: bool
+) -> i64
 {
   let adults = scenario["adults"];
   let children = scenario["children"];
@@ -177,9 +206,11 @@ fn occupancy(pool: Pool,
                     # encodes (1..8 adults,0..8 children); <=4 such rooms.
                     if A.basis_array_sub(next, dest) == 0
                     {
-                      A.basis_array_update(next,
+                      A.basis_array_update(
+                        next,
                         dest,
-                        prefix * 81 + add_a * 9 + add_c);
+                        prefix * 81 + add_a * 9 + add_c
+                      );
                     }
                   }
                 }
@@ -198,11 +229,13 @@ fn occupancy(pool: Pool,
   return answer;
 }
 
-fn property_line(out: buffer,
+fn property_line(
+  out: buffer,
   property_id: i64,
   status: string,
   n: i64,
-  inspected: i64)
+  inspected: i64
+)
 {
   buffer_append(out, "property=");
   buffer_append(out, F.num(property_id));
@@ -213,7 +246,8 @@ fn property_line(out: buffer,
   buffer_append(out, "\n");
 }
 
-fn bundle_lines(out: buffer,
+fn bundle_lines(
+  out: buffer,
   pool: Pool,
   property_id: i64,
   indices: i64,
@@ -221,7 +255,8 @@ fn bundle_lines(out: buffer,
   mask: i64,
   code: i64,
   price: i64,
-  rooms: i64)
+  rooms: i64
+)
 {
   buffer_append(out, "bundle=");
   buffer_append(out, F.num(property_id));
@@ -255,14 +290,14 @@ fn bundle_lines(out: buffer,
 }
 
 # Result price=-2 signals exhausted search budget, price=-1 unbookable.
-fn one_property(pool: Pool,
+fn one_property(
+  pool: Pool,
   property_id: i64,
   scenario: Contract.Scenario,
   remaining_budget: i64,
   collect: bool,
-  out: buffer) ->(i64,
-  i64,
-  i64)
+  out: buffer
+) ->(i64, i64, i64)
 {
   let indices = A.basis_array_array(10, 0);
   var n = 0;
@@ -330,7 +365,8 @@ fn one_property(pool: Pool,
     else
     {
       property_line(out, property_id, "matched", n, inspected);
-      bundle_lines(out,
+      bundle_lines(
+        out,
         pool,
         property_id,
         indices,
@@ -338,7 +374,8 @@ fn one_property(pool: Pool,
         best_mask,
         best_code,
         best,
-        best_rooms);
+        best_rooms
+      );
     }
   }
   A.basis_array_destroy(indices);
@@ -346,8 +383,11 @@ fn one_property(pool: Pool,
 }
 
 record Distribution
-{
-  prices: i64, count: i64, rejected: i64, infeasible: i64, examined: i64
+{ prices    : i64
+, count     : i64
+, rejected  : i64
+, infeasible: i64
+, examined  : i64
 }
 
 # Report properties omitted entirely by the eligibility filter, without
@@ -386,10 +426,12 @@ fn rejected_properties(out: buffer, pool: Pool)
   }
 }
 
-fn distribution_mode(pool: Pool,
+fn distribution_mode(
+  pool: Pool,
   scenario: Contract.Scenario,
   collect: bool,
-  out: buffer) -> Distribution
+  out: buffer
+) -> Distribution
 {
   if collect && ! pool["evidence"]
   {
@@ -414,14 +456,14 @@ fn distribution_mode(pool: Pool,
     {
       continue;
     }
-    let(price,
-      rooms,
-      steps) = one_property(pool,
+    let(price, rooms, steps) = one_property(
+      pool,
       property,
       scenario,
       scenario["search_budget"] - examined,
       collect,
-      out);
+      out
+    );
     examined = examined + steps;
     if price == - 2
     {
@@ -453,9 +495,12 @@ fn distribution_mode(pool: Pool,
       buffer_append(out, ",adequate\n");
     }
   }
-  return record < Distribution >
-  {
-    prices: result, count: n, rejected: pool["rejected"], infeasible: infeasible, examined: examined
+  return record<Distribution>
+  { prices    : result
+  , count     : n
+  , rejected  : pool["rejected"]
+  , infeasible: infeasible
+  , examined  : examined
   };
 }
 
@@ -464,9 +509,11 @@ fn distribution(pool: Pool, scenario: Contract.Scenario) -> Distribution
   return distribution_mode(pool, scenario, false, buffer_new());
 }
 
-fn distribution_with_evidence(pool: Pool,
+fn distribution_with_evidence(
+  pool: Pool,
   scenario: Contract.Scenario,
-  out: buffer) -> Distribution
+  out: buffer
+) -> Distribution
 {
   return distribution_mode(pool, scenario, true, out);
 }

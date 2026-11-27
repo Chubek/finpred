@@ -47,10 +47,10 @@ fn parse(s: string, field: string) -> Result < i64, sexpr >
     }
     stop = n - 6;
   }
-  if stop < 19 || stop > 26 || text_byte(s,
-    10) != 84 || text_byte(s,
-    13) != 58 || text_byte(s,
-    16) != 58
+  if stop < 19 || stop > 26 || text_byte(s, 10) != 84 || text_byte(
+    s,
+    13
+  ) != 58 || text_byte(s, 16) != 58
   {
     return invalid(field);
   }

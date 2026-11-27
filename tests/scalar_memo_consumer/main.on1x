@@ -95,13 +95,10 @@ fn main() -> i64
   let d = D.node("d", "minimum@1", "first", "second");
   let e = D.node("e", "distance@1", "a", "first");
   let f = D.node("f", "distance@1", "b", "first");
-  var nodes = sx_cons(a,
-    sx_cons(b,
-    sx_cons(c,
-    sx_cons(d,
-    sx_cons(e,
-    sx_cons(f,
-    sx_nil()))))));
+  var nodes = sx_cons(
+    a,
+    sx_cons(b, sx_cons(c, sx_cons(d, sx_cons(e, sx_cons(f, sx_nil())))))
+  );
   if test == "equal"
   {
     first = 42;
@@ -111,15 +108,10 @@ fn main() -> i64
     first = 42;
     budget = 2;
     output = "b";
-    nodes = sx_cons(D.node("a",
-      "distance@1",
-      "first",
-      "second"),
-      sx_cons(D.node("b",
-      "distance@1",
-      "first",
-      "second"),
-      sx_nil()));
+    nodes = sx_cons(
+      D.node("a", "distance@1", "first", "second"),
+      sx_cons(D.node("b", "distance@1", "first", "second"), sx_nil())
+    );
   }
   if test == "denied"
   {
@@ -140,9 +132,10 @@ fn main() -> i64
       nodes = sx_cons(D.node(id, "maximum@1", "first", "second"), nodes);
     }
   }
-  let plan = record < D.Plan >
-  {
-    version: sx_string("automat.scalar-dag@1"), nodes: nodes, output: sx_string(output)
+  let plan = record<D.Plan>
+  { version: sx_string("automat.scalar-dag@1")
+  , nodes  : nodes
+  , output : sx_string(output)
   };
   outcome(D.run(plan, mode, budget, first, 42));
   outcome(D.run_memoized(plan, mode, budget, first, 42));

@@ -67,10 +67,10 @@ fn fixture_url(provider: string, value: string) -> bool
 fn load(path: string, roots: sexpr) ->(sexpr, string)
 {
   let resolved = Files.resolve(path, FS.basis_fs_cwd(), roots, "host grants");
-  let registry = Json.parse_at(Files.read_text(resolved,
-    131072,
-    "host grants"),
-    "host grants: ");
+  let registry = Json.parse_at(
+    Files.read_text(resolved, 131072, "host grants"),
+    "host grants: "
+  );
   Inputs.object_fields(registry, "kind grants", "", "host grants");
   if Json.text(Json.field(registry, "kind")) != "caravansary.host-grants@1"
   {
@@ -86,16 +86,20 @@ fn load(path: string, roots: sexpr) ->(sexpr, string)
   while sx_kind(rest) == 3
   {
     let grant = sx_head(rest);
-    Inputs.object_fields(grant,
+    Inputs.object_fields(
+      grant,
       "source fixture path sha256 operations provider provider_operation source_url observed_at",
       "",
-      "host grant");
-    let source = identifier(Json.text(Json.field(grant,
-      "source")),
-      "host grant source");
-    ignore(identifier(Json.text(Json.field(grant,
-      "fixture")),
-      "host grant fixture"));
+      "host grant"
+    );
+    let source = identifier(
+      Json.text(Json.field(grant, "source")),
+      "host grant source"
+    );
+    ignore(identifier(
+      Json.text(Json.field(grant, "fixture")),
+      "host grant fixture"
+    ));
     let fixture_path = Json.text(Json.field(grant, "path"));
     Files.check_path(fixture_path, "host grant fixture");
     if text_byte(fixture_path, 0) == 47
@@ -121,9 +125,10 @@ fn load(path: string, roots: sexpr) ->(sexpr, string)
     {
       tool_fail("host grant URL must identify an offline fixture");
     }
-    ignore(Civil.timestamp(Json.text(Json.field(grant,
-      "observed_at")),
-      "host grant observed_at"));
+    ignore(Civil.timestamp(
+      Json.text(Json.field(grant, "observed_at")),
+      "host grant observed_at"
+    ));
     let ops = Json.items(Json.field(grant, "operations"));
     if sx_kind(ops) != 3
     {
@@ -142,35 +147,41 @@ fn load(path: string, roots: sexpr) ->(sexpr, string)
       items = sx_tail(items);
     }
     let allowed = Json.object_unique(seen, "host grant repeats operation");
-    fields = sx_cons(Json.pair(source,
-      Json.replace(grant,
-      "operations",
-      allowed)),
-      fields);
+    fields = sx_cons(
+      Json.pair(source, Json.replace(grant, "operations", allowed)),
+      fields
+    );
     rest = sx_tail(rest);
   }
-  return (Json.object_unique(fields,
-    "duplicate host grant source"),
-    Path.basis_path_dir(resolved));
+  return (
+    Json.object_unique(fields, "duplicate host grant source"),
+    Path.basis_path_dir(resolved)
+  );
 }
 
-fn authorize(registry: sexpr,
+fn authorize(
+  registry: sexpr,
   mode: string,
   source: string,
   declaration: sexpr,
-  now: i64) -> sexpr
+  now: i64
+) -> sexpr
 {
   let grant = Json.get(registry, source);
-  if sx_kind(grant) == 0 || sx_kind(Json.get(Json.get(grant,
-    "operations"),
-    mode)) == 0
+  if sx_kind(grant) == 0 || sx_kind(Json.get(
+    Json.get(grant, "operations"),
+    mode
+  )) == 0
   {
     tool_fail("no host grant for selected market source and operation: $source ($mode)");
   }
-  if Json.text(Json.field(declaration,
-    "kind")) != "fixture" || Json.text(Json.field(declaration,
-    "fixture")) != Json.text(Json.field(grant,
-    "fixture"))
+  if Json.text(Json.field(
+    declaration,
+    "kind"
+  )) != "fixture" || Json.text(Json.field(
+    declaration,
+    "fixture"
+  )) != Json.text(Json.field(grant, "fixture"))
   {
     tool_fail("host grant does not match the script fixture declaration: $source");
   }
@@ -179,9 +190,10 @@ fn authorize(registry: sexpr,
   {
     tool_fail("host grant provider operation is incompatible with $mode: $source");
   }
-  if Civil.timestamp(Json.text(Json.field(grant,
-    "observed_at")),
-    "host grant observed_at") > now
+  if Civil.timestamp(
+    Json.text(Json.field(grant, "observed_at")),
+    "host grant observed_at"
+  ) > now
   {
     tool_fail("host grant capture is newer than --as-of: $source");
   }
@@ -190,11 +202,12 @@ fn authorize(registry: sexpr,
 
 fn capture(grant: sexpr, parent: string, roots: sexpr) -> string
 {
-  let path = Files.resolve(Json.text(Json.field(grant,
-    "path")),
+  let path = Files.resolve(
+    Json.text(Json.field(grant, "path")),
     parent,
     roots,
-    "fixture capture");
+    "fixture capture"
+  );
   let body = Files.read_text(path, 65536, "fixture capture");
   if Host.caravansary_sha256(body) != Json.text(Json.field(grant, "sha256"))
   {

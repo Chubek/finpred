@@ -7,18 +7,30 @@ import std.collections.List as L;
 import std.crypto.crypto as Crypto;
 import automat.schedule as Schedule;
 record Graph
-{
-  version: sexpr, inputs: sexpr, nodes: sexpr, outputs: sexpr
+{ version: sexpr
+, inputs : sexpr
+, nodes  : sexpr
+, outputs: sexpr
 }
 
 record Prepared
-{
-  status: sexpr, subject: sexpr, canonical: sexpr, order: sexpr, work: i64
+{ status   : sexpr
+, subject  : sexpr
+, canonical: sexpr
+, order    : sexpr
+, work     : i64
 }
 
 record Compilation
-{
-  prepared: Prepared, roots: sexpr, steps: sexpr, exports: sexpr, edges: i64, depth: i64, max_root_bytes: i64, max_read_bytes: i64, max_emitted_bytes: i64
+{ prepared         : Prepared
+, roots            : sexpr
+, steps            : sexpr
+, exports          : sexpr
+, edges            : i64
+, depth            : i64
+, max_root_bytes   : i64
+, max_read_bytes   : i64
+, max_emitted_bytes: i64
 }
 
 fn version() -> string
@@ -28,9 +40,11 @@ fn version() -> string
 
 fn graph(inputs: sexpr, nodes: sexpr, outputs: sexpr) -> Graph
 {
-  return record < Graph >
-  {
-    version: sx_string(version()), inputs: inputs, nodes: nodes, outputs: outputs
+  return record<Graph>
+  { version: sx_string(version())
+  , inputs : inputs
+  , nodes  : nodes
+  , outputs: outputs
   };
 }
 
@@ -72,28 +86,32 @@ fn length(value: sexpr, limit: i64) -> i64
 # A producer of "" means a graph input; its port is the graph input name.
 fn edge(input_port: string, producer: string, output_port: string) -> sexpr
 {
-  return sx_cons(sx_string(input_port),
-    sx_cons(sx_string(producer),
-    sx_cons(sx_string(output_port),
-    sx_nil())));
+  return sx_cons(
+    sx_string(input_port),
+    sx_cons(sx_string(producer), sx_cons(sx_string(output_port), sx_nil()))
+  );
 }
 
 fn node(id: string, handler: string, effect: string, edges: sexpr) -> sexpr
 {
-  return sx_cons(sx_string(id),
-    sx_cons(sx_string(handler),
-    sx_cons(sx_string(effect),
-    sx_cons(edges,
-    sx_nil()))));
+  return sx_cons(
+    sx_string(id),
+    sx_cons(
+      sx_string(handler),
+      sx_cons(sx_string(effect), sx_cons(edges, sx_nil()))
+    )
+  );
 }
 
 fn output(port: SDK.Port, producer: string, output_port: string) -> sexpr
 {
-  return sx_cons(port["name"],
-    sx_cons(SDK.port_entry(port),
-    sx_cons(sx_string(producer),
-    sx_cons(sx_string(output_port),
-    sx_nil()))));
+  return sx_cons(
+    port["name"],
+    sx_cons(
+      SDK.port_entry(port),
+      sx_cons(sx_string(producer), sx_cons(sx_string(output_port), sx_nil()))
+    )
+  );
 }
 
 fn lower(c: i64) -> bool
@@ -232,28 +250,34 @@ fn frame_port(out: buffer, port: SDK.Port)
 
 fn pin_entry(pin: SDK.Pin) -> sexpr
 {
-  return sx_cons(pin["package_name"],
-    sx_cons(pin["package_version"],
-    sx_cons(pin["handler_name"],
-    sx_cons(pin["handler_version"],
-    sx_cons(sx_string(F.num(pin["abi"])),
-    sx_cons(pin["code_digest"],
-    sx_cons(pin["policy_digest"],
-    sx_nil())))))));
+  return sx_cons(
+    pin["package_name"],
+    sx_cons(
+      pin["package_version"],
+      sx_cons(
+        pin["handler_name"],
+        sx_cons(
+          pin["handler_version"],
+          sx_cons(
+            sx_string(F.num(pin["abi"])),
+            sx_cons(pin["code_digest"], sx_cons(pin["policy_digest"], sx_nil()))
+          )
+        )
+      )
+    )
+  );
 }
 
 fn decode_pin(entry: sexpr) -> SDK.Pin
 {
-  return record < SDK.Pin >
-  {
-    package_name: at(entry,
-      0), package_version: at(entry,
-      1), handler_name: at(entry,
-      2), handler_version: at(entry,
-      3), abi: SDK.nat(at(entry,
-      4)), code_digest: at(entry,
-      5), policy_digest: at(entry,
-      6)
+  return record<SDK.Pin>
+  { package_name   : at(entry, 0)
+  , package_version: at(entry, 1)
+  , handler_name   : at(entry, 2)
+  , handler_version: at(entry, 3)
+  , abi            : SDK.nat(at(entry, 4))
+  , code_digest    : at(entry, 5)
+  , policy_digest  : at(entry, 6)
   };
 }
 
@@ -279,9 +303,12 @@ fn digest(bytes: string) -> string
 
 fn reject(status: string, subject: string) -> Prepared
 {
-  return record < Prepared >
-  {
-    status: sx_string(status), subject: sx_string(subject), canonical: sx_nil(), order: sx_nil(), work: 0
+  return record<Prepared>
+  { status   : sx_string(status)
+  , subject  : sx_string(subject)
+  , canonical: sx_nil()
+  , order    : sx_nil()
+  , work     : 0
   };
 }
 
@@ -289,23 +316,33 @@ fn reject(status: string, subject: string) -> Prepared
 # work, role, named edges). These are private verified planner products.
 fn planned(id: sexpr, d: SDK.Descriptor, edges: sexpr) -> sexpr
 {
-  return sx_cons(id,
-    sx_cons(pin_entry(d["pin"]),
-    sx_cons(d["inputs"],
-    sx_cons(SDK.port_entry(d["output"]),
-    sx_cons(sx_string(F.num(d["max_work"])),
-    sx_cons(d["role"],
-    sx_cons(edges,
-    sx_nil())))))));
+  return sx_cons(
+    id,
+    sx_cons(
+      pin_entry(d["pin"]),
+      sx_cons(
+        d["inputs"],
+        sx_cons(
+          SDK.port_entry(d["output"]),
+          sx_cons(
+            sx_string(F.num(d["max_work"])),
+            sx_cons(d["role"], sx_cons(edges, sx_nil()))
+          )
+        )
+      )
+    )
+  );
 }
 
 fn same_port(a: SDK.Port, b: SDK.Port) -> bool
 {
-  return SDK.same(a["name"],
-    b["name"]) && SDK.same(a["kind"],
-    b["kind"]) && a["major"] == b["major"] && SDK.same(a["unit"],
-    b["unit"]) && SDK.same(a["currency"],
-    b["currency"]) && a["states"] == b["states"] && a["max_bytes"] == b["max_bytes"];
+  return SDK.same(a["name"], b["name"]) && SDK.same(
+    a["kind"],
+    b["kind"]
+  ) && a["major"] == b["major"] && SDK.same(a["unit"], b["unit"]) && SDK.same(
+    a["currency"],
+    b["currency"]
+  ) && a["states"] == b["states"] && a["max_bytes"] == b["max_bytes"];
 }
 
 fn same_ports(a: sexpr, b: sexpr) -> bool
@@ -315,8 +352,10 @@ fn same_ports(a: sexpr, b: sexpr) -> bool
   var n = 0;
   while sx_kind(left) == 3 && sx_kind(right) == 3
   {
-    if n >= 16 || ! same_port(SDK.decode_port(sx_head(left)),
-      SDK.decode_port(sx_head(right)))
+    if n >= 16 || ! same_port(
+      SDK.decode_port(sx_head(left)),
+      SDK.decode_port(sx_head(right))
+    )
     {
       return false;
     }
@@ -329,14 +368,13 @@ fn same_ports(a: sexpr, b: sexpr) -> bool
 
 fn matches_signature(entry: sexpr, d: SDK.Descriptor) -> bool
 {
-  return d["max_work"] == SDK.nat(at(entry,
-    4)) && SDK.same(d["role"],
-    at(entry,
-    5)) && same_port(d["output"],
-    SDK.decode_port(at(entry,
-    3))) && same_ports(d["inputs"],
-    at(entry,
-    2));
+  return d["max_work"] == SDK.nat(at(entry, 4)) && SDK.same(
+    d["role"],
+    at(entry, 5)
+  ) && same_port(d["output"], SDK.decode_port(at(entry, 3))) && same_ports(
+    d["inputs"],
+    at(entry, 2)
+  );
 }
 
 fn consistent_binding(entries: sexpr, d: SDK.Descriptor) -> bool
@@ -356,10 +394,12 @@ fn consistent_binding(entries: sexpr, d: SDK.Descriptor) -> bool
   return true;
 }
 
-fn producer_port(inputs: sexpr,
+fn producer_port(
+  inputs: sexpr,
   nodes: sexpr,
   producer: string,
-  port: string) -> SDK.Port
+  port: string
+) -> SDK.Port
 {
   if producer == ""
   {
@@ -387,12 +427,13 @@ fn edges_valid(edges: sexpr, ports: sexpr) -> bool
     let e = sx_head(rest);
     let name = field(e, 0);
     let producer = field(e, 1);
-    if length(e,
-      3) != 3 || ! identifier(name) || sx_kind(at(e,
-      1)) != 2 || (producer != "" && ! identifier(producer)) || ! identifier(field(e,
-      2)) || sx_kind(lookup(ports,
-      name)) == 0 || sx_kind(lookup(seen,
-      name)) != 0
+    if length(e, 3) != 3 || ! identifier(name) || sx_kind(at(
+      e,
+      1
+    )) != 2 || (producer != "" && ! identifier(producer)) || ! identifier(field(
+      e,
+      2
+    )) || sx_kind(lookup(ports, name)) == 0 || sx_kind(lookup(seen, name)) != 0
     {
       return false;
     }
@@ -482,10 +523,12 @@ fn canonical_bytes(g: Graph, mode: string, ordered: sexpr) -> string
   return buffer_text(out);
 }
 
-fn prepare_declarations(g: Graph,
+fn prepare_declarations(
+  g: Graph,
   mode: string,
   budget: i64,
-  resolve: fn(string) -> SDK.Descriptor) -> Prepared
+  resolve: fn(string) -> SDK.Descriptor
+) -> Prepared
 {
   if ! SDK.same(g["version"], sx_string(version()))
   {
@@ -499,10 +542,10 @@ fn prepare_declarations(g: Graph,
   {
     return reject("budget", "");
   }
-  if length(g["inputs"],
-    16) < 1 || length(g["nodes"],
-    32) < 1 || length(g["outputs"],
-    16) < 1
+  if length(g["inputs"], 16) < 1 || length(g["nodes"], 32) < 1 || length(
+    g["outputs"],
+    16
+  ) < 1
   {
     return reject("graph_shape", "");
   }
@@ -535,9 +578,10 @@ fn prepare_declarations(g: Graph,
     {
       return reject("node", id);
     }
-    if sx_kind(lookup(entries,
-      id)) != 0 || sx_kind(lookup(g["inputs"],
-      id)) != 0
+    if sx_kind(lookup(entries, id)) != 0 || sx_kind(lookup(
+      g["inputs"],
+      id
+    )) != 0
     {
       return reject("duplicate_id", id);
     }
@@ -555,8 +599,10 @@ fn prepare_declarations(g: Graph,
       return reject("descriptor_mismatch", id);
     }
     let edges = at(item, 3);
-    if ! identifier(sx_text(d["output"]["name"])) || ! edges_valid(edges,
-      d["inputs"])
+    if ! identifier(sx_text(d["output"]["name"])) || ! edges_valid(
+      edges,
+      d["inputs"]
+    )
     {
       return reject("port", id);
     }
@@ -578,12 +624,12 @@ fn prepare_declarations(g: Graph,
     {
       let port = SDK.decode_port(sx_head(ports));
       let edge = lookup(at(entry, 6), sx_text(port["name"]));
-      let from = producer_port(g["inputs"],
+      let from = producer_port(
+        g["inputs"],
         entries,
-        field(edge,
-        1),
-        field(edge,
-        2));
+        field(edge, 1),
+        field(edge, 2)
+      );
       if ! SDK.valid_port(from)
       {
         return reject("unknown_reference", field(entry, 0));
@@ -612,10 +658,10 @@ fn prepare_declarations(g: Graph,
     let item = sx_head(rest);
     let name = field(item, 0);
     let port = SDK.decode_port(at(item, 1));
-    if length(item,
-      4) != 4 || ! identifier(name) || ! SDK.same(at(item,
-      0),
-      port["name"]) || ! sdk_output_ref(item) || ! SDK.valid_port(port)
+    if length(item, 4) != 4 || ! identifier(name) || ! SDK.same(
+      at(item, 0),
+      port["name"]
+    ) || ! sdk_output_ref(item) || ! SDK.valid_port(port)
     {
       return reject("port", name);
     }
@@ -623,12 +669,12 @@ fn prepare_declarations(g: Graph,
     {
       return reject("duplicate_id", name);
     }
-    let from = producer_port(g["inputs"],
+    let from = producer_port(
+      g["inputs"],
       entries,
-      field(item,
-      2),
-      field(item,
-      3));
+      field(item, 2),
+      field(item, 3)
+    );
     if ! SDK.valid_port(from)
     {
       return reject("unknown_reference", name);
@@ -640,11 +686,12 @@ fn prepare_declarations(g: Graph,
     output_names = sx_cons(item, output_names);
     rest = sx_tail(rest);
   }
-  return record < Prepared >
-  {
-    status: sx_string("ok"), subject: sx_string(""), canonical: sx_string(canonical_bytes(g,
-      mode,
-      order)), order: order, work: work
+  return record<Prepared>
+  { status   : sx_string("ok")
+  , subject  : sx_string("")
+  , canonical: sx_string(canonical_bytes(g, mode, order))
+  , order    : order
+  , work     : work
   };
 }
 
@@ -652,27 +699,41 @@ fn prepare_declarations(g: Graph,
 # Roots have depth 0; a handler without node predecessors has depth 1.
 fn slot_entry(id: sexpr, slot: i64, depth: i64, bytes: i64) -> sexpr
 {
-  return sx_cons(id,
-    sx_cons(sx_string(F.num(slot)),
-    sx_cons(sx_string(F.num(depth)),
-    sx_cons(sx_string(F.num(bytes)),
-    sx_nil()))));
+  return sx_cons(
+    id,
+    sx_cons(
+      sx_string(F.num(slot)),
+      sx_cons(
+        sx_string(F.num(depth)),
+        sx_cons(sx_string(F.num(bytes)), sx_nil())
+      )
+    )
+  );
 }
 
 # Compile only validated declarations. The legacy canonical bytes remain
 # independent of the slot encoding. No runtime values or handler calls enter
 # compilation, and the byte bounds below do not reject a graph.
-fn compile(g: Graph,
+fn compile(
+  g: Graph,
   mode: string,
   budget: i64,
-  resolve: fn(string) -> SDK.Descriptor) -> Compilation
+  resolve: fn(string) -> SDK.Descriptor
+) -> Compilation
 {
   let prepared = prepare_declarations(g, mode, budget, resolve);
   if sx_text(prepared["status"]) != "ok"
   {
-    return record < Compilation >
-    {
-      prepared: prepared, roots: sx_nil(), steps: sx_nil(), exports: sx_nil(), edges: 0, depth: 0, max_root_bytes: 0, max_read_bytes: 0, max_emitted_bytes: 0
+    return record<Compilation>
+    { prepared         : prepared
+    , roots            : sx_nil()
+    , steps            : sx_nil()
+    , exports          : sx_nil()
+    , edges            : 0
+    , depth            : 0
+    , max_root_bytes   : 0
+    , max_read_bytes   : 0
+    , max_emitted_bytes: 0
     };
   }
   let roots = sorted(g["inputs"]);
@@ -683,11 +744,10 @@ fn compile(g: Graph,
   while sx_kind(items) == 3
   {
     let port = SDK.decode_port(sx_head(items));
-    slots = sx_cons(slot_entry(port["name"],
-      slot,
-      0,
-      port["max_bytes"]),
-      slots);
+    slots = sx_cons(
+      slot_entry(port["name"], slot, 0, port["max_bytes"]),
+      slots
+    );
     root_bytes = root_bytes + port["max_bytes"];
     slot = slot + 1;
     items = sx_tail(items);
@@ -715,11 +775,10 @@ fn compile(g: Graph,
         source = field(edge, 2);
       }
       let origin = lookup(slots, source);
-      operands = sx_cons(sx_cons(name,
-        sx_cons(at(origin,
-        1),
-        sx_tail(edge))),
-        operands);
+      operands = sx_cons(
+        sx_cons(name, sx_cons(at(origin, 1), sx_tail(edge))),
+        operands
+      );
       # The operand retains both named endpoints for @1 artifact evidence.
       # Charge a producer's bound once per binding, not once per predecessor.
       let next_depth = SDK.nat(at(origin, 2)) + 1;
@@ -732,16 +791,14 @@ fn compile(g: Graph,
       ports = sx_tail(ports);
     }
     let output = SDK.decode_port(at(entry, 3));
-    slots = sx_cons(slot_entry(at(entry,
-      0),
-      slot,
-      node_depth,
-      output["max_bytes"]),
-      slots);
-    steps = sx_cons(sx_cons(entry,
-      sx_cons(L.basis_list_rev(operands),
-      sx_nil())),
-      steps);
+    slots = sx_cons(
+      slot_entry(at(entry, 0), slot, node_depth, output["max_bytes"]),
+      slots
+    );
+    steps = sx_cons(
+      sx_cons(entry, sx_cons(L.basis_list_rev(operands), sx_nil())),
+      steps
+    );
     if node_depth > depth
     {
       depth = node_depth;
@@ -756,23 +813,28 @@ fn compile(g: Graph,
   {
     let item = sx_head(items);
     let origin = lookup(slots, field(item, 2));
-    exports = sx_cons(sx_cons(item,
-      sx_cons(at(origin,
-      1),
-      sx_nil())),
-      exports);
+    exports = sx_cons(sx_cons(item, sx_cons(at(origin, 1), sx_nil())), exports);
     items = sx_tail(items);
   }
-  return record < Compilation >
-  {
-    prepared: prepared, roots: roots, steps: L.basis_list_rev(steps), exports: L.basis_list_rev(exports), edges: edge_count, depth: depth, max_root_bytes: root_bytes, max_read_bytes: read_bytes, max_emitted_bytes: emitted_bytes
+  return record<Compilation>
+  { prepared         : prepared
+  , roots            : roots
+  , steps            : L.basis_list_rev(steps)
+  , exports          : L.basis_list_rev(exports)
+  , edges            : edge_count
+  , depth            : depth
+  , max_root_bytes   : root_bytes
+  , max_read_bytes   : read_bytes
+  , max_emitted_bytes: emitted_bytes
   };
 }
 
-fn prepare(g: Graph,
+fn prepare(
+  g: Graph,
   mode: string,
   budget: i64,
-  resolve: fn(string) -> SDK.Descriptor) -> Prepared
+  resolve: fn(string) -> SDK.Descriptor
+) -> Prepared
 {
   return prepare_declarations(g, mode, budget, resolve);
 }
@@ -787,8 +849,10 @@ fn sdk_output_ref(item: sexpr) -> bool
 # Connect an exported port of the left graph to a root of the right graph.
 # IDs remain public and are never silently renamed or merged.
 record Composition
-{
-  status: sexpr, subject: sexpr, graph: Graph, prepared: Prepared
+{ status  : sexpr
+, subject : sexpr
+, graph   : Graph
+, prepared: Prepared
 }
 
 fn link(root: string, export_name: string) -> sexpr
@@ -798,11 +862,11 @@ fn link(root: string, export_name: string) -> sexpr
 
 fn composition_failure(p: Prepared) -> Composition
 {
-  return record < Composition >
-  {
-    status: p["status"], subject: p["subject"], graph: graph(sx_nil(),
-      sx_nil(),
-      sx_nil()), prepared: p
+  return record<Composition>
+  { status  : p["status"]
+  , subject : p["subject"]
+  , graph   : graph(sx_nil(), sx_nil(), sx_nil())
+  , prepared: p
   };
 }
 
@@ -831,14 +895,15 @@ fn rebind_right(nodes: sexpr, wired: sexpr, exports: sexpr) -> sexpr
       rewritten = sx_cons(replacement, rewritten);
       edges = sx_tail(edges);
     }
-    result = sx_cons(node(field(item,
-      0),
-      field(item,
-      1),
-      field(item,
-      2),
-      L.basis_list_rev(rewritten)),
-      result);
+    result = sx_cons(
+      node(
+        field(item, 0),
+        field(item, 1),
+        field(item, 2),
+        L.basis_list_rev(rewritten)
+      ),
+      result
+    );
     rest = sx_tail(rest);
   }
   return L.basis_list_rev(result);
@@ -859,12 +924,14 @@ fn concat(left: sexpr, right: sexpr) -> sexpr
 # Validate each fragment and the flattened product with the same trusted host
 # resolver. A link must match the declared export signature, even when the
 # underlying concrete producer happens to offer a narrower signature.
-fn compose(left: Graph,
+fn compose(
+  left: Graph,
   right: Graph,
   links: sexpr,
   mode: string,
   budget: i64,
-  resolve: fn(string) -> SDK.Descriptor) -> Composition
+  resolve: fn(string) -> SDK.Descriptor
+) -> Composition
 {
   if length(links, 16) < 1
   {
@@ -904,21 +971,20 @@ fn compose(left: Graph,
     remaining = remove(remaining, root);
     wires = sx_tail(wires);
   }
-  let merged = graph(concat(left["inputs"],
-    remaining),
-    concat(left["nodes"],
-    rebind_right(right["nodes"],
-    links,
-    left["outputs"])),
-    concat(left["outputs"],
-    right["outputs"]));
+  let merged = graph(
+    concat(left["inputs"], remaining),
+    concat(left["nodes"], rebind_right(right["nodes"], links, left["outputs"])),
+    concat(left["outputs"], right["outputs"])
+  );
   let prepared = prepare(merged, mode, budget, resolve);
   if ! SDK.same(prepared["status"], sx_string("ok"))
   {
     return composition_failure(prepared);
   }
-  return record < Composition >
-  {
-    status: prepared["status"], subject: prepared["subject"], graph: merged, prepared: prepared
+  return record<Composition>
+  { status  : prepared["status"]
+  , subject : prepared["subject"]
+  , graph   : merged
+  , prepared: prepared
   };
 }

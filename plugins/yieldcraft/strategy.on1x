@@ -5,8 +5,10 @@ import algorithms.quantile as Q;
 import plugins.yieldcraft.matcher as Match;
 fn target_bps(scenario: C.Scenario, profile: string) -> i64
 {
-  let lead = Date.lead_days(sx_text(scenario["decision_at"]),
-    sx_text(scenario["arrival"]));
+  let lead = Date.lead_days(
+    sx_text(scenario["decision_at"]),
+    sx_text(scenario["arrival"])
+  );
   if profile == "scenario"
   {
     if scenario["target_bps"] == 0
@@ -39,10 +41,12 @@ fn target_bps(scenario: C.Scenario, profile: string) -> i64
   return 0;
 }
 
-fn recommend_profile(scenario: C.Scenario,
+fn recommend_profile(
+  scenario: C.Scenario,
   valuation: C.Valuation,
   dist: Match.Distribution,
-  profile: string) -> C.Recommendation
+  profile: string
+) -> C.Recommendation
 {
   if dist["count"] < scenario["min_properties"]
   {
@@ -96,15 +100,26 @@ fn recommend_profile(scenario: C.Scenario,
   {
     reason = "guardrail_adjustment";
   }
-  return record < C.Recommendation >
-  {
-    intended_bps: percentile, selected_bps: selected, intended_cents: intended, lower_cents: lower, candidate_cents: candidate, recommended_cents: approved, property_count: dist["count"], rejected: dist["rejected"], infeasible: dist["infeasible"], search_nodes: dist["examined"], reason: sx_string(reason)
+  return record<C.Recommendation>
+  { intended_bps     : percentile
+  , selected_bps     : selected
+  , intended_cents   : intended
+  , lower_cents      : lower
+  , candidate_cents  : candidate
+  , recommended_cents: approved
+  , property_count   : dist["count"]
+  , rejected         : dist["rejected"]
+  , infeasible       : dist["infeasible"]
+  , search_nodes     : dist["examined"]
+  , reason           : sx_string(reason)
   };
 }
 
-fn recommend(scenario: C.Scenario,
+fn recommend(
+  scenario: C.Scenario,
   valuation: C.Valuation,
-  dist: Match.Distribution) -> C.Recommendation
+  dist: Match.Distribution
+) -> C.Recommendation
 {
   return recommend_profile(scenario, valuation, dist, "scenario");
 }

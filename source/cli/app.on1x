@@ -57,13 +57,15 @@ fn source(path: string) -> string
   return value;
 }
 
-fn trace(s: C.Scenario,
+fn trace(
+  s: C.Scenario,
   r: C.Recommendation,
   profile: string,
   raw_s: string,
   raw_o: string,
   raw_v: string,
-  raw_strategy: string) -> string
+  raw_strategy: string
+) -> string
 {
   let b = buffer_new();
   buffer_append(b, "FinPRED decision trace v1\n");
@@ -85,8 +87,10 @@ fn trace(s: C.Scenario,
   buffer_append(b, "nights=");
   buffer_append(b, F.num(s["nights"]));
   buffer_append(b, "\n");
-  buffer_append(b,
-    "currency=EUR\nprice_basis=room_night\nquantile=Hyndman-Fan-Type-7;half-up-cent\n");
+  buffer_append(
+    b,
+    "currency=EUR\nprice_basis=room_night\nquantile=Hyndman-Fan-Type-7;half-up-cent\n"
+  );
   buffer_append(b, "source_scenario_blake3=");
   buffer_append(b, raw_s);
   buffer_append(b, "\n");
@@ -147,31 +151,37 @@ fn strategy_profile(strategy_raw: string) -> string
 }
 
 # Both the writer and the historical verifier bind the same trusted policy.
-fn fixed_recommendation(profile: string,
+fn fixed_recommendation(
+  profile: string,
   scenario_raw: string,
   offers_raw: string,
   valuation_raw: string,
   collect: bool,
-  evidence: buffer) -> Runner.Output
+  evidence: buffer
+) -> Runner.Output
 {
   if ! Registry.admits(Registry.yieldcraft_entry(), "recommendation")
   {
     tool_fail("sdk: capability denied");
   }
-  return Runner.run(Graph.fixed_plan(profile),
+  return Runner.run(
+    Graph.fixed_plan(profile),
     "recommendation",
     scenario_raw,
     offers_raw,
     valuation_raw,
     collect,
     evidence,
-    Yieldcraft.recommend_profile);
+    Yieldcraft.recommend_profile
+  );
 }
 
-fn scalar_number(key: string,
+fn scalar_number(
+  key: string,
   fallback: string,
   minimum: i64,
-  maximum: i64) -> i64
+  maximum: i64
+) -> i64
 {
   let value = ScalarDecode.decimal(env_default(key, fallback), maximum);
   if value < minimum
@@ -186,8 +196,10 @@ fn scalar_analysis() -> i64
   let first = scalar_number("FINPRED_SCALAR_FIRST", "17", 0, 1000000000000);
   let second = scalar_number("FINPRED_SCALAR_SECOND", "42", 0, 1000000000000);
   let budget = scalar_number("FINPRED_SCALAR_BUDGET", "16", 1, 16);
-  let raw = source(env_default("FINPRED_STRATEGY",
-    "strategies/scalar-spread.ottomat"));
+  let raw = source(env_default(
+    "FINPRED_STRATEGY",
+    "strategies/scalar-spread.ottomat"
+  ));
   let lowered = Scalar.lower_with(raw, "analysis", budget, Diagnostics.lookup);
   let status = sx_text(lowered["status"]);
   if status != "ok"
@@ -197,14 +209,16 @@ fn scalar_analysis() -> i64
     tool_fail("scalar: $status at $line:$column");
   }
   let plan = lowered["plan"];
-  let result = Dag.run_with(plan,
+  let result = Dag.run_with(
+    plan,
     "analysis",
     budget,
     first,
     second,
     false,
     Diagnostics.lookup,
-    Diagnostics.call);
+    Diagnostics.call
+  );
   let outcome = sx_text(result["status"]);
   if outcome != "ok"
   {
@@ -223,7 +237,8 @@ fn scalar_analysis() -> i64
   return 0;
 }
 
-fn start_lineage(lineage: buffer,
+fn start_lineage(
+  lineage: buffer,
   sd: string,
   od: string,
   vd: string,
@@ -231,7 +246,8 @@ fn start_lineage(lineage: buffer,
   profile: string,
   ns: string,
   nv: string,
-  rows: i64)
+  rows: i64
+)
 {
   Lineage.start(lineage, sd, od, vd, td, profile);
   Lineage.field(lineage, "normalized_scenario", ns);
@@ -241,17 +257,19 @@ fn start_lineage(lineage: buffer,
 
 fn lineage_trace(explanation: string, id: string) -> string
 {
-  return text_concat(explanation,
-    text_concat("lineage_blake3=",
-    text_concat(id,
-    "\n")));
+  return text_concat(
+    explanation,
+    text_concat("lineage_blake3=", text_concat(id, "\n"))
+  );
 }
 
-fn summary(s: C.Scenario,
+fn summary(
+  s: C.Scenario,
   r: C.Recommendation,
   id: string,
   rec_digest: string,
-  trace_digest: string)
+  trace_digest: string
+)
 {
   println(text_concat("run_id=", id));
   println(text_concat("recommendation_minor=", F.num(r["recommended_cents"])));
@@ -264,19 +282,23 @@ fn summary(s: C.Scenario,
 
 # Only the current run format can be published. Nothing supplied by the caller
 # selects a manifest version or the corresponding identity rules.
-fn publish(scenario_raw: string,
+fn publish(
+  scenario_raw: string,
   offers_raw: string,
   valuation_raw: string,
   strategy_raw: string,
-  home: string) -> i64
+  home: string
+) -> i64
 {
   let profile = strategy_profile(strategy_raw);
-  let result = fixed_recommendation(profile,
+  let result = fixed_recommendation(
+    profile,
     scenario_raw,
     offers_raw,
     valuation_raw,
     false,
-    buffer_new());
+    buffer_new()
+  );
   let s = result["scenario"];
   let v = result["valuation"];
   let r = result["recommendation"];
@@ -286,11 +308,13 @@ fn publish(scenario_raw: string,
   let td = Store.digest(strategy_raw);
   Store.ensure(home);
   # The raw input snapshots are independent immutable artifacts.
-  if Store.put(home,
-    scenario_raw) != sd || Store.put(home,
-    offers_raw) != od || Store.put(home,
-    valuation_raw) != vd || Store.put(home,
-    strategy_raw) != td
+  if Store.put(home, scenario_raw) != sd || Store.put(
+    home,
+    offers_raw
+  ) != od || Store.put(home, valuation_raw) != vd || Store.put(
+    home,
+    strategy_raw
+  ) != td
   {
     tool_fail("artifact: input snapshot changed during persistence");
   }
@@ -312,31 +336,31 @@ fn publish(scenario_raw: string,
   {
     tool_fail("artifact: lineage persistence divergence");
   }
-  let rec = JSON.recommendation(s,
+  let rec = JSON.recommendation(
+    s,
     r,
     id,
     sd,
     od,
     vd,
     td,
-    Lineage.recommendation_strategy());
+    Lineage.recommendation_strategy()
+  );
   let explanation = lineage_trace(trace(s, r, profile, sd, od, vd, td), id);
   let rec_digest = Store.digest(rec);
   let trace_digest = Store.digest(explanation);
-  if Store.put(home,
-    rec) != rec_digest || Store.put(home,
-    explanation) != trace_digest
+  if Store.put(home, rec) != rec_digest || Store.put(
+    home,
+    explanation
+  ) != trace_digest
   {
     tool_fail("artifact: recommendation/trace persistence divergence");
   }
-  Store.put_run(home,
+  Store.put_run(
+    home,
     id,
-    Formats.encode_current(sd,
-    od,
-    vd,
-    td,
-    rec_digest,
-    trace_digest));
+    Formats.encode_current(sd, od, vd, td, rec_digest, trace_digest)
+  );
   summary(s, r, id, rec_digest, trace_digest);
   return 0;
 }
@@ -359,8 +383,10 @@ fn replay(home: string, expected_run_id: string, mode: string) -> i64
   {
     tool_fail("capability denied: execution mode and unknown modes unavailable");
   }
-  if mode == "poindexter" && ! Registry.admits("poindexter.sheet.render",
-    "analysis")
+  if mode == "poindexter" && ! Registry.admits(
+    "poindexter.sheet.render",
+    "analysis"
+  )
   {
     tool_fail("sdk: incompatible pricing sheet");
   }
@@ -388,12 +414,14 @@ fn replay(home: string, expected_run_id: string, mode: string) -> i64
     tool_fail("replay: v1 requires the legacy scenario strategy");
   }
   let evidence = buffer_new();
-  let result = fixed_recommendation(profile,
+  let result = fixed_recommendation(
+    profile,
     scenario_raw,
     offers_raw,
     valuation_raw,
     mode == "evidence",
-    evidence);
+    evidence
+  );
   let s = result["scenario"];
   let v = result["valuation"];
   let r = result["recommendation"];
@@ -436,14 +464,16 @@ fn replay(home: string, expected_run_id: string, mode: string) -> i64
   {
     id = Formats.archive_key(sd, od, vd, td);
   }
-  let rec = JSON.recommendation(s,
+  let rec = JSON.recommendation(
+    s,
     r,
     id,
     sd,
     od,
     vd,
     td,
-    Lineage.recommendation_strategy());
+    Lineage.recommendation_strategy()
+  );
   var explanation = trace(s, r, profile, sd, od, vd, td);
   if v2
   {
@@ -455,16 +485,17 @@ fn replay(home: string, expected_run_id: string, mode: string) -> i64
   {
     tool_fail("replay: snapshot/plan/output divergence");
   }
-  if Store.fetch(home,
-    expected_rec) != rec || Store.fetch(home,
-    expected_trace) != explanation
+  if Store.fetch(home, expected_rec) != rec || Store.fetch(
+    home,
+    expected_trace
+  ) != explanation
   {
     tool_fail("replay: stored output differs from recomputation");
   }
   if mode == "poindexter"
   {
-    let(ok,
-      csv) = Sheet.render(id,
+    let(ok, csv) = Sheet.render(
+      id,
       rec_digest,
       nv,
       sx_text(s["currency"]),
@@ -472,7 +503,8 @@ fn replay(home: string, expected_run_id: string, mode: string) -> i64
       v["current_cents"],
       r["recommended_cents"],
       sx_text(r["reason"]),
-      false);
+      false
+    );
     if ! ok
     {
       tool_fail(csv);
@@ -569,30 +601,31 @@ fn entry() -> i64
   {
     tool_fail("unknown engine: expected legacy or scalar");
   }
-  let strategy_raw = source(env_default("FINPRED_STRATEGY",
-    "strategies/yieldcraft.ottomat"));
+  let strategy_raw = source(env_default(
+    "FINPRED_STRATEGY",
+    "strategies/yieldcraft.ottomat"
+  ));
   let demand_path = env_default("FINPRED_DEMAND", "");
   if ContributionDeclaration.admits(strategy_raw)
   {
     let demand = Contribution.demand_source(demand_path);
-    return Contribution.publish(home,
-      source(env_default("FINPRED_SCENARIO",
-      "fixtures/scenario.csv")),
+    return Contribution.publish(
+      home,
+      source(env_default("FINPRED_SCENARIO", "fixtures/scenario.csv")),
       demand,
-      source(env_default("FINPRED_VALUATION",
-      "fixtures/valuation.csv")),
-      strategy_raw);
+      source(env_default("FINPRED_VALUATION", "fixtures/valuation.csv")),
+      strategy_raw
+    );
   }
   if demand_path != ""
   {
     tool_fail("yieldcraft: FINPRED_DEMAND requires the contribution strategy");
   }
-  return publish(source(env_default("FINPRED_SCENARIO",
-    "fixtures/scenario.csv")),
-    source(env_default("FINPRED_OFFERS",
-    "fixtures/offers.csv")),
-    source(env_default("FINPRED_VALUATION",
-    "fixtures/valuation.csv")),
+  return publish(
+    source(env_default("FINPRED_SCENARIO", "fixtures/scenario.csv")),
+    source(env_default("FINPRED_OFFERS", "fixtures/offers.csv")),
+    source(env_default("FINPRED_VALUATION", "fixtures/valuation.csv")),
     strategy_raw,
-    home);
+    home
+  );
 }

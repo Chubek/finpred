@@ -4,13 +4,16 @@ import core.date as Date;
 import core.feed_snapshot as Feed;
 import plugins.dragnet.fx_reference as FX;
 record Request
-{
-  base_currency: sexpr, quote_currency: sexpr, start_date: sexpr, end_date: sexpr, cutoff: sexpr
+{ base_currency : sexpr
+, quote_currency: sexpr
+, start_date    : sexpr
+, end_date      : sexpr
+, cutoff        : sexpr
 }
 
 record Comparison
-{
-  status: i64, bytes: sexpr
+{ status: i64
+, bytes : sexpr
 }
 
 fn kind() -> string
@@ -35,9 +38,9 @@ fn max_bytes() -> i64
 
 fn fail(status: i64) -> Comparison
 {
-  return record < Comparison >
-  {
-    status: status, bytes: sx_nil()
+  return record<Comparison>
+  { status: status
+  , bytes : sx_nil()
   };
 }
 
@@ -107,11 +110,13 @@ fn decimal_order(a: string, b: string) -> i64
 # Status 2 for malformed requests, otherwise statuses 1..4 from the first
 # failing leg (start before end), or 5 when a visible leg has the wrong date.
 # Both expected parents are supplied independently of the payloads.
-fn compare(q: Request,
+fn compare(
+  q: Request,
   start: string,
   start_parent: string,
   end: string,
-  end_parent: string) -> Comparison
+  end_parent: string
+) -> Comparison
 {
   if sx_kind(q["base_currency"]) != 2 || sx_kind(q["quote_currency"]) != 2 || sx_kind(q["start_date"]) != 2 || sx_kind(q["end_date"]) != 2 || sx_kind(q["cutoff"]) != 2
   {
@@ -158,10 +163,14 @@ fn compare(q: Request,
     direction = "down";
   }
   let out = buffer_new();
-  buffer_append(out,
-    "{\"kind\":\"analysis.fx-reference-change\",\"version\":1,\"unit\":\"quote_currency_per_base_currency\",\"pricing_input\":false,\"executable\":false");
-  buffer_append(out,
-    ",\"source_kind\":\"dragnet.ecb-fx-reference@1\",\"source_series\":\"eurofxref-daily\"");
+  buffer_append(
+    out,
+    "{\"kind\":\"analysis.fx-reference-change\",\"version\":1,\"unit\":\"quote_currency_per_base_currency\",\"pricing_input\":false,\"executable\":false"
+  );
+  buffer_append(
+    out,
+    ",\"source_kind\":\"dragnet.ecb-fx-reference@1\",\"source_series\":\"eurofxref-daily\""
+  );
   Feed.field(out, "base_currency", base);
   Feed.field(out, "quote_currency", quote_currency);
   Feed.field(out, "cutoff", cutoff);
@@ -173,18 +182,20 @@ fn compare(q: Request,
   Feed.field(out, "end_parent", end_parent);
   Feed.field(out, "direction", direction);
   buffer_append(out, "}\n");
-  return record < Comparison >
-  {
-    status: 0, bytes: sx_string(buffer_text(out))
+  return record<Comparison>
+  { status: 0
+  , bytes : sx_string(buffer_text(out))
   };
 }
 
-fn verifies(q: Request,
+fn verifies(
+  q: Request,
   start: string,
   start_parent: string,
   end: string,
   end_parent: string,
-  artifact: string) -> bool
+  artifact: string
+) -> bool
 {
   if text_len(artifact) < 1 || text_len(artifact) > max_bytes()
   {

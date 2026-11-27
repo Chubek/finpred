@@ -19,19 +19,19 @@ fn print(value: sexpr)
   println(text);
 }
 
-fn produce(mode: string,
+fn produce(
+  mode: string,
   now: string,
   status: string,
   inputs: sexpr,
-  result: sexpr) -> sexpr
+  result: sexpr
+) -> sexpr
 {
   var fields = put(sx_nil(), "as_of", sx_string(now));
   fields = put(fields, "inputs", inputs);
   fields = put(fields, "kind", sx_string("caravansary.market.$mode@1"));
   fields = put(fields, "publication_allowed", Json.boolean(false));
-  fields = put(fields,
-    "qualification",
-    sx_string("fictional-offline-fixture"));
+  fields = put(fields, "qualification", sx_string("fictional-offline-fixture"));
   fields = put(fields, "result", result);
   let body = Json.object(put(fields, "status", sx_string(status)));
   return Json.replace(body, "artifact_digest", sx_string(Json.digest(body)));
@@ -52,10 +52,11 @@ fn check_kind(kind: string)
 
 fn summary(value: sexpr) -> sexpr
 {
-  var fields = put(sx_nil(),
+  var fields = put(
+    sx_nil(),
     "artifact_digest",
-    Json.field(value,
-    "artifact_digest"));
+    Json.field(value, "artifact_digest")
+  );
   fields = put(fields, "as_of", Json.field(value, "as_of"));
   fields = put(fields, "kind", Json.field(value, "kind"));
   return Json.object(put(fields, "status", Json.field(value, "status")));
@@ -66,22 +67,31 @@ fn summary(value: sexpr) -> sexpr
 fn checked(path: string, roots: sexpr) ->(sexpr, i64)
 {
   let value = Files.read_json(path, roots, limit(), "market artifact");
-  Inputs.object_fields(value,
+  Inputs.object_fields(
+    value,
     "artifact_digest as_of inputs kind publication_allowed qualification result status",
     "",
-    "market artifact");
+    "market artifact"
+  );
   let kind = Json.text(Json.field(value, "kind"));
   check_kind(kind);
   let artifact_digest = Json.text(Json.field(value, "artifact_digest"));
   let stamp = Json.text(Json.field(value, "as_of"));
   let now = Civil.timestamp(stamp, "market artifact as_of");
   let status = Json.text(Json.field(value, "status"));
-  if stamp != Civil.utc_text(now) || ! Files.sha256_hex(artifact_digest) || (status != "completed" && status != "abstained") || Json.text(Json.field(value,
-    "qualification")) != "fictional-offline-fixture" || sx_text(Json.field(value,
-    "publication_allowed")) != "false" || Json.kind(Json.field(value,
-    "publication_allowed")) != "boolean" || Json.kind(Json.field(value,
-    "result")) != "object" || Json.kind(Json.field(value,
-    "inputs")) != "object"
+  if stamp != Civil.utc_text(now) || ! Files.sha256_hex(artifact_digest) || (status != "completed" && status != "abstained") || Json.text(Json.field(
+    value,
+    "qualification"
+  )) != "fictional-offline-fixture" || sx_text(Json.field(
+    value,
+    "publication_allowed"
+  )) != "false" || Json.kind(Json.field(
+    value,
+    "publication_allowed"
+  )) != "boolean" || Json.kind(Json.field(
+    value,
+    "result"
+  )) != "object" || Json.kind(Json.field(value, "inputs")) != "object"
   {
     tool_fail("invalid market artifact envelope");
   }
@@ -108,16 +118,19 @@ fn explain(path: string, roots: sexpr) -> sexpr
   let(value, _now) = checked(path, roots);
   var fields = put(sx_nil(), "artifact", summary(value));
   fields = put(fields, "inputs", Json.field(value, "inputs"));
-  fields = put(fields,
+  fields = put(
+    fields,
     "integrity",
-    sx_string("content-digest-only-not-authenticated"));
+    sx_string("content-digest-only-not-authenticated")
+  );
   fields = put(fields, "kind", sx_string("caravansary.market.explain@1"));
   fields = put(fields, "publication_allowed", Json.boolean(false));
   fields = put(fields, "qualification", Json.field(value, "qualification"));
-  return Json.object(put(fields,
+  return Json.object(put(
+    fields,
     "recorded_result",
-    Json.field(value,
-    "result")));
+    Json.field(value, "result")
+  ));
 }
 
 fn insert(ordered: sexpr, value: sexpr, time: i64) -> sexpr
@@ -129,24 +142,25 @@ fn insert(ordered: sexpr, value: sexpr, time: i64) -> sexpr
   {
     let item = sx_head(later);
     let other_time = Json.int64(sx_head(item), "internal artifact timestamp");
-    let other_digest = Json.text(Json.field(sx_head(sx_tail(item)),
-      "artifact_digest"));
+    let other_digest = Json.text(Json.field(
+      sx_head(sx_tail(item)),
+      "artifact_digest"
+    ));
     if digest == other_digest
     {
       tool_fail("history contains a duplicate market artifact");
     }
-    if time < other_time || (time == other_time && Str.compare(digest,
-      other_digest) < 0)
+    if time < other_time || (time == other_time && Str.compare(
+      digest,
+      other_digest
+    ) < 0)
     {
       break;
     }
     before = sx_cons(item, before);
     later = sx_tail(later);
   }
-  later = sx_cons(sx_cons(Json.integer(time),
-    sx_cons(value,
-    sx_nil())),
-    later);
+  later = sx_cons(sx_cons(Json.integer(time), sx_cons(value, sx_nil())), later);
   while sx_kind(before) == 3
   {
     later = sx_cons(sx_head(before), later);
@@ -171,15 +185,21 @@ fn history(paths: sexpr, roots: sexpr) -> sexpr
     ordered = sx_cons(sx_head(sx_tail(sx_head(summaries))), ordered);
     summaries = sx_tail(summaries);
   }
-  var fields = put(sx_nil(),
+  var fields = put(
+    sx_nil(),
     "artifacts",
-    Json.array(Sx.sexpr_reverse(ordered)));
-  fields = put(fields,
+    Json.array(Sx.sexpr_reverse(ordered))
+  );
+  fields = put(
+    fields,
     "integrity",
-    sx_string("content-digest-only-not-authenticated"));
+    sx_string("content-digest-only-not-authenticated")
+  );
   fields = put(fields, "kind", sx_string("caravansary.market.history@1"));
   fields = put(fields, "publication_allowed", Json.boolean(false));
-  return Json.object(put(fields,
+  return Json.object(put(
+    fields,
     "qualification",
-    sx_string("fictional-offline-fixture")));
+    sx_string("fictional-offline-fixture")
+  ));
 }

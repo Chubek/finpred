@@ -11,23 +11,29 @@ fn selection(out: buffer, p: i64, n: i64, w: i64)
 {
   if p < 0
   {
-    buffer_append(out,
-      "{\"action\":\"hold\",\"price_minor\":null,\"nominal_minor_milli\":0,\"worst_minor_milli\":0}");
+    buffer_append(
+      out,
+      "{\"action\":\"hold\",\"price_minor\":null,\"nominal_minor_milli\":0,\"worst_minor_milli\":0}"
+    );
   }
   else
   {
     let price = F.num(p);
     let nominal = F.num(n);
     let worst = F.num(w);
-    buffer_append(out,
-      "{\"action\":\"offer\",\"price_minor\":$price,\"nominal_minor_milli\":$nominal,\"worst_minor_milli\":$worst}");
+    buffer_append(
+      out,
+      "{\"action\":\"offer\",\"price_minor\":$price,\"nominal_minor_milli\":$nominal,\"worst_minor_milli\":$worst}"
+    );
   }
 }
 
-fn solve(scenario_raw: string,
+fn solve(
+  scenario_raw: string,
   valuation_raw: string,
   demand_raw: string,
-  stress_raw: string) -> string
+  stress_raw: string
+) -> string
 {
   let limit = Base.bytes_limit();
   if text_len(scenario_raw) > limit || text_len(valuation_raw) > limit || text_len(stress_raw) > limit
@@ -53,16 +59,17 @@ fn solve(scenario_raw: string,
   let meta = CSV.line(stress_raw, 2);
   CSV.require_width(meta, 2);
   let as_of = CSV.field(meta, 1);
-  if CSV.field(meta,
-    0) != dd || ! Date.utc_timestamp(as_of) || Str.compare(as_of,
-    cutoff) > 0 || Str.compare(as_of,
-    sx_text(evidence["ingested"])) < 0
+  if CSV.field(meta, 0) != dd || ! Date.utc_timestamp(as_of) || Str.compare(
+    as_of,
+    cutoff
+  ) > 0 || Str.compare(as_of, sx_text(evidence["ingested"])) < 0
   {
     tool_fail("risk contribution: wrong demand digest or invalid assumption timestamp");
   }
-  CSV.header(CSV.line(stress_raw,
-    3),
-    "price_minor,low_room_nights_milli,high_room_nights_milli");
+  CSV.header(
+    CSV.line(stress_raw, 3),
+    "price_minor,low_room_nights_milli,high_room_nights_milli"
+  );
   let bounds = Base.bounds(v);
   let floor = bounds["floor"];
   let cap = bounds["cap"];
@@ -90,8 +97,10 @@ fn solve(scenario_raw: string,
     let expected = Base.number(row, 1);
     let low = Base.number(stress, 1);
     let high = Base.number(stress, 2);
-    if ! Money.safe_nonnegative(price) || price <= last_price || expected > last_nominal || Base.number(stress,
-      0) != price || low > expected || expected > high || low > last_low || high > last_high
+    if ! Money.safe_nonnegative(price) || price <= last_price || expected > last_nominal || Base.number(
+      stress,
+      0
+    ) != price || low > expected || expected > high || low > last_low || high > last_high
     {
       tool_fail("risk contribution: incompatible or unordered prices or demand bounds");
     }
@@ -136,20 +145,28 @@ fn solve(scenario_raw: string,
     let h = F.num(high);
     let n = F.num(nominal);
     let w = F.num(worst);
-    buffer_append(candidates,
-      "{\"price_minor\":$p,\"low_room_nights_milli\":$l,\"nominal_room_nights_milli\":$m,\"high_room_nights_milli\":$h,\"nominal_minor_milli\":$n,\"worst_minor_milli\":$w,\"feasible\":$feasible}");
+    buffer_append(
+      candidates,
+      "{\"price_minor\":$p,\"low_room_nights_milli\":$l,\"nominal_room_nights_milli\":$m,\"high_room_nights_milli\":$h,\"nominal_minor_milli\":$n,\"worst_minor_milli\":$w,\"feasible\":$feasible}"
+    );
   }
   let report = buffer_new();
   let c = F.num(cost);
   let f = F.num(floor);
   let u = F.num(cap);
   let list = buffer_text(candidates);
-  buffer_append(report,
-    "{\"kind\":\"pricing.contribution-stress\",\"version\":1,\"published\":false,\"currency\":\"EUR\",\"price_basis\":\"room_night\",\"scale\":1000,\"comparison\":\"modeled_not_observed\",");
-  buffer_append(report,
-    "\"scenario\":\"blake3:$sd\",\"valuation\":\"blake3:$vd\",\"demand\":\"blake3:$dd\",\"stress\":\"blake3:$stress_digest\",\"assumptions_as_of\":\"$as_of\",\"decision_at\":\"$cutoff\",");
-  buffer_append(report,
-    "\"marginal_cost_minor\":$c,\"feasible_floor_minor\":$f,\"feasible_cap_minor\":$u,\"robust\":");
+  buffer_append(
+    report,
+    "{\"kind\":\"pricing.contribution-stress\",\"version\":1,\"published\":false,\"currency\":\"EUR\",\"price_basis\":\"room_night\",\"scale\":1000,\"comparison\":\"modeled_not_observed\","
+  );
+  buffer_append(
+    report,
+    "\"scenario\":\"blake3:$sd\",\"valuation\":\"blake3:$vd\",\"demand\":\"blake3:$dd\",\"stress\":\"blake3:$stress_digest\",\"assumptions_as_of\":\"$as_of\",\"decision_at\":\"$cutoff\","
+  );
+  buffer_append(
+    report,
+    "\"marginal_cost_minor\":$c,\"feasible_floor_minor\":$f,\"feasible_cap_minor\":$u,\"robust\":"
+  );
   selection(report, best_price, best_nominal, best_worst);
   buffer_append(report, ",\"nominal\":");
   selection(report, nominal_price, nominal_score, nominal_worst);

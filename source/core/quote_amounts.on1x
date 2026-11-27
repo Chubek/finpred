@@ -2,23 +2,21 @@
 # These types distinguish price roles; they imply neither FX nor a currency scale.
 import core.money as Money;
 record NetBase
-{
-  minor: i64
+{ minor: i64
 }
 
 record GrossStay
-{
-  minor: i64
+{ minor: i64
 }
 
 record QuoteAmounts
-{
-  net: NetBase, gross: GrossStay
+{ net  : NetBase
+, gross: GrossStay
 }
 
 record BundleDiscount
-{
-  rooms: i64, minor: i64
+{ rooms: i64
+, minor: i64
 }
 
 fn minor_limit() -> i64
@@ -26,10 +24,12 @@ fn minor_limit() -> i64
   return 1000000000000;
 }
 
-fn check_quote(base: i64,
+fn check_quote(
+  base: i64,
   fee: i64,
   tax: i64,
-  discount: i64) -> Option < QuoteAmounts >
+  discount: i64
+) -> Option < QuoteAmounts >
 {
   if ! Money.safe_nonnegative(base) || ! Money.safe_nonnegative(fee) || ! Money.safe_nonnegative(tax) || discount < 0 || discount > base
   {
@@ -41,23 +41,20 @@ fn check_quote(base: i64,
   {
     return Option < QuoteAmounts >::None;
   }
-  return Option < QuoteAmounts >::Some(record < QuoteAmounts >
-  {
-    net: record < NetBase >
-    {
-      minor: net
-    }, gross: record < GrossStay >
-    {
-      minor: net + fee + tax
+  return Option < QuoteAmounts >::Some(record<QuoteAmounts>
+  { net  : record<NetBase>
+    { minor: net
+    }
+  , gross: record<GrossStay>
+    { minor: net + fee + tax
     }
   });
 }
 
 fn maximum_net_base() -> NetBase
 {
-  return record < NetBase >
-  {
-    minor: minor_limit()
+  return record<NetBase>
+  { minor: minor_limit()
   };
 }
 
@@ -81,15 +78,17 @@ fn check_bundle(rooms: i64, minor: i64) -> Option < BundleDiscount >
   {
     return Option < BundleDiscount >::None;
   }
-  return Option < BundleDiscount >::Some(record < BundleDiscount >
-  {
-    rooms: rooms, minor: minor
+  return Option < BundleDiscount >::Some(record<BundleDiscount>
+  { rooms: rooms
+  , minor: minor
   });
 }
 
-fn bundle_supported(discount: BundleDiscount,
+fn bundle_supported(
+  discount: BundleDiscount,
   has_quotes: bool,
-  minimum_base: NetBase) -> bool
+  minimum_base: NetBase
+) -> bool
 {
   # The legacy module exposes transparent records. Guard before multiplication
   # even if another caller constructs its own values instead of checking them.

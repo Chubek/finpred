@@ -7,13 +7,14 @@ import sdk.callable as SDK;
 import std.String as Str;
 import std.crypto.crypto as Crypto;
 record Training
-{
-  state: i64, rows: sexpr
+{ state: i64
+, rows : sexpr
 }
 
 record Spec
-{
-  issued: sexpr, target: sexpr, month: i64
+{ issued: sexpr
+, target: sexpr
+, month : i64
 }
 
 fn moving_average() -> string
@@ -55,43 +56,56 @@ fn digest(text: string) -> string
   return "blake3:$hash";
 }
 
-fn port(name: string,
+fn port(
+  name: string,
   kind: string,
   unit: string,
   states: i64,
-  limit: i64) -> SDK.Port
+  limit: i64
+) -> SDK.Port
 {
-  return record < SDK.Port >
-  {
-    name: sx_string(name), kind: sx_string(kind), major: 1, unit: sx_string(unit), currency: sx_string("none"), states: states, max_bytes: limit
+  return record<SDK.Port>
+  { name     : sx_string(name)
+  , kind     : sx_string(kind)
+  , major    : 1
+  , unit     : sx_string(unit)
+  , currency : sx_string("none")
+  , states   : states
+  , max_bytes: limit
   };
 }
 
 fn training_port() -> SDK.Port
 {
-  return port("training",
+  return port(
+    "training",
     Guest.kind(),
     Guest.unit(),
     Guest.states(),
-    Guest.max_bytes());
+    Guest.max_bytes()
+  );
 }
 
 fn request_port() -> SDK.Port
 {
-  return port("request",
+  return port(
+    "request",
     "analysis.guest-nights-forecast-request",
     "calendar_month",
     1,
-    128);
+    128
+  );
 }
 
 fn forecast_port() -> SDK.Port
 {
-  return port("forecast",
+  return port(
+    "forecast",
     "analysis.guest-nights-forecast",
     Guest.unit(),
     5,
-    1024);
+    1024
+  );
 }
 
 # The linking host supplies the digest of its exact model code subject.
@@ -101,16 +115,28 @@ fn descriptor(name: string, code: string) -> SDK.Descriptor
   {
     return SDK.unavailable();
   }
-  let pin = record < SDK.Pin >
-  {
-    package_name: sx_string("forecast.baselines"), package_version: sx_string("1.0.0"), handler_name: sx_string(name), handler_version: sx_string("1"), abi: 1, code_digest: sx_string(code), policy_digest: sx_string(digest(policy(name)))
+  let pin = record<SDK.Pin>
+  { package_name   : sx_string("forecast.baselines")
+  , package_version: sx_string("1.0.0")
+  , handler_name   : sx_string(name)
+  , handler_version: sx_string("1")
+  , abi            : 1
+  , code_digest    : sx_string(code)
+  , policy_digest  : sx_string(digest(policy(name)))
   };
-  let inputs = sx_cons(SDK.port_entry(training_port()),
-    sx_cons(SDK.port_entry(request_port()),
-    sx_nil()));
-  return record < SDK.Descriptor >
-  {
-    enabled: true, pin: pin, role: sx_string("Model"), mode: sx_string("analysis"), effect: sx_string("pure"), inputs: inputs, output: forecast_port(), max_work: 1
+  let inputs = sx_cons(
+    SDK.port_entry(training_port()),
+    sx_cons(SDK.port_entry(request_port()), sx_nil())
+  );
+  return record<SDK.Descriptor>
+  { enabled : true
+  , pin     : pin
+  , role    : sx_string("Model")
+  , mode    : sx_string("analysis")
+  , effect  : sx_string("pure")
+  , inputs  : inputs
+  , output  : forecast_port()
+  , max_work: 1
   };
 }
 
@@ -120,26 +146,29 @@ fn month(period: string) -> i64
   {
     return - 1;
   }
-  return Guest.nat(text_slice(period,
-    0,
-    4),
-    4) * 12 + Date.digit(period,
-    5) * 10 + Date.digit(period,
-    6) - 1;
+  return Guest.nat(text_slice(period, 0, 4), 4) * 12 + Date.digit(
+    period,
+    5
+  ) * 10 + Date.digit(period, 6) - 1;
 }
 
 fn spec(bytes: string, cutoff: string) -> Spec
 {
-  let bad = record < Spec >
-  {
-    issued: sx_nil(), target: sx_nil(), month: - 1
+  let bad = record<Spec>
+  { issued: sx_nil()
+  , target: sx_nil()
+  , month : - 1
   };
   let(a, issued) = Guest.quoted(bytes, 0, "{\"issued_at\":\"", 20);
   let(b, target) = Guest.quoted(bytes, a, ",\"target_month\":\"", 7);
-  if b < 0 || Guest.after(bytes,
+  if b < 0 || Guest.after(
+    bytes,
     b,
-    ",\"horizon_months\":1}\n") != text_len(bytes) || ! Date.utc_timestamp(issued) || ! Date.utc_timestamp(cutoff) || Str.compare(cutoff,
-    issued) > 0
+    ",\"horizon_months\":1}\n"
+  ) != text_len(bytes) || ! Date.utc_timestamp(issued) || ! Date.utc_timestamp(cutoff) || Str.compare(
+    cutoff,
+    issued
+  ) > 0
   {
     return bad;
   }
@@ -148,17 +177,18 @@ fn spec(bytes: string, cutoff: string) -> Spec
   {
     return bad;
   }
-  return record < Spec >
-  {
-    issued: sx_string(issued), target: sx_string(target), month: target_month
+  return record<Spec>
+  { issued: sx_string(issued)
+  , target: sx_string(target)
+  , month : target_month
   };
 }
 
 fn invalid_training() -> Training
 {
-  return record < Training >
-  {
-    state: 0, rows: sx_nil()
+  return record<Training>
+  { state: 0
+  , rows : sx_nil()
   };
 }
 
@@ -166,15 +196,12 @@ fn training(bytes: string, cutoff: string) -> Training
 {
   let prefix = "{\"kind\":\"analysis.guest-nights-monthly\",\"version\":1,\"unit\":\"guest_nights\",\"currency\":null,\"pricing_input\":false";
   let dims = ",\"source_kind\":\"dragnet.eurostat-accommodation-nights@1\",\"source_series\":\"tour_occ_nim\",\"geography\":\"EU27_2020\",\"activity\":\"I551-I553\",\"residence\":\"TOTAL\"";
-  let(a,
-    state) = Guest.quoted(bytes,
-    Guest.after(bytes,
-    Guest.after(bytes,
-    0,
-    prefix),
-    dims),
+  let(a, state) = Guest.quoted(
+    bytes,
+    Guest.after(bytes, Guest.after(bytes, 0, prefix), dims),
     ",\"state\":\"",
-    9);
+    9
+  );
   let(b, parent) = Guest.quoted(bytes, a, ",\"parent\":\"", 71);
   let(c, updated) = Guest.quoted(bytes, b, ",\"provider_updated_at\":\"", 24);
   let(d, observed) = Guest.quoted(bytes, c, ",\"observed_at\":\"", 20);
@@ -185,10 +212,13 @@ fn training(bytes: string, cutoff: string) -> Training
   var at = Guest.after(bytes, h, ",\"observations\":[");
   let published = Guest.provider_clock(updated);
   let receipt = Guest.clock(received);
-  if at < 0 || (state != "available" && state != "partial") || ! Guest.digest(parent) || published < 0 || receipt < published || receipt - published > 10368000 || observed != received || ! Date.utc_timestamp(ingested) || ! Date.utc_timestamp(source_as_of) || Str.compare(received,
-    ingested) > 0 || Str.compare(ingested,
-    source_as_of) > 0 || Str.compare(source_as_of,
-    cutoff) > 0 || input_cutoff != cutoff
+  if at < 0 || (state != "available" && state != "partial") || ! Guest.digest(parent) || published < 0 || receipt < published || receipt - published > 10368000 || observed != received || ! Date.utc_timestamp(ingested) || ! Date.utc_timestamp(source_as_of) || Str.compare(
+    received,
+    ingested
+  ) > 0 || Str.compare(ingested, source_as_of) > 0 || Str.compare(
+    source_as_of,
+    cutoff
+  ) > 0 || input_cutoff != cutoff
   {
     return invalid_training();
   }
@@ -215,13 +245,12 @@ fn training(bytes: string, cutoff: string) -> Training
       contiguous = false;
     }
     let(k, presence) = Guest.quoted(bytes, j, ",\"state\":\"", 9);
-    let(l,
-      value) = Guest.token(bytes,
-      Guest.after(bytes,
-      k,
-      ",\"nights\":"),
+    let(l, value) = Guest.token(
+      bytes,
+      Guest.after(bytes, k, ",\"nights\":"),
       44,
-      12);
+      12
+    );
     if l < 0 || (presence != "available" && presence != "unknown")
     {
       return invalid_training();
@@ -233,10 +262,10 @@ fn training(bytes: string, cutoff: string) -> Training
         return invalid_training();
       }
       available = available + 1;
-      rows = sx_cons(sx_cons(sx_string(F.num(index)),
-        sx_cons(sx_string(value),
-        sx_nil())),
-        rows);
+      rows = sx_cons(
+        sx_cons(sx_string(F.num(index)), sx_cons(sx_string(value), sx_nil())),
+        rows
+      );
     }
     else
     {
@@ -273,9 +302,9 @@ fn training(bytes: string, cutoff: string) -> Training
       {
         code = 1;
       }
-      return record < Training >
-      {
-        state: code, rows: rows
+      return record<Training>
+      { state: code
+      , rows : rows
       };
     }
     previous = index;
@@ -305,9 +334,10 @@ fn call(pin: SDK.Pin, request: SDK.Request) -> SDK.Outcome
   let name = sx_text(pin["handler_name"]);
   let code = sx_text(pin["code_digest"]);
   let own = descriptor(name, code);
-  if ! own["enabled"] || ! SDK.same_pin(own["pin"],
-    pin) || ! SDK.valid_inputs(own["inputs"],
-    request["inputs"])
+  if ! own["enabled"] || ! SDK.same_pin(own["pin"], pin) || ! SDK.valid_inputs(
+    own["inputs"],
+    request["inputs"]
+  )
   {
     return SDK.failure(5);
   }
@@ -319,8 +349,10 @@ fn call(pin: SDK.Pin, request: SDK.Request) -> SDK.Outcome
   let inputs = request["inputs"];
   let input = sx_head(inputs);
   let projection = sx_text(SDK.value_bytes(input));
-  let settings = spec(sx_text(SDK.value_bytes(sx_head(sx_tail(inputs)))),
-    cutoff);
+  let settings = spec(
+    sx_text(SDK.value_bytes(sx_head(sx_tail(inputs)))),
+    cutoff
+  );
   let target_index = settings["month"];
   if target_index < 0
   {
@@ -366,21 +398,31 @@ fn call(pin: SDK.Pin, request: SDK.Request) -> SDK.Outcome
     return SDK.failure(5);
   }
   let out = buffer_new();
-  buffer_append(out,
-    "{\"kind\":\"analysis.guest-nights-forecast\",\"version\":1,\"unit\":\"guest_nights\",\"currency\":null,\"pricing_input\":false");
-  buffer_append(out,
-    ",\"model\":\"$name\",\"code_digest\":\"$code\",\"policy_digest\":\"$policy_id\",\"training\":\"$training_id\"");
-  buffer_append(out,
-    ",\"issued_at\":\"$issued\",\"training_cutoff\":\"$cutoff\",\"target_month\":\"$target\",\"horizon_months\":1");
+  buffer_append(
+    out,
+    "{\"kind\":\"analysis.guest-nights-forecast\",\"version\":1,\"unit\":\"guest_nights\",\"currency\":null,\"pricing_input\":false"
+  );
+  buffer_append(
+    out,
+    ",\"model\":\"$name\",\"code_digest\":\"$code\",\"policy_digest\":\"$policy_id\",\"training\":\"$training_id\""
+  );
+  buffer_append(
+    out,
+    ",\"issued_at\":\"$issued\",\"training_cutoff\":\"$cutoff\",\"target_month\":\"$target\",\"horizon_months\":1"
+  );
   if numerator < 0
   {
-    buffer_append(out,
-      ",\"state\":\"unknown\",\"reason\":\"insufficient_evidence\",\"estimate\":null,\"uncertainty\":\"unavailable\"}\n");
+    buffer_append(
+      out,
+      ",\"state\":\"unknown\",\"reason\":\"insufficient_evidence\",\"estimate\":null,\"uncertainty\":\"unavailable\"}\n"
+    );
     return SDK.success(4, buffer_text(out));
   }
   let n = F.num(numerator);
   let d = F.num(denominator);
-  buffer_append(out,
-    ",\"state\":\"available\",\"reason\":null,\"estimate\":{\"numerator\":$n,\"denominator\":$d},\"uncertainty\":\"unavailable\"}\n");
+  buffer_append(
+    out,
+    ",\"state\":\"available\",\"reason\":null,\"estimate\":{\"numerator\":$n,\"denominator\":$d},\"uncertainty\":\"unavailable\"}\n"
+  );
   return SDK.success(1, buffer_text(out));
 }

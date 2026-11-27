@@ -46,10 +46,12 @@ fn main() -> i64
   {
     supplied = env("PROJECTED");
   }
-  if mode != "model-reject" && ! Guest.verifies(snapshot,
+  if mode != "model-reject" && ! Guest.verifies(
+    snapshot,
     trusted_parent,
     cutoff,
-    supplied)
+    supplied
+  )
   {
     return 20;
   }
@@ -61,15 +63,18 @@ fn main() -> i64
   {
     work = 0;
   }
-  let args = record < SDK.Request >
-  {
-    inputs: inputs, cutoff: sx_string(cutoff), work: work
+  let args = record<SDK.Request>
+  { inputs: inputs
+  , cutoff: sx_string(cutoff)
+  , work  : work
   };
-  let result = SDK.invoke(resolved["pin"],
+  let result = SDK.invoke(
+    resolved["pin"],
     "analysis",
     args,
     lookup,
-    Model.call);
+    Model.call
+  );
   if result["status"] != 0
   {
     return result["status"];

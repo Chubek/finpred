@@ -31,33 +31,28 @@ fn field(index: i64, key: string) -> sexpr
 
 fn holdout_entry(index: i64) -> Holdout.Entry
 {
-  let roots = record < Evaluation.Roots >
-  {
-    training_snapshot: field(index,
-      "TRAIN_PARENT"), actuals_snapshot: field(index,
-      "ACTUAL_PARENT"), request: field(index,
-      "REQUEST_PARENT"), forecast: field(index,
-      "FORECAST_PARENT")
+  let roots = record<Evaluation.Roots>
+  { training_snapshot: field(index, "TRAIN_PARENT")
+  , actuals_snapshot : field(index, "ACTUAL_PARENT")
+  , request          : field(index, "REQUEST_PARENT")
+  , forecast         : field(index, "FORECAST_PARENT")
   };
-  let frozen = record < Evaluation.Frozen >
-  {
-    training_snapshot: field(index,
-      "TRAIN_RAW"), actuals_snapshot: field(index,
-      "ACTUAL_RAW"), request: field(index,
-      "REQUEST"), forecast: field(index,
-      "FROZEN_FORECAST")
+  let frozen = record<Evaluation.Frozen>
+  { training_snapshot: field(index, "TRAIN_RAW")
+  , actuals_snapshot : field(index, "ACTUAL_RAW")
+  , request          : field(index, "REQUEST")
+  , forecast         : field(index, "FROZEN_FORECAST")
   };
-  let archive = record < Evaluation.Archive >
-  {
-    id: field(index,
-      "EVALUATION_ID"), manifest: field(index,
-      "MANIFEST"), score: field(index,
-      "SCORE")
+  let archive = record<Evaluation.Archive>
+  { id      : field(index, "EVALUATION_ID")
+  , manifest: field(index, "MANIFEST")
+  , score   : field(index, "SCORE")
   };
-  return record < Holdout.Entry >
-  {
-    training_cutoff: field(index,
-      "TRAIN_CUTOFF"), roots: roots, frozen: frozen, archive: archive
+  return record<Holdout.Entry>
+  { training_cutoff: field(index, "TRAIN_CUTOFF")
+  , roots          : roots
+  , frozen         : frozen
+  , archive        : archive
   };
 }
 
@@ -71,13 +66,19 @@ fn main() -> i64
   }
   if task == "holdout"
   {
-    let host = record < Evaluation.Linked >
-    {
-      model_code: sx_string(code()), scoring_code: sx_string(Model.digest(env("SCORING_CODE_BYTES")))
+    let host = record<Evaluation.Linked>
+    { model_code  : sx_string(code())
+    , scoring_code: sx_string(Model.digest(env("SCORING_CODE_BYTES")))
     };
-    let plan = record < Holdout.Plan >
-    {
-      model: sx_string(env("MODEL")), model_code: sx_string(env("MODEL_CODE")), scoring_code: sx_string(env("SCORING_CODE")), validation_through: sx_string(env("VALIDATION_THROUGH")), selection_frozen_at: sx_string(env("SELECTION_FROZEN_AT")), first_target: sx_string(env("FIRST_TARGET")), last_target: sx_string(env("LAST_TARGET")), scoring_cutoff: sx_string(env("SCORE_CUTOFF"))
+    let plan = record<Holdout.Plan>
+    { model              : sx_string(env("MODEL"))
+    , model_code         : sx_string(env("MODEL_CODE"))
+    , scoring_code       : sx_string(env("SCORING_CODE"))
+    , validation_through : sx_string(env("VALIDATION_THROUGH"))
+    , selection_frozen_at: sx_string(env("SELECTION_FROZEN_AT"))
+    , first_target       : sx_string(env("FIRST_TARGET"))
+    , last_target        : sx_string(env("LAST_TARGET"))
+    , scoring_cutoff     : sx_string(env("SCORE_CUTOFF"))
     };
     let report = Holdout.aggregate(host, plan, holdout_entry);
     if report["status"] != 0
@@ -108,20 +109,22 @@ fn main() -> i64
     {
       return 11;
     }
-    let inputs = sx_cons(SDK.value_entry(training["state"],
-      sx_text(training["bytes"])),
-      sx_cons(SDK.value_entry(1,
-      env("REQUEST")),
-      sx_nil()));
-    let request = record < SDK.Request >
-    {
-      inputs: inputs, cutoff: sx_string(training_cutoff), work: 1
+    let inputs = sx_cons(
+      SDK.value_entry(training["state"], sx_text(training["bytes"])),
+      sx_cons(SDK.value_entry(1, env("REQUEST")), sx_nil())
+    );
+    let request = record<SDK.Request>
+    { inputs: inputs
+    , cutoff: sx_string(training_cutoff)
+    , work  : 1
     };
-    let result = SDK.invoke(descriptor["pin"],
+    let result = SDK.invoke(
+      descriptor["pin"],
       "analysis",
       request,
       lookup,
-      Model.call);
+      Model.call
+    );
     if result["status"] != 0
     {
       return 13;
@@ -131,25 +134,33 @@ fn main() -> i64
   }
   if task == "evaluate" || task == "replay"
   {
-    let host = record < Evaluation.Linked >
-    {
-      model_code: sx_string(code()), scoring_code: sx_string(Model.digest(env("SCORING_CODE_BYTES")))
+    let host = record<Evaluation.Linked>
+    { model_code  : sx_string(code())
+    , scoring_code: sx_string(Model.digest(env("SCORING_CODE_BYTES")))
     };
-    let selection = record < Evaluation.Selection >
-    {
-      model: sx_string(model), model_code: sx_string(env("MODEL_CODE")), scoring_code: sx_string(env("SCORING_CODE")), training_cutoff: sx_string(training_cutoff), scoring_cutoff: sx_string(env("SCORE_CUTOFF"))
+    let selection = record<Evaluation.Selection>
+    { model          : sx_string(model)
+    , model_code     : sx_string(env("MODEL_CODE"))
+    , scoring_code   : sx_string(env("SCORING_CODE"))
+    , training_cutoff: sx_string(training_cutoff)
+    , scoring_cutoff : sx_string(env("SCORE_CUTOFF"))
     };
-    let roots = record < Evaluation.Roots >
-    {
-      training_snapshot: sx_string(parent), actuals_snapshot: sx_string(env("ACTUAL_PARENT")), request: sx_string(env("REQUEST_PARENT")), forecast: sx_string(env("FORECAST_PARENT"))
+    let roots = record<Evaluation.Roots>
+    { training_snapshot: sx_string(parent)
+    , actuals_snapshot : sx_string(env("ACTUAL_PARENT"))
+    , request          : sx_string(env("REQUEST_PARENT"))
+    , forecast         : sx_string(env("FORECAST_PARENT"))
     };
-    let frozen = record < Evaluation.Frozen >
-    {
-      training_snapshot: sx_string(raw), actuals_snapshot: sx_string(env("ACTUAL_RAW")), request: sx_string(env("REQUEST")), forecast: sx_string(env("FROZEN_FORECAST"))
+    let frozen = record<Evaluation.Frozen>
+    { training_snapshot: sx_string(raw)
+    , actuals_snapshot : sx_string(env("ACTUAL_RAW"))
+    , request          : sx_string(env("REQUEST"))
+    , forecast         : sx_string(env("FROZEN_FORECAST"))
     };
-    let saved = record < Evaluation.Archive >
-    {
-      id: sx_string(env("EVALUATION_ID")), manifest: sx_string(env("MANIFEST")), score: sx_string(env("SCORE"))
+    let saved = record<Evaluation.Archive>
+    { id      : sx_string(env("EVALUATION_ID"))
+    , manifest: sx_string(env("MANIFEST"))
+    , score   : sx_string(env("SCORE"))
     };
     var run = Evaluation.failure(1);
     if task == "evaluate"
@@ -177,7 +188,8 @@ fn main() -> i64
   {
     return 10;
   }
-  let result = Score.evaluate(model,
+  let result = Score.evaluate(
+    model,
     raw,
     parent,
     env("REQUEST"),
@@ -186,7 +198,8 @@ fn main() -> i64
     env("ACTUAL_PARENT"),
     training_cutoff,
     env("SCORE_CUTOFF"),
-    code());
+    code()
+  );
   if result["status"] != 0
   {
     return 30 + result["status"];

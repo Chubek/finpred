@@ -39,8 +39,7 @@ fn artifact(discovery: sexpr) -> sexpr
 
 fn eligible(value: sexpr) -> bool
 {
-  return sx_kind(value) != 0 && sx_text(J.field(value,
-    "status")) == "eligible";
+  return sx_kind(value) != 0 && sx_text(J.field(value, "status")) == "eligible";
 }
 
 fn candidates_index(candidates: sexpr) -> sexpr
@@ -51,9 +50,10 @@ fn candidates_index(candidates: sexpr) -> sexpr
   {
     let value = sx_head(rest);
     let key = Property.text(value, "candidate_id");
-    if key != Property.candidate_id(Property.provider(value),
-      Property.opaque_id(value,
-      "provider_property_id"))
+    if key != Property.candidate_id(
+      Property.provider(value),
+      Property.opaque_id(value, "provider_property_id")
+    )
     {
       tool_fail("candidate_id does not match provider identity");
     }
@@ -77,10 +77,7 @@ fn links_index(discovery: sexpr, candidates: sexpr, links: sexpr) -> sexpr
   while sx_kind(rest) == 3
   {
     let link = sx_head(rest);
-    Inputs.object_fields(link,
-      "candidate_id property_id",
-      "",
-      "verified link");
+    Inputs.object_fields(link, "candidate_id property_id", "", "verified link");
     let key = Property.opaque_id(link, "candidate_id");
     let property = Property.opaque_id(link, "property_id");
     if property == subject || Inputs.starts_ascii_ci(property, "candidate:")
@@ -97,8 +94,10 @@ fn links_index(discovery: sexpr, candidates: sexpr, links: sexpr) -> sexpr
     fields = Property.pair(key, sx_string(property), fields);
     rest = sx_tail(rest);
   }
-  ignore(J.object_unique(used,
-    "multiple verified links to one property and provider"));
+  ignore(J.object_unique(
+    used,
+    "multiple verified links to one property and provider"
+  ));
   return J.object_unique(fields, "duplicate verified link candidate");
 }
 
@@ -111,24 +110,28 @@ fn mapping(value: sexpr, verified: bool) -> sexpr
   }
   # A capture URL may be a local-fixture provenance identifier, an untrusted
   # link, or scoped to a different operation. No URL is projected to a plan.
-  return J.object(Property.pair("mapping_status",
+  return J.object(Property.pair(
+    "mapping_status",
     sx_string(status),
-    Property.pair("provider_property_id",
-    J.field(value,
-    "provider_property_id"),
-    sx_nil())));
+    Property.pair(
+      "provider_property_id",
+      J.field(value, "provider_property_id"),
+      sx_nil()
+    )
+  ));
 }
 
 fn property_value(id: sexpr, listing: sexpr, providers: sexpr) -> sexpr
 {
-  var fields = Property.pair("id",
+  var fields = Property.pair(
+    "id",
     id,
-    Property.pair("name",
-    J.field(listing,
-    "name"),
-    Property.pair("providers",
-    providers,
-    sx_nil())));
+    Property.pair(
+      "name",
+      J.field(listing, "name"),
+      Property.pair("providers", providers, sx_nil())
+    )
+  );
   var rest = sx_tail(listing);
   while sx_kind(rest) == 3
   {
@@ -169,21 +172,19 @@ fn competitors(discovery: sexpr, guests: sexpr, verified_links: sexpr) -> sexpr
       var current = prior;
       if sx_kind(prior) == 0
       {
-        current = property_value(id,
-          J.field(value,
-          "listing"),
-          J.object(Property.pair(source,
-          link,
-          sx_nil())));
+        current = property_value(
+          id,
+          J.field(value, "listing"),
+          J.object(Property.pair(source, link, sx_nil()))
+        );
       }
       else
       {
-        current = J.replace(prior,
+        current = J.replace(
+          prior,
           "providers",
-          J.replace(J.field(prior,
-          "providers"),
-          source,
-          link));
+          J.replace(J.field(prior, "providers"), source, link)
+        );
       }
       properties = J.replace(properties, key, current);
     }
@@ -196,13 +197,15 @@ fn competitors(discovery: sexpr, guests: sexpr, verified_links: sexpr) -> sexpr
     values = sx_cons(J.pair_value(sx_head(rest)), values);
     rest = sx_tail(rest);
   }
-  let output = J.object(Property.pair("kind",
+  let output = J.object(Property.pair(
+    "kind",
     sx_string("caravansary.competitors@1"),
-    Property.pair("guest_configurations",
-    guests,
-    Property.pair("properties",
-    J.array(Sx.sexpr_reverse(values)),
-    sx_nil()))));
+    Property.pair(
+      "guest_configurations",
+      guests,
+      Property.pair("properties", J.array(Sx.sexpr_reverse(values)), sx_nil())
+    )
+  ));
   let(normalized, _properties) = Inputs.competitors(output, "discovery: ");
   values = sx_nil();
   rest = sx_tail(normalized);
@@ -211,15 +214,19 @@ fn competitors(discovery: sexpr, guests: sexpr, verified_links: sexpr) -> sexpr
     values = sx_cons(J.pair_value(sx_head(rest)), values);
     rest = sx_tail(rest);
   }
-  return J.replace(output,
+  return J.replace(
+    output,
     "guest_configurations",
-    J.array(Sx.sexpr_reverse(values)));
+    J.array(Sx.sexpr_reverse(values))
+  );
 }
 
-fn observation(discovery: sexpr,
+fn observation(
+  discovery: sexpr,
   verified_links: sexpr,
   planner_row: sexpr,
-  supplied: sexpr) -> Result < sexpr, sexpr >
+  supplied: sexpr
+) -> Result < sexpr, sexpr >
 {
   let candidates = artifact(discovery);
   let links = links_index(discovery, candidates, verified_links);

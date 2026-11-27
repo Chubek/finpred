@@ -47,12 +47,10 @@ fn native_plan(shape: string) -> D.Plan
   }
   let lo = D.node("lo", "minimum@1", "first", "second");
   let mid = D.node("midpoint", handler, "hi", "lo");
-  return record < D.Plan >
-  {
-    version: sx_string(version), nodes: sx_cons(mid,
-      sx_cons(hi,
-      sx_cons(lo,
-      sx_nil()))), output: sx_string("midpoint")
+  return record<D.Plan>
+  { version: sx_string(version)
+  , nodes  : sx_cons(mid, sx_cons(hi, sx_cons(lo, sx_nil())))
+  , output : sx_string("midpoint")
   };
 }
 
@@ -110,22 +108,26 @@ fn native(mode: string, budget: i64, first: i64, second: i64)
   let plan = native_plan(setting("SHAPE"));
   let status = D.validate_with(plan, mode, budget, H.lookup);
   let memoized = setting("MEMO") == "yes";
-  let run = D.run_with(plan,
+  let run = D.run_with(
+    plan,
     mode,
     budget,
     first,
     second,
     memoized,
     H.lookup,
-    H.call);
-  let frozen = M.freeze_with(plan,
+    H.call
+  );
+  let frozen = M.freeze_with(
+    plan,
     mode,
     budget,
     first,
     second,
     memoized,
     H.lookup,
-    H.call);
+    H.call
+  );
   IO.basis_text_io_print("$status ${sx_text(run["status"])} ${sx_text(frozen["status"])}\n");
   if sx_text(run["status"]) != "ok"
   {
@@ -147,13 +149,15 @@ fn ottomat(mode: string, budget: i64, first: i64, second: i64)
 {
   let source = IO.basis_text_io_input_all("strategy");
   let lowered = S.lower_with(source, mode, budget, H.lookup);
-  let result = R.freeze_with(source,
+  let result = R.freeze_with(
+    source,
     mode,
     budget,
     first,
     second,
     H.lookup,
-    H.call);
+    H.call
+  );
   let frozen = result["snapshot"];
   let plan = lowered["plan"];
   let status = sx_text(lowered["status"]);
@@ -185,15 +189,10 @@ fn ottomat(mode: string, budget: i64, first: i64, second: i64)
     tool_fail("invalid Ottomat v5 lowering or source provenance");
   }
   IO.basis_text_io_print("${sx_text(result["lowering"])}\n${sx_text(result["source_digest"])}\n");
-  emit(D.run_with(plan,
-    mode,
-    budget,
-    first,
-    second,
-    false,
-    H.lookup,
-    H.call),
-    frozen);
+  emit(
+    D.run_with(plan, mode, budget, first, second, false, H.lookup, H.call),
+    frozen
+  );
 }
 
 fn verify()
@@ -205,10 +204,10 @@ fn verify()
     let idx = Int.to_string(count - 1 - j);
     let digest = IO.basis_text_io_input_all(text_concat("hash", idx));
     let data = IO.basis_text_io_input_all(text_concat("data", idx));
-    entries = sx_cons(sx_cons(sx_string(digest),
-      sx_cons(sx_string(data),
-      sx_nil())),
-      entries);
+    entries = sx_cons(
+      sx_cons(sx_string(digest), sx_cons(sx_string(data), sx_nil())),
+      entries
+    );
   }
   let id = IO.basis_text_io_input_all("id");
   let manifest = IO.basis_text_io_input_all("manifest");

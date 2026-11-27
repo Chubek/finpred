@@ -57,9 +57,10 @@ fn diagnostics(order: sexpr, n: i64, bps: i64, total: i64) -> sexpr
   while sx_kind(rest) == 3
   {
     let x = V.natural(sx_head(rest), V.money_cap());
-    deviations = sx_cons(Json.integer(signed_distance(2 * x,
-      middle_twice)),
-      deviations);
+    deviations = sx_cons(
+      Json.integer(signed_distance(2 * x, middle_twice)),
+      deviations
+    );
     rest = sx_tail(rest);
   }
   var fields = sx_nil();
@@ -68,11 +69,11 @@ fn diagnostics(order: sexpr, n: i64, bps: i64, total: i64) -> sexpr
   fields = V.put_int(fields, "min", at(order, 0));
   fields = V.put_int(fields, "max", at(order, n - 1));
   fields = V.put_int(fields, "median_floor", middle_twice / 2);
-  fields = V.put_int(fields,
+  fields = V.put_int(
+    fields,
     "mad_floor",
-    midpoint_median(sorted(deviations,
-    n),
-    n) / 2);
+    midpoint_median(sorted(deviations, n), n) / 2
+  );
   fields = V.put_int(fields, "quantile_bps", bps);
   return V.put_int(fields, "quantile", rank(order, n, bps));
 }
@@ -122,13 +123,16 @@ fn describe(sample: sexpr, quantile_bps: i64) -> sexpr
       else
       {
         fields = V.put_text(fields, "status", "ok");
-        return Json.object(V.put(fields,
+        return Json.object(V.put(
+          fields,
           "summary",
-          Json.object(diagnostics(sorted(Json.items(sample),
-          n),
-          n,
-          quantile_bps,
-          total))));
+          Json.object(diagnostics(
+            sorted(Json.items(sample), n),
+            n,
+            quantile_bps,
+            total
+          ))
+        ));
       }
     }
   }

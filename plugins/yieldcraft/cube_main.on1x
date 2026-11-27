@@ -17,12 +17,12 @@ fn main() -> i64
   let input = setting("FINPRED_CUBE_INPUT", "");
   if mode == "cube-evaluate"
   {
-    return Archive.evaluate(home,
+    return Archive.evaluate(
+      home,
       input,
-      setting("FINPRED_CUBE_CELLS",
-      ""),
-      setting("FINPRED_CUBE_POLICIES",
-      ""));
+      setting("FINPRED_CUBE_CELLS", ""),
+      setting("FINPRED_CUBE_POLICIES", "")
+    );
   }
   if mode == "cube-replay"
   {

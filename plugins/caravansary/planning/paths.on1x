@@ -71,8 +71,10 @@ fn roots(script: string, inputs: sexpr) ->(string, sexpr)
   let cwd = FS.basis_fs_cwd();
   # Resolve only the selected spelling's parent, not the script's symlink
   # target. Selecting a script symlink does not grant the target's directory.
-  let parent = directory(Path.basis_path_dir(Path.basis_path_join(cwd,
-    script)));
+  let parent = directory(Path.basis_path_dir(Path.basis_path_join(
+    cwd,
+    script
+  )));
   var approved = sx_cons(sx_string(parent), sx_nil());
   var rest = inputs;
   while sx_kind(rest) == 3
@@ -95,9 +97,10 @@ fn contained(path: string, root: string) -> bool
     return true;
   }
   let end = text_len(root);
-  return end < text_len(path) && text_byte(path,
-    end) == 47 && Str.is_prefix(root,
-    path);
+  return end < text_len(path) && text_byte(path, end) == 47 && Str.is_prefix(
+    root,
+    path
+  );
 }
 
 fn authorize(path: string, roots: sexpr)
@@ -131,12 +134,18 @@ fn input_json(parent: string, child: string, allowed: sexpr) ->(sexpr, string)
 {
   let path = input_path(parent, child, allowed);
   let origin = "$path: ";
-  return (Json.parse_at(Host.caravansary_read_regular(path,
-    true,
-    4 * 1024 * 1024,
-    "referenced input"),
-    origin),
-    origin);
+  return (
+    Json.parse_at(
+      Host.caravansary_read_regular(
+        path,
+        true,
+        4 * 1024 * 1024,
+        "referenced input"
+      ),
+      origin
+    ),
+    origin
+  );
 }
 
 fn script_text(path: string) -> string
@@ -148,10 +157,12 @@ fn script_text(path: string) -> string
 
 fn observation_text(path: string) -> string
 {
-  let text = Host.caravansary_read_regular(path,
+  let text = Host.caravansary_read_regular(
+    path,
     false,
     16 * 1024 * 1024,
-    "observation log");
+    "observation log"
+  );
   Json.validate_utf8(text, "observation log ");
   return text;
 }

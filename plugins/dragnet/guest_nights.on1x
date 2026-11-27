@@ -5,8 +5,9 @@ import core.feed_snapshot as Feed;
 import core.format as F;
 import std.String as Str;
 record Projection
-{
-  status: i64, state: i64, bytes: sexpr
+{ status: i64
+, state : i64
+, bytes : sexpr
 }
 
 fn kind() -> string
@@ -82,9 +83,10 @@ fn field(out: buffer, name: string, value: string)
 
 fn fail(status: i64) -> Projection
 {
-  return record < Projection >
-  {
-    status: status, state: 0, bytes: sx_nil()
+  return record<Projection>
+  { status: status
+  , state : 0
+  , bytes : sx_nil()
   };
 }
 
@@ -153,11 +155,13 @@ fn next_month(period: string) -> string
   return "$year-$number";
 }
 
-fn observations(snapshot: string,
+fn observations(
+  snapshot: string,
   start: i64,
   updated: i64,
   complete: bool,
-  out: buffer) -> i64
+  out: buffer
+) -> i64
 {
   var at = start;
   var prev = "";
@@ -167,8 +171,10 @@ fn observations(snapshot: string,
   while count < 3
   {
     let(period_end, period) = Feed.quoted(snapshot, at, "{\"period\":\"", 7);
-    if period_end < 0 || text_len(period) != 7 || Date.date_days("$period-01") < 0 || Str.compare(period,
-      prev) <= 0
+    if period_end < 0 || text_len(period) != 7 || Date.date_days("$period-01") < 0 || Str.compare(
+      period,
+      prev
+    ) <= 0
     {
       return 0;
     }
@@ -182,13 +188,12 @@ fn observations(snapshot: string,
     {
       contiguous = false;
     }
-    let(value_end,
-      value) = Feed.token(snapshot,
-      Feed.after(snapshot,
-      period_end,
-      ",\"nights\":"),
+    let(value_end, value) = Feed.token(
+      snapshot,
+      Feed.after(snapshot, period_end, ",\"nights\":"),
       44,
-      12);
+      12
+    );
     if value_end < 0 || (value != "null" && Feed.nat(value, 12) < 0)
     {
       return 0;
@@ -221,8 +226,10 @@ fn observations(snapshot: string,
     {
       buffer_append(out, ",");
     }
-    buffer_append(out,
-      "{\"period\":\"$period\",\"state\":\"$state\",\"nights\":$value,\"provider_flag\":$flag}");
+    buffer_append(
+      out,
+      "{\"period\":\"$period\",\"state\":\"$state\",\"nights\":$value,\"provider_flag\":$flag}"
+    );
     prev = period;
     count = count + 1;
     if Feed.after(snapshot, at, "]}\n") == text_len(snapshot)
@@ -246,26 +253,29 @@ fn observations(snapshot: string,
 # the payload. This checks content consistency, not provider authenticity.
 # Status: 0 success, 1 missing/mismatched evidence, 2 invalid contract,
 # 3 unavailable at cutoff. No output bytes survive a failed projection.
-fn project(snapshot: string,
+fn project(
+  snapshot: string,
   expected_parent: string,
-  cutoff: string) -> Projection
+  cutoff: string
+) -> Projection
 {
-  let parent = Feed.parent_status(snapshot,
+  let parent = Feed.parent_status(
+    snapshot,
     expected_parent,
     cutoff,
-    max_bytes());
+    max_bytes()
+  );
   if parent != 0
   {
     return fail(parent);
   }
   let prefix = "{\"format\":\"dragnet.eurostat-accommodation-nights@1\",\"source\":\"Eurostat\",\"source_series\":\"tour_occ_nim\"";
-  let(a,
-    updated) = Feed.quoted(snapshot,
-    Feed.after(snapshot,
-    0,
-    prefix),
+  let(a, updated) = Feed.quoted(
+    snapshot,
+    Feed.after(snapshot, 0, prefix),
     ",\"provider_updated_at\":\"",
-    24);
+    24
+  );
   let dims = ",\"geography\":\"EU27_2020\",\"activity\":\"I551-I553\",\"residence\":\"TOTAL\",\"unit\":\"guest_nights\"";
   let tail = Feed.tail(snapshot, Feed.after(snapshot, a, dims));
   let published = provider_clock(updated);
@@ -279,20 +289,26 @@ fn project(snapshot: string,
     return fail(3);
   }
   let rows = buffer_new();
-  let state = observations(snapshot,
+  let state = observations(
+    snapshot,
     tail["start"],
     published,
     sx_text(tail["status"]) == "complete",
-    rows);
+    rows
+  );
   if state == 0
   {
     return fail(2);
   }
   let out = buffer_new();
-  buffer_append(out,
-    "{\"kind\":\"analysis.guest-nights-monthly\",\"version\":1,\"unit\":\"guest_nights\",\"currency\":null,\"pricing_input\":false");
-  buffer_append(out,
-    ",\"source_kind\":\"dragnet.eurostat-accommodation-nights@1\",\"source_series\":\"tour_occ_nim\",\"geography\":\"EU27_2020\",\"activity\":\"I551-I553\",\"residence\":\"TOTAL\"");
+  buffer_append(
+    out,
+    "{\"kind\":\"analysis.guest-nights-monthly\",\"version\":1,\"unit\":\"guest_nights\",\"currency\":null,\"pricing_input\":false"
+  );
+  buffer_append(
+    out,
+    ",\"source_kind\":\"dragnet.eurostat-accommodation-nights@1\",\"source_series\":\"tour_occ_nim\",\"geography\":\"EU27_2020\",\"activity\":\"I551-I553\",\"residence\":\"TOTAL\""
+  );
   var state_name = "available";
   if state == 2
   {
@@ -305,18 +321,21 @@ fn project(snapshot: string,
   buffer_append(out, ",\"observations\":[");
   buffer_append(out, buffer_text(rows));
   buffer_append(out, "]}\n");
-  return record < Projection >
-  {
-    status: 0, state: state, bytes: sx_string(buffer_text(out))
+  return record<Projection>
+  { status: 0
+  , state : state
+  , bytes : sx_string(buffer_text(out))
   };
 }
 
 # Verify an existing output by deterministic replay, not by reading live data
 # or treating the output's own parent assertion as trusted.
-fn verifies(snapshot: string,
+fn verifies(
+  snapshot: string,
   expected_parent: string,
   cutoff: string,
-  projected: string) -> bool
+  projected: string
+) -> bool
 {
   if text_len(projected) < 1 || text_len(projected) > max_bytes()
   {

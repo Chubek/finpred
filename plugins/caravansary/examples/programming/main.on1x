@@ -13,8 +13,10 @@ fn call(source: buffer, name: string, arguments: string) -> string
 fn main() -> i64
 {
   let source = buffer_new();
-  buffer_append(source,
-    IO.basis_text_io_input_all("plugins/caravansary/examples/programming/bounded.caf"));
+  buffer_append(
+    source,
+    IO.basis_text_io_input_all("plugins/caravansary/examples/programming/bounded.caf")
+  );
   let predicate = call(source, "eligible", "[720,85]");
   let nightly = call(source, "example_price", "[12500,-250]");
   assert(predicate == "true");

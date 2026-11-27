@@ -3,8 +3,13 @@ import core.csv as CSV;
 import core.format as F;
 import dragnet.public_feeds as Feeds;
 record Grant
-{
-  provider: sexpr, cutoff: sexpr, capture: sexpr, body: sexpr, decode: sexpr, terms: sexpr, retention: sexpr
+{ provider : sexpr
+, cutoff   : sexpr
+, capture  : sexpr
+, body     : sexpr
+, decode   : sexpr
+, terms    : sexpr
+, retention: sexpr
 }
 
 fn hash_id(bytes: string) -> string
@@ -30,9 +35,10 @@ fn check_hash_id(id: string)
 
 fn admit(policy: string, checked_at: string) -> Grant
 {
-  if Feeds.framed(policy,
-    512) != 2 || CSV.line(policy,
-    0) != "dragnet.feed-permission@1"
+  if Feeds.framed(policy, 512) != 2 || CSV.line(
+    policy,
+    0
+  ) != "dragnet.feed-permission@1"
   {
     tool_fail("feed permission: invalid grant framing");
   }
@@ -66,9 +72,14 @@ fn admit(policy: string, checked_at: string) -> Grant
   let retention = CSV.field(row, 9);
   Feeds.policy_ref(terms);
   Feeds.policy_ref(retention);
-  return record < Grant >
-  {
-    provider: sx_string(provider), cutoff: sx_string(cutoff), capture: sx_string(capture), body: sx_string(body), decode: sx_string(decode), terms: sx_string(terms), retention: sx_string(retention)
+  return record<Grant>
+  { provider : sx_string(provider)
+  , cutoff   : sx_string(cutoff)
+  , capture  : sx_string(capture)
+  , body     : sx_string(body)
+  , decode   : sx_string(decode)
+  , terms    : sx_string(terms)
+  , retention: sx_string(retention)
   };
 }
 
@@ -79,11 +90,16 @@ fn check_capture(grant: Grant, capture: string)
     tool_fail("feed permission: capture digest mismatch");
   }
   let row = Feeds.capture_meta(capture);
-  if CSV.field(row,
-    0) != sx_text(grant["provider"]) || CSV.field(row,
-    1) != "offline_snapshot" || CSV.field(row,
-    4) != sx_text(grant["terms"]) || CSV.field(row,
-    5) != sx_text(grant["retention"])
+  if CSV.field(row, 0) != sx_text(grant["provider"]) || CSV.field(
+    row,
+    1
+  ) != "offline_snapshot" || CSV.field(
+    row,
+    4
+  ) != sx_text(grant["terms"]) || CSV.field(
+    row,
+    5
+  ) != sx_text(grant["retention"])
   {
     tool_fail("feed permission: capture scope mismatch");
   }
@@ -95,10 +111,12 @@ fn check_capture(grant: Grant, capture: string)
   }
 }
 
-fn evidence(grant: Grant,
+fn evidence(
+  grant: Grant,
   policy: string,
   checked_at: string,
-  snapshot: string) -> string
+  snapshot: string
+) -> string
 {
   let out = buffer_new();
   buffer_append(out, "{\"format\":\"dragnet.offline-feed-evidence@1\"");
@@ -107,11 +125,11 @@ fn evidence(grant: Grant,
   Feeds.append(out, "decode_digest", F.q(sx_text(grant["decode"])));
   Feeds.append(out, "checked_at", F.q(checked_at));
   Feeds.append(out, "external_execution", "false");
-  Feeds.append(out,
+  Feeds.append(
+    out,
     "snapshot",
-    text_slice(snapshot,
-    0,
-    text_len(snapshot) - 1));
+    text_slice(snapshot, 0, text_len(snapshot) - 1)
+  );
   buffer_append(out, "}\n");
   return buffer_text(out);
 }

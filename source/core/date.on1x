@@ -85,11 +85,10 @@ fn utc_timestamp(s: string) -> bool
   {
     return false;
   }
-  if text_byte(s,
-    10) != 84 || text_byte(s,
-    13) != 58 || text_byte(s,
-    16) != 58 || text_byte(s,
-    19) != 90
+  if text_byte(s, 10) != 84 || text_byte(s, 13) != 58 || text_byte(
+    s,
+    16
+  ) != 58 || text_byte(s, 19) != 90
   {
     return false;
   }

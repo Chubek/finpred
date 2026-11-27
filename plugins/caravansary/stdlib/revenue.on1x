@@ -4,11 +4,11 @@ from plugins.caravansary.planning import json as Json, civil as Civil;
 from . import price_values as V, price as Price;
 fn abstain(fields: sexpr, reason: string) -> sexpr
 {
-  return Json.object(V.put_text(V.put_text(fields,
-    "status",
-    "abstained"),
+  return Json.object(V.put_text(
+    V.put_text(fields, "status", "abstained"),
     "reason",
-    reason));
+    reason
+  ));
 }
 
 fn base() -> sexpr
@@ -31,25 +31,34 @@ fn expected(inputs: sexpr) -> sexpr
   let qual = V.text(inputs, "qualification");
   let property = V.text(inputs, "property_id");
   let scope = Json.get(inputs, "scope");
-  let(has_assessed,
-    assessed) = V.instant(V.text(inputs,
-    "assumptions_available_at"));
+  let(has_assessed, assessed) = V.instant(V.text(
+    inputs,
+    "assumptions_available_at"
+  ));
   let(has_cutoff, cutoff) = V.instant(V.text(inputs, "as_of"));
   let gross = V.number(inputs, "gross_stay_minor", V.money_cap());
-  let net = V.number(inputs,
-    "net_revenue_per_consumed_stay_minor",
-    1000000000);
-  let cost = V.number(inputs,
+  let net = V.number(inputs, "net_revenue_per_consumed_stay_minor", 1000000000);
+  let cost = V.number(
+    inputs,
     "variable_cost_per_consumed_stay_minor",
-    1000000000);
+    1000000000
+  );
   let available = V.number(inputs, "available_stays", 1000000);
-  let bookings_milli = V.number(inputs,
+  let bookings_milli = V.number(
+    inputs,
     "expected_consumed_stays_milli",
-    1000000000);
-  if V.text(inputs,
-    "kind") != "caravansary.first-party-contribution-input@1" || V.text(inputs,
-    "provenance") != "first_party" || ! Price.qualification(qual) || property == "" || ! Price.valid_scope(scope) || V.text(scope,
-    "price_basis") != "stay_total" || ! has_assessed || ! has_cutoff || gross < 1 || net < 0 || net > gross || cost < 0 || available < 0 || bookings_milli < 0 || bookings_milli > 1000 * available
+    1000000000
+  );
+  if V.text(
+    inputs,
+    "kind"
+  ) != "caravansary.first-party-contribution-input@1" || V.text(
+    inputs,
+    "provenance"
+  ) != "first_party" || ! Price.qualification(qual) || property == "" || ! Price.valid_scope(scope) || V.text(
+    scope,
+    "price_basis"
+  ) != "stay_total" || ! has_assessed || ! has_cutoff || gross < 1 || net < 0 || net > gross || cost < 0 || available < 0 || bookings_milli < 0 || bookings_milli > 1000 * available
   {
     return abstain(fields, "invalid_first_party_assumptions");
   }
@@ -65,17 +74,21 @@ fn expected(inputs: sexpr) -> sexpr
   {
     return abstain(fields, "stay_already_started");
   }
-  fields = V.put_text(fields,
+  fields = V.put_text(
+    fields,
     "assumptions_available_at",
-    Civil.utc_text(assessed));
+    Civil.utc_text(assessed)
+  );
   fields = V.put_int(fields, "gross_stay_minor", gross);
   fields = V.put_int(fields, "available_stays", available);
   fields = V.put_int(fields, "expected_consumed_stays_milli", bookings_milli);
   fields = V.put_int(fields, "net_revenue_per_consumed_stay_minor", net);
   fields = V.put_int(fields, "variable_cost_per_consumed_stay_minor", cost);
-  fields = V.put_int(fields,
+  fields = V.put_int(
+    fields,
     "expected_contribution_minor",
-    round_minor((net - cost) * bookings_milli));
+    round_minor((net - cost) * bookings_milli)
+  );
   return Json.object(V.put_text(fields, "status", "computed"));
 }
 
@@ -83,9 +96,10 @@ fn expected(inputs: sexpr) -> sexpr
 # supplying a market position never supplies/invents first-party economics.
 fn for_position(position: sexpr, inputs: sexpr) -> sexpr
 {
-  if V.text(position,
-    "kind") != "caravansary.position@1" || V.text(position,
-    "status") != "recommended"
+  if V.text(position, "kind") != "caravansary.position@1" || V.text(
+    position,
+    "status"
+  ) != "recommended"
   {
     return abstain(base(), "position_not_recommended");
   }
@@ -104,14 +118,20 @@ fn for_position(position: sexpr, inputs: sexpr) -> sexpr
   let scope = Json.get(position, "scope");
   let checkin = Civil.date(V.text(scope, "checkin"));
   let checkout = Civil.date(V.text(scope, "checkout"));
-  if ! has_clock || at != cutoff || amount != V.number(scenario,
+  if ! has_clock || at != cutoff || amount != V.number(
+    scenario,
     "gross_stay_minor",
-    V.money_cap()) || V.text(position,
-    "subject_property_id") != V.text(scenario,
-    "property_id") || V.text(position,
-    "qualification") != V.text(scenario,
-    "qualification") || checkin == 0 || checkout != checkin + 1 || Json.render(scope) != Json.render(Json.get(scenario,
-    "scope"))
+    V.money_cap()
+  ) || V.text(position, "subject_property_id") != V.text(
+    scenario,
+    "property_id"
+  ) || V.text(position, "qualification") != V.text(
+    scenario,
+    "qualification"
+  ) || checkin == 0 || checkout != checkin + 1 || Json.render(scope) != Json.render(Json.get(
+    scenario,
+    "scope"
+  ))
   {
     return abstain(base(), "scenario_does_not_match_position");
   }

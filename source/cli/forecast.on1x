@@ -12,34 +12,43 @@ import store.artifacts as Store;
 import std.io.TextIO as IO;
 import std.environ as Env;
 record Issuance
-{
-  manifest: sexpr, model: sexpr, cutoff: sexpr, request: sexpr, forecast: sexpr, training: Catalog.Release, target: i64
+{ manifest: sexpr
+, model   : sexpr
+, cutoff  : sexpr
+, request : sexpr
+, forecast: sexpr
+, training: Catalog.Release
+, target  : i64
 }
 
 record Scoring
-{
-  manifest: sexpr, model: sexpr, cutoff: sexpr, entry: Hold.Entry
+{ manifest: sexpr
+, model   : sexpr
+, cutoff  : sexpr
+, entry   : Hold.Entry
 }
 
 record Report
-{
-  manifest: sexpr, bytes: sexpr
+{ manifest: sexpr
+, bytes   : sexpr
 }
 
 fn linked() -> Eval.Linked
 {
   let code = sx_string(Model.digest(Identity.source_subject()));
-  return record < Eval.Linked >
-  {
-    model_code: code, scoring_code: code
+  return record<Eval.Linked>
+  { model_code  : code
+  , scoring_code: code
   };
 }
 
-fn calculate_issue(home: string,
+fn calculate_issue(
+  home: string,
   catalog: string,
   model: string,
   cutoff: string,
-  request: string) -> Issuance
+  request: string
+) -> Issuance
 {
   let settings = Model.spec(request, cutoff);
   let target = settings["month"];
@@ -59,19 +68,21 @@ fn calculate_issue(home: string,
   let training = Catalog.select(home, catalog, cutoff, first, last);
   let projection = training["projection"];
   let descriptor = Model.descriptor(model, sx_text(linked()["model_code"]));
-  let inputs = sx_cons(SDK.value_entry(projection["state"],
-    sx_text(projection["bytes"])),
-    sx_cons(SDK.value_entry(1,
-    request),
-    sx_nil()));
-  let call = record < SDK.Request >
-  {
-    inputs: inputs, cutoff: sx_string(cutoff), work: 1
+  let inputs = sx_cons(
+    SDK.value_entry(projection["state"], sx_text(projection["bytes"])),
+    sx_cons(SDK.value_entry(1, request), sx_nil())
+  );
+  let call = record<SDK.Request>
+  { inputs: inputs
+  , cutoff: sx_string(cutoff)
+  , work  : 1
   };
   let result = Model.call(descriptor["pin"], call);
-  if result["status"] != 0 || ! SDK.valid_output(descriptor["output"],
+  if result["status"] != 0 || ! SDK.valid_output(
+    descriptor["output"],
     result["state"],
-    result["bytes"])
+    result["bytes"]
+  )
   {
     tool_fail("forecast: model rejected request");
   }
@@ -79,9 +90,14 @@ fn calculate_issue(home: string,
   let request_id = Store.digest(request);
   let forecast_id = Store.digest(sx_text(result["bytes"]));
   let manifest = "forecast-issue@1,$catalog,$model,$cutoff,$request_id,$snapshot,$forecast_id\n";
-  return record < Issuance >
-  {
-    manifest: sx_string(manifest), model: sx_string(model), cutoff: sx_string(cutoff), request: sx_string(request), forecast: result["bytes"], training: training, target: target
+  return record<Issuance>
+  { manifest: sx_string(manifest)
+  , model   : sx_string(model)
+  , cutoff  : sx_string(cutoff)
+  , request : sx_string(request)
+  , forecast: result["bytes"]
+  , training: training
+  , target  : target
   };
 }
 
@@ -112,14 +128,13 @@ fn replay_issue(home: string, id: string) -> Issuance
   let row = checked_record(bytes, "forecast-issue@1", 7);
   let request = Store.fetch(home, CSV.field(row, 4));
   let archived = Store.fetch(home, CSV.field(row, 6));
-  let result = calculate_issue(home,
-    CSV.field(row,
-    1),
-    CSV.field(row,
-    2),
-    CSV.field(row,
-    3),
-    request);
+  let result = calculate_issue(
+    home,
+    CSV.field(row, 1),
+    CSV.field(row, 2),
+    CSV.field(row, 3),
+    request
+  );
   if sx_text(result["manifest"]) != bytes || sx_text(result["forecast"]) != archived
   {
     tool_fail("forecast: issuance replay divergence");
@@ -127,49 +142,63 @@ fn replay_issue(home: string, id: string) -> Issuance
   return result;
 }
 
-fn calculate_score(home: string,
+fn calculate_score(
+  home: string,
   issued_id: string,
   catalog: string,
-  cutoff: string) -> Scoring
+  cutoff: string
+) -> Scoring
 {
   let issuance = replay_issue(home, issued_id);
   let target = issuance["target"];
   let actual = Catalog.select(home, catalog, cutoff, target, target);
   let training = issuance["training"];
-  let frozen = record < Eval.Frozen >
-  {
-    training_snapshot: training["raw"], actuals_snapshot: actual["raw"], request: issuance["request"], forecast: issuance["forecast"]
+  let frozen = record<Eval.Frozen>
+  { training_snapshot: training["raw"]
+  , actuals_snapshot : actual["raw"]
+  , request          : issuance["request"]
+  , forecast         : issuance["forecast"]
   };
   let training_id = sx_text(training["id"]);
   let actual_id = sx_text(actual["id"]);
-  let roots = record < Eval.Roots >
-  {
-    training_snapshot: sx_string("blake3:$training_id"), actuals_snapshot: sx_string("blake3:$actual_id"), request: sx_string(Model.digest(sx_text(frozen["request"]))), forecast: sx_string(Model.digest(sx_text(frozen["forecast"])))
+  let roots = record<Eval.Roots>
+  { training_snapshot: sx_string("blake3:$training_id")
+  , actuals_snapshot : sx_string("blake3:$actual_id")
+  , request          : sx_string(Model.digest(sx_text(frozen["request"])))
+  , forecast         : sx_string(Model.digest(sx_text(frozen["forecast"])))
   };
   let host = linked();
-  let selection = record < Eval.Selection >
-  {
-    model: issuance["model"], model_code: host["model_code"], scoring_code: host["scoring_code"], training_cutoff: issuance["cutoff"], scoring_cutoff: sx_string(cutoff)
+  let selection = record<Eval.Selection>
+  { model          : issuance["model"]
+  , model_code     : host["model_code"]
+  , scoring_code   : host["scoring_code"]
+  , training_cutoff: issuance["cutoff"]
+  , scoring_cutoff : sx_string(cutoff)
   };
   let result = Eval.evaluate(host, selection, roots, frozen);
   if result["status"] != 0
   {
     tool_fail("forecast: evaluation rejected the evidence or chronology");
   }
-  let archive = record < Eval.Archive >
-  {
-    id: result["id"], manifest: result["manifest"], score: result["score"]
+  let archive = record<Eval.Archive>
+  { id      : result["id"]
+  , manifest: result["manifest"]
+  , score   : result["score"]
   };
-  let entry = record < Hold.Entry >
-  {
-    training_cutoff: issuance["cutoff"], roots: roots, frozen: frozen, archive: archive
+  let entry = record<Hold.Entry>
+  { training_cutoff: issuance["cutoff"]
+  , roots          : roots
+  , frozen         : frozen
+  , archive        : archive
   };
   let evaluation = text_slice(sx_text(archive["id"]), 7, 71);
   let score = Store.digest(sx_text(archive["score"]));
   let manifest = "forecast-score@1,$issued_id,$catalog,$cutoff,$evaluation,$score\n";
-  return record < Scoring >
-  {
-    manifest: sx_string(manifest), model: issuance["model"], cutoff: sx_string(cutoff), entry: entry
+  return record<Scoring>
+  { manifest: sx_string(manifest)
+  , model   : issuance["model"]
+  , cutoff  : sx_string(cutoff)
+  , entry   : entry
   };
 }
 
@@ -187,13 +216,12 @@ fn replay_score(home: string, id: string) -> Scoring
   let row = checked_record(bytes, "forecast-score@1", 6);
   let archived_evaluation = Store.fetch(home, CSV.field(row, 4));
   let archived_score = Store.fetch(home, CSV.field(row, 5));
-  let result = calculate_score(home,
-    CSV.field(row,
-    1),
-    CSV.field(row,
-    2),
-    CSV.field(row,
-    3));
+  let result = calculate_score(
+    home,
+    CSV.field(row, 1),
+    CSV.field(row, 2),
+    CSV.field(row, 3)
+  );
   let archive = result["entry"]["archive"];
   if sx_text(result["manifest"]) != bytes || sx_text(archive["manifest"]) != archived_evaluation || sx_text(archive["score"]) != archived_score
   {
@@ -221,13 +249,15 @@ fn calculate_holdout(home: string, plan_bytes: string) -> Report
   let host = linked();
   let model = CSV.field(header, 0);
   let cutoff = CSV.field(header, 5);
-  let plan = record < Hold.Plan >
-  {
-    model: sx_string(model), model_code: host["model_code"], scoring_code: host["scoring_code"], validation_through: sx_string(CSV.field(header,
-      1)), selection_frozen_at: sx_string(CSV.field(header,
-      2)), first_target: sx_string(CSV.field(header,
-      3)), last_target: sx_string(CSV.field(header,
-      4)), scoring_cutoff: sx_string(cutoff)
+  let plan = record<Hold.Plan>
+  { model              : sx_string(model)
+  , model_code         : host["model_code"]
+  , scoring_code       : host["scoring_code"]
+  , validation_through : sx_string(CSV.field(header, 1))
+  , selection_frozen_at: sx_string(CSV.field(header, 2))
+  , first_target       : sx_string(CSV.field(header, 3))
+  , last_target        : sx_string(CSV.field(header, 4))
+  , scoring_cutoff     : sx_string(cutoff)
   };
   let first = Model.month(CSV.field(header, 3));
   let last = Model.month(CSV.field(header, 4));
@@ -251,9 +281,9 @@ fn calculate_holdout(home: string, plan_bytes: string) -> Report
   }
   let plan_id = Store.digest(plan_bytes);
   let report_id = text_slice(sx_text(result["id"]), 7, 71);
-  return record < Report >
-  {
-    manifest: sx_string("forecast-holdout@1,$plan_id,$report_id\n"), bytes: result["bytes"]
+  return record<Report>
+  { manifest: sx_string("forecast-holdout@1,$plan_id,$report_id\n")
+  , bytes   : result["bytes"]
   };
 }
 
@@ -321,22 +351,21 @@ fn entry(mode: string) -> i64
   }
   if mode == "forecast-issue"
   {
-    println(publish_issue(home,
-      calculate_issue(home,
-      catalog,
-      env("FINPRED_FORECAST_MODEL"),
-      cutoff,
-      Catalog.input(input,
-      128))));
+    println(publish_issue(
+      home,
+      calculate_issue(
+        home,
+        catalog,
+        env("FINPRED_FORECAST_MODEL"),
+        cutoff,
+        Catalog.input(input, 128)
+      )
+    ));
     return 0;
   }
   if mode == "forecast-score"
   {
-    println(publish_score(home,
-      calculate_score(home,
-      input,
-      catalog,
-      cutoff)));
+    println(publish_score(home, calculate_score(home, input, catalog, cutoff)));
     return 0;
   }
   if mode == "forecast-holdout"

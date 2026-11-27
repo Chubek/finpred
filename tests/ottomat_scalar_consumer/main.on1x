@@ -27,21 +27,21 @@ fn native_plan() -> D.Plan
   let spread = D.node("spread", "distance@1", "hi", "lo");
   let hi = D.node("hi", "maximum@1", "first", "second");
   let lo = D.node("lo", "minimum@1", "first", "second");
-  return record < D.Plan >
-  {
-    version: sx_string("automat.scalar-dag@1"), nodes: sx_cons(spread,
-      sx_cons(hi,
-      sx_cons(lo,
-      sx_nil()))), output: sx_string("spread")
+  return record<D.Plan>
+  { version: sx_string("automat.scalar-dag@1")
+  , nodes  : sx_cons(spread, sx_cons(hi, sx_cons(lo, sx_nil())))
+  , output : sx_string("spread")
   };
 }
 
-fn emit(plan: D.Plan,
+fn emit(
+  plan: D.Plan,
   mode: string,
   budget: i64,
   first: i64,
   second: i64,
-  frozen: M.Snapshot)
+  frozen: M.Snapshot
+)
 {
   let run = D.run(plan, mode, budget, first, second);
   if sx_text(run["status"]) != "ok" || sx_text(frozen["status"]) != "ok"
@@ -78,16 +78,14 @@ fn main() -> i64
   if setting("TASK") == "native"
   {
     let plan = native_plan();
-    emit(plan,
+    emit(
+      plan,
       mode,
       budget,
       first,
       second,
-      M.freeze(plan,
-      mode,
-      budget,
-      first,
-      second));
+      M.freeze(plan, mode, budget, first, second)
+    );
     return 0;
   }
   let source = IO.basis_text_io_input_all("strategy");

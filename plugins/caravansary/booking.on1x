@@ -5,9 +5,11 @@ import plugins.caravansary.planning.json as Json;
 import plugins.caravansary.coverage.values as Values;
 import std.String as Str;
 import std.sexpr.sexpr as Sx;
-extern fn caravansary_booking_exchange(body: string,
+extern fn caravansary_booking_exchange(
+  body: string,
   token: string,
-  affiliate: string) -> string;
+  affiliate: string
+) -> string;
 fn field(object: sexpr, key: string) -> string
 {
   return Values.plain(Json.get(object, key));
@@ -67,56 +69,57 @@ fn request(cell: sexpr, today: string) -> sexpr
   while sx_kind(rooms) == 3
   {
     let room = sx_head(rooms);
-    let item = Json.object(pair("number_of_adults",
-      Json.field(room,
-      "adults"),
-      pair("children",
-      Json.field(room,
-      "child_ages"),
-      sx_nil())));
+    let item = Json.object(pair(
+      "number_of_adults",
+      Json.field(room, "adults"),
+      pair("children", Json.field(room, "child_ages"), sx_nil())
+    ));
     allocation = sx_cons(item, allocation);
     rooms = sx_tail(rooms);
   }
-  let guest_fields = Json.object(pair("number_of_adults",
-    Json.field(guests,
-    "adults"),
-    pair("number_of_rooms",
-    Json.field(guests,
-    "rooms"),
-    pair("children",
-    Json.field(guests,
-    "child_ages"),
-    pair("allocation",
-    Json.array(Sx.sexpr_reverse(allocation)),
-    sx_nil())))));
-  let booker = Json.object(pair("country",
-    sx_string(booker_country(field(context,
-    "booker_country"))),
-    pair("platform",
-    sx_string("desktop"),
-    sx_nil())));
-  let extras = Json.array(sx_cons(sx_string("products"),
-    sx_cons(sx_string("extra_charges"),
-    sx_nil())));
-  return Json.object(pair("accommodations",
-    Json.array(sx_cons(Json.integer(id),
-    sx_nil())),
-    pair("booker",
-    booker,
-    pair("checkin",
-    Json.field(context,
-    "checkin"),
-    pair("checkout",
-    Json.field(context,
-    "checkout"),
-    pair("currency",
-    Json.field(context,
-    "currency"),
-    pair("guests",
-    guest_fields,
-    pair("extras",
-    extras,
-    sx_nil()))))))));
+  let guest_fields = Json.object(pair(
+    "number_of_adults",
+    Json.field(guests, "adults"),
+    pair(
+      "number_of_rooms",
+      Json.field(guests, "rooms"),
+      pair(
+        "children",
+        Json.field(guests, "child_ages"),
+        pair("allocation", Json.array(Sx.sexpr_reverse(allocation)), sx_nil())
+      )
+    )
+  ));
+  let booker = Json.object(pair(
+    "country",
+    sx_string(booker_country(field(context, "booker_country"))),
+    pair("platform", sx_string("desktop"), sx_nil())
+  ));
+  let extras = Json.array(sx_cons(
+    sx_string("products"),
+    sx_cons(sx_string("extra_charges"), sx_nil())
+  ));
+  return Json.object(pair(
+    "accommodations",
+    Json.array(sx_cons(Json.integer(id), sx_nil())),
+    pair(
+      "booker",
+      booker,
+      pair(
+        "checkin",
+        Json.field(context, "checkin"),
+        pair(
+          "checkout",
+          Json.field(context, "checkout"),
+          pair(
+            "currency",
+            Json.field(context, "currency"),
+            pair("guests", guest_fields, pair("extras", extras, sx_nil()))
+          )
+        )
+      )
+    )
+  ));
 }
 
 fn credentials_valid(token: string, affiliate: string) -> bool
@@ -164,11 +167,11 @@ fn credentials_valid(token: string, affiliate: string) -> bool
 
 fn failed(reason: string) -> sexpr
 {
-  return Json.object(pair("outcome",
+  return Json.object(pair(
+    "outcome",
     sx_string("failed"),
-    pair("reason",
-    sx_string(reason),
-    sx_nil())));
+    pair("reason", sx_string(reason), sx_nil())
+  ));
 }
 
 fn http_reason(status: i64) -> string
@@ -218,9 +221,10 @@ fn populated(value: sexpr) -> bool
 fn summarize_payload(value: sexpr, query: sexpr) -> sexpr
 {
   let data = Json.get(value, "data");
-  if populated(Json.get(value,
-    "errors")) || field(value,
-    "request_id") == "" || Json.kind(data) != "array"
+  if populated(Json.get(value, "errors")) || field(
+    value,
+    "request_id"
+  ) == "" || Json.kind(data) != "array"
   {
     return failed("invalid_response");
   }
@@ -238,11 +242,11 @@ fn summarize_payload(value: sexpr, query: sexpr) -> sexpr
   let rows = Json.items(data);
   if sx_kind(rows) == 0
   {
-    return Json.object(pair("outcome",
+    return Json.object(pair(
+      "outcome",
       sx_string("no_match"),
-      pair("has_more",
-      Json.boolean(has_more),
-      sx_nil())));
+      pair("has_more", Json.boolean(has_more), sx_nil())
+    ));
   }
   if sx_kind(sx_tail(rows)) != 0
   {
@@ -250,8 +254,10 @@ fn summarize_payload(value: sexpr, query: sexpr) -> sexpr
   }
   let row = sx_head(rows);
   let id = Json.get(row, "id");
-  if Json.kind(id) != "integer" || sx_text(id) != sx_text(sx_head(Json.items(Json.field(query,
-    "accommodations"))))
+  if Json.kind(id) != "integer" || sx_text(id) != sx_text(sx_head(Json.items(Json.field(
+    query,
+    "accommodations"
+  ))))
   {
     return failed("invalid_response");
   }
@@ -283,25 +289,35 @@ fn summarize_payload(value: sexpr, query: sexpr) -> sexpr
     let spelling = sx_text(amount);
     nonnegative = ! Str.is_prefix("-", spelling) || spelling == "-0.0";
   }
-  let matches_currency = field(Json.get(row,
-    "currency"),
-    "booker") == field(query,
-    "currency");
-  return Json.object(pair("outcome",
+  let matches_currency = field(Json.get(row, "currency"), "booker") == field(
+    query,
+    "currency"
+  );
+  return Json.object(pair(
+    "outcome",
     sx_string("matched"),
-    pair("has_more",
-    Json.boolean(has_more),
-    pair("products_reported",
-    Json.integer(product_count),
-    pair("total_in_requested_currency",
-    Json.boolean(nonnegative && matches_currency),
-    sx_nil())))));
+    pair(
+      "has_more",
+      Json.boolean(has_more),
+      pair(
+        "products_reported",
+        Json.integer(product_count),
+        pair(
+          "total_in_requested_currency",
+          Json.boolean(nonnegative && matches_currency),
+          sx_nil()
+        )
+      )
+    )
+  ));
 }
 
-fn summarize(status: i64,
+fn summarize(
+  status: i64,
   transport_reason: string,
   raw: string,
-  query: sexpr) -> sexpr
+  query: sexpr
+) -> sexpr
 {
   var payload = failed("invalid_response");
   if status > 0 && status != 200
@@ -346,9 +362,7 @@ fn run(query: sexpr, token: string, affiliate: string) -> sexpr
     tool_fail("caravansary: configure CARAVANSARY_BOOKING_API_TOKEN and CARAVANSARY_BOOKING_AFFILIATE_ID with partner API credentials");
   }
   let started = Civil.utc_text(Civil.clock(""));
-  let wire = caravansary_booking_exchange(Json.render(query),
-    token,
-    affiliate);
+  let wire = caravansary_booking_exchange(Json.render(query), token, affiliate);
   let size = text_len(wire);
   var end = 3;
   while end < size && text_byte(wire, end) != 10
@@ -358,23 +372,23 @@ fn run(query: sexpr, token: string, affiliate: string) -> sexpr
   var result = failed("transport_error");
   if end < size
   {
-    result = summarize(Civil.digits(wire,
-      0,
-      3),
-      text_slice(wire,
-      3,
-      end),
-      text_slice(wire,
-      end + 1,
-      size),
-      query);
+    result = summarize(
+      Civil.digits(wire, 0, 3),
+      text_slice(wire, 3, end),
+      text_slice(wire, end + 1, size),
+      query
+    );
   }
-  result = Json.replace(result,
+  result = Json.replace(
+    result,
     "kind",
-    sx_string("caravansary.booking-sandbox-pilot@1"));
+    sx_string("caravansary.booking-sandbox-pilot@1")
+  );
   result = Json.replace(result, "attempts", Json.integer(1));
   result = Json.replace(result, "started_at", sx_string(started));
-  return Json.replace(result,
+  return Json.replace(
+    result,
     "finished_at",
-    sx_string(Civil.utc_text(Civil.clock(""))));
+    sx_string(Civil.utc_text(Civil.clock("")))
+  );
 }

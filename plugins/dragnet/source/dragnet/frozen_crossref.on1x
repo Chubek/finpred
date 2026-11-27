@@ -92,11 +92,11 @@ fn request_url(s: string)
   let suffix = "&rows=16&select=title,URL";
   let start = text_len(prefix);
   let end = text_len(s) - text_len(suffix);
-  if end <= start || end > start + 384 || text_slice(s,
+  if end <= start || end > start + 384 || text_slice(
+    s,
     0,
-    start) != prefix || text_slice(s,
-    end,
-    text_len(s)) != suffix
+    start
+  ) != prefix || text_slice(s, end, text_len(s)) != suffix
   {
     tool_fail("crossref: invalid rendered request URL");
   }
@@ -252,14 +252,17 @@ fn times(out: buffer, observed: string, ingested: string)
 
 fn request_row(request: string) -> string
 {
-  if text_len(request) > 1024 || CSV.rows(request) != 3 || CSV.line(request,
-    0) != "dragnet.crossref-request@1"
+  if text_len(request) > 1024 || CSV.rows(request) != 3 || CSV.line(
+    request,
+    0
+  ) != "dragnet.crossref-request@1"
   {
     tool_fail("crossref: invalid request version or size");
   }
-  CSV.header(CSV.line(request,
-    1),
-    "search_observed_at,search_ingested_at,work_observed_at,work_ingested_at,as_of,terms_ref,retention_ref,fields");
+  CSV.header(
+    CSV.line(request, 1),
+    "search_observed_at,search_ingested_at,work_observed_at,work_ingested_at,as_of,terms_ref,retention_ref,fields"
+  );
   let row = CSV.line(request, 2);
   CSV.require_width(row, 8);
   return row;
@@ -275,11 +278,13 @@ fn request_as_of(request: string) -> string
   return as_of;
 }
 
-fn evidence_as_of(request: string,
+fn evidence_as_of(
+  request: string,
   raw_search: string,
   raw_work: string,
   search_decode: string,
-  work_decode: string) -> string
+  work_decode: string
+) -> string
 {
   let row = request_row(request);
   let so = CSV.field(row, 0);
@@ -293,10 +298,10 @@ fn evidence_as_of(request: string,
   {
     tool_fail("crossref: expected UTC timestamps");
   }
-  if Str.compare(so,
-    si) > 0 || Str.compare(wo,
-    wi) > 0 || Str.compare(so,
-    wo) > 0
+  if Str.compare(so, si) > 0 || Str.compare(wo, wi) > 0 || Str.compare(
+    so,
+    wo
+  ) > 0
   {
     tool_fail("crossref: invalid observation chronology");
   }
@@ -310,10 +315,7 @@ fn evidence_as_of(request: string,
   {
     tool_fail("crossref: invalid raw snapshot size");
   }
-  let n = decode_rows(search_decode,
-    "dragnet.crossref-search-decode@1",
-    3,
-    19);
+  let n = decode_rows(search_decode, "dragnet.crossref-search-decode@1", 3, 19);
   let _ = decode_rows(work_decode, "dragnet.crossref-work-decode@1", 6, 6);
   let search_hash = digest(raw_search);
   let work_hash = digest(raw_work);
@@ -357,10 +359,14 @@ fn evidence_as_of(request: string,
     tool_fail("crossref: DOI not in frozen search");
   }
   let out = buffer_new();
-  buffer_append(out,
-    "{\"format\":\"dragnet.crossref-evidence@1\",\"mode\":\"offline\",\"provider\":\"crossref\",");
-  buffer_append(out,
-    "\"search_scope\":\"single_frozen_page\",\"request_url\":");
+  buffer_append(
+    out,
+    "{\"format\":\"dragnet.crossref-evidence@1\",\"mode\":\"offline\",\"provider\":\"crossref\","
+  );
+  buffer_append(
+    out,
+    "\"search_scope\":\"single_frozen_page\",\"request_url\":"
+  );
   buffer_append(out, F.q(url));
   buffer_append(out, ",\"doi\":");
   buffer_append(out, F.q(id));

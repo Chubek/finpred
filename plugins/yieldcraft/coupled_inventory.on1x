@@ -35,13 +35,28 @@ fn bps() -> i64
 }
 
 record Grid
-{
-  width: i64, size: i64, periods: i64, stock_a: i64, stock_b: i64, cost_a: i64, cost_b: i64, terminal_a: i64, terminal_b: i64, ends: i64, fixed: i64, products: i64, prices: i64, low: i64, mid: i64, high: i64
+{ width     : i64
+, size      : i64
+, periods   : i64
+, stock_a   : i64
+, stock_b   : i64
+, cost_a    : i64
+, cost_b    : i64
+, terminal_a: i64
+, terminal_b: i64
+, ends      : i64
+, fixed     : i64
+, products  : i64
+, prices    : i64
+, low       : i64
+, mid       : i64
+, high      : i64
 }
 
 record Values
-{
-  nominal: i64, worst: i64, actions: i64
+{ nominal: i64
+, worst  : i64
+, actions: i64
 }
 
 fn parse(raw: string) -> Grid
@@ -56,16 +71,16 @@ fn parse(raw: string) -> Grid
     tool_fail("coupled inventory: outside period or arm limits");
   }
   CSV.header(CSV.line(raw, 0), "pricing.coupled-inventory-input@1");
-  CSV.header(CSV.line(raw,
-    1),
-    "currency,first_night,second_night,stock_a,stock_b,cost_a_minor,cost_b_minor,terminal_a_minor,terminal_b_minor,baseline_product,baseline_price_minor");
+  CSV.header(
+    CSV.line(raw, 1),
+    "currency,first_night,second_night,stock_a,stock_b,cost_a_minor,cost_b_minor,terminal_a_minor,terminal_b_minor,baseline_product,baseline_price_minor"
+  );
   let meta = CSV.line(raw, 2);
   CSV.require_width(meta, 11);
-  if CSV.field(meta,
-    0) != "EUR" || Date.nights(CSV.field(meta,
-    1),
-    CSV.field(meta,
-    2)) != 1
+  if CSV.field(meta, 0) != "EUR" || Date.nights(
+    CSV.field(meta, 1),
+    CSV.field(meta, 2)
+  ) != 1
   {
     tool_fail("coupled inventory: requires EUR and two consecutive valid night dates");
   }
@@ -82,9 +97,10 @@ fn parse(raw: string) -> Grid
   {
     tool_fail("coupled inventory: invalid baseline product");
   }
-  CSV.header(CSV.line(raw,
-    3),
-    "period,product,price_minor,low_bps,nominal_bps,high_bps");
+  CSV.header(
+    CSV.line(raw, 3),
+    "period,product,price_minor,low_bps,nominal_bps,high_bps"
+  );
   let ends = A.basis_array_array(max_periods() + 1, 0);
   let fixed = A.basis_array_array(max_periods(), - 1);
   let products = A.basis_array_array(n - 4, 0);
@@ -154,9 +170,23 @@ fn parse(raw: string) -> Grid
       tool_fail("coupled inventory: baseline offer requires exact support every period");
     }
   }
-  return record < Grid >
-  {
-    width: b + 1, size: (a + 1) * (b + 1), periods: periods, stock_a: a, stock_b: b, cost_a: ca, cost_b: cb, terminal_a: va, terminal_b: vb, ends: ends, fixed: fixed, products: products, prices: prices, low: low, mid: mid, high: high
+  return record<Grid>
+  { width     : b + 1
+  , size      : (a + 1) * (b + 1)
+  , periods   : periods
+  , stock_a   : a
+  , stock_b   : b
+  , cost_a    : ca
+  , cost_b    : cb
+  , terminal_a: va
+  , terminal_b: vb
+  , ends      : ends
+  , fixed     : fixed
+  , products  : products
+  , prices    : prices
+  , low       : low
+  , mid       : mid
+  , high      : high
   };
 }
 
@@ -185,8 +215,10 @@ fn expectation(sale: i64, hold: i64, q: i64) -> i64
 
 fn margin(g: Grid, i: i64, da: i64, db: i64) -> i64
 {
-  return (A.basis_array_sub(g["prices"],
-    i) - da * g["cost_a"] - db * g["cost_b"]) * scale();
+  return (A.basis_array_sub(
+    g["prices"],
+    i
+  ) - da * g["cost_a"] - db * g["cost_b"]) * scale();
 }
 
 fn robust_weight(g: Grid, i: i64, sale: i64, hold: i64) -> i64
@@ -250,16 +282,17 @@ fn plan(g: Grid, mode: i64) -> Values
         {
           let sold = next - da * width - db;
           let cash = margin(g, i, da, db);
-          let wn = expectation(cash + A.basis_array_sub(nominal,
-            sold),
+          let wn = expectation(
+            cash + A.basis_array_sub(nominal, sold),
             nh,
-            A.basis_array_sub(g["mid"],
-            i));
-          let ww = robust_weight(g,
+            A.basis_array_sub(g["mid"], i)
+          );
+          let ww = robust_weight(
+            g,
             i,
-            cash + A.basis_array_sub(worst,
-            sold),
-            wh);
+            cash + A.basis_array_sub(worst, sold),
+            wh
+          );
           if mode == 2 || (mode == 0 && ww > bw) || (mode == 1 && wn > bn)
           {
             bn = wn;
@@ -274,9 +307,10 @@ fn plan(g: Grid, mode: i64) -> Values
       A.basis_array_update(actions, index, action);
     }
   }
-  return record < Values >
-  {
-    nominal: nominal, worst: worst, actions: actions
+  return record<Values>
+  { nominal: nominal
+  , worst  : worst
+  , actions: actions
   };
 }
 
@@ -294,22 +328,26 @@ fn destroy(p: Values)
   A.basis_array_destroy(p["actions"]);
 }
 
-fn comparison_row(out: buffer,
+fn comparison_row(
+  out: buffer,
   label: string,
   p: Values,
   s: i64,
-  context: string)
+  context: string
+)
 {
   let n = F.num(A.basis_array_sub(p["nominal"], s));
   let w = F.num(A.basis_array_sub(p["worst"], s));
   buffer_append(out, "$label,$n,$w,$context\n");
 }
 
-fn render_csv(raw: string,
+fn render_csv(
+  raw: string,
   g: Grid,
   robust: Values,
   nominal: Values,
-  fixed: Values) -> string
+  fixed: Values
+) -> string
 {
   let out = buffer_new();
   let meta = CSV.line(raw, 2);
@@ -318,8 +356,10 @@ fn render_csv(raw: string,
   let h = F.num((g["stock_a"] * g["terminal_a"] + g["stock_b"] * g["terminal_b"]) * scale());
   let context = "modeled_not_observed,$meta,$periods";
   # 16 columns: imports without truncation into the A:P worksheet.
-  buffer_append(out,
-    "policy,nominal_minor_milli,worst_minor_milli,evidence,currency,first_night,second_night,stock_a,stock_b,cost_a_minor,cost_b_minor,terminal_a_minor,terminal_b_minor,baseline_product,baseline_price_minor,periods\n");
+  buffer_append(
+    out,
+    "policy,nominal_minor_milli,worst_minor_milli,evidence,currency,first_night,second_night,stock_a,stock_b,cost_a_minor,cost_b_minor,terminal_a_minor,terminal_b_minor,baseline_product,baseline_price_minor,periods\n"
+  );
   comparison_row(out, "robust", robust, s, context);
   comparison_row(out, "nominal", nominal, s, context);
   comparison_row(out, "fixed", fixed, s, context);
@@ -327,11 +367,13 @@ fn render_csv(raw: string,
   return buffer_text(out);
 }
 
-fn render_json(raw: string,
+fn render_json(
+  raw: string,
   g: Grid,
   robust: Values,
   nominal: Values,
-  fixed: Values) -> string
+  fixed: Values
+) -> string
 {
   let size = g["size"];
   let out = buffer_new();
@@ -348,15 +390,19 @@ fn render_json(raw: string,
   let base_product = CSV.field(meta, 9);
   let base_price = CSV.field(meta, 10);
   let h = F.num((g["stock_a"] * g["terminal_a"] + g["stock_b"] * g["terminal_b"]) * scale());
-  buffer_append(out,
-    "{\"kind\":\"pricing.coupled-inventory-policy\",\"version\":1,\"published\":false,\"comparison\":\"modeled_not_observed\",\"currency\":\"EUR\",\"scale\":1000,\"first_night\":\"$day_a\",\"second_night\":\"$day_b\",\"stock_a\":$a,\"stock_b\":$b,\"cost_a_minor\":$ca,\"cost_b_minor\":$cb,\"terminal_a_minor\":$va,\"terminal_b_minor\":$vb,\"periods\":$t,\"baseline_product\":$base_product,\"baseline_price_minor\":$base_price,\"initial\":{\"robust\":");
+  buffer_append(
+    out,
+    "{\"kind\":\"pricing.coupled-inventory-policy\",\"version\":1,\"published\":false,\"comparison\":\"modeled_not_observed\",\"currency\":\"EUR\",\"scale\":1000,\"first_night\":\"$day_a\",\"second_night\":\"$day_b\",\"stock_a\":$a,\"stock_b\":$b,\"cost_a_minor\":$ca,\"cost_b_minor\":$cb,\"terminal_a_minor\":$va,\"terminal_b_minor\":$vb,\"periods\":$t,\"baseline_product\":$base_product,\"baseline_price_minor\":$base_price,\"initial\":{\"robust\":"
+  );
   summary(out, robust, size - 1);
   buffer_append(out, ",\"nominal\":");
   summary(out, nominal, size - 1);
   buffer_append(out, ",\"fixed\":");
   summary(out, fixed, size - 1);
-  buffer_append(out,
-    ",\"hold\":{\"nominal_minor_milli\":$h,\"worst_minor_milli\":$h}},\"robust_states\":[");
+  buffer_append(
+    out,
+    ",\"hold\":{\"nominal_minor_milli\":$h,\"worst_minor_milli\":$h}},\"robust_states\":["
+  );
   for step in 0 .. g["periods"]
   {
     let period = F.num(step + 1);
@@ -370,8 +416,10 @@ fn render_json(raw: string,
       let sa = F.num(s / g["width"]);
       let sb = F.num(s % g["width"]);
       let action = A.basis_array_sub(robust["actions"], index);
-      buffer_append(out,
-        "{\"period\":$period,\"stock_a\":$sa,\"stock_b\":$sb,\"value\":");
+      buffer_append(
+        out,
+        "{\"period\":$period,\"stock_a\":$sa,\"stock_b\":$sb,\"value\":"
+      );
       summary(out, robust, index);
       if action < 0
       {
@@ -384,8 +432,10 @@ fn render_json(raw: string,
         let low = F.num(A.basis_array_sub(g["low"], action));
         let mid = F.num(A.basis_array_sub(g["mid"], action));
         let high = F.num(A.basis_array_sub(g["high"], action));
-        buffer_append(out,
-          ",\"action\":\"offer\",\"offer\":{\"product\":$product,\"price_minor\":$price,\"low_bps\":$low,\"nominal_bps\":$mid,\"high_bps\":$high}}");
+        buffer_append(
+          out,
+          ",\"action\":\"offer\",\"offer\":{\"product\":$product,\"price_minor\":$price,\"low_bps\":$low,\"nominal_bps\":$mid,\"high_bps\":$high}}"
+        );
       }
     }
   }

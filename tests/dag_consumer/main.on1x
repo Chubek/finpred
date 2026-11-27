@@ -9,11 +9,13 @@ fn lookup(op: string, mode: string) -> D.Descriptor
 {
   if op == "left@1" || op == "maximum@1"
   {
-    return D.host_binary(op,
+    return D.host_binary(
+      op,
       3,
       "test.host@1",
       "scalar.level@1",
-      "scalar.level@1");
+      "scalar.level@1"
+    );
   }
   return D.no_binding(op, mode);
 }
@@ -131,13 +133,10 @@ fn main() -> i64
       {
         parent = text_slice(names, i - 1, i);
       }
-      nodes = sx_cons(D.node(text_slice(names,
-        i,
-        i + 1),
-        "maximum@1",
-        parent,
-        "second"),
-        nodes);
+      nodes = sx_cons(
+        D.node(text_slice(names, i, i + 1), "maximum@1", parent, "second"),
+        nodes
+      );
     }
     output = "p";
     budget = 16;
@@ -153,21 +152,19 @@ fn main() -> i64
       {
         previous = text_slice(names, i - 1, i);
       }
-      nodes = sx_cons(D.select_node(text_slice(names,
-        i,
-        i + 1),
-        "a",
-        previous,
-        "first"),
-        nodes);
+      nodes = sx_cons(
+        D.select_node(text_slice(names, i, i + 1), "a", previous, "first"),
+        nodes
+      );
     }
     output = "p";
     budget = 16;
     version = "automat.scalar-dag@2";
   }
-  let plan = record < D.Plan >
-  {
-    version: sx_string(version), nodes: nodes, output: sx_string(output)
+  let plan = record<D.Plan>
+  { version: sx_string(version)
+  , nodes  : nodes
+  , output : sx_string(output)
   };
   var r = D.run(plan, mode, budget, first, 42);
   if test == "bound" || test == "builtin"
@@ -180,20 +177,24 @@ fn main() -> i64
   {
     if test == "limit" || test == "selectlimit"
     {
-      if L.basis_list_length(r["artifacts"]) != 18 || ! Replay.verify(plan,
+      if L.basis_list_length(r["artifacts"]) != 18 || ! Replay.verify(
+        plan,
         mode,
         budget,
         first,
         42,
         r["artifacts"],
-        r["output_digest"])
+        r["output_digest"]
+      )
       {
         tool_fail("maximum-depth lineage did not replay");
       }
       let snapshot = Manifest.freeze(plan, mode, budget, first, 42);
-      if sx_text(snapshot["status"]) != "ok" || ! Frozen.verify(sx_text(snapshot["run_id"]),
+      if sx_text(snapshot["status"]) != "ok" || ! Frozen.verify(
+        sx_text(snapshot["run_id"]),
         sx_text(snapshot["manifest"]),
-        snapshot["artifacts"])
+        snapshot["artifacts"]
+      )
       {
         tool_fail("maximum-depth manifest did not replay");
       }
@@ -207,11 +208,11 @@ fn main() -> i64
       let narrow_id = sx_text(narrow["run_id"]);
       let wide_id = sx_text(wide["run_id"]);
       let wide_manifest = sx_text(wide["manifest"]);
-      if narrow_id == wide_id || Frozen.verify(narrow_id,
+      if narrow_id == wide_id || Frozen.verify(
+        narrow_id,
         wide_manifest,
-        narrow["artifacts"]) || ! Frozen.verify(wide_id,
-        wide_manifest,
-        narrow["artifacts"])
+        narrow["artifacts"]
+      ) || ! Frozen.verify(wide_id, wide_manifest, narrow["artifacts"])
       {
         tool_fail("host budget not bound independently of node identity");
       }

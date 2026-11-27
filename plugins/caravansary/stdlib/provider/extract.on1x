@@ -5,21 +5,29 @@ import std.sexpr.sexpr as Sx;
 from std.html import BasisHtml, BasisHtmlNode, BasisHtmlSelection, basis_html_xpath, basis_html_node_xpath, basis_html_node_parent, basis_html_node_name, basis_html_node_text, basis_html_node_attr, basis_html_selection_count, basis_html_selection_get;
 from std.http.probe import ProbeParseError;
 record ProviderFacts
-{
-  properties: sexpr
+{ properties: sexpr
 }
 
 # Selectors are fixed in the provider modules, not read from the HTML or CLI.
 record FixtureLayout
-{
-  host: string, marker: string, card: string, profile: string, empty: string, title: string, alternate_title: string, link: string, address: string, offer: string, alternate_offer: string, amenity: string
+{ host           : string
+, marker         : string
+, card           : string
+, profile        : string
+, empty          : string
+, title          : string
+, alternate_title: string
+, link           : string
+, address        : string
+, offer          : string
+, alternate_offer: string
+, amenity        : string
 }
 
 fn failure < T > (message: string) -> Result < T, ProbeParseError >
 {
-  return result_error(record < ProbeParseError >
-  {
-    message: message
+  return result_error(record<ProbeParseError>
+  { message: message
   });
 }
 
@@ -39,21 +47,22 @@ fn count(list: BasisHtmlSelection) -> Result < i64, ProbeParseError >
   return result_ok(n);
 }
 
-fn child_nodes(node: BasisHtmlNode,
+fn child_nodes(
+  node: BasisHtmlNode,
   layout: FixtureLayout,
-  role: string) -> Result < BasisHtmlSelection, ProbeParseError >
+  role: string
+) -> Result < BasisHtmlSelection, ProbeParseError >
 {
-  return match basis_html_node_xpath(node,
-    expression(".//",
-    layout,
-    role)) with
+  return match basis_html_node_xpath(node, expression(".//", layout, role)) with
   {
     Ok(list) => result_ok(list), Err(_) => failure("html-selection-failed")
   };
 }
 
-fn node_at(list: BasisHtmlSelection,
-  index: i64) -> Result < BasisHtmlNode, ProbeParseError >
+fn node_at(
+  list: BasisHtmlSelection,
+  index: i64
+) -> Result < BasisHtmlNode, ProbeParseError >
 {
   return match basis_html_selection_get(list, index) with
   {
@@ -62,11 +71,12 @@ fn node_at(list: BasisHtmlSelection,
 }
 
 # status=0 successful singleton, 1 missing, 2 multiple; no arbitrary first pick.
-fn slot(node: BasisHtmlNode,
+fn slot(
+  node: BasisHtmlNode,
   layout: FixtureLayout,
   first: string,
-  second: string) -> Result < (i64,
-  BasisHtmlNode), ProbeParseError >
+  second: string
+) -> Result < (i64, BasisHtmlNode), ProbeParseError >
 {
   let list = child_nodes(node, layout, first)?;
   let n = count(list)?;
@@ -140,8 +150,10 @@ fn visible_text(node: BasisHtmlNode) -> Result < sexpr, ProbeParseError >
   return result_ok(sx_string(buffer_text(out)));
 }
 
-fn slot_text(status: i64,
-  node: BasisHtmlNode) -> Result < sexpr, ProbeParseError >
+fn slot_text(
+  status: i64,
+  node: BasisHtmlNode
+) -> Result < sexpr, ProbeParseError >
 {
   if status == 1
   {
@@ -406,8 +418,10 @@ fn offer(node: BasisHtmlNode) -> Result < sexpr, ProbeParseError >
   return result_ok(J.object(fields));
 }
 
-fn offers(node: BasisHtmlNode,
-  layout: FixtureLayout) -> Result < sexpr, ProbeParseError >
+fn offers(
+  node: BasisHtmlNode,
+  layout: FixtureLayout
+) -> Result < sexpr, ProbeParseError >
 {
   let first = child_nodes(node, layout, layout["offer"])?;
   let second = child_nodes(node, layout, layout["alternate_offer"])?;
@@ -460,8 +474,10 @@ fn offers(node: BasisHtmlNode,
   return result_ok(J.array(Sx.sexpr_reverse(rev)));
 }
 
-fn amenities(node: BasisHtmlNode,
-  layout: FixtureLayout) -> Result < sexpr, ProbeParseError >
+fn amenities(
+  node: BasisHtmlNode,
+  layout: FixtureLayout
+) -> Result < sexpr, ProbeParseError >
 {
   let list = child_nodes(node, layout, layout["amenity"])?;
   let n = count(list)?;
@@ -500,8 +516,10 @@ fn amenities(node: BasisHtmlNode,
   return result_ok(J.array(Sx.sexpr_reverse(rev)));
 }
 
-fn url_from(node: BasisHtmlNode,
-  layout: FixtureLayout) -> Result < string, ProbeParseError >
+fn url_from(
+  node: BasisHtmlNode,
+  layout: FixtureLayout
+) -> Result < string, ProbeParseError >
 {
   let(status, tag) = basis_html_node_name(node);
   if status != 0
@@ -532,10 +550,12 @@ fn url_from(node: BasisHtmlNode,
   return result_ok(normalized);
 }
 
-fn property_url(node: BasisHtmlNode,
+fn property_url(
+  node: BasisHtmlNode,
   layout: FixtureLayout,
   name_status: i64,
-  name: BasisHtmlNode) -> Result < string, ProbeParseError >
+  name: BasisHtmlNode
+) -> Result < string, ProbeParseError >
 {
   let(status, link) = slot(node, layout, layout["link"], "")?;
   if status == 0
@@ -555,24 +575,29 @@ fn property_url(node: BasisHtmlNode,
   }
   return match basis_html_node_parent(name) with
   {
-    Ok(Some(parent)) => url_from(parent,
-      layout), Ok(None()) => result_ok(""), Err(_) => failure("html-selection-failed")
+    Ok(Some(parent)) => url_from(
+      parent,
+      layout
+    ), Ok(None()) => result_ok(""), Err(_) => failure("html-selection-failed")
   };
 }
 
-fn property(node: BasisHtmlNode,
-  layout: FixtureLayout) -> Result < sexpr, ProbeParseError >
+fn property(
+  node: BasisHtmlNode,
+  layout: FixtureLayout
+) -> Result < sexpr, ProbeParseError >
 {
   let(card_status, _) = slot(node, layout, layout["card"], layout["profile"])?;
   if card_status != 1
   {
     return failure("nested-property-markup");
   }
-  let(name_status,
-    name_node) = slot(node,
+  let(name_status, name_node) = slot(
+    node,
     layout,
     layout["title"],
-    layout["alternate_title"])?;
+    layout["alternate_title"]
+  )?;
   let url = property_url(node, layout, name_status, name_node)?;
   if url == ""
   {
@@ -591,11 +616,12 @@ fn property(node: BasisHtmlNode,
     id = sx_text(explicit_id);
   }
   let name = slot_text(name_status, name_node)?;
-  let(address_status,
-    address_node) = slot(node,
+  let(address_status, address_node) = slot(
+    node,
     layout,
     layout["address"],
-    "")?;
+    ""
+  )?;
   let address = slot_text(address_status, address_node)?;
   let raw_lat = attr(node, "data-latitude")?;
   let raw_lon = attr(node, "data-longitude")?;
@@ -618,9 +644,11 @@ fn property(node: BasisHtmlNode,
   return result_ok(J.object(fields));
 }
 
-fn document_nodes(document: BasisHtml,
+fn document_nodes(
+  document: BasisHtml,
   layout: FixtureLayout,
-  role: string) -> Result < BasisHtmlSelection, ProbeParseError >
+  role: string
+) -> Result < BasisHtmlSelection, ProbeParseError >
 {
   return match basis_html_xpath(document, expression("//", layout, role)) with
   {
@@ -628,9 +656,11 @@ fn document_nodes(document: BasisHtml,
   };
 }
 
-fn parse_fixture(document: BasisHtml,
+fn parse_fixture(
+  document: BasisHtml,
   layout: FixtureLayout,
-  operation: string) -> Result < ProviderFacts, ProbeParseError >
+  operation: string
+) -> Result < ProviderFacts, ProbeParseError >
 {
   if operation != "profile" && operation != "candidates"
   {
@@ -703,8 +733,7 @@ fn parse_fixture(document: BasisHtml,
   {
     return failure("candidate-links-missing-or-invalid");
   }
-  return result_ok(record < ProviderFacts >
-  {
-    properties: J.array(Sx.sexpr_reverse(rev))
+  return result_ok(record<ProviderFacts>
+  { properties: J.array(Sx.sexpr_reverse(rev))
   });
 }

@@ -4,13 +4,20 @@ import core.competitor as C;
 import core.format as F;
 import std.collections.Array as A;
 record Search
-{
-  release: C.Release, party: C.Party, quotes: i64, budget: i64, masks: i64, selected: i64, best: i64, counters: i64
+{ release : C.Release
+, party   : C.Party
+, quotes  : i64
+, budget  : i64
+, masks   : i64
+, selected: i64
+, best    : i64
+, counters: i64
 }
 
 record Bundle
-{
-  total: i64, inspected: i64, rooms: sexpr
+{ total    : i64
+, inspected: i64
+, rooms    : sexpr
 }
 
 # State slots: work consumed, exhaustion flag, best total (-1 if absent),
@@ -117,12 +124,14 @@ fn accept(s: Search, depth: i64, gross: i64)
   }
 }
 
-fn visit(s: Search,
+fn visit(
+  s: Search,
   start: i64,
   depth: i64,
   adults: i64,
   remaining: i64,
-  gross: i64)
+  gross: i64
+)
 {
   if adults == 0
   {
@@ -146,10 +155,14 @@ fn visit(s: Search,
       return;
     }
     let q = C.quote_at(s["quotes"], i);
-    if q["adults"] > adults || q["children"] > A.basis_array_sub(masks,
-      remaining * 3) || q["min_nights"] > party["nights"] || (party["cancellation"] != 3 && q["cancellation"] != party["cancellation"]) || ! stock(s,
+    if q["adults"] > adults || q["children"] > A.basis_array_sub(
+      masks,
+      remaining * 3
+    ) || q["min_nights"] > party["nights"] || (party["cancellation"] != 3 && q["cancellation"] != party["cancellation"]) || ! stock(
+      s,
       q,
-      depth)
+      depth
+    )
     {
       continue;
     }
@@ -164,15 +177,17 @@ fn visit(s: Search,
       {
         return;
       }
-      if A.basis_array_sub(masks,
-        mask * 3) != q["children"] || ! subset(mask,
-        remaining)
+      if A.basis_array_sub(masks, mask * 3) != q["children"] || ! subset(
+        mask,
+        remaining
+      )
       {
         continue;
       }
-      if mask != 0 && (A.basis_array_sub(masks,
-        mask * 3 + 1) < q["min_age"] || A.basis_array_sub(masks,
-        mask * 3 + 2) > q["max_age"])
+      if mask != 0 && (A.basis_array_sub(
+        masks,
+        mask * 3 + 1
+      ) < q["min_age"] || A.basis_array_sub(masks, mask * 3 + 2) > q["max_age"])
       {
         continue;
       }
@@ -180,12 +195,14 @@ fn visit(s: Search,
       A.basis_array_update(s["selected"], depth * 3 + 1, mask);
       A.basis_array_update(s["selected"], depth * 3 + 2, q["pool"]);
       # Nondecreasing quote index removes room permutations, not guest assignments.
-      visit(s,
+      visit(
+        s,
         i,
         depth + 1,
         adults - q["adults"],
         remaining - mask,
-        gross + q["gross"]);
+        gross + q["gross"]
+      );
       if A.basis_array_sub(s["counters"], 1) != 0
       {
         return;
@@ -194,19 +211,22 @@ fn visit(s: Search,
   }
 }
 
-fn solve(release: C.Release,
-  quotes: i64,
-  party: C.Party,
-  budget: i64) -> Bundle
+fn solve(release: C.Release, quotes: i64, party: C.Party, budget: i64) -> Bundle
 {
   let(masks, full) = child_masks(party);
   let selected = A.basis_array_array(12, 0);
   let best = A.basis_array_array(12, 0);
   let counters = A.basis_array_array(4, 0);
   A.basis_array_update(counters, 2, 0 - 1);
-  let s = record < Search >
-  {
-    release: release, party: party, quotes: quotes, budget: budget, masks: masks, selected: selected, best: best, counters: counters
+  let s = record<Search>
+  { release : release
+  , party   : party
+  , quotes  : quotes
+  , budget  : budget
+  , masks   : masks
+  , selected: selected
+  , best    : best
+  , counters: counters
   };
   visit(s, release["from_row"], 0, party["adults"], full, 0);
   let inspected = A.basis_array_sub(counters, 0);
@@ -244,8 +264,9 @@ fn solve(release: C.Release,
   A.basis_array_destroy(selected);
   A.basis_array_destroy(best);
   A.basis_array_destroy(counters);
-  return record < Bundle >
-  {
-    total: price, inspected: inspected, rooms: sx_string(buffer_text(rooms))
+  return record<Bundle>
+  { total    : price
+  , inspected: inspected
+  , rooms    : sx_string(buffer_text(rooms))
   };
 }

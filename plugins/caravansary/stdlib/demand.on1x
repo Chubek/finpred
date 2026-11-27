@@ -20,10 +20,13 @@ fn index(history: sexpr) ->(sexpr, string)
 {
   let qual = V.text(history, "qualification");
   let observations = Json.get(history, "observations");
-  if V.text(history,
-    "kind") != "caravansary.rooms-sold-history@1" || V.text(history,
-    "property_id") == "" || V.text(history,
-    "room_scope") == "" || (qual != "fixture" && qual != "observed") || Json.kind(observations) != "array"
+  if V.text(history, "kind") != "caravansary.rooms-sold-history@1" || V.text(
+    history,
+    "property_id"
+  ) == "" || V.text(
+    history,
+    "room_scope"
+  ) == "" || (qual != "fixture" && qual != "observed") || Json.kind(observations) != "array"
   {
     return (sx_nil(), "invalid_first_party_history");
   }

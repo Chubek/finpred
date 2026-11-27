@@ -10,10 +10,7 @@ import plugins.caravansary.market_cli.artifacts as Artifacts;
 import plugins.caravansary.market_cli.probe_bridge as Probe;
 fn script(path: string, roots: sexpr) -> sexpr
 {
-  let resolved = Files.resolve(path,
-    FS.basis_fs_cwd(),
-    roots,
-    "market script");
+  let resolved = Files.resolve(path, FS.basis_fs_cwd(), roots, "market script");
   let text = Files.read_text(resolved, 1048576, "market script");
   let input = buffer_new();
   buffer_append(input, text);
@@ -51,29 +48,37 @@ fn fixture_observation(grant: sexpr, html: string) -> sexpr
   let provider = Json.text(Json.field(grant, "provider"));
   let fixture = Json.text(Json.field(grant, "fixture"));
   let url = Json.text(Json.field(grant, "source_url"));
-  let time = Civil.timestamp(Json.text(Json.field(grant,
-    "observed_at")),
-    "host grant observed_at");
-  var fields = Artifacts.put(sx_nil(),
+  let time = Civil.timestamp(
+    Json.text(Json.field(grant, "observed_at")),
+    "host grant observed_at"
+  );
+  var fields = Artifacts.put(
+    sx_nil(),
     "kind",
-    sx_string("provider-request/v1"));
+    sx_string("provider-request/v1")
+  );
   fields = Artifacts.put(fields, "mode", sx_string("fixture"));
   fields = Artifacts.put(fields, "provider", sx_string(provider));
-  fields = Artifacts.put(fields,
+  fields = Artifacts.put(
+    fields,
     "operation",
-    Json.field(grant,
-    "provider_operation"));
+    Json.field(grant, "provider_operation")
+  );
   fields = Artifacts.put(fields, "fixture_id", sx_string(fixture));
   fields = Artifacts.put(fields, "source_url", sx_string(url));
-  let request = Json.object(Artifacts.put(fields,
+  let request = Json.object(Artifacts.put(
+    fields,
     "observed_at",
-    sx_string(Civil.utc_text(time))));
+    sx_string(Civil.utc_text(time))
+  ));
   fields = Artifacts.put(sx_nil(), "provider", sx_string(provider));
   fields = Artifacts.put(fields, "fixture_id", sx_string(fixture));
   fields = Artifacts.put(fields, "source_url", sx_string(url));
-  let cap = Json.object(Artifacts.put(fields,
+  let cap = Json.object(Artifacts.put(
+    fields,
     "max_body_bytes",
-    Json.integer(65536)));
+    Json.integer(65536)
+  ));
   fields = Artifacts.put(sx_nil(), "host_grant", cap);
   fields = Artifacts.put(fields, "request", request);
   let envelope = Json.object(Artifacts.put(fields, "html", sx_string(html)));
@@ -86,16 +91,25 @@ fn fixture_observation(grant: sexpr, html: string) -> sexpr
     tool_fail("offline fixture probe failed for $source: $code");
   }
   let provenance = Json.field(probe, "provenance");
-  if sx_text(Json.field(probe,
-    "provider")) != provider || sx_text(Json.field(probe,
-    "operation")) != sx_text(Json.field(grant,
-    "provider_operation")) || sx_text(Json.field(provenance,
-    "qualification")) != "fictional-frozen-html" || sx_text(Json.field(provenance,
-    "source_url")) != url || sx_text(Json.field(provenance,
-    "fixture_id")) != fixture || sx_text(Json.field(provenance,
-    "content_sha256")) != sx_text(Json.field(grant,
-    "sha256")) || sx_text(Json.field(provenance,
-    "observed_at")) != Civil.utc_text(time)
+  if sx_text(Json.field(probe, "provider")) != provider || sx_text(Json.field(
+    probe,
+    "operation"
+  )) != sx_text(Json.field(grant, "provider_operation")) || sx_text(Json.field(
+    provenance,
+    "qualification"
+  )) != "fictional-frozen-html" || sx_text(Json.field(
+    provenance,
+    "source_url"
+  )) != url || sx_text(Json.field(
+    provenance,
+    "fixture_id"
+  )) != fixture || sx_text(Json.field(
+    provenance,
+    "content_sha256"
+  )) != sx_text(Json.field(grant, "sha256")) || sx_text(Json.field(
+    provenance,
+    "observed_at"
+  )) != Civil.utc_text(time)
   {
     tool_fail("offline fixture probe provenance does not match its approved scope");
   }
@@ -103,13 +117,14 @@ fn fixture_observation(grant: sexpr, html: string) -> sexpr
 }
 
 # Validate the entire selected grant set before opening any capture.
-fn collect(config: sexpr,
+fn collect(
+  config: sexpr,
   mode: string,
   only: string,
   registry_path: string,
   roots: sexpr,
-  now: i64) ->(sexpr,
-  sexpr)
+  now: i64
+) ->(sexpr, sexpr)
 {
   let(registry, parent) = Grants.load(registry_path, roots);
   let declarations = Json.field(config, "target_sources");
@@ -130,9 +145,10 @@ fn collect(config: sexpr,
     {
       tool_fail("market source is not declared: $id");
     }
-    let extractor = Json.get(extractors,
-      Json.text(Json.field(declaration,
-      "extractor")));
+    let extractor = Json.get(
+      extractors,
+      Json.text(Json.field(declaration, "extractor"))
+    );
     if sx_text(Json.get(extractor, "kind")) != "caravansary.fixture@1"
     {
       tool_fail("market source needs the supported fixture extractor: $id");
@@ -153,13 +169,13 @@ fn collect(config: sexpr,
     let observation = fixture_observation(grant, body);
     let source = Json.field(grant, "source");
     let digest = Json.field(grant, "sha256");
-    let entry = Json.object(sx_cons(Json.pair("capture_sha256",
-      digest),
-      sx_cons(Json.pair("observation",
-      observation),
-      sx_cons(Json.pair("source",
-      source),
-      sx_nil()))));
+    let entry = Json.object(sx_cons(
+      Json.pair("capture_sha256", digest),
+      sx_cons(
+        Json.pair("observation", observation),
+        sx_cons(Json.pair("source", source), sx_nil())
+      )
+    ));
     captures = sx_cons(entry, captures);
     digests = sx_cons(Json.pair(sx_text(source), digest), digests);
     rest = sx_tail(rest);
@@ -180,11 +196,10 @@ fn subject(config: sexpr) -> sexpr
   {
     name = id;
   }
-  var fields = sx_cons(Json.pair("name",
-    name),
-    sx_cons(Json.pair("id",
-    id),
-    sx_nil()));
+  var fields = sx_cons(
+    Json.pair("name", name),
+    sx_cons(Json.pair("id", id), sx_nil())
+  );
   var rest = sx_tail(target);
   while sx_kind(rest) == 3
   {
@@ -202,13 +217,13 @@ fn subject(config: sexpr) -> sexpr
 fn discover(config: sexpr, captures: sexpr) -> sexpr
 {
   let declared = Json.field(config, "discovery");
-  let policy = Json.object(sx_cons(Json.pair("radius_m",
-    Json.field(declared,
-    "radius_m")),
-    sx_cons(Json.pair("max_candidates",
-    Json.field(declared,
-    "max_candidates")),
-    sx_nil())));
+  let policy = Json.object(sx_cons(
+    Json.pair("radius_m", Json.field(declared, "radius_m")),
+    sx_cons(
+      Json.pair("max_candidates", Json.field(declared, "max_candidates")),
+      sx_nil()
+    )
+  ));
   var rest = Json.items(captures);
   var evidence = sx_nil();
   while sx_kind(rest) == 3
@@ -216,7 +231,9 @@ fn discover(config: sexpr, captures: sexpr) -> sexpr
     evidence = sx_cons(Json.field(sx_head(rest), "observation"), evidence);
     rest = sx_tail(rest);
   }
-  return Discovery.from_observations(subject(config),
+  return Discovery.from_observations(
+    subject(config),
     policy,
-    Json.array(Sx.sexpr_reverse(evidence)));
+    Json.array(Sx.sexpr_reverse(evidence))
+  );
 }

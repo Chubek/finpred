@@ -2,14 +2,13 @@ import automat.dag_artifacts as A;
 import automat.dag as D;
 import automat.dag_replay as Replay;
 import automat.scalar_decode as Decode;
-fn verify_with(run_id: string,
+fn verify_with(
+  run_id: string,
   manifest: string,
   artifacts: sexpr,
-  lookup: fn(string,
-  string) -> D.Descriptor,
-  call: fn(string,
-  i64,
-  i64) -> i64) -> bool
+  lookup: fn(string, string) -> D.Descriptor,
+  call: fn(string, i64, i64) -> i64
+) -> bool
 {
   if text_len(manifest) > 4096 || text_len(run_id) != 64
   {
@@ -51,7 +50,8 @@ fn verify_with(run_id: string,
   {
     return false;
   }
-  return Replay.verify_with(decoded["plan"],
+  return Replay.verify_with(
+    decoded["plan"],
     "analysis",
     decoded["budget"],
     decoded["first"],
@@ -59,7 +59,8 @@ fn verify_with(run_id: string,
     artifacts,
     decoded["root"],
     lookup,
-    call);
+    call
+  );
 }
 
 fn verify(run_id: string, manifest: string, artifacts: sexpr) -> bool

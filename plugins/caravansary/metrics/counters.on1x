@@ -2,15 +2,18 @@ from . import json_wire as J;
 # Status totals and source totals are projections of the two-by-five matrix.
 # Freshness is orthogonal to status. No other cell values are retained.
 record Counts
-{
-  total: i64, pairs: array < i64, 10 >, freshness: array < i64, 3 >
+{ total: i64
+, pairs: array < i64
+, 10 >
+, freshness: array < i64
+, 3 >
 }
 
 fn empty() -> Counts
 {
-  return record < Counts >
-  {
-    total: 0, pairs: array[0,
+  return record<Counts>
+  { total    : 0
+  , pairs    : array[0,
       0,
       0,
       0,
@@ -19,7 +22,8 @@ fn empty() -> Counts
       0,
       0,
       0,
-      0], freshness: array[0,
+      0]
+  , freshness: array[0,
       0,
       0]
   };
@@ -61,9 +65,7 @@ fn label(v: sexpr, field: string, quoted: bool) -> Result < i64, sexpr >
   let index = label_index(s, field);
   if index < 0
   {
-    return J.fail!(format("transform unknown {} label: {}",
-      field,
-      sx_text(v)));
+    return J.fail!(format("transform unknown {} label: {}", field, sx_text(v)));
   }
   return result_ok(index);
 }
@@ -82,33 +84,21 @@ fn increment(counts: Counts, source: i64, status: i64, fresh: i64) -> Counts
   let pair = source * 5 + status;
   let p = counts["pairs"];
   let f = counts["freshness"];
-  return record < Counts >
-  {
-    total: counts["total"] + 1, pairs: array[p[0] + tick(pair,
-      0),
-      p[1] + tick(pair,
-      1),
-      p[2] + tick(pair,
-      2),
-      p[3] + tick(pair,
-      3),
-      p[4] + tick(pair,
-      4),
-      p[5] + tick(pair,
-      5),
-      p[6] + tick(pair,
-      6),
-      p[7] + tick(pair,
-      7),
-      p[8] + tick(pair,
-      8),
-      p[9] + tick(pair,
-      9)], freshness: array[f[0] + tick(fresh,
-      0),
-      f[1] + tick(fresh,
-      1),
-      f[2] + tick(fresh,
-      2)]
+  return record<Counts>
+  { total    : counts["total"] + 1
+  , pairs    : array[p[0] + tick(pair, 0),
+      p[1] + tick(pair, 1),
+      p[2] + tick(pair, 2),
+      p[3] + tick(pair, 3),
+      p[4] + tick(pair, 4),
+      p[5] + tick(pair, 5),
+      p[6] + tick(pair, 6),
+      p[7] + tick(pair, 7),
+      p[8] + tick(pair, 8),
+      p[9] + tick(pair, 9)]
+  , freshness: array[f[0] + tick(fresh, 0),
+      f[1] + tick(fresh, 1),
+      f[2] + tick(fresh, 2)]
   };
 }
 
@@ -151,10 +141,10 @@ fn get(counts: Counts, name: string, args: sexpr) -> Result < i64, sexpr >
 
 # For a selected key, retain only a JSON string; skip non-string values for
 # a type diagnostic without building a tree (a report may contain offers).
-fn label_value(s: buffer,
-  start: i64,
-  keep: bool) -> Result < (sexpr,
-  i64), sexpr >
+fn label_value(s: buffer, start: i64, keep: bool) -> Result < (
+  sexpr,
+  i64
+), sexpr >
 {
   let i = J.space(s, start);
   if keep && J.input_byte(s, i) == 34
@@ -164,10 +154,10 @@ fn label_value(s: buffer,
   return J.read(s, i, 3, false);
 }
 
-fn cell(s: buffer,
-  start: i64,
-  counts: Counts) -> Result < (Counts,
-  i64), sexpr >
+fn cell(s: buffer, start: i64, counts: Counts) -> Result < (
+  Counts,
+  i64
+), sexpr >
 {
   if J.input_byte(s, start) != 123
   {
@@ -191,10 +181,11 @@ fn cell(s: buffer,
       {
         return J.fail!("expected JSON colon");
       }
-      let(value,
-        end) = label_value(s,
+      let(value, end) = label_value(
+        s,
         colon + 1,
-        name == "source" || name == "status" || name == "freshness")?;
+        name == "source" || name == "status" || name == "freshness"
+      )?;
       if name == "source"
       {
         if seen_source

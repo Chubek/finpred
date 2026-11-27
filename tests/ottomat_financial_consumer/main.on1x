@@ -30,13 +30,24 @@ fn changed_lookup(key: string) -> SDK.Descriptor
     return d;
   }
   let pin = d["pin"];
-  let changed = record < SDK.Pin >
-  {
-    package_name: pin["package_name"], package_version: pin["package_version"], handler_name: pin["handler_name"], handler_version: pin["handler_version"], abi: pin["abi"], code_digest: sx_string(G.digest("updated binding")), policy_digest: pin["policy_digest"]
+  let changed = record<SDK.Pin>
+  { package_name   : pin["package_name"]
+  , package_version: pin["package_version"]
+  , handler_name   : pin["handler_name"]
+  , handler_version: pin["handler_version"]
+  , abi            : pin["abi"]
+  , code_digest    : sx_string(G.digest("updated binding"))
+  , policy_digest  : pin["policy_digest"]
   };
-  return record < SDK.Descriptor >
-  {
-    enabled: d["enabled"], pin: changed, role: d["role"], mode: d["mode"], effect: d["effect"], inputs: d["inputs"], output: d["output"], max_work: d["max_work"]
+  return record<SDK.Descriptor>
+  { enabled : d["enabled"]
+  , pin     : changed
+  , role    : d["role"]
+  , mode    : d["mode"]
+  , effect  : d["effect"]
+  , inputs  : d["inputs"]
+  , output  : d["output"]
+  , max_work: d["max_work"]
   };
 }
 
@@ -55,9 +66,10 @@ fn report(result: Run.Result)
   }
   print(text_concat(sx_text(result["graph_digest"]), "\n"));
   print(text_concat(F.num(result["invocations"]), "\n"));
-  print(sx_text(SDK.value_bytes(G.at(G.lookup(result["outputs"],
-    "recommendation"),
-    2))));
+  print(sx_text(SDK.value_bytes(G.at(
+    G.lookup(result["outputs"], "recommendation"),
+    2
+  ))));
   let out = buffer_new();
   G.frame(out, sx_text(result["trace"]));
   var entries = result["artifacts"];
@@ -82,51 +94,54 @@ fn main() -> i64
     let expected = sx_string(env("APPROVED"));
     if task == "archive-reject"
     {
-      report(OttRun.replay(raw,
+      report(OttRun.replay(
+        raw,
         expected,
         "recommendation",
         Host.budget(),
         compiler,
         Host.lookup,
-        forbid_call));
+        forbid_call
+      ));
     }
     else
     {
-      report(OttRun.replay(raw,
+      report(OttRun.replay(
+        raw,
         expected,
         "recommendation",
         Host.budget(),
         compiler,
         Host.lookup,
-        Host.call));
+        Host.call
+      ));
     }
     return 0;
   }
   let source = file("STRATEGY");
   if task == "archive-capture"
   {
-    let roots = sx_cons(Run.input("scenario",
-      1,
-      file("SCENARIO")),
-      sx_cons(Run.input("offers",
-      1,
-      file("OFFERS")),
-      sx_cons(Run.input("valuation",
-      1,
-      file("VALUATION")),
-      sx_nil())));
-    let ctx = record < Run.Context >
-    {
-      cutoff: sx_string("2026-11-20T10:00:00Z"), strategy_digest: Host.lookup(Host.decide_key())["pin"]["policy_digest"]
+    let roots = sx_cons(
+      Run.input("scenario", 1, file("SCENARIO")),
+      sx_cons(
+        Run.input("offers", 1, file("OFFERS")),
+        sx_cons(Run.input("valuation", 1, file("VALUATION")), sx_nil())
+      )
+    );
+    let ctx = record<Run.Context>
+    { cutoff         : sx_string("2026-11-20T10:00:00Z")
+    , strategy_digest: Host.lookup(Host.decide_key())["pin"]["policy_digest"]
     };
-    let captured = OttRun.capture(source,
+    let captured = OttRun.capture(
+      source,
       roots,
       ctx,
       "recommendation",
       Host.budget(),
       compiler,
       Host.lookup,
-      Host.call);
+      Host.call
+    );
     if ! SDK.same(captured["result"]["status"], sx_string("ok"))
     {
       tool_fail("Ottomat capture failed");
@@ -135,36 +150,42 @@ fn main() -> i64
     print(sx_text(captured["bytes"]));
     return 0;
   }
-  let lowered = Ott.lower(source,
+  let lowered = Ott.lower(
+    source,
     "recommendation",
     Host.budget(),
     compiler,
-    Host.lookup);
+    Host.lookup
+  );
   let status = sx_text(lowered["status"]);
   let line = lowered["line"];
   let col = lowered["column"];
   print("$status $line $col\n");
   if status != "ok"
   {
-    let ctx = record < Run.Context >
-    {
-      cutoff: sx_nil(), strategy_digest: sx_nil()
+    let ctx = record<Run.Context>
+    { cutoff         : sx_nil()
+    , strategy_digest: sx_nil()
     };
-    let rejected = OttRun.execute(lowered,
+    let rejected = OttRun.execute(
+      lowered,
       sx_nil(),
       ctx,
       "recommendation",
       Host.budget(),
       Host.lookup,
-      forbid_call);
+      forbid_call
+    );
     if sx_text(rejected["status"]) != "lowering"
     {
       tool_fail("failed lowering was admitted");
     }
     return 0;
   }
-  if sx_text(lowered["source"]) != source || sx_text(lowered["compiler_identity"]) != compiler || G.length(lowered["resolved"],
-    32) != 5
+  if sx_text(lowered["source"]) != source || sx_text(lowered["compiler_identity"]) != compiler || G.length(
+    lowered["resolved"],
+    32
+  ) != 5
   {
     tool_fail("lowering provenance mismatch");
   }
@@ -172,46 +193,47 @@ fn main() -> i64
   let decision = G.lookup(spans, "decision");
   let first = SDK.nat(G.at(decision, 2));
   let last = SDK.nat(G.at(decision, 3));
-  if first >= last || text_slice(source,
+  if first >= last || text_slice(
+    source,
     first,
-    first + 12) != "let decision" || text_byte(source,
-    last) != 10
+    first + 12
+  ) != "let decision" || text_byte(source, last) != 10
   {
     tool_fail("wrong declaration span");
   }
   let diagnostic = G.lookup(lowered["resolved"], "diagnostic");
-  if ! SDK.same_pin(G.decode_pin(G.at(diagnostic,
-    1)),
-    Host.lookup(Host.sample_key())["pin"])
+  if ! SDK.same_pin(
+    G.decode_pin(G.at(diagnostic, 1)),
+    Host.lookup(Host.sample_key())["pin"]
+  )
   {
     tool_fail("wrong diagnostic package pin");
   }
   let source_digest = sx_text(lowered["source_digest"]);
   let lowering = sx_text(lowered["lowering"]);
   print("$source_digest\n$compiler\n$lowering\n");
-  let roots = sx_cons(Run.input("scenario",
-    1,
-    file("SCENARIO")),
-    sx_cons(Run.input("offers",
-    1,
-    file("OFFERS")),
-    sx_cons(Run.input("valuation",
-    1,
-    file("VALUATION")),
-    sx_nil())));
-  let ctx = record < Run.Context >
-  {
-    cutoff: sx_string("2026-11-20T10:00:00Z"), strategy_digest: Host.lookup(Host.decide_key())["pin"]["policy_digest"]
+  let roots = sx_cons(
+    Run.input("scenario", 1, file("SCENARIO")),
+    sx_cons(
+      Run.input("offers", 1, file("OFFERS")),
+      sx_cons(Run.input("valuation", 1, file("VALUATION")), sx_nil())
+    )
+  );
+  let ctx = record<Run.Context>
+  { cutoff         : sx_string("2026-11-20T10:00:00Z")
+  , strategy_digest: Host.lookup(Host.decide_key())["pin"]["policy_digest"]
   };
   if task == "changed-binding"
   {
-    let rejected = OttRun.execute(lowered,
+    let rejected = OttRun.execute(
+      lowered,
       roots,
       ctx,
       "recommendation",
       Host.budget(),
       changed_lookup,
-      forbid_call);
+      forbid_call
+    );
     if sx_kind(rejected["graph_digest"]) != 0 || sx_kind(rejected["artifacts"]) != 0 || sx_kind(rejected["outputs"]) != 0 || rejected["invocations"] != 0
     {
       tool_fail("binding mismatch exposed execution evidence");
@@ -219,13 +241,15 @@ fn main() -> i64
     report(rejected);
     return 0;
   }
-  let result = OttRun.execute(lowered,
+  let result = OttRun.execute(
+    lowered,
     roots,
     ctx,
     "recommendation",
     Host.budget(),
     Host.lookup,
-    Host.call);
+    Host.call
+  );
   if ! SDK.same(lowered["graph_digest"], result["graph_digest"])
   {
     tool_fail("lowered graph changed");

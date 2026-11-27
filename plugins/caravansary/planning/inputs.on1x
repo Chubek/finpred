@@ -12,10 +12,12 @@ fn has_field_name(names: string, key: string) -> bool
   return Str.contains(" $names ", " $key ");
 }
 
-fn object_fields(value: sexpr,
+fn object_fields(
+  value: sexpr,
   required: string,
   optional: string,
-  where: string)
+  where: string
+)
 {
   if Json.kind(value) != "object"
   {
@@ -109,8 +111,10 @@ fn child_ages(value: sexpr, where: string) -> sexpr
 # the machine integer ABI. Empty denotes an amount larger than the remainder.
 fn adult_remainder(remaining: string, allocated: string) -> string
 {
-  if text_len(allocated) > text_len(remaining) || (text_len(allocated) == text_len(remaining) && Str.compare(allocated,
-    remaining) > 0)
+  if text_len(allocated) > text_len(remaining) || (text_len(allocated) == text_len(remaining) && Str.compare(
+    allocated,
+    remaining
+  ) > 0)
   {
     return "";
   }
@@ -153,9 +157,10 @@ fn guest(value: sexpr, where: string) -> sexpr
 {
   object_fields(value, "id rooms adults child_ages", "allocation", where);
   ignore(nonempty_text(Json.field(value, "id"), "$where.id"));
-  let rooms = Json.positive_integer_text(Json.field(value,
-    "rooms"),
-    "$where.rooms");
+  let rooms = Json.positive_integer_text(
+    Json.field(value, "rooms"),
+    "$where.rooms"
+  );
   let adults = Json.field(value, "adults");
   let ages = Json.field(value, "child_ages");
   var remaining = Json.positive_integer_text(adults, "$where.adults");
@@ -167,15 +172,15 @@ fn guest(value: sexpr, where: string) -> sexpr
     {
       tool_fail("$where.allocation is required for more than one room");
     }
-    let room = Json.object(sx_cons(Json.pair("adults",
-      adults),
-      sx_cons(Json.pair("child_ages",
-      ages),
-      sx_nil())));
-    return Json.replace(value,
+    let room = Json.object(sx_cons(
+      Json.pair("adults", adults),
+      sx_cons(Json.pair("child_ages", ages), sx_nil())
+    ));
+    return Json.replace(
+      value,
       "allocation",
-      Json.array(sx_cons(room,
-      sx_nil())));
+      Json.array(sx_cons(room, sx_nil()))
+    );
   }
   var rest = array_items(allocation, "$where.allocation");
   if Int.to_string(Sx.sexpr_size(rest)) != rooms
@@ -189,17 +194,19 @@ fn guest(value: sexpr, where: string) -> sexpr
     let at = "$where.allocation[$index]";
     let room = sx_head(rest);
     object_fields(room, "adults child_ages", "", at);
-    let n = Json.positive_integer_text(Json.field(room,
-      "adults"),
-      "$at.adults");
+    let n = Json.positive_integer_text(
+      Json.field(room, "adults"),
+      "$at.adults"
+    );
     remaining = adult_remainder(remaining, n);
     if remaining == ""
     {
       tool_fail("$where.allocation does not match the stated party");
     }
-    var room_ages = child_ages(Json.field(room,
-      "child_ages"),
-      "$at.child_ages");
+    var room_ages = child_ages(
+      Json.field(room, "child_ages"),
+      "$at.child_ages"
+    );
     while sx_kind(room_ages) == 3
     {
       allocated_ages = sx_cons(sx_head(room_ages), allocated_ages);
@@ -208,9 +215,10 @@ fn guest(value: sexpr, where: string) -> sexpr
     index = index + 1;
     rest = sx_tail(rest);
   }
-  if remaining != "0" || Json.render(Json.sorted_array(Json.array(allocated_ages),
-    true)) != Json.render(Json.sorted_array(ages,
-    true))
+  if remaining != "0" || Json.render(Json.sorted_array(
+    Json.array(allocated_ages),
+    true
+  )) != Json.render(Json.sorted_array(ages, true))
   {
     tool_fail("$where.allocation does not match the stated party");
   }
@@ -546,35 +554,41 @@ fn property(value: sexpr, where: string, verified: sexpr) -> sexpr
 
 fn competitors(doc: sexpr, origin: string) ->(sexpr, sexpr)
 {
-  object_fields(doc,
+  object_fields(
+    doc,
     "kind guest_configurations properties",
     "",
-    "${origin}competitor document");
+    "${origin}competitor document"
+  );
   let kind = Json.field(doc, "kind");
   if sx_kind(kind) != 2 || sx_text(kind) != "caravansary.competitors@1"
   {
     tool_fail("${origin}competitor document kind must be caravansary.competitors@1");
   }
   var guests = sx_nil();
-  var rest = array_items(Json.field(doc,
-    "guest_configurations"),
-    "${origin}guest_configurations");
+  var rest = array_items(
+    Json.field(doc, "guest_configurations"),
+    "${origin}guest_configurations"
+  );
   var index = 0;
   while sx_kind(rest) == 3
   {
     let value = guest(sx_head(rest), "${origin}guest_configurations[$index]");
-    guests = sx_cons(Json.pair(Json.text(Json.field(value,
-      "id")),
-      value),
-      guests);
+    guests = sx_cons(
+      Json.pair(Json.text(Json.field(value, "id")), value),
+      guests
+    );
     index = index + 1;
     rest = sx_tail(rest);
   }
-  let guests_by_id = Json.object_unique(guests,
-    "${origin}duplicate guest configuration ID");
-  let properties = array_items(Json.field(doc,
-    "properties"),
-    "${origin}properties");
+  let guests_by_id = Json.object_unique(
+    guests,
+    "${origin}duplicate guest configuration ID"
+  );
+  let properties = array_items(
+    Json.field(doc, "properties"),
+    "${origin}properties"
+  );
   var ids = sx_nil();
   var verified = sx_nil();
   rest = properties;
@@ -583,16 +597,18 @@ fn competitors(doc: sexpr, origin: string) ->(sexpr, sexpr)
   {
     let value = sx_head(rest);
     verified = property(value, "${origin}properties[$index]", verified);
-    ids = sx_cons(Json.pair(Json.text(Json.field(value,
-      "id")),
-      Json.null_value()),
-      ids);
+    ids = sx_cons(
+      Json.pair(Json.text(Json.field(value, "id")), Json.null_value()),
+      ids
+    );
     index = index + 1;
     rest = sx_tail(rest);
   }
   ignore(Json.object_unique(ids, "${origin}duplicate property ID"));
-  ignore(Json.object_unique(verified,
-    "${origin}duplicates a verified provider identity"));
+  ignore(Json.object_unique(
+    verified,
+    "${origin}duplicates a verified provider identity"
+  ));
   return (guests_by_id, properties);
 }
 
@@ -618,10 +634,12 @@ fn contains_atom(values: sexpr, key: string) -> bool
 
 fn weights(doc: sexpr, guests: sexpr, stays: sexpr, origin: string) -> sexpr
 {
-  object_fields(doc,
+  object_fields(
+    doc,
     "kind mode source weights",
     "",
-    "${origin}weight document");
+    "${origin}weight document"
+  );
   let kind = Json.field(doc, "kind");
   if sx_kind(kind) != 2 || sx_text(kind) != "caravansary.weights@1"
   {
@@ -642,12 +660,14 @@ fn weights(doc: sexpr, guests: sexpr, stays: sexpr, origin: string) -> sexpr
     let at = "${origin}weights[$index]";
     let entry = sx_head(rest);
     object_fields(entry, "guest_configuration stay_length weight", "", at);
-    let guest_id = nonempty_text(Json.field(entry,
-      "guest_configuration"),
-      "$at.guest_configuration");
-    let stay = Json.positive_integer_text(Json.field(entry,
-      "stay_length"),
-      "$at.stay_length");
+    let guest_id = nonempty_text(
+      Json.field(entry, "guest_configuration"),
+      "$at.guest_configuration"
+    );
+    let stay = Json.positive_integer_text(
+      Json.field(entry, "stay_length"),
+      "$at.stay_length"
+    );
     if ! contains_atom(guests, guest_id) || ! contains_atom(stays, stay)
     {
       tool_fail("$at is for an unconfigured guest/stay pair");
@@ -672,8 +692,10 @@ fn weights(doc: sexpr, guests: sexpr, stays: sexpr, origin: string) -> sexpr
     index = index + 1;
     rest = sx_tail(rest);
   }
-  let result = Json.object_unique(pairs,
-    "${origin}duplicates a guest/stay pair");
+  let result = Json.object_unique(
+    pairs,
+    "${origin}duplicates a guest/stay pair"
+  );
   if index != Sx.sexpr_size(guests) * Sx.sexpr_size(stays)
   {
     tool_fail("${origin}weights are required for every configured guest/stay pair");

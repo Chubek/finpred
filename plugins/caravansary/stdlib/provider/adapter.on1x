@@ -6,11 +6,10 @@ from plugins.caravansary.stdlib.agoda.fixture import agoda_provider;
 from plugins.caravansary.stdlib.provider.api import FixtureGrant, FixtureIntent, run_provider;
 fn provider_error(code: string) -> sexpr
 {
-  return J.object(sx_cons(J.pair("kind",
-    sx_string("provider-error/v1")),
-    sx_cons(J.pair("code",
-    sx_string(code)),
-    sx_nil())));
+  return J.object(sx_cons(
+    J.pair("kind", sx_string("provider-error/v1")),
+    sx_cons(J.pair("code", sx_string(code)), sx_nil())
+  ));
 }
 
 fn request_text(request: sexpr, key: string) -> string
@@ -82,9 +81,10 @@ fn run_fixture(request: sexpr, html: string, grant: FixtureGrant) -> sexpr
   }
   let url = request_text(request, "source_url");
   let id = request_text(request, "fixture_id");
-  let intent = record < FixtureIntent >
-  {
-    fixture_id: id, source_url: url, elvi_source: source
+  let intent = record<FixtureIntent>
+  { fixture_id : id
+  , source_url : url
+  , elvi_source: source
   };
   let result = match run_provider(provider, intent, grant, html) with
   {
@@ -93,28 +93,39 @@ fn run_fixture(request: sexpr, html: string, grant: FixtureGrant) -> sexpr
       return provider_error(code);
     }
   };
-  let provenance = J.object(sx_cons(J.pair("qualification",
-    sx_string("fictional-frozen-html")),
-    sx_cons(J.pair("fixture_id",
-    sx_string(id)),
-    sx_cons(J.pair("source_url",
-    sx_string(url)),
-    sx_cons(J.pair("observed_at",
-    sx_string(clock)),
-    sx_cons(J.pair("extractor",
-    sx_string("${name}-fixture/v1")),
-    sx_cons(J.pair("content_sha256",
-    sx_string(Host.caravansary_sha256(html))),
-    sx_nil())))))));
-  return J.object(sx_cons(J.pair("kind",
-    sx_string("provider-observation/v1")),
-    sx_cons(J.pair("provider",
-    sx_string(name)),
-    sx_cons(J.pair("operation",
-    sx_string(operation)),
-    sx_cons(J.pair("provenance",
-    provenance),
-    sx_cons(J.pair("properties",
-    result["properties"]),
-    sx_nil()))))));
+  let provenance = J.object(sx_cons(
+    J.pair("qualification", sx_string("fictional-frozen-html")),
+    sx_cons(
+      J.pair("fixture_id", sx_string(id)),
+      sx_cons(
+        J.pair("source_url", sx_string(url)),
+        sx_cons(
+          J.pair("observed_at", sx_string(clock)),
+          sx_cons(
+            J.pair("extractor", sx_string("${name}-fixture/v1")),
+            sx_cons(
+              J.pair(
+                "content_sha256",
+                sx_string(Host.caravansary_sha256(html))
+              ),
+              sx_nil()
+            )
+          )
+        )
+      )
+    )
+  ));
+  return J.object(sx_cons(
+    J.pair("kind", sx_string("provider-observation/v1")),
+    sx_cons(
+      J.pair("provider", sx_string(name)),
+      sx_cons(
+        J.pair("operation", sx_string(operation)),
+        sx_cons(
+          J.pair("provenance", provenance),
+          sx_cons(J.pair("properties", result["properties"]), sx_nil())
+        )
+      )
+    )
+  ));
 }

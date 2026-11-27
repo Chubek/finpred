@@ -2,10 +2,12 @@
 # not a route, catchment boundary, or ellipsoidal geodesic.
 import plugins.caravansary.planning.json as J;
 import std.Int as Int;
-extern fn caravansary_geo_distance_m(lat1: i64,
+extern fn caravansary_geo_distance_m(
+  lat1: i64,
   lon1: i64,
   lat2: i64,
-  lon2: i64) -> i64;
+  lon2: i64
+) -> i64;
 fn coordinate(value: sexpr, bound: i64, where: string) -> i64
 {
   let kind = J.kind(value);
@@ -175,11 +177,10 @@ fn position(value: sexpr, where: string) -> sexpr
   {
     x = 0;
   }
-  return J.object(sx_cons(J.pair("latitude",
-    canonical_coordinate(y)),
-    sx_cons(J.pair("longitude",
-    canonical_coordinate(x)),
-    sx_nil())));
+  return J.object(sx_cons(
+    J.pair("latitude", canonical_coordinate(y)),
+    sx_cons(J.pair("longitude", canonical_coordinate(x)), sx_nil())
+  ));
 }
 
 fn distance_m(left: sexpr, right: sexpr) -> sexpr

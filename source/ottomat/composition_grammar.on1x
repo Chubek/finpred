@@ -1,8 +1,7 @@
 # Keep the v6 recognizer separate: changing v7 cannot change v6 replay syntax.
 import automat.financial_graph as G;
 import std.collections.List as L;
-@GrammarEmbed("grammar",
-  r!"""grammar ComposedOttomat :lexer<dfa> :parser<lalr1> {
+@GrammarEmbed("grammar", r!"""grammar ComposedOttomat :lexer<dfa> :parser<lalr1> {
   token ATOM { [!-~]+ }
   token EOL { \n }
   rule TOP { 'ottomat' ' ' '7' <EOL> <effect> <fragment>+ }
@@ -57,9 +56,10 @@ fn parse(source: string) ->(i64, sexpr, i64)
     let word = G.at(token, 3);
     if sx_text(word) == "\n"
     {
-      lines = sx_cons(sx_cons(L.basis_list_rev(words),
-        L.basis_list_rev(terminals)),
-        lines);
+      lines = sx_cons(
+        sx_cons(L.basis_list_rev(words), L.basis_list_rev(terminals)),
+        lines
+      );
       words = sx_nil();
       terminals = sx_nil();
     }

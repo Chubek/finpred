@@ -22,8 +22,10 @@ fn project(batch: Dragnet.Batch) -> string
       let cutoff = sx_text(p["as_of"]);
       let learned = sx_text(offer["ingested_at"]);
       let received = sx_text(p["received_at"]);
-      if Str.compare(learned,
-        cutoff) > 0 || (received != "" && learned != received)
+      if Str.compare(
+        learned,
+        cutoff
+      ) > 0 || (received != "" && learned != received)
       {
         tool_fail("dragnet offers: invalid offer knowledge or receipt time");
       }

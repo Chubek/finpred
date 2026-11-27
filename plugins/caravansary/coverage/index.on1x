@@ -72,12 +72,10 @@ fn node(e: sexpr, l: sexpr, r: sexpr) -> sexpr
   {
     rank = levels(r);
   }
-  return sx_cons(e,
-    sx_cons(sx_cons(sx_nil(),
-    rank),
-    sx_cons(l,
-    sx_cons(r,
-    sx_nil()))));
+  return sx_cons(
+    e,
+    sx_cons(sx_cons(sx_nil(), rank), sx_cons(l, sx_cons(r, sx_nil())))
+  );
 }
 
 fn balance(e: sexpr, l: sexpr, r: sexpr) -> sexpr
@@ -90,13 +88,7 @@ fn balance(e: sexpr, l: sexpr, r: sexpr) -> sexpr
     {
       return node(entry(l), ll, node(e, lr, r));
     }
-    return node(entry(lr),
-      node(entry(l),
-      ll,
-      left(lr)),
-      node(e,
-      right(lr),
-      r));
+    return node(entry(lr), node(entry(l), ll, left(lr)), node(e, right(lr), r));
   }
   if height(r) > height(l) + 1
   {
@@ -106,13 +98,7 @@ fn balance(e: sexpr, l: sexpr, r: sexpr) -> sexpr
     {
       return node(entry(r), node(e, l, rl), rr);
     }
-    return node(entry(rl),
-      node(e,
-      l,
-      left(rl)),
-      node(entry(r),
-      right(rl),
-      rr));
+    return node(entry(rl), node(e, l, left(rl)), node(entry(r), right(rl), rr));
   }
   return node(e, l, r);
 }

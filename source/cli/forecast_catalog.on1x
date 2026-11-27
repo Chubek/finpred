@@ -7,8 +7,9 @@ import std.String as Str;
 import std.io.TextIO as IO;
 import std.os.OS_FileSys as FS;
 record Release
-{
-  id: sexpr, raw: sexpr, projection: Guest.Projection
+{ id        : sexpr
+, raw       : sexpr
+, projection: Guest.Projection
 }
 
 fn heading() -> string
@@ -66,9 +67,10 @@ fn catalog_count(list: string) -> i64
   {
     let start = i * 65;
     let id = text_slice(list, start, start + 64);
-    if ! Store.valid_hash(id) || text_byte(list,
-      start + 64) != 10 || Str.compare(previous,
-      id) >= 0
+    if ! Store.valid_hash(id) || text_byte(
+      list,
+      start + 64
+    ) != 10 || Str.compare(previous, id) >= 0
     {
       tool_fail("forecast: catalog IDs must be unique and sorted");
     }
@@ -96,11 +98,11 @@ fn marker(bytes: string, start: i64, prefix: string) -> i64
 {
   for i in start .. text_len(bytes)
   {
-    if text_byte(bytes,
-      i) == text_byte(prefix,
-      0) && Guest.after(bytes,
+    if text_byte(bytes, i) == text_byte(prefix, 0) && Guest.after(
+      bytes,
       i,
-      prefix) >= 0
+      prefix
+    ) >= 0
     {
       return i;
     }
@@ -139,11 +141,13 @@ fn covers(bytes: string, first: i64, last: i64) -> bool
 # Prefer a release carrying the whole requested window, even when a row
 # explicitly reports an unknown. Within either group rank by provider update,
 # then ingestion, and reject a tie for the selected rank.
-fn select(home: string,
+fn select(
+  home: string,
   catalog: string,
   cutoff: string,
   first: i64,
-  last: i64) -> Release
+  last: i64
+) -> Release
 {
   if ! Date.utc_timestamp(cutoff)
   {
@@ -157,9 +161,10 @@ fn select(home: string,
   }
   let list = text_slice(manifest, prefix, text_len(manifest));
   let count = catalog_count(list);
-  var best = record < Release >
-  {
-    id: sx_nil(), raw: sx_nil(), projection: Guest.fail(1)
+  var best = record<Release>
+  { id        : sx_nil()
+  , raw       : sx_nil()
+  , projection: Guest.fail(1)
   };
   var best_coverage = 0 - 1;
   var best_update = 0 - 1;
@@ -185,9 +190,11 @@ fn select(home: string,
     {
       coverage = 1;
     }
-    let updated = Guest.provider_clock(metadata(bytes,
+    let updated = Guest.provider_clock(metadata(
+      bytes,
       ",\"provider_updated_at\":\"",
-      24));
+      24
+    ));
     let ingested = Guest.clock(metadata(bytes, ",\"ingested_at\":\"", 20));
     if updated < 0 || ingested < 0
     {
@@ -199,9 +206,10 @@ fn select(home: string,
     }
     if coverage > best_coverage || (coverage == best_coverage && (updated > best_update || (updated == best_update && ingested > best_ingestion)))
     {
-      best = record < Release >
-      {
-        id: sx_string(id), raw: sx_string(raw), projection: projection
+      best = record<Release>
+      { id        : sx_string(id)
+      , raw       : sx_string(raw)
+      , projection: projection
       };
       best_coverage = coverage;
       best_update = updated;

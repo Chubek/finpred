@@ -47,10 +47,11 @@ fn bind(rows: sexpr, count: i64, outgoing: i64, pending: i64) -> bool
         return false;
       }
       let edge = from * count + to;
-      A.basis_array_update(outgoing,
+      A.basis_array_update(
+        outgoing,
         edge,
-        A.basis_array_sub(outgoing,
-        edge) + 1);
+        A.basis_array_sub(outgoing, edge) + 1
+      );
       degree = degree + 1;
       parents = sx_tail(parents);
     }
@@ -64,11 +65,13 @@ fn bind(rows: sexpr, count: i64, outgoing: i64, pending: i64) -> bool
   return true;
 }
 
-fn drain(rows: sexpr,
+fn drain(
+  rows: sexpr,
   count: i64,
   lexical: bool,
   outgoing: i64,
-  pending: i64) -> sexpr
+  pending: i64
+) -> sexpr
 {
   var ordered = sx_nil();
   var done = 0;
@@ -80,9 +83,13 @@ fn drain(rows: sexpr,
     for i in 0 .. count
     {
       let candidate = sx_head(sx_head(items));
-      if A.basis_array_sub(pending,
-        i) == 0 && (chosen < 0 || (lexical && Str.compare(sx_text(candidate),
-        sx_text(id)) < 0))
+      if A.basis_array_sub(
+        pending,
+        i
+      ) == 0 && (chosen < 0 || (lexical && Str.compare(
+        sx_text(candidate),
+        sx_text(id)
+      ) < 0))
       {
         chosen = i;
         id = candidate;
@@ -104,10 +111,11 @@ fn drain(rows: sexpr,
       let edges = A.basis_array_sub(outgoing, chosen * count + to);
       if edges > 0
       {
-        A.basis_array_update(pending,
+        A.basis_array_update(
+          pending,
           to,
-          A.basis_array_sub(pending,
-          to) - edges);
+          A.basis_array_sub(pending, to) - edges
+        );
       }
     }
     ordered = sx_cons(id, ordered);

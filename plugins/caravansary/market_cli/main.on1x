@@ -7,10 +7,12 @@ import plugins.caravansary.market_cli.options as Opt;
 import plugins.caravansary.market_cli.positioning as Position;
 import plugins.caravansary.market_cli.replay as Replay;
 import plugins.caravansary.market_cli.workflow as Workflow;
-fn artifact_for_script(mode: string,
+fn artifact_for_script(
+  mode: string,
   path: string,
   roots: sexpr,
-  opts: sexpr) -> sexpr
+  opts: sexpr
+) -> sexpr
 {
   let now = Civil.timestamp(Opt.required(opts, "--as-of"), "--as-of");
   let timestamp = Civil.utc_text(now);
@@ -20,17 +22,19 @@ fn artifact_for_script(mode: string,
   {
     only = Opt.required(opts, "--source");
   }
-  let(captures,
-    capture_ids) = Workflow.collect(script,
+  let(captures, capture_ids) = Workflow.collect(
+    script,
     mode,
     only,
-    Opt.required(opts,
-    "--host-grants"),
+    Opt.required(opts, "--host-grants"),
     roots,
-    now);
-  var inputs = Artifacts.put(sx_nil(),
+    now
+  );
+  var inputs = Artifacts.put(
+    sx_nil(),
     "script_digest",
-    sx_string(Json.digest(script)));
+    sx_string(Json.digest(script))
+  );
   inputs = Artifacts.put(inputs, "capture_sha256", capture_ids);
   var result = Artifacts.put(sx_nil(), "sources", captures);
   var status = "completed";
@@ -44,13 +48,17 @@ fn artifact_for_script(mode: string,
       let prices = Json.get(opts, "--pricing-input");
       if sx_kind(prices) != 0
       {
-        let evidence = Files.read_json(Json.text(prices),
+        let evidence = Files.read_json(
+          Json.text(prices),
           roots,
           2097152,
-          "market pricing input");
-        inputs = Artifacts.put(inputs,
+          "market pricing input"
+        );
+        inputs = Artifacts.put(
+          inputs,
           "pricing_input_digest",
-          sx_string(Json.digest(evidence)));
+          sx_string(Json.digest(evidence))
+        );
         position = Position.compare(script, discovery, evidence, timestamp);
       }
       result = Artifacts.put(result, "position", position);
@@ -60,11 +68,13 @@ fn artifact_for_script(mode: string,
       }
     }
   }
-  return Artifacts.produce(mode,
+  return Artifacts.produce(
+    mode,
     timestamp,
     status,
     Json.object(inputs),
-    Json.object(result));
+    Json.object(result)
+  );
 }
 
 fn main() -> i64
@@ -89,10 +99,11 @@ fn main() -> i64
   }
   if mode == "backtest"
   {
-    Artifacts.print(Replay.backtest(path,
+    Artifacts.print(Replay.backtest(
+      path,
       roots,
-      Opt.required(options,
-      "--as-of")));
+      Opt.required(options, "--as-of")
+    ));
     return 0;
   }
   Artifacts.print(artifact_for_script(mode, path, roots, options));

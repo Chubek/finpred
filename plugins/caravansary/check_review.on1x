@@ -16,15 +16,16 @@ fn main() -> i64
       assert(false);
     }
   };
-  let fake = Json.replace(Json.field(review,
-    "report"),
+  let fake = Json.replace(
+    Json.field(review, "report"),
     "recommended_minor",
-    Json.integer(10000));
-  let changed = Json.replace(Json.replace(review,
-    "report",
-    fake),
+    Json.integer(10000)
+  );
+  let changed = Json.replace(
+    Json.replace(review, "report", fake),
     "report_sha256",
-    sx_string(Json.digest(fake)));
+    sx_string(Json.digest(fake))
+  );
   match Recommendation.verify(changed, inputs, policy) with
   {
     Ok(_) =>

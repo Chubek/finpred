@@ -173,6 +173,22 @@ The [coverage index](tests/COVERAGE.md) links the positive and negative cases.
 The security suite requires the [offline worker](docs/OFFLINE_WORKER.md)
 prerequisites, including Bubblewrap and enabled unprivileged user namespaces.
 
+### Format On1x source
+
+With the pinned compiler built, format a file or check all tracked On1x sources:
+
+```sh
+python3 bin/format-on1x.py source/ottomat/financial.on1x
+git ls-files -z -- '*.on1x' '*.on1xi' |
+  xargs -0 python3 bin/format-on1x.py --check
+```
+
+The project formatter uses `.on1xfmt` for the 80-column target and basic layout.
+It adds leading commas and aligned fields to records, and keeps nested argument
+lists inline when they fit. Comments, multiline literals, and indivisible
+expressions can exceed 80 columns. Use this script rather than bare `on1xc fmt`
+to apply and check the project style.
+
 ### Install the descriptor SDK
 
 The C SDK can be installed without the On1x compiler. To install the shared

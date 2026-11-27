@@ -18,18 +18,18 @@ fn arg(key: string) -> sexpr
 
 fn catalog(name: string) -> Replay.Catalog
 {
-  return record < Replay.Catalog >
-  {
-    id: arg("${name}_ID"), count: Guest.nat(env("${name}_COUNT"), 2)
+  return record<Replay.Catalog>
+  { id   : arg("${name}_ID")
+  , count: Guest.nat(env("${name}_COUNT"), 2)
   };
 }
 
 fn entry(name: string, index: i64) -> Vintage.Entry
 {
   let n = F.num(index);
-  return record < Vintage.Entry >
-  {
-    parent: arg("${name}_${n}_ID"), snapshot: arg("${name}_${n}_RAW")
+  return record<Vintage.Entry>
+  { parent  : arg("${name}_${n}_ID")
+  , snapshot: arg("${name}_${n}_RAW")
   };
 }
 
@@ -51,17 +51,22 @@ fn main() -> i64
     println(Model.digest(env("BYTES")));
     return 0;
   }
-  let linked = record < Replay.Linked >
-  {
-    model_code: sx_string(Model.digest(env("MODEL_SUBJECT"))), scoring_code: sx_string(Model.digest(env("SCORING_SUBJECT")))
+  let linked = record<Replay.Linked>
+  { model_code  : sx_string(Model.digest(env("MODEL_SUBJECT")))
+  , scoring_code: sx_string(Model.digest(env("SCORING_SUBJECT")))
   };
-  let selection = record < Replay.Selection >
-  {
-    model: arg("MODEL"), model_code: arg("MODEL_CODE"), scoring_code: arg("SCORING_CODE"), training_cutoff: arg("TRAIN_CUTOFF"), scoring_cutoff: arg("SCORE_CUTOFF")
+  let selection = record<Replay.Selection>
+  { model          : arg("MODEL")
+  , model_code     : arg("MODEL_CODE")
+  , scoring_code   : arg("SCORING_CODE")
+  , training_cutoff: arg("TRAIN_CUTOFF")
+  , scoring_cutoff : arg("SCORE_CUTOFF")
   };
-  let archive = record < Replay.Archive >
-  {
-    forecast_id: arg("FORECAST_ID"), forecast: arg("FORECAST"), evaluation_id: arg("EVALUATION_ID"), evaluation: arg("EVALUATION")
+  let archive = record<Replay.Archive>
+  { forecast_id  : arg("FORECAST_ID")
+  , forecast     : arg("FORECAST")
+  , evaluation_id: arg("EVALUATION_ID")
+  , evaluation   : arg("EVALUATION")
   };
   let train = catalog("TRAIN");
   let actual = catalog("ACTUAL");
@@ -73,25 +78,29 @@ fn main() -> i64
   }
   if task == "evaluate"
   {
-    result = Replay.evaluate(linked,
+    result = Replay.evaluate(
+      linked,
       selection,
       train,
       actual,
       request,
       archive,
       training,
-      actuals);
+      actuals
+    );
   }
   if task == "replay"
   {
-    result = Replay.replay(linked,
+    result = Replay.replay(
+      linked,
       selection,
       train,
       actual,
       request,
       archive,
       training,
-      actuals);
+      actuals
+    );
   }
   if result["status"] != 0
   {

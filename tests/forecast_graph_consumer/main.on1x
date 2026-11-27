@@ -21,21 +21,23 @@ fn lookup(key: string) -> SDK.Descriptor
 
 fn port(name: string, profile: SDK.Port) -> SDK.Port
 {
-  return record < SDK.Port >
-  {
-    name: sx_string(name), kind: profile["kind"], major: profile["major"], unit: profile["unit"], currency: profile["currency"], states: profile["states"], max_bytes: profile["max_bytes"]
+  return record<SDK.Port>
+  { name     : sx_string(name)
+  , kind     : profile["kind"]
+  , major    : profile["major"]
+  , unit     : profile["unit"]
+  , currency : profile["currency"]
+  , states   : profile["states"]
+  , max_bytes: profile["max_bytes"]
   };
 }
 
 fn model_node(name: string, handler: string, root: string) -> sexpr
 {
-  let edges = sx_cons(G.edge("training",
-    "",
-    root),
-    sx_cons(G.edge("request",
-    "",
-    "request"),
-    sx_nil()));
+  let edges = sx_cons(
+    G.edge("training", "", root),
+    sx_cons(G.edge("request", "", "request"), sx_nil())
+  );
   return G.node(name, handler, "pure", edges);
 }
 
@@ -43,28 +45,27 @@ fn graph() -> G.Graph
 {
   let training = Model.training_port();
   let forecast = Model.forecast_port();
-  let ports = sx_cons(SDK.port_entry(port("moving-history",
-    training)),
-    sx_cons(SDK.port_entry(port("seasonal-history",
-    training)),
-    sx_cons(SDK.port_entry(Model.request_port()),
-    sx_nil())));
-  let nodes = sx_cons(model_node("moving",
-    Model.moving_average(),
-    "moving-history"),
-    sx_cons(model_node("seasonal",
-    Model.seasonal_naive(),
-    "seasonal-history"),
-    sx_nil()));
-  let outputs = sx_cons(G.output(port("moving-estimate",
-    forecast),
-    "moving",
-    "forecast"),
-    sx_cons(G.output(port("seasonal-estimate",
-    forecast),
-    "seasonal",
-    "forecast"),
-    sx_nil()));
+  let ports = sx_cons(
+    SDK.port_entry(port("moving-history", training)),
+    sx_cons(
+      SDK.port_entry(port("seasonal-history", training)),
+      sx_cons(SDK.port_entry(Model.request_port()), sx_nil())
+    )
+  );
+  let nodes = sx_cons(
+    model_node("moving", Model.moving_average(), "moving-history"),
+    sx_cons(
+      model_node("seasonal", Model.seasonal_naive(), "seasonal-history"),
+      sx_nil()
+    )
+  );
+  let outputs = sx_cons(
+    G.output(port("moving-estimate", forecast), "moving", "forecast"),
+    sx_cons(
+      G.output(port("seasonal-estimate", forecast), "seasonal", "forecast"),
+      sx_nil()
+    )
+  );
   return G.graph(ports, nodes, outputs);
 }
 
@@ -75,8 +76,10 @@ fn read_frame(bytes: string, offset: i64) ->(i64, string)
     return (- 1, "");
   }
   var colon = offset;
-  while colon < text_len(bytes) && colon - offset <= 5 && text_byte(bytes,
-    colon) != 58
+  while colon < text_len(bytes) && colon - offset <= 5 && text_byte(
+    bytes,
+    colon
+  ) != 58
   {
     colon = colon + 1;
   }
@@ -93,10 +96,12 @@ fn read_frame(bytes: string, offset: i64) ->(i64, string)
   return (start + count, text_slice(bytes, start, start + count));
 }
 
-fn replay(graph: G.Graph,
+fn replay(
+  graph: G.Graph,
   roots: sexpr,
   ctx: Run.Context,
-  bytes: string) -> Run.Result
+  bytes: string
+) -> Run.Result
 {
   if text_len(bytes) > 40000
   {
@@ -116,18 +121,21 @@ fn replay(graph: G.Graph,
     {
       return Run.error("invalid_expectation", "");
     }
-    expected = sx_cons(sx_cons(sx_string(id),
-      sx_cons(sx_string(hash),
-      sx_cons(sx_string(artifact),
-      sx_nil()))),
-      expected);
+    expected = sx_cons(
+      sx_cons(
+        sx_string(id),
+        sx_cons(sx_string(hash), sx_cons(sx_string(artifact), sx_nil()))
+      ),
+      expected
+    );
     offset = f;
   }
   if offset != text_len(bytes)
   {
     return Run.error("invalid_expectation", "");
   }
-  return Run.replay(graph,
+  return Run.replay(
+    graph,
     roots,
     ctx,
     "analysis",
@@ -135,7 +143,8 @@ fn replay(graph: G.Graph,
     lookup,
     Model.call,
     sx_string(graph_id),
-    L.basis_list_rev(expected));
+    L.basis_list_rev(expected)
+  );
 }
 
 fn report(result: Run.Result)
@@ -153,13 +162,13 @@ fn report(result: Run.Result)
   }
   let moving = G.lookup(outputs, "moving-estimate");
   let seasonal = G.lookup(outputs, "seasonal-estimate");
-  if G.field(moving,
-    1) != G.field(G.lookup(result["artifacts"],
-    "moving"),
-    1) || G.field(seasonal,
-    1) != G.field(G.lookup(result["artifacts"],
-    "seasonal"),
-    1)
+  if G.field(moving, 1) != G.field(
+    G.lookup(result["artifacts"], "moving"),
+    1
+  ) || G.field(seasonal, 1) != G.field(
+    G.lookup(result["artifacts"], "seasonal"),
+    1
+  )
   {
     tool_fail("selected forecasts do not match the model artifacts");
   }
@@ -189,40 +198,47 @@ fn main() -> i64
   }
   if task == "normalize"
   {
-    IO.basis_text_io_print(Feed.normalize(env("CAPTURE"),
+    IO.basis_text_io_print(Feed.normalize(
+      env("CAPTURE"),
       env("RAW"),
       env("DECODE"),
-      env("AS_OF")));
+      env("AS_OF")
+    ));
     return 0;
   }
   let cutoff = env("CUTOFF");
-  let moving = Guest.project(env("MOVING_SNAPSHOT"),
+  let moving = Guest.project(
+    env("MOVING_SNAPSHOT"),
     env("MOVING_PARENT"),
-    cutoff);
+    cutoff
+  );
   if moving["status"] != 0
   {
     return 10 + moving["status"];
   }
-  let seasonal = Guest.project(env("SEASONAL_SNAPSHOT"),
+  let seasonal = Guest.project(
+    env("SEASONAL_SNAPSHOT"),
     env("SEASONAL_PARENT"),
-    cutoff);
+    cutoff
+  );
   if seasonal["status"] != 0
   {
     return 20 + seasonal["status"];
   }
-  let roots = sx_cons(Run.input("moving-history",
-    moving["state"],
-    sx_text(moving["bytes"])),
-    sx_cons(Run.input("seasonal-history",
-    seasonal["state"],
-    sx_text(seasonal["bytes"])),
-    sx_cons(Run.input("request",
-    1,
-    env("REQUEST")),
-    sx_nil())));
-  let ctx = record < Run.Context >
-  {
-    cutoff: sx_string(cutoff), strategy_digest: sx_string(env("STRATEGY_DIGEST"))
+  let roots = sx_cons(
+    Run.input("moving-history", moving["state"], sx_text(moving["bytes"])),
+    sx_cons(
+      Run.input(
+        "seasonal-history",
+        seasonal["state"],
+        sx_text(seasonal["bytes"])
+      ),
+      sx_cons(Run.input("request", 1, env("REQUEST")), sx_nil())
+    )
+  );
+  let ctx = record<Run.Context>
+  { cutoff         : sx_string(cutoff)
+  , strategy_digest: sx_string(env("STRATEGY_DIGEST"))
   };
   if task == "replay"
   {
@@ -230,13 +246,7 @@ fn main() -> i64
   }
   else
   {
-    report(Run.execute(graph(),
-      roots,
-      ctx,
-      "analysis",
-      2,
-      lookup,
-      Model.call));
+    report(Run.execute(graph(), roots, ctx, "analysis", 2, lookup, Model.call));
   }
   return 0;
 }

@@ -2,15 +2,19 @@
 # preflight, produces the parsed lines consumed by the lowerer.
 import ottomat.grammar as Syntax;
 record Lexed
-{
-  status: sexpr, lines: sexpr, line: i64, column: i64
+{ status: sexpr
+, lines : sexpr
+, line  : i64
+, column: i64
 }
 
 fn failure(status: string, line: i64, column: i64) -> Lexed
 {
-  return record < Lexed >
-  {
-    status: sx_string(status), lines: sx_nil(), line: line, column: column
+  return record<Lexed>
+  { status: sx_string(status)
+  , lines : sx_nil()
+  , line  : line
+  , column: column
   };
 }
 
@@ -105,9 +109,11 @@ fn scan_version(source: string, v4: bool) -> Lexed
     }
     return failure("syntax", error_line, 1);
   }
-  return record < Lexed >
-  {
-    status: sx_string("ok"), lines: lines, line: 0, column: 0
+  return record<Lexed>
+  { status: sx_string("ok")
+  , lines : lines
+  , line  : 0
+  , column: 0
   };
 }
 

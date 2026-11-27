@@ -6,35 +6,47 @@ import core.date as Date;
 import core.format as F;
 import std.collections.List as L;
 record Context
-{
-  cutoff: sexpr, strategy_digest: sexpr
+{ cutoff         : sexpr
+, strategy_digest: sexpr
 }
 
 record Result
-{
-  status: sexpr, subject: sexpr, graph_digest: sexpr, artifacts: sexpr, outputs: sexpr, trace: sexpr, invocations: i64
+{ status      : sexpr
+, subject     : sexpr
+, graph_digest: sexpr
+, artifacts   : sexpr
+, outputs     : sexpr
+, trace       : sexpr
+, invocations : i64
 }
 
 fn input(name: string, state: i64, bytes: string) -> sexpr
 {
-  return sx_cons(sx_string(name),
-    sx_cons(SDK.value_entry(state,
-    bytes),
-    sx_nil()));
+  return sx_cons(
+    sx_string(name),
+    sx_cons(SDK.value_entry(state, bytes), sx_nil())
+  );
 }
 
 fn error(status: string, subject: string) -> Result
 {
-  return record < Result >
-  {
-    status: sx_string(status), subject: sx_string(subject), graph_digest: sx_nil(), artifacts: sx_nil(), outputs: sx_nil(), trace: sx_nil(), invocations: 0
+  return record<Result>
+  { status      : sx_string(status)
+  , subject     : sx_string(subject)
+  , graph_digest: sx_nil()
+  , artifacts   : sx_nil()
+  , outputs     : sx_nil()
+  , trace       : sx_nil()
+  , invocations : 0
   };
 }
 
 fn valid_context(ctx: Context) -> bool
 {
-  return SDK.atom(ctx["cutoff"],
-    20) && Date.utc_timestamp(sx_text(ctx["cutoff"])) && SDK.valid_digest(ctx["strategy_digest"]);
+  return SDK.atom(
+    ctx["cutoff"],
+    20
+  ) && Date.utc_timestamp(sx_text(ctx["cutoff"])) && SDK.valid_digest(ctx["strategy_digest"]);
 }
 
 fn valid_roots(ports: sexpr, supplied: sexpr) -> bool
@@ -52,13 +64,17 @@ fn valid_roots(ports: sexpr, supplied: sexpr) -> bool
     let root = sx_head(rest);
     let name = G.field(root, 0);
     let value = G.at(root, 1);
-    if G.length(root,
-      2) != 2 || G.length(value,
-      2) != 2 || ! G.identifier(name) || sx_kind(G.lookup(seen,
-      name)) != 0 || ! SDK.valid_value(SDK.decode_port(G.lookup(ports,
-      name)),
+    if G.length(root, 2) != 2 || G.length(
+      value,
+      2
+    ) != 2 || ! G.identifier(name) || sx_kind(G.lookup(
+      seen,
+      name
+    )) != 0 || ! SDK.valid_value(
+      SDK.decode_port(G.lookup(ports, name)),
       SDK.value_state(value),
-      SDK.value_bytes(value))
+      SDK.value_bytes(value)
+    )
     {
       return false;
     }
@@ -77,20 +93,24 @@ fn valid_roots(ports: sexpr, supplied: sexpr) -> bool
 # The envelope includes all direct named parents in descriptor input order.
 fn artifact(id: string, digest: string, bytes: string, value: sexpr) -> sexpr
 {
-  return sx_cons(sx_string(id),
-    sx_cons(sx_string(digest),
-    sx_cons(sx_string(bytes),
-    sx_cons(value,
-    sx_nil()))));
+  return sx_cons(
+    sx_string(id),
+    sx_cons(
+      sx_string(digest),
+      sx_cons(sx_string(bytes), sx_cons(value, sx_nil()))
+    )
+  );
 }
 
-fn encode_artifact(role: string,
+fn encode_artifact(
+  role: string,
   id: string,
   port: SDK.Port,
   value: sexpr,
   metadata: string,
   parents: string,
-  ctx: Context) -> sexpr
+  ctx: Context
+) -> sexpr
 {
   let b = buffer_new();
   G.frame(b, "automat.financial-artifact@1");
@@ -161,11 +181,13 @@ fn node_metadata(pin: SDK.Pin, plan_digest: string) -> string
   return buffer_text(b);
 }
 
-fn memo_key(pin: SDK.Pin,
+fn memo_key(
+  pin: SDK.Pin,
   mode: string,
   ctx: Context,
   values: sexpr,
-  work: i64) -> string
+  work: i64
+) -> string
 {
   let b = buffer_new();
   G.frame(b, mode);
@@ -184,55 +206,61 @@ fn memo_key(pin: SDK.Pin,
   return buffer_text(b);
 }
 
-fn execute(g: G.Graph,
+fn execute(
+  g: G.Graph,
   roots: sexpr,
   ctx: Context,
   mode: string,
   budget: i64,
   resolve: fn(string) -> SDK.Descriptor,
-  call: fn(SDK.Pin,
-  SDK.Request) -> SDK.Outcome) -> Result
+  call: fn(SDK.Pin, SDK.Request) -> SDK.Outcome
+) -> Result
 {
   return execute_checked(g, roots, ctx, mode, budget, resolve, call, sx_nil());
 }
 
 # Execute only the binding and graph identity previously approved by the caller.
 # Compute it from the same prepared graph used below, before invoking handlers.
-fn execute_pinned(g: G.Graph,
+fn execute_pinned(
+  g: G.Graph,
   roots: sexpr,
   ctx: Context,
   mode: string,
   budget: i64,
   resolve: fn(string) -> SDK.Descriptor,
-  call: fn(SDK.Pin,
-  SDK.Request) -> SDK.Outcome,
-  expected_digest: sexpr) -> Result
+  call: fn(SDK.Pin, SDK.Request) -> SDK.Outcome,
+  expected_digest: sexpr
+) -> Result
 {
   if ! SDK.valid_digest(expected_digest)
   {
     return error("graph_mismatch", "");
   }
-  return execute_checked(g,
+  return execute_checked(
+    g,
     roots,
     ctx,
     mode,
     budget,
     resolve,
     call,
-    expected_digest);
+    expected_digest
+  );
 }
 
-fn execute_checked(g: G.Graph,
+fn execute_checked(
+  g: G.Graph,
   roots: sexpr,
   ctx: Context,
   mode: string,
   budget: i64,
   resolve: fn(string) -> SDK.Descriptor,
-  call: fn(SDK.Pin,
-  SDK.Request) -> SDK.Outcome,
-  expected_digest: sexpr) -> Result
+  call: fn(SDK.Pin, SDK.Request) -> SDK.Outcome,
+  expected_digest: sexpr
+) -> Result
 {
-  return execute_expected(g,
+  return execute_expected(
+    g,
     roots,
     ctx,
     mode,
@@ -241,22 +269,19 @@ fn execute_checked(g: G.Graph,
     call,
     expected_digest,
     sx_nil(),
-    false);
+    false
+  );
 }
 
 fn same_evidence(actual: sexpr, entry: sexpr) -> bool
 {
-  return G.length(entry,
-    3) == 3 && SDK.same(G.at(actual,
-    0),
-    G.at(entry,
-    0)) && SDK.same(G.at(actual,
-    1),
-    G.at(entry,
-    1)) && SDK.same(G.at(actual,
-    2),
-    G.at(entry,
-    2));
+  return G.length(entry, 3) == 3 && SDK.same(
+    G.at(actual, 0),
+    G.at(entry, 0)
+  ) && SDK.same(G.at(actual, 1), G.at(entry, 1)) && SDK.same(
+    G.at(actual, 2),
+    G.at(entry, 2)
+  );
 }
 
 # Refuse archives with inconsistent frozen roots or an invalid evidence
@@ -282,14 +307,10 @@ fn evidence_inventory(inputs: sexpr, order: sexpr, evidence: sexpr) -> bool
       return false;
     }
     let item = sx_head(items);
-    if G.length(item,
-      3) != 3 || ! SDK.same(G.at(item,
-      0),
-      G.at(sx_head(nodes),
-      0)) || ! SDK.valid_digest(G.at(item,
-      1)) || ! SDK.atom(G.at(item,
-      2),
-      2010000)
+    if G.length(item, 3) != 3 || ! SDK.same(
+      G.at(item, 0),
+      G.at(sx_head(nodes), 0)
+    ) || ! SDK.valid_digest(G.at(item, 1)) || ! SDK.atom(G.at(item, 2), 2010000)
     {
       return false;
     }
@@ -299,17 +320,18 @@ fn evidence_inventory(inputs: sexpr, order: sexpr, evidence: sexpr) -> bool
   return sx_kind(items) == 0;
 }
 
-fn execute_expected(g: G.Graph,
+fn execute_expected(
+  g: G.Graph,
   roots: sexpr,
   ctx: Context,
   mode: string,
   budget: i64,
   resolve: fn(string) -> SDK.Descriptor,
-  call: fn(SDK.Pin,
-  SDK.Request) -> SDK.Outcome,
+  call: fn(SDK.Pin, SDK.Request) -> SDK.Outcome,
   expected_digest: sexpr,
   evidence: sexpr,
-  replaying: bool) -> Result
+  replaying: bool
+) -> Result
 {
   let compilation = G.compile(g, mode, budget, resolve);
   let plan = compilation["prepared"];
@@ -319,8 +341,10 @@ fn execute_expected(g: G.Graph,
     return error(status, sx_text(plan["subject"]));
   }
   let plan_digest = G.digest(sx_text(plan["canonical"]));
-  if sx_kind(expected_digest) != 0 && ! SDK.same(expected_digest,
-    sx_string(plan_digest))
+  if sx_kind(expected_digest) != 0 && ! SDK.same(
+    expected_digest,
+    sx_string(plan_digest)
+  )
   {
     return error("graph_mismatch", "");
   }
@@ -392,9 +416,10 @@ fn execute_expected(g: G.Graph,
     var value = G.at(G.lookup(memo, key), 1);
     if sx_kind(value) == 0
     {
-      let request = record < SDK.Request >
-      {
-        inputs: values, cutoff: ctx["cutoff"], work: work
+      let request = record<SDK.Request>
+      { inputs: values
+      , cutoff: ctx["cutoff"]
+      , work  : work
       };
       # Invoke against this checked snapshot, not a new host lookup. The
       # original callable module is also part of the Dragnet v1 source pin.
@@ -420,14 +445,15 @@ fn execute_expected(g: G.Graph,
     {
       return error("budget", id);
     }
-    let result = encode_artifact("node",
+    let result = encode_artifact(
+      "node",
       id,
       port,
       value,
-      node_metadata(pin,
-      plan_digest),
+      node_metadata(pin, plan_digest),
       buffer_text(parents),
-      ctx);
+      ctx
+    );
     artifacts = sx_cons(result, artifacts);
     slots = slots + 1;
     buffer_append(trace, id);
@@ -444,20 +470,23 @@ fn execute_expected(g: G.Graph,
   {
     let export = sx_head(selected);
     let result = G.at(artifacts, slots - 1 - SDK.nat(G.at(export, 1)));
-    outputs = sx_cons(sx_cons(G.at(G.at(export,
-      0),
-      0),
-      sx_cons(G.at(result,
-      1),
-      sx_cons(G.at(result,
-      3),
-      sx_nil()))),
-      outputs);
+    outputs = sx_cons(
+      sx_cons(
+        G.at(G.at(export, 0), 0),
+        sx_cons(G.at(result, 1), sx_cons(G.at(result, 3), sx_nil()))
+      ),
+      outputs
+    );
     selected = sx_tail(selected);
   }
-  return record < Result >
-  {
-    status: sx_string("ok"), subject: sx_string(""), graph_digest: sx_string(plan_digest), artifacts: L.basis_list_rev(artifacts), outputs: L.basis_list_rev(outputs), trace: sx_string(buffer_text(trace)), invocations: invocations
+  return record<Result>
+  { status      : sx_string("ok")
+  , subject     : sx_string("")
+  , graph_digest: sx_string(plan_digest)
+  , artifacts   : L.basis_list_rev(artifacts)
+  , outputs     : L.basis_list_rev(outputs)
+  , trace       : sx_string(buffer_text(trace))
+  , invocations : invocations
   };
 }
 
@@ -471,14 +500,13 @@ fn expectation(result: Result) -> sexpr
   while sx_kind(rest) == 3
   {
     let item = sx_head(rest);
-    entries = sx_cons(sx_cons(G.at(item,
-      0),
-      sx_cons(G.at(item,
-      1),
-      sx_cons(G.at(item,
-      2),
-      sx_nil()))),
-      entries);
+    entries = sx_cons(
+      sx_cons(
+        G.at(item, 0),
+        sx_cons(G.at(item, 1), sx_cons(G.at(item, 2), sx_nil()))
+      ),
+      entries
+    );
     rest = sx_tail(rest);
   }
   return L.basis_list_rev(entries);
@@ -486,9 +514,10 @@ fn expectation(result: Result) -> sexpr
 
 fn replays(result: Result, graph_digest: sexpr, expected: sexpr) -> bool
 {
-  if ! SDK.same(result["status"],
-    sx_string("ok")) || ! SDK.same(result["graph_digest"],
-    graph_digest)
+  if ! SDK.same(result["status"], sx_string("ok")) || ! SDK.same(
+    result["graph_digest"],
+    graph_digest
+  )
   {
     return false;
   }
@@ -508,22 +537,24 @@ fn replays(result: Result, graph_digest: sexpr, expected: sexpr) -> bool
   return sx_kind(artifacts) == 0 && sx_kind(evidence) == 0;
 }
 
-fn replay(g: G.Graph,
+fn replay(
+  g: G.Graph,
   roots: sexpr,
   ctx: Context,
   mode: string,
   budget: i64,
   resolve: fn(string) -> SDK.Descriptor,
-  call: fn(SDK.Pin,
-  SDK.Request) -> SDK.Outcome,
+  call: fn(SDK.Pin, SDK.Request) -> SDK.Outcome,
   graph_digest: sexpr,
-  expected: sexpr) -> Result
+  expected: sexpr
+) -> Result
 {
   if ! SDK.valid_digest(graph_digest)
   {
     return error("replay_mismatch", "");
   }
-  let result = execute_expected(g,
+  let result = execute_expected(
+    g,
     roots,
     ctx,
     mode,
@@ -532,7 +563,8 @@ fn replay(g: G.Graph,
     call,
     graph_digest,
     expected,
-    true);
+    true
+  );
   if SDK.same(result["status"], sx_string("graph_mismatch"))
   {
     return error("replay_mismatch", "");

@@ -36,31 +36,32 @@ fn entry_shape(entry: sexpr) -> bool
   return text_len(sx_text(payload)) <= 512;
 }
 
-fn verify_with(plan: D.Plan,
+fn verify_with(
+  plan: D.Plan,
   mode: string,
   budget: i64,
   first: i64,
   second: i64,
   artifacts: sexpr,
   output_digest: sexpr,
-  lookup: fn(string,
-  string) -> D.Descriptor,
-  call: fn(string,
-  i64,
-  i64) -> i64) -> bool
+  lookup: fn(string, string) -> D.Descriptor,
+  call: fn(string, i64, i64) -> i64
+) -> bool
 {
   if ! digest_shape(output_digest)
   {
     return false;
   }
-  let result = D.run_with(plan,
+  let result = D.run_with(
+    plan,
     mode,
     budget,
     first,
     second,
     false,
     lookup,
-    call);
+    call
+  );
   if sx_text(result["status"]) != "ok"
   {
     return false;
@@ -99,15 +100,18 @@ fn verify_with(plan: D.Plan,
   return sx_kind(expected) == 0 && sx_kind(supplied) == 0;
 }
 
-fn verify(plan: D.Plan,
+fn verify(
+  plan: D.Plan,
   mode: string,
   budget: i64,
   first: i64,
   second: i64,
   artifacts: sexpr,
-  output_digest: sexpr) -> bool
+  output_digest: sexpr
+) -> bool
 {
-  return verify_with(plan,
+  return verify_with(
+    plan,
     mode,
     budget,
     first,
@@ -115,5 +119,6 @@ fn verify(plan: D.Plan,
     artifacts,
     output_digest,
     D.no_binding,
-    D.no_invoke);
+    D.no_invoke
+  );
 }

@@ -15,98 +15,74 @@ fn main()
   let val = "63dacd43397bb0f5434d2072c8e10b9ca7aed91662f107bfdd5746fd5d239af7";
   let reason = "lower_percentile_shortcut";
   let unsupported = "000000000000000000000000000000000000000000000000000000000000000Z";
-  rejected(Sheet.render("",
-    rec,
-    val,
-    "EUR",
-    "room_night",
-    0,
-    0,
-    reason,
-    false),
-    "malformed source reference");
-  rejected(Sheet.render(id,
-    unsupported,
-    val,
-    "EUR",
-    "room_night",
-    0,
-    0,
-    reason,
-    false),
-    "malformed source reference");
-  rejected(Sheet.render(id,
-    rec,
-    unsupported,
-    "EUR",
-    "room_night",
-    0,
-    0,
-    reason,
-    false),
-    "malformed source reference");
-  rejected(Sheet.render(id,
-    rec,
-    val,
-    "GBP",
-    "room_night",
-    0,
-    0,
-    reason,
-    false),
-    "incompatible units");
-  rejected(Sheet.render(id,
-    rec,
-    val,
-    "EUR",
-    "whole_stay",
-    0,
-    0,
-    reason,
-    false),
-    "incompatible units");
-  rejected(Sheet.render(id,
-    rec,
-    val,
-    "EUR",
-    "room_night",
-    0,
-    0,
-    reason,
-    true),
-    "expected unpublished recommendation");
-  rejected(Sheet.render(id,
-    rec,
-    val,
-    "EUR",
-    "room_night",
-    - 1,
-    0,
-    reason,
-    false),
-    "nightly minor units outside contract bounds");
-  rejected(Sheet.render(id,
-    rec,
-    val,
-    "EUR",
-    "room_night",
-    0,
-    1000000000001,
-    reason,
-    false),
-    "nightly minor units outside contract bounds");
-  rejected(Sheet.render(id,
-    rec,
-    val,
-    "EUR",
-    "room_night",
-    0,
-    0,
-    "=SUM(A1)",
-    false),
-    "unknown pricing reason");
-  let(ok,
-    sheet) = Sheet.render(id,
+  rejected(
+    Sheet.render("", rec, val, "EUR", "room_night", 0, 0, reason, false),
+    "malformed source reference"
+  );
+  rejected(
+    Sheet.render(
+      id,
+      unsupported,
+      val,
+      "EUR",
+      "room_night",
+      0,
+      0,
+      reason,
+      false
+    ),
+    "malformed source reference"
+  );
+  rejected(
+    Sheet.render(
+      id,
+      rec,
+      unsupported,
+      "EUR",
+      "room_night",
+      0,
+      0,
+      reason,
+      false
+    ),
+    "malformed source reference"
+  );
+  rejected(
+    Sheet.render(id, rec, val, "GBP", "room_night", 0, 0, reason, false),
+    "incompatible units"
+  );
+  rejected(
+    Sheet.render(id, rec, val, "EUR", "whole_stay", 0, 0, reason, false),
+    "incompatible units"
+  );
+  rejected(
+    Sheet.render(id, rec, val, "EUR", "room_night", 0, 0, reason, true),
+    "expected unpublished recommendation"
+  );
+  rejected(
+    Sheet.render(id, rec, val, "EUR", "room_night", - 1, 0, reason, false),
+    "nightly minor units outside contract bounds"
+  );
+  rejected(
+    Sheet.render(
+      id,
+      rec,
+      val,
+      "EUR",
+      "room_night",
+      0,
+      1000000000001,
+      reason,
+      false
+    ),
+    "nightly minor units outside contract bounds"
+  );
+  rejected(
+    Sheet.render(id, rec, val, "EUR", "room_night", 0, 0, "=SUM(A1)", false),
+    "unknown pricing reason"
+  );
+  let(ok, sheet) = Sheet.render(
+    id,
     rec,
     val,
     "EUR",
@@ -114,11 +90,12 @@ fn main()
     17500,
     17100,
     reason,
-    false);
+    false
+  );
   assert(ok);
   IO.basis_text_io_print(sheet);
-  let(edge,
-    sheet2) = Sheet.render(id,
+  let(edge, sheet2) = Sheet.render(
+    id,
     rec,
     val,
     "EUR",
@@ -126,7 +103,8 @@ fn main()
     0,
     1000000000000,
     "target_percentile",
-    false);
+    false
+  );
   assert(edge);
   IO.basis_text_io_print(sheet2);
 }

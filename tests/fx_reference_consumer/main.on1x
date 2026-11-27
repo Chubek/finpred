@@ -52,20 +52,25 @@ fn main() -> i64
   {
     request_cutoff = sx_nil();
   }
-  let request = record < Change.Request >
-  {
-    base_currency: sx_string(base), quote_currency: sx_string(quote_currency), start_date: sx_string(env("FX_START_DATE")), end_date: sx_string(env("FX_END_DATE")), cutoff: request_cutoff
+  let request = record<Change.Request>
+  { base_currency : sx_string(base)
+  , quote_currency: sx_string(quote_currency)
+  , start_date    : sx_string(env("FX_START_DATE"))
+  , end_date      : sx_string(env("FX_END_DATE"))
+  , cutoff        : request_cutoff
   };
   let end = load("FX_END");
   let end_parent = env("FX_END_PARENT");
   if mode == "verify"
   {
-    if Change.verifies(request,
+    if Change.verifies(
+      request,
       start,
       start_parent,
       end,
       end_parent,
-      load("FX_ARTIFACT"))
+      load("FX_ARTIFACT")
+    )
     {
       return 0;
     }

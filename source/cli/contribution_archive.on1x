@@ -41,29 +41,30 @@ fn lineage(sd: string, dd: string, vd: string, pd: string) -> string
   return "finpred-run-lineage@3\nstrategy=$strategy\ngraph=$graph\nmode=recommendation\nraw_scenario=$sd\nraw_demand=$dd\nraw_valuation=$vd\nraw_strategy=$pd\n";
 }
 
-fn manifest(sd: string,
+fn manifest(
+  sd: string,
   dd: string,
   vd: string,
   pd: string,
   rd: string,
-  td: string) -> string
+  td: string
+) -> string
 {
-  return text_concat(version(),
-    Formats.canonical_field_suffix(sd,
-    dd,
-    vd,
-    pd,
-    rd,
-    td));
+  return text_concat(
+    version(),
+    Formats.canonical_field_suffix(sd, dd, vd, pd, rd, td)
+  );
 }
 
-fn recommendation(s: C.Scenario,
+fn recommendation(
+  s: C.Scenario,
   r: Policy.Decision,
   id: string,
   sd: string,
   dd: string,
   vd: string,
-  pd: string) -> string
+  pd: string
+) -> string
 {
   let strategy = Policy.version();
   let at = sx_text(s["decision_at"]);
@@ -76,14 +77,22 @@ fn recommendation(s: C.Scenario,
   let method = sx_text(r["method"]);
   let evidence = sx_text(r["source"]);
   let b = buffer_new();
-  buffer_append(b,
-    "{\"mulib\":\"1.0\",\"kind\":\"pricing.contribution-recommendation\",\"schema_version\":\"1.0\",\"id\":\"recommendation:$id\",");
-  buffer_append(b,
-    "\"metadata\":{\"provenance\":{\"source_artifacts\":[\"blake3:$sd\",\"blake3:$dd\",\"blake3:$vd\"],\"strategy\":\"$strategy\",\"strategy_digest\":\"blake3:$pd\",\"demand_evidence\":\"blake3:$evidence\"},");
-  buffer_append(b,
-    "\"times\":{\"observed_at\":\"$at\",\"ingested_at\":\"$at\"},\"units\":{\"currency\":\"$currency\",\"price_basis\":\"room_night\"},\"quality\":{\"status\":\"validated\",\"evidence\":\"$method\"}},");
-  buffer_append(b,
-    "\"data\":{\"price_minor\":$price,\"marginal_cost_minor\":$cost,\"expected_room_nights_milli\":$demand,\"expected_contribution_minor_milli\":$score,\"scale\":$scale,\"reason\":\"max_expected_contribution\",\"published\":false,\"mode\":\"recommendation\"}}\n");
+  buffer_append(
+    b,
+    "{\"mulib\":\"1.0\",\"kind\":\"pricing.contribution-recommendation\",\"schema_version\":\"1.0\",\"id\":\"recommendation:$id\","
+  );
+  buffer_append(
+    b,
+    "\"metadata\":{\"provenance\":{\"source_artifacts\":[\"blake3:$sd\",\"blake3:$dd\",\"blake3:$vd\"],\"strategy\":\"$strategy\",\"strategy_digest\":\"blake3:$pd\",\"demand_evidence\":\"blake3:$evidence\"},"
+  );
+  buffer_append(
+    b,
+    "\"times\":{\"observed_at\":\"$at\",\"ingested_at\":\"$at\"},\"units\":{\"currency\":\"$currency\",\"price_basis\":\"room_night\"},\"quality\":{\"status\":\"validated\",\"evidence\":\"$method\"}},"
+  );
+  buffer_append(
+    b,
+    "\"data\":{\"price_minor\":$price,\"marginal_cost_minor\":$cost,\"expected_room_nights_milli\":$demand,\"expected_contribution_minor_milli\":$score,\"scale\":$scale,\"reason\":\"max_expected_contribution\",\"published\":false,\"mode\":\"recommendation\"}}\n"
+  );
   return buffer_text(b);
 }
 
@@ -101,13 +110,15 @@ fn evidence(r: Policy.Decision) -> string
   return "demand_evidence_blake3=$source\ndemand_method=$method\ndemand_observed_at=$observed\ndemand_ingested_at=$ingested\nfeasible_floor_minor=$floor\nfeasible_cap_minor=$cap\nmarginal_cost_minor=$cost\nscale=$scale\ncandidate_fields=price_minor,expected_room_nights_milli,expected_contribution_minor_milli,status\n$candidates";
 }
 
-fn explanation(s: C.Scenario,
+fn explanation(
+  s: C.Scenario,
   r: Policy.Decision,
   id: string,
   sd: string,
   dd: string,
   vd: string,
-  pd: string) -> string
+  pd: string
+) -> string
 {
   let strategy = Policy.version();
   let graph = Declaration.graph_version();
@@ -121,11 +132,13 @@ fn explanation(s: C.Scenario,
   return text_concat(head, text_concat(detail, tail));
 }
 
-fn summary(s: C.Scenario,
+fn summary(
+  s: C.Scenario,
   r: Policy.Decision,
   id: string,
   rd: string,
-  td: string)
+  td: string
+)
 {
   let price = F.num(r["price"]);
   let currency = sx_text(s["currency"]);
@@ -133,11 +146,13 @@ fn summary(s: C.Scenario,
   IO.basis_text_io_print("run_id=$id\nstrategy=$strategy\nrecommendation_minor=$price\ncurrency=$currency\nreason=max_expected_contribution\nrecommendation_digest=$rd\ntrace_digest=$td\npublished=false\n");
 }
 
-fn publish(home: string,
+fn publish(
+  home: string,
   scenario_raw: string,
   demand_raw: string,
   valuation_raw: string,
-  policy_raw: string) -> i64
+  policy_raw: string
+) -> i64
 {
   if ! Declaration.admits(policy_raw)
   {
@@ -158,14 +173,16 @@ fn publish(home: string,
   let td = Store.digest(trace);
   # No rejected or insufficient evidence creates or updates a run directory.
   Store.ensure(home);
-  if Store.put(home,
-    scenario_raw) != sd || Store.put(home,
-    demand_raw) != dd || Store.put(home,
-    valuation_raw) != vd || Store.put(home,
-    policy_raw) != pd || Store.put(home,
-    recipe) != id || Store.put(home,
-    rec) != rd || Store.put(home,
-    trace) != td
+  if Store.put(home, scenario_raw) != sd || Store.put(
+    home,
+    demand_raw
+  ) != dd || Store.put(home, valuation_raw) != vd || Store.put(
+    home,
+    policy_raw
+  ) != pd || Store.put(home, recipe) != id || Store.put(
+    home,
+    rec
+  ) != rd || Store.put(home, trace) != td
   {
     tool_fail("yieldcraft contribution: artifact persistence divergence");
   }
@@ -177,9 +194,11 @@ fn publish(home: string,
 fn matches(raw: string) -> bool
 {
   let prefix = text_concat(version(), ",");
-  return text_len(raw) >= text_len(prefix) && text_slice(raw,
+  return text_len(raw) >= text_len(prefix) && text_slice(
+    raw,
     0,
-    text_len(prefix)) == prefix;
+    text_len(prefix)
+  ) == prefix;
 }
 
 fn replay(home: string, id: string, mode: string, raw: string) -> i64
@@ -200,12 +219,14 @@ fn replay(home: string, id: string, mode: string, raw: string) -> i64
   let pd = CSV.field(row, 4);
   let rd = CSV.field(row, 5);
   let td = CSV.field(row, 6);
-  if ! Store.valid_hash(sd) || ! Store.valid_hash(dd) || ! Store.valid_hash(vd) || ! Store.valid_hash(pd) || ! Store.valid_hash(rd) || ! Store.valid_hash(td) || raw != manifest(sd,
+  if ! Store.valid_hash(sd) || ! Store.valid_hash(dd) || ! Store.valid_hash(vd) || ! Store.valid_hash(pd) || ! Store.valid_hash(rd) || ! Store.valid_hash(td) || raw != manifest(
+    sd,
     dd,
     vd,
     pd,
     rd,
-    td)
+    td
+  )
   {
     tool_fail("replay: malformed contribution manifest");
   }
@@ -229,8 +250,8 @@ fn replay(home: string, id: string, mode: string, raw: string) -> i64
   }
   if mode == "poindexter"
   {
-    let(ok,
-      csv) = Sheet.render_contribution(id,
+    let(ok, csv) = Sheet.render_contribution(
+      id,
       rd,
       vd,
       dd,
@@ -241,7 +262,8 @@ fn replay(home: string, id: string, mode: string, raw: string) -> i64
       r["cost"],
       r["demand"],
       r["score"],
-      Policy.scale());
+      Policy.scale()
+    );
     if ! ok
     {
       tool_fail(csv);

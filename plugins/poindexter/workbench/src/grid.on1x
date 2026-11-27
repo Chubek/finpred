@@ -2,23 +2,27 @@
 import std.collections.Array as A;
 import std.Int as Int;
 record Book
-{
-  bytes: i64, lengths: i64, state: i64, values: i64, height: i64, vars: i64, defined: i64, work: i64
+{ bytes  : i64
+, lengths: i64
+, state  : i64
+, values : i64
+, height : i64
+, vars   : i64
+, defined: i64
+, work   : i64
 }
 
 fn create() -> Book
 {
-  return record < Book >
-  {
-    bytes: A.basis_array_array(196608,
-      0), lengths: A.basis_array_array(1024,
-      0), state: A.basis_array_array(1024,
-      0), values: A.basis_array_array(1024,
-      0), height: A.basis_array_array(1024,
-      0), vars: A.basis_array_array(26,
-      0), defined: A.basis_array_array(26,
-      0), work: A.basis_array_array(1,
-      0)
+  return record<Book>
+  { bytes  : A.basis_array_array(196608, 0)
+  , lengths: A.basis_array_array(1024, 0)
+  , state  : A.basis_array_array(1024, 0)
+  , values : A.basis_array_array(1024, 0)
+  , height : A.basis_array_array(1024, 0)
+  , vars   : A.basis_array_array(26, 0)
+  , defined: A.basis_array_array(26, 0)
+  , work   : A.basis_array_array(1, 0)
   };
 }
 
@@ -75,8 +79,10 @@ fn skip(s: string, pos: i64) -> i64
 fn addr(s: string) -> i64
 {
   let col = upper(byte(s, 0)) - 65;
-  if col < 0 || col >= 16 || text_len(s) < 2 || text_len(s) > 3 || byte(s,
-    1) == 48
+  if col < 0 || col >= 16 || text_len(s) < 2 || text_len(s) > 3 || byte(
+    s,
+    1
+  ) == 48
   {
     return - 1;
   }
@@ -99,10 +105,10 @@ fn addr(s: string) -> i64
 
 fn name(id: i64) -> string
 {
-  return text_concat(text_slice("ABCDEFGHIJKLMNOP",
-    id % 16,
-    id % 16 + 1),
-    Int.to_string(id / 16 + 1));
+  return text_concat(
+    text_slice("ABCDEFGHIJKLMNOP", id % 16, id % 16 + 1),
+    Int.to_string(id / 16 + 1)
+  );
 }
 
 fn raw(b: Book, id: i64) -> string

@@ -40,10 +40,10 @@ fn artifact_path(home: string, hash: string) -> string
   {
     tool_fail("artifact: malformed BLAKE3 digest");
   }
-  return text_concat(text_concat(base(home),
-    "blake3-"),
-    text_concat(hash,
-    ".txt"));
+  return text_concat(
+    text_concat(base(home), "blake3-"),
+    text_concat(hash, ".txt")
+  );
 }
 
 fn run_path(home: string, id: string) -> string
@@ -88,17 +88,18 @@ fn ensure(home: string)
 
 fn entry_error(kind: string, id: string, reason: string)
 {
-  tool_fail(text_concat(text_concat(kind,
-    ": "),
-    text_concat(reason,
-    text_concat("; key=",
-    id))));
+  tool_fail(text_concat(
+    text_concat(kind, ": "),
+    text_concat(reason, text_concat("; key=", id))
+  ));
 }
 
-fn already_published(path: string,
+fn already_published(
+  path: string,
   content: string,
   kind: string,
-  id: string) -> bool
+  id: string
+) -> bool
 {
   if ! FS.basis_fs_exists(path)
   {
@@ -106,9 +107,11 @@ fn already_published(path: string,
   }
   if FS.basis_fs_is_dir(path)
   {
-    entry_error(kind,
+    entry_error(
+      kind,
       id,
-      "immutable path conflict: destination is a directory");
+      "immutable path conflict: destination is a directory"
+    );
   }
   if FS.basis_fs_file_size(path) != text_len(content) || IO.basis_text_io_input_all(path) != content
   {
@@ -117,11 +120,13 @@ fn already_published(path: string,
   return true;
 }
 
-fn abort_stage(reservation: string,
+fn abort_stage(
+  reservation: string,
   staged: string,
   kind: string,
   id: string,
-  diagnostic: string)
+  diagnostic: string
+)
 {
   # Only after our own mkdir, in the private cooperating-writer store. A write
   # failure can leave a partial file or no file. Successful removal of the
@@ -129,10 +134,11 @@ fn abort_stage(reservation: string,
   FS.basis_fs_remove(staged);
   if ! FS.basis_fs_remove(reservation)
   {
-    entry_error(kind,
+    entry_error(
+      kind,
       id,
-      text_concat(diagnostic,
-      "; owned stage cleanup failed"));
+      text_concat(diagnostic, "; owned stage cleanup failed")
+    );
   }
   entry_error(kind, id, diagnostic);
 }
@@ -193,12 +199,14 @@ fn put(home: string, content: string) -> string
   return hash;
 }
 
-fn missing_entry(home: string,
+fn missing_entry(
+  home: string,
   role: string,
   path: string,
   kind: string,
   id: string,
-  reason: string)
+  reason: string
+)
 {
   # The bridge supplies stat booleans, not errno or a lock-owner query.
   check_directory_type(home, "home");
@@ -215,9 +223,11 @@ fn missing_entry(home: string,
   let reservation = text_concat(path, ".pending");
   if FS.basis_fs_exists(reservation)
   {
-    entry_error(kind,
+    entry_error(
+      kind,
       id,
-      "publication reservation present; no published entry observed");
+      "publication reservation present; no published entry observed"
+    );
   }
   entry_error(kind, id, reason);
 }
@@ -227,12 +237,14 @@ fn fetch(home: string, hash: string) -> string
   let path = artifact_path(home, hash);
   if ! FS.basis_fs_exists(path)
   {
-    missing_entry(home,
+    missing_entry(
+      home,
       "artifacts",
       path,
       "artifact",
       hash,
-      "missing snapshot");
+      "missing snapshot"
+    );
   }
   if FS.basis_fs_is_dir(path)
   {
@@ -274,9 +286,11 @@ fn read_run(home: string, id: string) -> string
   }
   if FS.basis_fs_is_dir(path)
   {
-    entry_error("replay",
+    entry_error(
+      "replay",
       id,
-      "malformed run manifest: destination is a directory");
+      "malformed run manifest: destination is a directory"
+    );
   }
   # Pricing manifests are exactly 404 bytes (docs/RUN_FORMAT.md). The CLI
   # dispatches by version and verifies canonical bytes and references.

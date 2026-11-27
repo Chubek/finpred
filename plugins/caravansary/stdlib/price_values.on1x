@@ -81,10 +81,10 @@ fn instant(s: string) ->(bool, i64)
   {
     end = n - 6;
   }
-  if end < 19 || end > 26 || text_byte(s,
-    10) != 84 || text_byte(s,
-    13) != 58 || text_byte(s,
-    16) != 58
+  if end < 19 || end > 26 || text_byte(s, 10) != 84 || text_byte(
+    s,
+    13
+  ) != 58 || text_byte(s, 16) != 58
   {
     return (false, 0);
   }
@@ -113,8 +113,10 @@ fn instant(s: string) ->(bool, i64)
       micros = micros * 10;
     }
   }
-  return (true,
-    (day - Civil.epoch_day()) * Civil.micros_per_day() + ((h * 60 + m) * 60 + sec) * 1000000 + micros);
+  return (
+    true,
+    (day - Civil.epoch_day()) * Civil.micros_per_day() + ((h * 60 + m) * 60 + sec) * 1000000 + micros
+  );
 }
 
 fn utc_day(t: i64) -> i64

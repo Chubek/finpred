@@ -14,9 +14,14 @@ fn check(ok: bool, label: string)
 
 fn port(name: string, limit: i64) -> SDK.Port
 {
-  return record < SDK.Port >
-  {
-    name: sx_string(name), kind: sx_string("test.text"), major: 1, unit: sx_string("none"), currency: sx_string("none"), states: 1, max_bytes: limit
+  return record<SDK.Port>
+  { name     : sx_string(name)
+  , kind     : sx_string("test.text")
+  , major    : 1
+  , unit     : sx_string("none")
+  , currency : sx_string("none")
+  , states   : 1
+  , max_bytes: limit
   };
 }
 
@@ -38,15 +43,11 @@ fn bind(key: string) -> SDK.Descriptor
   }
   if key == "test.join@1"
   {
-    inputs = add("left",
+    inputs = add(
+      "left",
       64,
-      add("right",
-      64,
-      add("root",
-      64,
-      add("other",
-      64,
-      sx_nil()))));
+      add("right", 64, add("root", 64, add("other", 64, sx_nil())))
+    );
     work = 3;
   }
   if key == "test.wide@1"
@@ -62,14 +63,24 @@ fn bind(key: string) -> SDK.Descriptor
     return SDK.unavailable();
   }
   let digest = sx_string(G.digest(key));
-  let pin = record < SDK.Pin >
-  {
-    package_name: sx_string("test"), package_version: sx_string("1"), handler_name: sx_string(key), handler_version: sx_string("1"), abi: 1, code_digest: digest, policy_digest: digest
+  let pin = record<SDK.Pin>
+  { package_name   : sx_string("test")
+  , package_version: sx_string("1")
+  , handler_name   : sx_string(key)
+  , handler_version: sx_string("1")
+  , abi            : 1
+  , code_digest    : digest
+  , policy_digest  : digest
   };
-  return record < SDK.Descriptor >
-  {
-    enabled: true, pin: pin, role: sx_string("Transformer"), mode: sx_string("analysis"), effect: sx_string("pure"), inputs: inputs, output: port("rows",
-      limit), max_work: work
+  return record<SDK.Descriptor>
+  { enabled : true
+  , pin     : pin
+  , role    : sx_string("Transformer")
+  , mode    : sx_string("analysis")
+  , effect  : sx_string("pure")
+  , inputs  : inputs
+  , output  : port("rows", limit)
+  , max_work: work
   };
 }
 
@@ -104,19 +115,16 @@ fn forbid(pin: SDK.Pin, req: SDK.Request) -> SDK.Outcome
 
 fn make(permuted: bool) -> G.Graph
 {
-  var edges = sx_cons(G.edge("other",
-    "copy",
-    "rows"),
-    sx_cons(G.edge("right",
-    "branch",
-    "rows"),
-    sx_cons(G.edge("root",
-    "",
-    "alpha"),
-    sx_cons(G.edge("left",
-    "branch",
-    "rows"),
-    sx_nil()))));
+  var edges = sx_cons(
+    G.edge("other", "copy", "rows"),
+    sx_cons(
+      G.edge("right", "branch", "rows"),
+      sx_cons(
+        G.edge("root", "", "alpha"),
+        sx_cons(G.edge("left", "branch", "rows"), sx_nil())
+      )
+    )
+  );
   if permuted
   {
     edges = L.basis_list_rev(edges);
@@ -125,34 +133,25 @@ fn make(permuted: bool) -> G.Graph
   let from_root = sx_cons(G.edge("arg", "", "omega"), sx_nil());
   let copy = G.node("copy", "test.copy@1", "pure", from_root);
   let unused = G.node("unused", "test.copy@1", "pure", from_root);
-  let branch = G.node("branch",
+  let branch = G.node(
+    "branch",
     "test.copy@1",
     "pure",
-    sx_cons(G.edge("arg",
-    "seed",
-    "rows"),
-    sx_nil()));
+    sx_cons(G.edge("arg", "seed", "rows"), sx_nil())
+  );
   let seed = G.node("seed", "test.seed@1", "pure", sx_nil());
-  var nodes = sx_cons(join,
-    sx_cons(unused,
-    sx_cons(branch,
-    sx_cons(seed,
-    sx_cons(copy,
-    sx_nil())))));
+  var nodes = sx_cons(
+    join,
+    sx_cons(unused, sx_cons(branch, sx_cons(seed, sx_cons(copy, sx_nil()))))
+  );
   var roots = add("omega", 10, add("alpha", 8, sx_nil()));
-  var outputs = sx_cons(G.output(port("seed_value",
-    64),
-    "seed",
-    "rows"),
-    sx_cons(G.output(port("final",
-    64),
-    "join",
-    "rows"),
-    sx_cons(G.output(port("alias",
-    64),
-    "copy",
-    "rows"),
-    sx_nil())));
+  var outputs = sx_cons(
+    G.output(port("seed_value", 64), "seed", "rows"),
+    sx_cons(
+      G.output(port("final", 64), "join", "rows"),
+      sx_cons(G.output(port("alias", 64), "copy", "rows"), sx_nil())
+    )
+  );
   if permuted
   {
     nodes = L.basis_list_rev(nodes);
@@ -211,65 +210,65 @@ fn schedule(plan: G.Compilation) -> string
 
 fn status(result: Run.Result, expected: string, subject: string)
 {
-  check(SDK.same(result["status"],
-    sx_string(expected)) && SDK.same(result["subject"],
-    sx_string(subject)),
-    "status or subject drift");
+  check(
+    SDK.same(result["status"], sx_string(expected)) && SDK.same(
+      result["subject"],
+      sx_string(subject)
+    ),
+    "status or subject drift"
+  );
   if expected != "ok"
   {
-    check(sx_kind(result["graph_digest"]) == 0 && sx_kind(result["artifacts"]) == 0 && sx_kind(result["outputs"]) == 0 && sx_kind(result["trace"]) == 0 && result["invocations"] == 0,
-      "failure exposed partial result");
+    check(
+      sx_kind(result["graph_digest"]) == 0 && sx_kind(result["artifacts"]) == 0 && sx_kind(result["outputs"]) == 0 && sx_kind(result["trace"]) == 0 && result["invocations"] == 0,
+      "failure exposed partial result"
+    );
   }
 }
 
 fn check_advisory(ctx: Run.Context)
 {
-  let inputs = add("input",
+  let inputs = add(
+    "input",
     2000000,
-    add("two",
-    2000000,
-    add("three",
-    2000000,
-    add("four",
-    2000000,
-    add("five",
-    2000000,
-    sx_nil())))));
-  let roots = sx_cons(Run.input("input",
-    1,
-    "x"),
-    sx_cons(Run.input("two",
-    1,
-    "x"),
-    sx_cons(Run.input("three",
-    1,
-    "x"),
-    sx_cons(Run.input("four",
-    1,
-    "x"),
-    sx_cons(Run.input("five",
-    1,
-    "x"),
-    sx_nil())))));
+    add(
+      "two",
+      2000000,
+      add(
+        "three",
+        2000000,
+        add("four", 2000000, add("five", 2000000, sx_nil()))
+      )
+    )
+  );
+  let roots = sx_cons(
+    Run.input("input", 1, "x"),
+    sx_cons(
+      Run.input("two", 1, "x"),
+      sx_cons(
+        Run.input("three", 1, "x"),
+        sx_cons(
+          Run.input("four", 1, "x"),
+          sx_cons(Run.input("five", 1, "x"), sx_nil())
+        )
+      )
+    )
+  );
   var edges = sx_nil();
   for i in 0 .. 16
   {
     edges = sx_cons(G.edge(text_concat("arg", F.num(i)), "", "input"), edges);
   }
-  let graph = G.graph(inputs,
-    sx_cons(G.node("wide",
-    "test.wide@1",
-    "pure",
-    edges),
-    sx_nil()),
-    sx_cons(G.output(port("final",
-    64),
-    "wide",
-    "rows"),
-    sx_nil()));
+  let graph = G.graph(
+    inputs,
+    sx_cons(G.node("wide", "test.wide@1", "pure", edges), sx_nil()),
+    sx_cons(G.output(port("final", 64), "wide", "rows"), sx_nil())
+  );
   let plan = G.compile(graph, "analysis", 1, bind);
-  check(plan["max_read_bytes"] == 32000000 && plan["max_root_bytes"] == 10000000 && plan["max_emitted_bytes"] == 64 && plan["edges"] == 16 && plan["depth"] == 1,
-    "advisory bounds");
+  check(
+    plan["max_read_bytes"] == 32000000 && plan["max_root_bytes"] == 10000000 && plan["max_emitted_bytes"] == 64 && plan["edges"] == 16 && plan["depth"] == 1,
+    "advisory bounds"
+  );
   status(Run.execute(graph, roots, ctx, "analysis", 1, bind, call), "ok", "");
 }
 
@@ -282,51 +281,59 @@ fn main() -> i64
   let prep = plan["prepared"];
   let swapped_prep = swapped["prepared"];
   let legacy = G.prepare(graph, "analysis", 8, bind);
-  check(SDK.same(prep["status"],
-    sx_string("ok")) && prep["work"] == 8 && SDK.same(prep["canonical"],
-    legacy["canonical"]) && SDK.same(prep["canonical"],
-    swapped_prep["canonical"]),
-    "canonical graph compatibility");
-  let expected = text_concat("alpha omega \ncopy arg:1::omega\nseed\nbranch arg:3:seed:rows\n",
-    "join left:4:branch:rows right:4:branch:rows root:0::alpha other:2:copy:rows\nunused arg:1::omega\nalias:2 final:5 seed_value:3 ");
-  check(schedule(plan) == expected && schedule(swapped) == expected,
-    "canonical slots");
-  check(plan["edges"] == 7 && plan["depth"] == 3 && plan["max_root_bytes"] == 18 && plan["max_read_bytes"] == 236 && plan["max_emitted_bytes"] == 272,
-    "schedule accounting");
-  let ctx = record < Run.Context >
-  {
-    cutoff: sx_string("2026-11-20T10:00:00Z"), strategy_digest: sx_string(G.digest("test"))
+  check(
+    SDK.same(prep["status"], sx_string("ok")) && prep["work"] == 8 && SDK.same(
+      prep["canonical"],
+      legacy["canonical"]
+    ) && SDK.same(prep["canonical"], swapped_prep["canonical"]),
+    "canonical graph compatibility"
+  );
+  let expected = text_concat(
+    "alpha omega \ncopy arg:1::omega\nseed\nbranch arg:3:seed:rows\n",
+    "join left:4:branch:rows right:4:branch:rows root:0::alpha other:2:copy:rows\nunused arg:1::omega\nalias:2 final:5 seed_value:3 "
+  );
+  check(
+    schedule(plan) == expected && schedule(swapped) == expected,
+    "canonical slots"
+  );
+  check(
+    plan["edges"] == 7 && plan["depth"] == 3 && plan["max_root_bytes"] == 18 && plan["max_read_bytes"] == 236 && plan["max_emitted_bytes"] == 272,
+    "schedule accounting"
+  );
+  let ctx = record<Run.Context>
+  { cutoff         : sx_string("2026-11-20T10:00:00Z")
+  , strategy_digest: sx_string(G.digest("test"))
   };
-  let roots = sx_cons(Run.input("omega",
-    1,
-    "O"),
-    sx_cons(Run.input("alpha",
-    1,
-    "A"),
-    sx_nil()));
+  let roots = sx_cons(
+    Run.input("omega", 1, "O"),
+    sx_cons(Run.input("alpha", 1, "A"), sx_nil())
+  );
   let result = Run.execute(graph, roots, ctx, "analysis", 8, bind, call);
   status(result, "ok", "");
-  check(result["invocations"] == 4 && G.length(result["artifacts"],
-    48) == 7,
-    "memo hit or unused step lost");
+  check(
+    result["invocations"] == 4 && G.length(result["artifacts"], 48) == 7,
+    "memo hit or unused step lost"
+  );
   let exports = result["outputs"];
-  check(G.field(G.at(exports,
-    0),
-    0) == "alias" && G.field(G.at(exports,
-    1),
-    0) == "final" && G.field(G.at(exports,
-    2),
-    0) == "seed_value",
-    "emitted order");
-  check(sx_text(SDK.value_bytes(G.at(G.at(exports,
-    0),
-    2))) == "O" && sx_text(SDK.value_bytes(G.at(G.at(exports,
-    1),
-    2))) == "SSAO" && sx_text(SDK.value_bytes(G.at(G.at(exports,
-    2),
-    2))) == "S",
-    "request or export slot routing");
-  let replay = Run.replay(permuted,
+  check(
+    G.field(G.at(exports, 0), 0) == "alias" && G.field(
+      G.at(exports, 1),
+      0
+    ) == "final" && G.field(G.at(exports, 2), 0) == "seed_value",
+    "emitted order"
+  );
+  check(
+    sx_text(SDK.value_bytes(G.at(
+      G.at(exports, 0),
+      2
+    ))) == "O" && sx_text(SDK.value_bytes(G.at(
+      G.at(exports, 1),
+      2
+    ))) == "SSAO" && sx_text(SDK.value_bytes(G.at(G.at(exports, 2), 2))) == "S",
+    "request or export slot routing"
+  );
+  let replay = Run.replay(
+    permuted,
     L.basis_list_rev(roots),
     ctx,
     "analysis",
@@ -334,65 +341,59 @@ fn main() -> i64
     bind,
     call,
     result["graph_digest"],
-    Run.expectation(result));
+    Run.expectation(result)
+  );
   status(replay, "ok", "");
   check(SDK.same(result["trace"], replay["trace"]), "trace drift");
   let rejected = G.compile(graph, "analysis", 7, bind);
-  check(sx_kind(rejected["roots"]) == 0 && sx_kind(rejected["steps"]) == 0 && sx_kind(rejected["exports"]) == 0 && rejected["edges"] == 0 && rejected["depth"] == 0 && rejected["max_root_bytes"] == 0 && rejected["max_read_bytes"] == 0 && rejected["max_emitted_bytes"] == 0,
-    "rejected compilation exposed schedule");
-  status(Run.execute(graph,
-    roots,
-    ctx,
-    "analysis",
-    7,
-    bind,
-    forbid),
+  check(
+    sx_kind(rejected["roots"]) == 0 && sx_kind(rejected["steps"]) == 0 && sx_kind(rejected["exports"]) == 0 && rejected["edges"] == 0 && rejected["depth"] == 0 && rejected["max_root_bytes"] == 0 && rejected["max_read_bytes"] == 0 && rejected["max_emitted_bytes"] == 0,
+    "rejected compilation exposed schedule"
+  );
+  status(
+    Run.execute(graph, roots, ctx, "analysis", 7, bind, forbid),
     "budget",
-    "copy");
-  let cycle = G.node("seed",
+    "copy"
+  );
+  let cycle = G.node(
+    "seed",
     "test.copy@1",
     "pure",
-    sx_cons(G.edge("arg",
-    "branch",
-    "rows"),
-    sx_nil()));
-  let cyclic = G.graph(graph["inputs"],
-    sx_cons(cycle,
-    G.remove(graph["nodes"],
-    "seed")),
-    graph["outputs"]);
-  status(Run.execute(cyclic,
-    roots,
-    ctx,
-    "analysis",
-    8,
-    bind,
-    forbid),
+    sx_cons(G.edge("arg", "branch", "rows"), sx_nil())
+  );
+  let cyclic = G.graph(
+    graph["inputs"],
+    sx_cons(cycle, G.remove(graph["nodes"], "seed")),
+    graph["outputs"]
+  );
+  status(
+    Run.execute(cyclic, roots, ctx, "analysis", 8, bind, forbid),
     "cycle",
-    "");
+    ""
+  );
   # Preserve @1's precedence: known reference types are checked as part of
   # validation, but a cycle is reported ahead of an incompatible known edge.
   let wide_roots = add("omega", 80, add("alpha", 8, sx_nil()));
   let mistyped_cycle = G.graph(wide_roots, cyclic["nodes"], cyclic["outputs"]);
-  status(Run.execute(mistyped_cycle,
-    roots,
-    ctx,
-    "analysis",
-    8,
-    bind,
-    forbid),
+  status(
+    Run.execute(mistyped_cycle, roots, ctx, "analysis", 8, bind, forbid),
     "cycle",
-    "");
-  status(Run.execute_pinned(graph,
-    roots,
-    ctx,
-    "analysis",
-    8,
-    bind,
-    forbid,
-    sx_string(G.digest("wrong"))),
+    ""
+  );
+  status(
+    Run.execute_pinned(
+      graph,
+      roots,
+      ctx,
+      "analysis",
+      8,
+      bind,
+      forbid,
+      sx_string(G.digest("wrong"))
+    ),
     "graph_mismatch",
-    "");
+    ""
+  );
   let ledger = buffer_new();
   let flip = fn(key: string) -> SDK.Descriptor
   {
@@ -410,15 +411,11 @@ fn main() -> i64
     }
     return call(pin, req);
   };
-  status(Run.execute(graph,
-    roots,
-    ctx,
-    "analysis",
-    8,
-    flip,
-    counted),
+  status(
+    Run.execute(graph, roots, ctx, "analysis", 8, flip, counted),
     "denied",
-    "unused");
+    "unused"
+  );
   check_advisory(ctx);
   IO.basis_text_io_print("financial_schedule_ok=true\n");
   return 0;

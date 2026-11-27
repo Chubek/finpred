@@ -6,32 +6,38 @@ fn input_bytes(name: string, value: i64) -> string
   return "scalar-input@1\nname=$name\nkind=scalar.level@1\nvalue=$value\n";
 }
 
-fn node_bytes(id: string,
+fn node_bytes(
+  id: string,
   op: string,
   kind: string,
   left: string,
   right: string,
-  value: i64) -> string
+  value: i64
+) -> string
 {
   return node_bytes_owned(id, "finpred.core@1", op, kind, left, right, value);
 }
 
-fn node_bytes_owned(id: string,
+fn node_bytes_owned(
+  id: string,
   owner: string,
   op: string,
   kind: string,
   left: string,
   right: string,
-  value: i64) -> string
+  value: i64
+) -> string
 {
   return "scalar-node@1\nid=$id\nowner=$owner\nhandler=$op\nkind=$kind\nleft=$left\nright=$right\nvalue=$value\n";
 }
 
-fn select_bytes(id: string,
+fn select_bytes(
+  id: string,
   condition: string,
   positive: string,
   zero: string,
-  value: i64) -> string
+  value: i64
+) -> string
 {
   return """scalar-select@1
 id=$id

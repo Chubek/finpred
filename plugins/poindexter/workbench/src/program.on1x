@@ -5,10 +5,10 @@ import std.Int as Int;
 import std.collections.Array as A;
 fn fail(line: i64, msg: string)
 {
-  tool_fail(text_concat("script line ",
-    text_concat(Int.to_string(line + 1),
-    text_concat(": ",
-    msg))));
+  tool_fail(text_concat(
+    "script line ",
+    text_concat(Int.to_string(line + 1), text_concat(": ", msg))
+  ));
 }
 
 fn eval(b: G.Book, s: string, i: i64, id: i64, line: i64) -> i64
@@ -41,13 +41,15 @@ fn line_at(src: string, offsets: i64, line: i64) -> string
   return text_slice(src, a, end);
 }
 
-fn block(b: G.Book,
+fn block(
+  b: G.Book,
   src: string,
   offsets: i64,
   first: i64,
   last: i64,
   depth: i64,
-  steps: i64)
+  steps: i64
+)
 {
   if depth > 8
   {
@@ -188,8 +190,10 @@ fn block(b: G.Book,
       let a = G.addr(w);
       var z = a;
       var tail = q;
-      if G.byte(s,
-        q) == 58 && (cmd == "FILL" || cmd == "CLEAR" || cmd == "COPY")
+      if G.byte(
+        s,
+        q
+      ) == 58 && (cmd == "FILL" || cmd == "CLEAR" || cmd == "COPY")
       {
         let(end, r) = F.word(s, q + 1);
         z = G.addr(end);
@@ -235,11 +239,10 @@ fn block(b: G.Book,
             {
               fail(line, "invalid stored formula");
             }
-            value = text_concat("=",
-              text_slice(s,
-              G.skip(s,
-              eq + 1),
-              text_len(s)));
+            value = text_concat(
+              "=",
+              text_slice(s, G.skip(s, eq + 1), text_len(s))
+            );
           }
         }
       }

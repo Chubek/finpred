@@ -7,9 +7,14 @@ fn digest() -> sexpr
 
 fn port(name: string, unit: string, states: i64, limit: i64) -> SDK.Port
 {
-  return record < SDK.Port >
-  {
-    name: sx_string(name), kind: sx_string("test.value"), major: 1, unit: sx_string(unit), currency: sx_string("none"), states: states, max_bytes: limit
+  return record<SDK.Port>
+  { name     : sx_string(name)
+  , kind     : sx_string("test.value")
+  , major    : 1
+  , unit     : sx_string(unit)
+  , currency : sx_string("none")
+  , states   : states
+  , max_bytes: limit
   };
 }
 
@@ -20,9 +25,14 @@ fn pin(name: string, version: string) -> SDK.Pin
   {
     package_name = "tests.other";
   }
-  return record < SDK.Pin >
-  {
-    package_name: sx_string(package_name), package_version: sx_string("1.0.0"), handler_name: sx_string(name), handler_version: sx_string(version), abi: 1, code_digest: digest(), policy_digest: digest()
+  return record<SDK.Pin>
+  { package_name   : sx_string(package_name)
+  , package_version: sx_string("1.0.0")
+  , handler_name   : sx_string(name)
+  , handler_version: sx_string(version)
+  , abi            : 1
+  , code_digest    : digest()
+  , policy_digest  : digest()
   };
 }
 
@@ -48,13 +58,15 @@ fn lookup(name: string) -> SDK.Descriptor
   {
     inputs = sx_cons(first, inputs);
   }
-  return record < SDK.Descriptor >
-  {
-    enabled: name != "disabled", pin: pin(name,
-      "1"), role: sx_string(role), mode: sx_string("analysis"), effect: sx_string(effect), inputs: inputs, output: port("output",
-      "count",
-      1,
-      20), max_work: 1
+  return record<SDK.Descriptor>
+  { enabled : name != "disabled"
+  , pin     : pin(name, "1")
+  , role    : sx_string(role)
+  , mode    : sx_string("analysis")
+  , effect  : sx_string(effect)
+  , inputs  : inputs
+  , output  : port("output", "count", 1, 20)
+  , max_work: 1
   };
 }
 
@@ -89,35 +101,16 @@ fn main() -> i64
   let mode = Env.basis_command_line_get_env("CASE");
   if mode == "connects"
   {
-    if ! SDK.connects(port("out",
-      "count",
-      1,
-      10),
-      port("in",
-      "count",
-      3,
-      20)) || SDK.connects(port("out",
-      "count",
-      3,
-      10),
-      port("in",
-      "count",
-      1,
-      20)) || SDK.connects(port("out",
-      "cents",
-      1,
-      10),
-      port("in",
-      "count",
-      1,
-      20)) || SDK.connects(port("out",
-      "count",
-      1,
-      21),
-      port("in",
-      "count",
-      1,
-      20))
+    if ! SDK.connects(
+      port("out", "count", 1, 10),
+      port("in", "count", 3, 20)
+    ) || SDK.connects(
+      port("out", "count", 3, 10),
+      port("in", "count", 1, 20)
+    ) || SDK.connects(
+      port("out", "cents", 1, 10),
+      port("in", "count", 1, 20)
+    ) || SDK.connects(port("out", "count", 1, 21), port("in", "count", 1, 20))
     {
       return 90;
     }
@@ -185,9 +178,10 @@ fn main() -> i64
   {
     inputs = sx_cons(value, inputs);
   }
-  let request = record < SDK.Request >
-  {
-    inputs: inputs, cutoff: sx_string(cutoff), work: work
+  let request = record<SDK.Request>
+  { inputs: inputs
+  , cutoff: sx_string(cutoff)
+  , work  : work
   };
   let expected_pin = pin(name, version);
   var abi = 1;
@@ -200,9 +194,14 @@ fn main() -> i64
   {
     policy = sx_string("blake3:1000000000000000000000000000000000000000000000000000000000000000");
   }
-  let checked_pin = record < SDK.Pin >
-  {
-    package_name: expected_pin["package_name"], package_version: expected_pin["package_version"], handler_name: expected_pin["handler_name"], handler_version: expected_pin["handler_version"], abi: abi, code_digest: expected_pin["code_digest"], policy_digest: policy
+  let checked_pin = record<SDK.Pin>
+  { package_name   : expected_pin["package_name"]
+  , package_version: expected_pin["package_version"]
+  , handler_name   : expected_pin["handler_name"]
+  , handler_version: expected_pin["handler_version"]
+  , abi            : abi
+  , code_digest    : expected_pin["code_digest"]
+  , policy_digest  : policy
   };
   let result = SDK.invoke(checked_pin, run_mode, request, lookup, call);
   if result["status"] == 0

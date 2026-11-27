@@ -50,9 +50,10 @@ fn extract(text: string, cutoff: string, received: string) -> string
     row = buffer_text(normalized);
   }
   let parsed = Contracts.offer_csv(row);
-  if Str.compare(sx_text(parsed["observed_at"]),
-    cutoff) > 0 || Str.compare(sx_text(parsed["ingested_at"]),
-    cutoff) > 0
+  if Str.compare(sx_text(parsed["observed_at"]), cutoff) > 0 || Str.compare(
+    sx_text(parsed["ingested_at"]),
+    cutoff
+  ) > 0
   {
     tool_fail("dragnet: offer knowledge exceeds as_of");
   }

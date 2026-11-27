@@ -71,12 +71,13 @@ fn entry(backtest: bool) -> i64
   let history = read_history(path);
   if backtest
   {
-    return evaluate(history,
+    return evaluate(
+      history,
       model,
       horizon,
       season,
-      number(setting("FINPRED_PRICE_FIRST_TARGET"),
-      255));
+      number(setting("FINPRED_PRICE_FIRST_TARGET"), 255)
+    );
   }
   let prediction = Price.predict(history, model, horizon, season);
   let status = sx_text(prediction["status"]);
@@ -90,8 +91,10 @@ fn entry(backtest: bool) -> i64
     dispersion = F.num(prediction["dispersion_minor"]);
   }
   let report = buffer_new();
-  buffer_append(report,
-    "{\"kind\":\"analysis.price-prediction\",\"version\":1,\"published\":false");
+  buffer_append(
+    report,
+    "{\"kind\":\"analysis.price-prediction\",\"version\":1,\"published\":false"
+  );
   buffer_append(report, ",\"model\":");
   buffer_append(report, F.q(model));
   buffer_append(report, ",\"observations\":");
@@ -165,11 +168,13 @@ fn metrics(pairs: string, count: i64) -> string
   return "{\"mae_minor\":$mae,\"mse_minor_squared\":$mse,\"rmse_minor\":\"$rmse\",\"wape\":$wape,\"bias_minor\":$bias}";
 }
 
-fn evaluate(history: string,
+fn evaluate(
+  history: string,
   model: string,
   horizon: i64,
   season: i64,
-  first: i64) -> i64
+  first: i64
+) -> i64
 {
   let min_train = minimum(model, season);
   if min_train == 0 || first < horizon
@@ -214,12 +219,12 @@ fn evaluate(history: string,
     }
     else
     {
-      let prediction = Price.predict(text_slice(history,
-        0,
-        prefix_end),
+      let prediction = Price.predict(
+        text_slice(history, 0, prefix_end),
         model,
         horizon,
-        season);
+        season
+      );
       let status = sx_text(prediction["status"]);
       if status == "ok"
       {
@@ -247,20 +252,28 @@ fn evaluate(history: string,
     {
       buffer_append(folds, ",");
     }
-    buffer_append(folds,
-      "{\"target\":$target,\"origin\":$origin,\"training_count\":$training_count,\"state\":\"$state\",\"point_minor\":$point,\"actual_minor\":$actual,\"baseline_minor\":$baseline}");
+    buffer_append(
+      folds,
+      "{\"target\":$target,\"origin\":$origin,\"training_count\":$training_count,\"state\":\"$state\",\"point_minor\":$point,\"actual_minor\":$actual,\"baseline_minor\":$baseline}"
+    );
   }
   let expected = F.num(count - first);
   let owned = metrics(buffer_text(pairs), scored);
   let naive = metrics(buffer_text(baseline_pairs), scored);
   let fold_bytes = buffer_text(folds);
   let out = buffer_new();
-  buffer_append(out,
-    "{\"kind\":\"analysis.price-backtest\",\"version\":1,\"published\":false,\"scope\":\"ordered_series\",\"model\":\"$model\",\"baseline\":\"naive\"");
-  buffer_append(out,
-    ",\"observations\":$count,\"horizon\":$horizon,\"season\":$season,\"first_target\":$first,\"expected\":$expected,\"scored\":$scored,\"insufficient_training\":$insufficient,\"model_rejected\":$rejected");
-  buffer_append(out,
-    ",\"metrics\":$owned,\"baseline_metrics\":$naive,\"folds\":[$fold_bytes]}");
+  buffer_append(
+    out,
+    "{\"kind\":\"analysis.price-backtest\",\"version\":1,\"published\":false,\"scope\":\"ordered_series\",\"model\":\"$model\",\"baseline\":\"naive\""
+  );
+  buffer_append(
+    out,
+    ",\"observations\":$count,\"horizon\":$horizon,\"season\":$season,\"first_target\":$first,\"expected\":$expected,\"scored\":$scored,\"insufficient_training\":$insufficient,\"model_rejected\":$rejected"
+  );
+  buffer_append(
+    out,
+    ",\"metrics\":$owned,\"baseline_metrics\":$naive,\"folds\":[$fold_bytes]}"
+  );
   println(buffer_text(out));
   return 0;
 }

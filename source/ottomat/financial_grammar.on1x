@@ -1,6 +1,5 @@
 import ottomat.grammar as Common;
-@GrammarEmbed("grammar",
-  r!"""grammar FinancialOttomat :lexer<dfa> :parser<lalr1> {
+@GrammarEmbed("grammar", r!"""grammar FinancialOttomat :lexer<dfa> :parser<lalr1> {
   token ATOM { [!-~]+ }
   token EOL { \n }
   rule TOP { 'ottomat' ' ' '6' <EOL> <effect> <input>+ <import>+ <binding>+ <output>+ <emit>+ }

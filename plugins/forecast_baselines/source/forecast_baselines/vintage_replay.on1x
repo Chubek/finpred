@@ -7,38 +7,46 @@ import forecast_baselines.vintage as Vintage;
 import sdk.callable as SDK;
 import std.String as Str;
 record Spec
-{
-  issued: sexpr, target: sexpr, month: i64, horizon: i64
+{ issued : sexpr
+, target : sexpr
+, month  : i64
+, horizon: i64
 }
 
 record Linked
-{
-  model_code: sexpr, scoring_code: sexpr
+{ model_code  : sexpr
+, scoring_code: sexpr
 }
 
 record Selection
-{
-  model: sexpr, model_code: sexpr, scoring_code: sexpr, training_cutoff: sexpr, scoring_cutoff: sexpr
+{ model          : sexpr
+, model_code     : sexpr
+, scoring_code   : sexpr
+, training_cutoff: sexpr
+, scoring_cutoff : sexpr
 }
 
 record Catalog
-{
-  id: sexpr, count: i64
+{ id   : sexpr
+, count: i64
 }
 
 record Artifact
-{
-  status: i64, id: sexpr, bytes: sexpr
+{ status: i64
+, id    : sexpr
+, bytes : sexpr
 }
 
 record Archive
-{
-  forecast_id: sexpr, forecast: sexpr, evaluation_id: sexpr, evaluation: sexpr
+{ forecast_id  : sexpr
+, forecast     : sexpr
+, evaluation_id: sexpr
+, evaluation   : sexpr
 }
 
 record Issued
-{
-  artifact: Artifact, thirds: i64
+{ artifact: Artifact
+, thirds  : i64
 }
 
 fn moving() -> string
@@ -61,8 +69,7 @@ fn model_policy(name: string) -> string
   let common = "guest-nights-vintage-forecast@1;utc-calendar;horizons-1-to-11;guest-nights-vintage@1;no-imputation;no-uncertainty;";
   if name == moving()
   {
-    return text_concat(common,
-      "mean-of-three-complete-months-before-issuance");
+    return text_concat(common, "mean-of-three-complete-months-before-issuance");
   }
   if name == seasonal()
   {
@@ -82,9 +89,10 @@ fn scoring_policy() -> string
 
 fn reject(status: i64) -> Artifact
 {
-  return record < Artifact >
-  {
-    status: status, id: sx_nil(), bytes: sx_nil()
+  return record<Artifact>
+  { status: status
+  , id    : sx_nil()
+  , bytes : sx_nil()
   };
 }
 
@@ -95,33 +103,39 @@ fn artifact(bytes: string) -> Artifact
   {
     return reject(1);
   }
-  return record < Artifact >
-  {
-    status: 0, id: sx_string(id), bytes: sx_string(bytes)
+  return record<Artifact>
+  { status: 0
+  , id    : sx_string(id)
+  , bytes : sx_string(bytes)
   };
 }
 
 fn spec(bytes: string, cutoff: string) -> Spec
 {
-  let bad = record < Spec >
-  {
-    issued: sx_nil(), target: sx_nil(), month: - 1, horizon: 0
+  let bad = record<Spec>
+  { issued : sx_nil()
+  , target : sx_nil()
+  , month  : - 1
+  , horizon: 0
   };
   let prefix = "{\"kind\":\"analysis.guest-nights-vintage-request\",\"version\":1,\"issued_at\":\"";
   let(a, issued) = Guest.quoted(bytes, 0, prefix, 20);
   let(b, target) = Guest.quoted(bytes, a, ",\"target_month\":\"", 7);
-  let(c,
-    steps) = Guest.token(bytes,
-    Guest.after(bytes,
-    b,
-    ",\"horizon_months\":"),
+  let(c, steps) = Guest.token(
+    bytes,
+    Guest.after(bytes, b, ",\"horizon_months\":"),
     125,
-    2);
+    2
+  );
   let h = Guest.nat(steps, 2);
-  if Guest.after(bytes,
+  if Guest.after(
+    bytes,
     c,
-    "}\n") != text_len(bytes) || h < 1 || h > 11 || ! Date.utc_timestamp(issued) || ! Date.utc_timestamp(cutoff) || Str.compare(cutoff,
-    issued) > 0
+    "}\n"
+  ) != text_len(bytes) || h < 1 || h > 11 || ! Date.utc_timestamp(issued) || ! Date.utc_timestamp(cutoff) || Str.compare(
+    cutoff,
+    issued
+  ) > 0
   {
     return bad;
   }
@@ -130,9 +144,11 @@ fn spec(bytes: string, cutoff: string) -> Spec
   {
     return bad;
   }
-  return record < Spec >
-  {
-    issued: sx_string(issued), target: sx_string(target), month: m, horizon: h
+  return record<Spec>
+  { issued : sx_string(issued)
+  , target : sx_string(target)
+  , month  : m
+  , horizon: h
   };
 }
 
@@ -153,23 +169,26 @@ fn rational(thirds: i64) -> string
 
 fn rejected_issue(status: i64) -> Issued
 {
-  return record < Issued >
-  {
-    artifact: reject(status), thirds: - 1
+  return record<Issued>
+  { artifact: reject(status)
+  , thirds  : - 1
   };
 }
 
 # Status for both operations: 1 invalid request/pins/time; 2 catalog/evidence;
 # 3 ambiguous latest revision; 4 incorrect archived forecast; 5 bad evaluation.
-fn issue_exact(linked: Linked,
+fn issue_exact(
+  linked: Linked,
   selection: Selection,
   training: Catalog,
   request: sexpr,
-  training_at: fn(i64) -> Vintage.Entry) -> Issued
+  training_at: fn(i64) -> Vintage.Entry
+) -> Issued
 {
-  if ! SDK.valid_digest(selection["model_code"]) || ! SDK.same(selection["model_code"],
-    linked["model_code"]) || ! SDK.atom(request,
-    160)
+  if ! SDK.valid_digest(selection["model_code"]) || ! SDK.same(
+    selection["model_code"],
+    linked["model_code"]
+  ) || ! SDK.atom(request, 160)
   {
     return rejected_issue(1);
   }
@@ -198,15 +217,18 @@ fn issue_exact(linked: Linked,
     second = issue_month - 2;
     third = issue_month - 1;
   }
-  let needed = record < Vintage.Window >
-  {
-    first: first, second: second, third: third
+  let needed = record<Vintage.Window>
+  { first : first
+  , second: second
+  , third : third
   };
-  let resolved = Vintage.resolve(cutoff,
+  let resolved = Vintage.resolve(
+    cutoff,
     needed,
     sx_text(training["id"]),
     training["count"],
-    training_at);
+    training_at
+  );
   if resolved["status"] != 0
   {
     return rejected_issue(resolved["status"]);
@@ -238,12 +260,18 @@ fn issue_exact(linked: Linked,
     return rejected_issue(1);
   }
   let out = buffer_new();
-  buffer_append(out,
-    "{\"kind\":\"analysis.guest-nights-vintage-forecast\",\"version\":1,\"unit\":\"guest_nights\",\"currency\":null,\"pricing_input\":false");
-  buffer_append(out,
-    ",\"model\":\"$model\",\"model_code_digest\":\"$code\",\"model_policy_digest\":\"$pin\",\"vintage_policy_digest\":\"$vintage_policy\",\"request\":\"$request_id\"");
-  buffer_append(out,
-    ",\"issued_at\":\"$issued\",\"training_cutoff\":\"$cutoff\",\"target_month\":\"$target\",\"horizon_months\":$horizon,\"training\":[");
+  buffer_append(
+    out,
+    "{\"kind\":\"analysis.guest-nights-vintage-forecast\",\"version\":1,\"unit\":\"guest_nights\",\"currency\":null,\"pricing_input\":false"
+  );
+  buffer_append(
+    out,
+    ",\"model\":\"$model\",\"model_code_digest\":\"$code\",\"model_policy_digest\":\"$pin\",\"vintage_policy_digest\":\"$vintage_policy\",\"request\":\"$request_id\""
+  );
+  buffer_append(
+    out,
+    ",\"issued_at\":\"$issued\",\"training_cutoff\":\"$cutoff\",\"target_month\":\"$target\",\"horizon_months\":$horizon,\"training\":["
+  );
   buffer_append(out, Vintage.row_json(resolved["first"]));
   if model == moving()
   {
@@ -255,45 +283,57 @@ fn issue_exact(linked: Linked,
   buffer_append(out, "]");
   if thirds < 0
   {
-    buffer_append(out,
-      ",\"state\":\"unknown\",\"reason\":\"insufficient_evidence\",\"estimate\":null,\"uncertainty\":\"unavailable\"}\n");
+    buffer_append(
+      out,
+      ",\"state\":\"unknown\",\"reason\":\"insufficient_evidence\",\"estimate\":null,\"uncertainty\":\"unavailable\"}\n"
+    );
   }
   else
   {
     let estimate = rational(thirds);
-    buffer_append(out,
-      ",\"state\":\"available\",\"reason\":null,\"estimate\":$estimate,\"uncertainty\":\"unavailable\"}\n");
+    buffer_append(
+      out,
+      ",\"state\":\"available\",\"reason\":null,\"estimate\":$estimate,\"uncertainty\":\"unavailable\"}\n"
+    );
   }
-  return record < Issued >
-  {
-    artifact: artifact(buffer_text(out)), thirds: thirds
+  return record<Issued>
+  { artifact: artifact(buffer_text(out))
+  , thirds  : thirds
   };
 }
 
-fn issue(linked: Linked,
+fn issue(
+  linked: Linked,
   selection: Selection,
   training: Catalog,
   request: sexpr,
-  training_at: fn(i64) -> Vintage.Entry) -> Artifact
+  training_at: fn(i64) -> Vintage.Entry
+) -> Artifact
 {
   let result = issue_exact(linked, selection, training, request, training_at);
   return result["artifact"];
 }
 
-fn evaluate(linked: Linked,
+fn evaluate(
+  linked: Linked,
   selection: Selection,
   training: Catalog,
   actuals: Catalog,
   request: sexpr,
   archive: Archive,
   training_at: fn(i64) -> Vintage.Entry,
-  actuals_at: fn(i64) -> Vintage.Entry) -> Artifact
+  actuals_at: fn(i64) -> Vintage.Entry
+) -> Artifact
 {
   let score_at = sx_text(selection["scoring_cutoff"]);
   let cutoff = sx_text(selection["training_cutoff"]);
-  if ! SDK.atom(request,
-    160) || ! SDK.valid_digest(selection["scoring_code"]) || ! SDK.same(selection["scoring_code"],
-    linked["scoring_code"]) || ! Date.utc_timestamp(score_at)
+  if ! SDK.atom(
+    request,
+    160
+  ) || ! SDK.valid_digest(selection["scoring_code"]) || ! SDK.same(
+    selection["scoring_code"],
+    linked["scoring_code"]
+  ) || ! Date.utc_timestamp(score_at)
   {
     return reject(1);
   }
@@ -306,9 +346,10 @@ fn evaluate(linked: Linked,
   let target = sx_text(req["target"]);
   let successor = Guest.next_month(target);
   let target_end = "$successor-01T00:00:00Z";
-  if ! Date.utc_timestamp(target_end) || Str.compare(score_at,
-    issued) <= 0 || Str.compare(score_at,
-    target_end) < 0
+  if ! Date.utc_timestamp(target_end) || Str.compare(
+    score_at,
+    issued
+  ) <= 0 || Str.compare(score_at, target_end) < 0
   {
     return reject(1);
   }
@@ -318,21 +359,25 @@ fn evaluate(linked: Linked,
   {
     return forecast;
   }
-  if ! SDK.same(forecast["id"],
-    archive["forecast_id"]) || ! SDK.same(forecast["bytes"],
-    archive["forecast"])
+  if ! SDK.same(forecast["id"], archive["forecast_id"]) || ! SDK.same(
+    forecast["bytes"],
+    archive["forecast"]
+  )
   {
     return reject(4);
   }
-  let window = record < Vintage.Window >
-  {
-    first: req["month"], second: - 1, third: - 1
+  let window = record<Vintage.Window>
+  { first : req["month"]
+  , second: - 1
+  , third : - 1
   };
-  let resolved = Vintage.resolve(score_at,
+  let resolved = Vintage.resolve(
+    score_at,
     window,
     sx_text(actuals["id"]),
     actuals["count"],
-    actuals_at);
+    actuals_at
+  );
   if resolved["status"] != 0
   {
     return reject(resolved["status"]);
@@ -355,14 +400,22 @@ fn evaluate(linked: Linked,
     return reject(1);
   }
   let out = buffer_new();
-  buffer_append(out,
-    "{\"kind\":\"analysis.guest-nights-vintage-evaluation\",\"version\":1,\"unit\":\"guest_nights\",\"currency\":null,\"pricing_input\":false");
-  buffer_append(out,
-    ",\"model\":\"$model\",\"model_code_digest\":\"$model_code\",\"model_policy_digest\":\"$model_pin\",\"vintage_policy_digest\":\"$vintage_pin\",\"scoring_code_digest\":\"$code\",\"scoring_policy_digest\":\"$pin\"");
-  buffer_append(out,
-    ",\"issued_at\":\"$issued\",\"training_cutoff\":\"$cutoff\",\"scoring_cutoff\":\"$score_at\",\"target_month\":\"$target\",\"horizon_months\":$horizon");
-  buffer_append(out,
-    ",\"forecast\":\"$forecast_id\",\"training_catalog\":\"$training_catalog\",\"actuals_catalog\":\"$actuals_catalog\",\"actual\":$observation");
+  buffer_append(
+    out,
+    "{\"kind\":\"analysis.guest-nights-vintage-evaluation\",\"version\":1,\"unit\":\"guest_nights\",\"currency\":null,\"pricing_input\":false"
+  );
+  buffer_append(
+    out,
+    ",\"model\":\"$model\",\"model_code_digest\":\"$model_code\",\"model_policy_digest\":\"$model_pin\",\"vintage_policy_digest\":\"$vintage_pin\",\"scoring_code_digest\":\"$code\",\"scoring_policy_digest\":\"$pin\""
+  );
+  buffer_append(
+    out,
+    ",\"issued_at\":\"$issued\",\"training_cutoff\":\"$cutoff\",\"scoring_cutoff\":\"$score_at\",\"target_month\":\"$target\",\"horizon_months\":$horizon"
+  );
+  buffer_append(
+    out,
+    ",\"forecast\":\"$forecast_id\",\"training_catalog\":\"$training_catalog\",\"actuals_catalog\":\"$actuals_catalog\",\"actual\":$observation"
+  );
   if thirds < 0 || actual < 0
   {
     var reason = "insufficient_evidence";
@@ -370,8 +423,10 @@ fn evaluate(linked: Linked,
     {
       reason = "missing_actual";
     }
-    buffer_append(out,
-      ",\"state\":\"unknown\",\"reason\":\"$reason\",\"error\":null,\"absolute_error\":null}\n");
+    buffer_append(
+      out,
+      ",\"state\":\"unknown\",\"reason\":\"$reason\",\"error\":null,\"absolute_error\":null}\n"
+    );
   }
   else
   {
@@ -383,38 +438,45 @@ fn evaluate(linked: Linked,
     }
     let error = rational(signed);
     let absolute = rational(magnitude);
-    buffer_append(out,
-      ",\"state\":\"scored\",\"reason\":null,\"error\":$error,\"absolute_error\":$absolute}\n");
+    buffer_append(
+      out,
+      ",\"state\":\"scored\",\"reason\":null,\"error\":$error,\"absolute_error\":$absolute}\n"
+    );
   }
   return artifact(buffer_text(out));
 }
 
 # Both archive IDs are supplied from trusted lookup, not recomputed from the
 # untrusted candidate. The catalogs and pins are separate trusted inputs.
-fn replay(linked: Linked,
+fn replay(
+  linked: Linked,
   selection: Selection,
   training: Catalog,
   actuals: Catalog,
   request: sexpr,
   archive: Archive,
   training_at: fn(i64) -> Vintage.Entry,
-  actuals_at: fn(i64) -> Vintage.Entry) -> Artifact
+  actuals_at: fn(i64) -> Vintage.Entry
+) -> Artifact
 {
-  let computed = evaluate(linked,
+  let computed = evaluate(
+    linked,
     selection,
     training,
     actuals,
     request,
     archive,
     training_at,
-    actuals_at);
+    actuals_at
+  );
   if computed["status"] != 0
   {
     return computed;
   }
-  if ! SDK.same(computed["id"],
-    archive["evaluation_id"]) || ! SDK.same(computed["bytes"],
-    archive["evaluation"])
+  if ! SDK.same(computed["id"], archive["evaluation_id"]) || ! SDK.same(
+    computed["bytes"],
+    archive["evaluation"]
+  )
   {
     return reject(5);
   }

@@ -6,13 +6,23 @@ import sdk.callable as SDK;
 import core.format as F;
 import std.collections.List as L;
 record Lowered
-{
-  status: sexpr, line: i64, column: i64, graph: G.Graph, graph_digest: sexpr, source: sexpr, source_digest: sexpr, compiler_identity: sexpr, lowering: sexpr, spans: sexpr, resolved: sexpr
+{ status           : sexpr
+, line             : i64
+, column           : i64
+, graph            : G.Graph
+, graph_digest     : sexpr
+, source           : sexpr
+, source_digest    : sexpr
+, compiler_identity: sexpr
+, lowering         : sexpr
+, spans            : sexpr
+, resolved         : sexpr
 }
 
 record Ref
-{
-  valid: bool, producer: sexpr, port: sexpr
+{ valid   : bool
+, producer: sexpr
+, port    : sexpr
 }
 
 fn identity() -> string
@@ -22,11 +32,18 @@ fn identity() -> string
 
 fn error(status: string, line: i64, column: i64) -> Lowered
 {
-  return record < Lowered >
-  {
-    status: sx_string(status), line: line, column: column, graph: G.graph(sx_nil(),
-      sx_nil(),
-      sx_nil()), graph_digest: sx_nil(), source: sx_nil(), source_digest: sx_nil(), compiler_identity: sx_nil(), lowering: sx_nil(), spans: sx_nil(), resolved: sx_nil()
+  return record<Lowered>
+  { status           : sx_string(status)
+  , line             : line
+  , column           : column
+  , graph            : G.graph(sx_nil(), sx_nil(), sx_nil())
+  , graph_digest     : sx_nil()
+  , source           : sx_nil()
+  , source_digest    : sx_nil()
+  , compiler_identity: sx_nil()
+  , lowering         : sx_nil()
+  , spans            : sx_nil()
+  , resolved         : sx_nil()
   };
 }
 
@@ -71,11 +88,13 @@ fn mark(source: string, label: string, line: i64) -> sexpr
       start = i + 1;
     }
   }
-  return sx_cons(sx_string(label),
-    sx_cons(sx_string(F.num(line)),
-    sx_cons(sx_string(F.num(start)),
-    sx_cons(sx_string(F.num(end)),
-    sx_nil()))));
+  return sx_cons(
+    sx_string(label),
+    sx_cons(
+      sx_string(F.num(line)),
+      sx_cons(sx_string(F.num(start)), sx_cons(sx_string(F.num(end)), sx_nil()))
+    )
+  );
 }
 
 fn split_at(text: string, sep: i64) -> i64
@@ -106,13 +125,14 @@ fn port(words: sexpr) -> SDK.Port
   {
     state = 1;
   }
-  return record < SDK.Port >
-  {
-    name: G.at(words,
-      1), kind: sx_string(name), major: major, unit: G.at(words,
-      3), currency: G.at(words,
-      4), states: state, max_bytes: SDK.nat(G.at(words,
-      6))
+  return record<SDK.Port>
+  { name     : G.at(words, 1)
+  , kind     : sx_string(name)
+  , major    : major
+  , unit     : G.at(words, 3)
+  , currency : G.at(words, 4)
+  , states   : state
+  , max_bytes: SDK.nat(G.at(words, 6))
   };
 }
 
@@ -126,9 +146,10 @@ fn reference(raw: string) -> Ref
     producer = text_slice(raw, 0, dot);
     port = text_slice(raw, dot + 1, text_len(raw));
   }
-  return record < Ref >
-  {
-    valid: G.identifier(port) && (dot < 0 || G.identifier(producer)), producer: sx_string(producer), port: sx_string(port)
+  return record<Ref>
+  { valid   : G.identifier(port) && (dot < 0 || G.identifier(producer))
+  , producer: sx_string(producer)
+  , port    : sx_string(port)
   };
 }
 
@@ -154,10 +175,10 @@ fn bindings(words: sexpr) ->(bool, sexpr)
     {
       return (false, sx_nil());
     }
-    edges = sx_cons(G.edge(input,
-      sx_text(origin["producer"]),
-      sx_text(origin["port"])),
-      edges);
+    edges = sx_cons(
+      G.edge(input, sx_text(origin["producer"]), sx_text(origin["port"])),
+      edges
+    );
   }
   return (true, L.basis_list_rev(edges));
 }
@@ -179,11 +200,13 @@ fn compiler_id(identity: string) -> bool
   return true;
 }
 
-fn lower(source: string,
+fn lower(
+  source: string,
   mode: string,
   budget: i64,
   compiler: string,
-  resolve: fn(string) -> SDK.Descriptor) -> Lowered
+  resolve: fn(string) -> SDK.Descriptor
+) -> Lowered
 {
   if text_len(source) < 1 || text_len(source) > 4096
   {
@@ -232,13 +255,10 @@ fn lower(source: string,
   var imported = sx_nil();
   var nodes = sx_nil();
   var outputs = sx_nil();
-  var spans = sx_cons(mark(source,
-    "effect",
-    2),
-    sx_cons(mark(source,
-    "header",
-    1),
-    sx_nil()));
+  var spans = sx_cons(
+    mark(source, "effect", 2),
+    sx_cons(mark(source, "header", 1), sx_nil())
+  );
   while sx_kind(rest) == 3
   {
     let words = sx_head(rest);
@@ -302,25 +322,27 @@ fn lower(source: string,
       {
         return error("emit", line, 1);
       }
-      outputs = sx_cons(G.output(p,
-        sx_text(origin["producer"]),
-        sx_text(origin["port"])),
-        outputs);
+      outputs = sx_cons(
+        G.output(p, sx_text(origin["producer"]), sx_text(origin["port"])),
+        outputs
+      );
     }
     spans = sx_cons(mark(source, name, line), spans);
     rest = sx_tail(rest);
     line = line + 1;
   }
-  if G.length(outputs,
-    16) < 0 || G.length(outputs,
-    16) != G.length(declared_outputs,
-    16)
+  if G.length(outputs, 16) < 0 || G.length(outputs, 16) != G.length(
+    declared_outputs,
+    16
+  )
   {
     return error("output", line - 1, 1);
   }
-  let graph = G.graph(L.basis_list_rev(inputs),
+  let graph = G.graph(
+    L.basis_list_rev(inputs),
     L.basis_list_rev(nodes),
-    L.basis_list_rev(outputs));
+    L.basis_list_rev(outputs)
+  );
   let prepared = G.prepare(graph, mode, budget, resolve);
   let reason = sx_text(prepared["status"]);
   if reason != "ok"
@@ -337,16 +359,23 @@ fn lower(source: string,
   while sx_kind(order) == 3
   {
     let item = sx_head(order);
-    resolved = sx_cons(sx_cons(G.at(item,
-      0),
-      sx_cons(G.at(item,
-      1),
-      sx_nil())),
-      resolved);
+    resolved = sx_cons(
+      sx_cons(G.at(item, 0), sx_cons(G.at(item, 1), sx_nil())),
+      resolved
+    );
     order = sx_tail(order);
   }
-  return record < Lowered >
-  {
-    status: sx_string("ok"), line: 0, column: 0, graph: graph, graph_digest: sx_string(G.digest(sx_text(prepared["canonical"]))), source: sx_string(source), source_digest: sx_string(G.digest(source)), compiler_identity: sx_string(compiler), lowering: sx_string(identity()), spans: L.basis_list_rev(spans), resolved: L.basis_list_rev(resolved)
+  return record<Lowered>
+  { status           : sx_string("ok")
+  , line             : 0
+  , column           : 0
+  , graph            : graph
+  , graph_digest     : sx_string(G.digest(sx_text(prepared["canonical"])))
+  , source           : sx_string(source)
+  , source_digest    : sx_string(G.digest(source))
+  , compiler_identity: sx_string(compiler)
+  , lowering         : sx_string(identity())
+  , spans            : L.basis_list_rev(spans)
+  , resolved         : L.basis_list_rev(resolved)
   };
 }

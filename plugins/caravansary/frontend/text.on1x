@@ -132,11 +132,10 @@ fn hex(c: i64) -> i64
 
 fn hex4(raw: string, i: i64) -> i64
 {
-  return hex(text_byte(raw,
-    i)) * 4096 + hex(text_byte(raw,
-    i + 1)) * 256 + hex(text_byte(raw,
-    i + 2)) * 16 + hex(text_byte(raw,
-    i + 3));
+  return hex(text_byte(raw, i)) * 4096 + hex(text_byte(
+    raw,
+    i + 1
+  )) * 256 + hex(text_byte(raw, i + 2)) * 16 + hex(text_byte(raw, i + 3));
 }
 
 fn push_scalar(out: buffer, code: i64)
@@ -197,9 +196,10 @@ fn decode_string(raw: string) ->(string, bool)
       i = i + 4;
       if code >= 55296 && code <= 56319
       {
-        if i + 6 > limit || text_byte(raw,
-          i) != 92 || text_byte(raw,
-          i + 1) != 117
+        if i + 6 > limit || text_byte(raw, i) != 92 || text_byte(
+          raw,
+          i + 1
+        ) != 117
         {
           return ("", false);
         }

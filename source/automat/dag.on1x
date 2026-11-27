@@ -5,20 +5,33 @@ import automat.dag_artifacts as Art;
 import automat.scalar_memo as Memo;
 import automat.schedule as Schedule;
 record Plan
-{
-  version: sexpr, nodes: sexpr, output: sexpr
+{ version: sexpr
+, nodes  : sexpr
+, output : sexpr
 }
 
 record Outcome
-{
-  status: sexpr, output_kind: sexpr, value: sexpr, trace: sexpr, artifacts: sexpr, output_digest: sexpr, invocations: i64, memo_hits: i64
+{ status       : sexpr
+, output_kind  : sexpr
+, value        : sexpr
+, trace        : sexpr
+, artifacts    : sexpr
+, output_digest: sexpr
+, invocations  : i64
+, memo_hits    : i64
 }
 
 fn failed(reason: string) -> Outcome
 {
-  return record < Outcome >
-  {
-    status: sx_string(reason), output_kind: sx_nil(), value: sx_nil(), trace: sx_string(""), artifacts: sx_nil(), output_digest: sx_nil(), invocations: 0, memo_hits: 0
+  return record<Outcome>
+  { status       : sx_string(reason)
+  , output_kind  : sx_nil()
+  , value        : sx_nil()
+  , trace        : sx_string("")
+  , artifacts    : sx_nil()
+  , output_digest: sx_nil()
+  , invocations  : 0
+  , memo_hits    : 0
   };
 }
 
@@ -26,24 +39,32 @@ fn failed(reason: string) -> Outcome
 # publishes one result under its id. Trusted host code supplies any additional signatures.
 fn node(id: string, op: string, left: string, right: string) -> sexpr
 {
-  return sx_cons(sx_string(id),
-    sx_cons(sx_string(op),
-    sx_cons(sx_string(left),
-    sx_cons(sx_string(right),
-    sx_nil()))));
+  return sx_cons(
+    sx_string(id),
+    sx_cons(
+      sx_string(op),
+      sx_cons(sx_string(left), sx_cons(sx_string(right), sx_nil()))
+    )
+  );
 }
 
-fn select_node(id: string,
+fn select_node(
+  id: string,
   condition: string,
   positive: string,
-  zero: string) -> sexpr
+  zero: string
+) -> sexpr
 {
-  return sx_cons(sx_string(id),
-    sx_cons(sx_string("select@1"),
-    sx_cons(sx_string(condition),
-    sx_cons(sx_string(positive),
-    sx_cons(sx_string(zero),
-    sx_nil())))));
+  return sx_cons(
+    sx_string(id),
+    sx_cons(
+      sx_string("select@1"),
+      sx_cons(
+        sx_string(condition),
+        sx_cons(sx_string(positive), sx_cons(sx_string(zero), sx_nil()))
+      )
+    )
+  );
 }
 
 fn field(n: sexpr, i: i64) -> string
@@ -99,28 +120,46 @@ fn valid_shape(n: sexpr, select_enabled: bool) -> bool
 # Descriptors come only from engine or host code, never from plan declarations.
 # Binary ports share accepts; select uses it for its condition only.
 record Descriptor
-{
-  handler: i64, min_dialect: i64, identity: sexpr, owner: sexpr, accepts: sexpr, produces: sexpr, effect: sexpr, grants: sexpr, cost: i64
+{ handler    : i64
+, min_dialect: i64
+, identity   : sexpr
+, owner      : sexpr
+, accepts    : sexpr
+, produces   : sexpr
+, effect     : sexpr
+, grants     : sexpr
+, cost       : i64
 }
 
-fn descriptor(handler: i64,
+fn descriptor(
+  handler: i64,
   dialect: i64,
   op: string,
   owner: string,
   input: string,
-  output: string) -> Descriptor
+  output: string
+) -> Descriptor
 {
-  return record < Descriptor >
-  {
-    handler: handler, min_dialect: dialect, identity: sx_string(op), owner: sx_string(owner), accepts: sx_string(input), produces: sx_string(output), effect: sx_string("pure"), grants: sx_nil(), cost: 1
+  return record<Descriptor>
+  { handler    : handler
+  , min_dialect: dialect
+  , identity   : sx_string(op)
+  , owner      : sx_string(owner)
+  , accepts    : sx_string(input)
+  , produces   : sx_string(output)
+  , effect     : sx_string("pure")
+  , grants     : sx_nil()
+  , cost       : 1
   };
 }
 
-fn host_binary(op: string,
+fn host_binary(
+  op: string,
   dialect: i64,
   owner: string,
   input: string,
-  output: string) -> Descriptor
+  output: string
+) -> Descriptor
 {
   return descriptor(5, dialect, op, owner, input, output);
 }
@@ -164,10 +203,11 @@ fn no_invoke(op: string, left: i64, right: i64) -> i64
   return 0;
 }
 
-fn resolve_with(op: string,
+fn resolve_with(
+  op: string,
   mode: string,
-  lookup: fn(string,
-  string) -> Descriptor) -> Descriptor
+  lookup: fn(string, string) -> Descriptor
+) -> Descriptor
 {
   let builtin = resolve(op);
   if builtin["handler"] > 0
@@ -219,12 +259,12 @@ fn admitted(d: Descriptor, mode: string) -> bool
 }
 
 # Values are nonnegative integers <= 10^12; subtraction stays exact.
-fn dispatch_binary(d: Descriptor,
+fn dispatch_binary(
+  d: Descriptor,
   left: i64,
   right: i64,
-  call: fn(string,
-  i64,
-  i64) -> i64) -> i64
+  call: fn(string, i64, i64) -> i64
+) -> i64
 {
   if d["handler"] == 1
   {
@@ -258,16 +298,15 @@ fn dispatch_binary(d: Descriptor,
   return 0;
 }
 
-fn invoke_binary_with(op: string,
+fn invoke_binary_with(
+  op: string,
   version: string,
   mode: string,
   left: i64,
   right: i64,
-  lookup: fn(string,
-  string) -> Descriptor,
-  call: fn(string,
-  i64,
-  i64) -> i64) -> i64
+  lookup: fn(string, string) -> Descriptor,
+  call: fn(string, i64, i64) -> i64
+) -> i64
 {
   let d = resolve_with(op, mode, lookup);
   if ! admitted(d, mode) || ! available(d, version)
@@ -277,19 +316,23 @@ fn invoke_binary_with(op: string,
   return dispatch_binary(d, left, right, call);
 }
 
-fn invoke_binary(op: string,
+fn invoke_binary(
+  op: string,
   version: string,
   mode: string,
   left: i64,
-  right: i64) -> i64
+  right: i64
+) -> i64
 {
-  return invoke_binary_with(op,
+  return invoke_binary_with(
+    op,
     version,
     mode,
     left,
     right,
     no_binding,
-    no_invoke);
+    no_invoke
+  );
 }
 
 # Keep the unversioned helpers restricted to the legacy handler set.
@@ -298,11 +341,13 @@ fn invoke(op: string, mode: string, left: i64, right: i64) -> i64
   return invoke_binary(op, "automat.scalar-dag@2", mode, left, right);
 }
 
-fn invoke_select_versioned(version: string,
+fn invoke_select_versioned(
+  version: string,
   mode: string,
   condition: i64,
   positive: i64,
-  zero: i64) -> i64
+  zero: i64
+) -> i64
 {
   let d = resolve("select@1");
   if ! admitted(d, mode) || ! available(d, version)
@@ -318,11 +363,13 @@ fn invoke_select_versioned(version: string,
 
 fn invoke_select(mode: string, condition: i64, positive: i64, zero: i64) -> i64
 {
-  return invoke_select_versioned("automat.scalar-dag@2",
+  return invoke_select_versioned(
+    "automat.scalar-dag@2",
     mode,
     condition,
     positive,
-    zero);
+    zero
+  );
 }
 
 # Slot 0/1 is an immutable graph input; later slots follow declaration order.
@@ -377,7 +424,8 @@ fn dependency_rows(nodes: sexpr) -> sexpr
   return L.basis_list_rev(rows);
 }
 
-fn evaluate(nodes: sexpr,
+fn evaluate(
+  nodes: sexpr,
   count: i64,
   output: i64,
   mode: string,
@@ -385,20 +433,17 @@ fn evaluate(nodes: sexpr,
   values: i64,
   memoized: bool,
   version: string,
-  lookup: fn(string,
-  string) -> Descriptor,
-  call: fn(string,
-  i64,
-  i64) -> i64) -> Outcome
+  lookup: fn(string, string) -> Descriptor,
+  call: fn(string, i64, i64) -> i64
+) -> Outcome
 {
   let trace = buffer_new();
   let first = Art.input_bytes("first", A.basis_array_sub(values, 0));
   let second = Art.input_bytes("second", A.basis_array_sub(values, 1));
-  var artifacts = sx_cons(Art.entry(Art.digest(second),
-    second),
-    sx_cons(Art.entry(Art.digest(first),
-    first),
-    sx_nil()));
+  var artifacts = sx_cons(
+    Art.entry(Art.digest(second), second),
+    sx_cons(Art.entry(Art.digest(first), first), sx_nil())
+  );
   # Slot -> execution position. Prepend entries during execution and reverse once.
   let positions = A.basis_array_array(count + 2, 0);
   A.basis_array_update(positions, 1, 1);
@@ -414,12 +459,14 @@ fn evaluate(nodes: sexpr,
     let right = field(n, 3);
     let left_slot = slot(nodes, left);
     let right_slot = slot(nodes, right);
-    let left_entry = L.basis_list_nth(artifacts,
-      step + 1 - A.basis_array_sub(positions,
-      left_slot));
-    let right_entry = L.basis_list_nth(artifacts,
-      step + 1 - A.basis_array_sub(positions,
-      right_slot));
+    let left_entry = L.basis_list_nth(
+      artifacts,
+      step + 1 - A.basis_array_sub(positions, left_slot)
+    );
+    let right_entry = L.basis_list_nth(
+      artifacts,
+      step + 1 - A.basis_array_sub(positions, right_slot)
+    );
     let left_digest = sx_text(sx_head(left_entry));
     let right_digest = sx_text(sx_head(right_entry));
     let desc = resolve_with(op, mode, lookup);
@@ -440,9 +487,10 @@ fn evaluate(nodes: sexpr,
     {
       zero = field(n, 4);
       zero_slot = slot(nodes, zero);
-      let zero_entry = L.basis_list_nth(artifacts,
-        step + 1 - A.basis_array_sub(positions,
-        zero_slot));
+      let zero_entry = L.basis_list_nth(
+        artifacts,
+        step + 1 - A.basis_array_sub(positions, zero_slot)
+      );
       zero_digest = sx_text(sx_head(zero_entry));
     }
     var k = "";
@@ -472,12 +520,13 @@ fn evaluate(nodes: sexpr,
         var value = 0;
         if selecting
         {
-          value = invoke_select_versioned(version,
+          value = invoke_select_versioned(
+            version,
             mode,
             a,
             b,
-            A.basis_array_sub(values,
-            zero_slot));
+            A.basis_array_sub(values, zero_slot)
+          );
         }
         else
         {
@@ -501,31 +550,40 @@ fn evaluate(nodes: sexpr,
     }
     else
     {
-      bytes = Art.node_bytes_owned(id,
+      bytes = Art.node_bytes_owned(
+        id,
         owner,
         identity,
         kind,
         left_digest,
         right_digest,
-        v);
+        v
+      );
       buffer_append(trace, "$id=$op($left,$right):$v\n");
     }
     artifacts = sx_cons(Art.entry(Art.digest(bytes), bytes), artifacts);
     A.basis_array_update(positions, i + 2, step + 2);
   }
-  let descriptor = resolve_with(field(L.basis_list_nth(nodes,
-    output - 2),
-    1),
+  let descriptor = resolve_with(
+    field(L.basis_list_nth(nodes, output - 2), 1),
     mode,
-    lookup);
+    lookup
+  );
   let ordered = L.basis_list_rev(artifacts);
-  let selected = L.basis_list_nth(ordered,
-    A.basis_array_sub(positions,
-    output));
+  let selected = L.basis_list_nth(
+    ordered,
+    A.basis_array_sub(positions, output)
+  );
   A.basis_array_destroy(positions);
-  return record < Outcome >
-  {
-    status: sx_string("ok"), output_kind: descriptor["produces"], value: sx_string("${A.basis_array_sub(values,output)}"), trace: sx_string(buffer_text(trace)), artifacts: ordered, output_digest: sx_head(selected), invocations: invocations, memo_hits: hits
+  return record<Outcome>
+  { status       : sx_string("ok")
+  , output_kind  : descriptor["produces"]
+  , value        : sx_string("${A.basis_array_sub(values,output)}")
+  , trace        : sx_string(buffer_text(trace))
+  , artifacts    : ordered
+  , output_digest: sx_head(selected)
+  , invocations  : invocations
+  , memo_hits    : hits
   };
 }
 
@@ -547,24 +605,29 @@ fn check_header(plan: Plan, mode: string) -> string
 }
 
 record Planned
-{
-  status: sexpr, count: i64, output: i64, order: i64
+{ status: sexpr
+, count : i64
+, output: i64
+, order : i64
 }
 
 fn rejected_plan(reason: string) -> Planned
 {
-  return record < Planned >
-  {
-    status: sx_string(reason), count: 0, output: 0, order: 0
+  return record<Planned>
+  { status: sx_string(reason)
+  , count : 0
+  , output: 0
+  , order : 0
   };
 }
 
 # Caller checks the header first. Only success transfers ownership of order.
-fn plan_graph(plan: Plan,
+fn plan_graph(
+  plan: Plan,
   mode: string,
   budget: i64,
-  lookup: fn(string,
-  string) -> Descriptor) -> Planned
+  lookup: fn(string, string) -> Descriptor
+) -> Planned
 {
   let nodes = plan["nodes"];
   let version = sx_text(plan["version"]);
@@ -626,11 +689,11 @@ fn plan_graph(plan: Plan,
       var incoming = "scalar.level@1";
       if from >= 2
       {
-        let parent = resolve_with(field(L.basis_list_nth(nodes,
-          from - 2),
-          1),
+        let parent = resolve_with(
+          field(L.basis_list_nth(nodes, from - 2), 1),
           mode,
-          lookup);
+          lookup
+        );
         incoming = sx_text(parent["produces"]);
       }
       if incoming != input_kind(dest, port)
@@ -661,24 +724,28 @@ fn plan_graph(plan: Plan,
   let order = A.basis_array_array(count, 0);
   for step in 0 .. count
   {
-    A.basis_array_update(order,
+    A.basis_array_update(
+      order,
       step,
-      slot(nodes,
-      sx_text(sx_head(ordered))) - 2);
+      slot(nodes, sx_text(sx_head(ordered))) - 2
+    );
     ordered = sx_tail(ordered);
   }
-  return record < Planned >
-  {
-    status: sx_string("ok"), count: count, output: output, order: order
+  return record<Planned>
+  { status: sx_string("ok")
+  , count : count
+  , output: output
+  , order : order
   };
 }
 
 # Preflight the entire graph without runtime values or evidence generation.
-fn validate_with(plan: Plan,
+fn validate_with(
+  plan: Plan,
   mode: string,
   budget: i64,
-  lookup: fn(string,
-  string) -> Descriptor) -> string
+  lookup: fn(string, string) -> Descriptor
+) -> string
 {
   let header = check_header(plan, mode);
   if header != "ok"
@@ -700,17 +767,16 @@ fn validate(plan: Plan, mode: string, budget: i64) -> string
 }
 
 # A trusted host supplies consistent, pure callbacks for the entire run.
-fn run_with(plan: Plan,
+fn run_with(
+  plan: Plan,
   mode: string,
   budget: i64,
   first: i64,
   second: i64,
   memoized: bool,
-  lookup: fn(string,
-  string) -> Descriptor,
-  call: fn(string,
-  i64,
-  i64) -> i64) -> Outcome
+  lookup: fn(string, string) -> Descriptor,
+  call: fn(string, i64, i64) -> i64
+) -> Outcome
 {
   let header = check_header(plan, mode);
   if header != "ok"
@@ -733,7 +799,8 @@ fn run_with(plan: Plan,
   let values = A.basis_array_array(count + 2, 0);
   A.basis_array_update(values, 0, first);
   A.basis_array_update(values, 1, second);
-  let result = evaluate(plan["nodes"],
+  let result = evaluate(
+    plan["nodes"],
     count,
     planned["output"],
     mode,
@@ -742,40 +809,49 @@ fn run_with(plan: Plan,
     memoized,
     sx_text(plan["version"]),
     lookup,
-    call);
+    call
+  );
   A.basis_array_destroy(values);
   A.basis_array_destroy(order);
   return result;
 }
 
-fn run(plan: Plan,
+fn run(
+  plan: Plan,
   mode: string,
   budget: i64,
   first: i64,
-  second: i64) -> Outcome
+  second: i64
+) -> Outcome
 {
-  return run_with(plan,
+  return run_with(
+    plan,
     mode,
     budget,
     first,
     second,
     false,
     no_binding,
-    no_invoke);
+    no_invoke
+  );
 }
 
-fn run_memoized(plan: Plan,
+fn run_memoized(
+  plan: Plan,
   mode: string,
   budget: i64,
   first: i64,
-  second: i64) -> Outcome
+  second: i64
+) -> Outcome
 {
-  return run_with(plan,
+  return run_with(
+    plan,
     mode,
     budget,
     first,
     second,
     true,
     no_binding,
-    no_invoke);
+    no_invoke
+  );
 }

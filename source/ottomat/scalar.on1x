@@ -3,19 +3,24 @@ import ottomat.scalar_tokens as T;
 import automat.dag as D;
 import std.collections.List as L;
 record Lowered
-{
-  status: sexpr, plan: D.Plan, line: i64, column: i64
+{ status: sexpr
+, plan  : D.Plan
+, line  : i64
+, column: i64
 }
 
 fn fail(status: sexpr, line: i64, column: i64) -> Lowered
 {
-  let empty = record < D.Plan >
-  {
-    version: sx_nil(), nodes: sx_nil(), output: sx_nil()
+  let empty = record<D.Plan>
+  { version: sx_nil()
+  , nodes  : sx_nil()
+  , output : sx_nil()
   };
-  return record < Lowered >
-  {
-    status: status, plan: empty, line: line, column: column
+  return record<Lowered>
+  { status: status
+  , plan  : empty
+  , line  : line
+  , column: column
   };
 }
 
@@ -40,10 +45,10 @@ fn starts(words: sexpr, keyword: string) -> bool
 
 fn is_input(words: sexpr, name: string) -> bool
 {
-  return L.basis_list_length(words) == 3 && starts(words,
-    "input") && D.field(words,
-    1) == name && D.field(words,
-    2) == "scalar.level@1";
+  return L.basis_list_length(words) == 3 && starts(words, "input") && D.field(
+    words,
+    1
+  ) == name && D.field(words, 2) == "scalar.level@1";
 }
 
 fn has_import(imports: sexpr, handler: string) -> bool
@@ -60,20 +65,17 @@ fn has_import(imports: sexpr, handler: string) -> bool
   return false;
 }
 
-fn lower_with(source: string,
+fn lower_with(
+  source: string,
   mode: string,
   budget: i64,
-  lookup: fn(string,
-  string) -> D.Descriptor) -> Lowered
+  lookup: fn(string, string) -> D.Descriptor
+) -> Lowered
 {
   # Only an exact v4 or v5 header admits a seventh token on a line. Invalid headers
   # and v3 sources are scanned with the original cap and diagnostics.
-  let v4 = text_len(source) >= 10 && text_slice(source,
-    0,
-    10) == "ottomat 4\n";
-  let v5 = text_len(source) >= 10 && text_slice(source,
-    0,
-    10) == "ottomat 5\n";
+  let v4 = text_len(source) >= 10 && text_slice(source, 0, 10) == "ottomat 4\n";
+  let v5 = text_len(source) >= 10 && text_slice(source, 0, 10) == "ottomat 5\n";
   let wide_calls = v4 || v5;
   let lexed = T.scan_version(source, wide_calls);
   if sx_text(lexed["status"]) != "ok"
@@ -94,9 +96,10 @@ fn lower_with(source: string,
   }
   var rest = lexed["lines"];
   let header = peek(rest);
-  if L.basis_list_length(header) != 2 || ! starts(header,
-    "ottomat") || D.field(header,
-    1) != syntax_version
+  if L.basis_list_length(header) != 2 || ! starts(header, "ottomat") || D.field(
+    header,
+    1
+  ) != syntax_version
   {
     return reject("syntax", 1);
   }
@@ -175,12 +178,10 @@ fn lower_with(source: string,
     let second = D.field(words, 5);
     if is_select
     {
-      nodes = sx_cons(D.select_node(id,
-        first,
-        second,
-        D.field(words,
-        6)),
-        nodes);
+      nodes = sx_cons(
+        D.select_node(id, first, second, D.field(words, 6)),
+        nodes
+      );
     }
     else
     {
@@ -204,19 +205,21 @@ fn lower_with(source: string,
     return reject("syntax", line + 1);
   }
   # Native validation owns node IDs, forward references, types, mode and budget.
-  let plan = record < D.Plan >
-  {
-    version: sx_string(plan_version), nodes: L.basis_list_rev(nodes), output: sx_string(D.field(emit,
-      1))
+  let plan = record<D.Plan>
+  { version: sx_string(plan_version)
+  , nodes  : L.basis_list_rev(nodes)
+  , output : sx_string(D.field(emit, 1))
   };
   let status = D.validate_with(plan, mode, budget, lookup);
   if status != "ok"
   {
     return reject(status, line);
   }
-  return record < Lowered >
-  {
-    status: sx_string("ok"), plan: plan, line: 0, column: 0
+  return record<Lowered>
+  { status: sx_string("ok")
+  , plan  : plan
+  , line  : 0
+  , column: 0
   };
 }
 

@@ -1,10 +1,12 @@
 # Run-local table for the trusted scalar evaluator. Registry identifiers and
 # raw hex parent digests are validated, newline-free fields.
-fn key(owner: string,
+fn key(
+  owner: string,
   op: string,
   kind: string,
   left: string,
-  right: string) -> string
+  right: string
+) -> string
 {
   let k = "scalar-memo@1\nengine=automat.scalar-dag@1\nowner=$owner\nop=$op\nkind=$kind\nleft=$left\nright=$right\n";
   if text_len(k) > 512

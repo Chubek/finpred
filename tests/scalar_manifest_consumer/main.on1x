@@ -38,17 +38,16 @@ fn produce()
   }
   if setting("DUPLICATE_WORK") == "yes"
   {
-    nodes = sx_cons(hi,
-      sx_cons(D.node("again",
-      "maximum@1",
-      "first",
-      "second"),
-      sx_nil()));
+    nodes = sx_cons(
+      hi,
+      sx_cons(D.node("again", "maximum@1", "first", "second"), sx_nil())
+    );
     output = "again";
   }
-  let plan = record < D.Plan >
-  {
-    version: sx_string("automat.scalar-dag@1"), nodes: nodes, output: sx_string(output)
+  let plan = record<D.Plan>
+  { version: sx_string("automat.scalar-dag@1")
+  , nodes  : nodes
+  , output : sx_string(output)
   };
   emit(snapshot(plan, setting("MODE"), decimal(setting("BUDGET"))));
 }
@@ -123,10 +122,10 @@ fn main() -> i64
     let idx = Int.to_string(count - 1 - j);
     let digest = IO.basis_text_io_input_all(text_concat("hash", idx));
     let data = IO.basis_text_io_input_all(text_concat("data", idx));
-    entries = sx_cons(sx_cons(sx_string(digest),
-      sx_cons(sx_string(data),
-      sx_nil())),
-      entries);
+    entries = sx_cons(
+      sx_cons(sx_string(digest), sx_cons(sx_string(data), sx_nil())),
+      entries
+    );
   }
   if V.verify(id, manifest, entries)
   {

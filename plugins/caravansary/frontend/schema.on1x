@@ -57,11 +57,10 @@ fn atom(value: sexpr) -> string
 
 fn member(list: string, name: string) -> bool
 {
-  return text_len(name) > 0 && ! String.contains(name,
-    " ") && String.contains(list,
-    text_concat(" ",
-    text_concat(name,
-    " ")));
+  return text_len(name) > 0 && ! String.contains(name, " ") && String.contains(
+    list,
+    text_concat(" ", text_concat(name, " "))
+  );
 }
 
 # Return the name of the required shape for a key, or empty for unknown.
@@ -89,13 +88,22 @@ fn field_kind(context: string, key: string) -> string
       return "block";
     }
   }
-  if (context == "property" && member(" type latitude longitude timezone currency room_types ",
-    key)) || (context == "search" && member(" horizon_days start guest_configurations stay_lengths booker_country locale ",
-    key)) || (context == "refresh" && member(" tick_seconds weights max_age_seconds booking_requests_per_hour booking_concurrency agoda_requests_per_hour agoda_concurrency ",
-    key)) || (context == "output" && member(" observations coverage ",
-    key)) || (member(" booking agoda ",
-    context) && member(" cookies environment explicit dotenv ",
-    key))
+  if (context == "property" && member(
+    " type latitude longitude timezone currency room_types ",
+    key
+  )) || (context == "search" && member(
+    " horizon_days start guest_configurations stay_lengths booker_country locale ",
+    key
+  )) || (context == "refresh" && member(
+    " tick_seconds weights max_age_seconds booking_requests_per_hour booking_concurrency agoda_requests_per_hour agoda_concurrency ",
+    key
+  )) || (context == "output" && member(
+    " observations coverage ",
+    key
+  )) || (member(" booking agoda ", context) && member(
+    " cookies environment explicit dotenv ",
+    key
+  ))
   {
     return "field";
   }
@@ -217,9 +225,10 @@ fn local_file(value: sexpr) -> bool
 fn normalize_path(raw: string) -> string
 {
   let absolute = text_byte(raw, 0) == 47;
-  let double = text_len(raw) > 2 && text_byte(raw,
-    1) == 47 && text_byte(raw,
-    2) != 47;
+  let double = text_len(raw) > 2 && text_byte(raw, 1) == 47 && text_byte(
+    raw,
+    2
+  ) != 47;
   var parts = T.split(raw, 47);
   var stack = sx_nil();
   while sx_kind(parts) == 3
@@ -378,8 +387,10 @@ fn zone_available(raw: string) -> bool
   {
     return false;
   }
-  var dirs = T.split("/usr/share/zoneinfo:/usr/lib/zoneinfo:/usr/share/lib/zoneinfo:/etc/zoneinfo",
-    58);
+  var dirs = T.split(
+    "/usr/share/zoneinfo:/usr/lib/zoneinfo:/usr/share/lib/zoneinfo:/etc/zoneinfo",
+    58
+  );
   while sx_kind(dirs) == 3
   {
     let file = Path.basis_path_join(sx_text(sx_head(dirs)), raw);
@@ -472,8 +483,10 @@ fn ascii_class(raw: string, want_alpha: bool) -> bool
 fn language_tag(raw: string) -> bool
 {
   let code = T.ascii_lower(raw);
-  if member(" art-lojban cel-gaulish en-gb-oed i-ami i-bnn i-default i-enochian i-hak i-klingon i-lux i-mingo i-navajo i-pwn i-tao i-tay i-tsu no-bok no-nyn sgn-be-fr sgn-be-nl sgn-ch-de zh-guoyu zh-hakka zh-min zh-min-nan zh-xiang ",
-    code)
+  if member(
+    " art-lojban cel-gaulish en-gb-oed i-ami i-bnn i-default i-enochian i-hak i-klingon i-lux i-mingo i-navajo i-pwn i-tao i-tay i-tsu no-bok no-nyn sgn-be-fr sgn-be-nl sgn-ch-de zh-guoyu zh-hakka zh-min zh-min-nan zh-xiang ",
+    code
+  )
   {
     return true;
   }
@@ -533,9 +546,10 @@ fn language_tag(raw: string) -> bool
   if sx_kind(rest) == 3
   {
     let tag = sx_text(sx_head(rest));
-    if (text_len(tag) == 2 && ascii_class(tag,
-      true)) || (text_len(tag) == 3 && ascii_class(tag,
-      false))
+    if (text_len(tag) == 2 && ascii_class(
+      tag,
+      true
+    )) || (text_len(tag) == 3 && ascii_class(tag, false))
     {
       rest = sx_tail(rest);
     }
@@ -544,8 +558,10 @@ fn language_tag(raw: string) -> bool
   while sx_kind(rest) == 3
   {
     let tag = sx_text(sx_head(rest));
-    if !(text_len(tag) >= 5 || (text_len(tag) == 4 && T.digit(text_byte(tag,
-      0))))
+    if !(text_len(tag) >= 5 || (text_len(tag) == 4 && T.digit(text_byte(
+      tag,
+      0
+    ))))
     {
       break;
     }
@@ -677,9 +693,10 @@ fn check_array(value: sexpr, where: string, mode: string) -> string
   while sx_kind(items) == 3
   {
     let item = sx_head(items);
-    if mode == "source" && (! tagged(item,
-      "text") || ! member(" booking agoda ",
-      atom(item)))
+    if mode == "source" && (! tagged(item, "text") || ! member(
+      " booking agoda ",
+      atom(item)
+    ))
     {
       return text_concat(where, " must contain only booking and/or agoda");
     }
@@ -691,8 +708,10 @@ fn check_array(value: sexpr, where: string, mode: string) -> string
     {
       return text_concat(where, " must be a positive integer");
     }
-    if mode == "reference" && (! tagged(item,
-      "text") || ! reference(atom(item)))
+    if mode == "reference" && (! tagged(
+      item,
+      "text"
+    ) || ! reference(atom(item)))
     {
       return text_concat(where, " must list unique reference names");
     }
@@ -749,8 +768,10 @@ fn check_credentials(fields: sexpr, sources: sexpr) -> string
       {
         if mode != ""
         {
-          return text_concat(context,
-            " must select exactly one credential mode");
+          return text_concat(
+            context,
+            " must select exactly one credential mode"
+          );
         }
         mode = name;
       }
@@ -773,12 +794,11 @@ fn check_credentials(fields: sexpr, sources: sexpr) -> string
     }
     else
     {
-      let err = check_array(get(declaration,
-        mode),
-        text_concat(context,
-        text_concat(".",
-        mode)),
-        "reference");
+      let err = check_array(
+        get(declaration, mode),
+        text_concat(context, text_concat(".", mode)),
+        "reference"
+      );
       if err != ""
       {
         return err;
@@ -807,9 +827,11 @@ fn currencies() -> string
 
 fn validate(config: sexpr) -> string
 {
-  var err = missing(config,
+  var err = missing(
+    config,
     "competitors output property refresh search sources",
-    "script");
+    "script"
+  );
   if err != ""
   {
     return err;
@@ -818,16 +840,20 @@ fn validate(config: sexpr) -> string
   let search = get(config, "search");
   let refresh = get(config, "refresh");
   let output = get(config, "output");
-  err = missing(property,
+  err = missing(
+    property,
     "currency latitude longitude room_types timezone type",
-    "property");
+    "property"
+  );
   if err != ""
   {
     return err;
   }
-  err = missing(search,
+  err = missing(
+    search,
     "booker_country guest_configurations horizon_days locale start stay_lengths",
-    "search");
+    "search"
+  );
   if err != ""
   {
     return err;
@@ -860,10 +886,7 @@ fn validate(config: sexpr) -> string
   {
     return "property.type must be a nonempty string";
   }
-  err = check_array(get(property,
-    "room_types"),
-    "property.room_types",
-    "text");
+  err = check_array(get(property, "room_types"), "property.room_types", "text");
   if err != ""
   {
     return err;
@@ -918,10 +941,11 @@ fn validate(config: sexpr) -> string
   {
     return "search.start must be a valid Gregorian date";
   }
-  err = check_array(get(search,
-    "guest_configurations"),
+  err = check_array(
+    get(search, "guest_configurations"),
     "search.guest_configurations",
-    "text");
+    "text"
+  );
   if err != ""
   {
     return err;
@@ -943,9 +967,11 @@ fn validate(config: sexpr) -> string
   }
   if selected(sources, "booking")
   {
-    err = missing(refresh,
+    err = missing(
+      refresh,
       "booking_concurrency booking_requests_per_hour",
-      "refresh");
+      "refresh"
+    );
     if err != ""
     {
       return err;
@@ -953,9 +979,11 @@ fn validate(config: sexpr) -> string
   }
   if selected(sources, "agoda")
   {
-    err = missing(refresh,
+    err = missing(
+      refresh,
       "agoda_concurrency agoda_requests_per_hour",
-      "refresh");
+      "refresh"
+    );
     if err != ""
     {
       return err;
@@ -972,9 +1000,10 @@ fn validate(config: sexpr) -> string
     let key = sx_text(sx_head(pair));
     if key != "weights" && ! positive(payload(pair))
     {
-      return text_concat("refresh.",
-        text_concat(key,
-        " must be a positive integer"));
+      return text_concat(
+        "refresh.",
+        text_concat(key, " must be a positive integer")
+      );
     }
     rest = sx_tail(rest);
   }

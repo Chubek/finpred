@@ -1,19 +1,30 @@
 import automat.dag as D;
 import std.collections.List as L;
 record Decoded
-{
-  valid: bool, plan: D.Plan, budget: i64, first: i64, second: i64, root: sexpr, hashes: sexpr
+{ valid : bool
+, plan  : D.Plan
+, budget: i64
+, first : i64
+, second: i64
+, root  : sexpr
+, hashes: sexpr
 }
 
 fn invalid() -> Decoded
 {
-  let empty = record < D.Plan >
-  {
-    version: sx_nil(), nodes: sx_nil(), output: sx_nil()
+  let empty = record<D.Plan>
+  { version: sx_nil()
+  , nodes  : sx_nil()
+  , output : sx_nil()
   };
-  return record < Decoded >
-  {
-    valid: false, plan: empty, budget: 0, first: 0, second: 0, root: sx_nil(), hashes: sx_nil()
+  return record<Decoded>
+  { valid : false
+  , plan  : empty
+  , budget: 0
+  , first : 0
+  , second: 0
+  , root  : sx_nil()
+  , hashes: sx_nil()
   };
 }
 
@@ -218,10 +229,10 @@ fn decode(raw: string) -> Decoded
   var nodes = sx_nil();
   for i in 0 .. n
   {
-    let node = declaration_with_select(payload(D.field(ordered,
-      7 + i),
-      "node="),
-      select_allowed);
+    let node = declaration_with_select(
+      payload(D.field(ordered, 7 + i), "node="),
+      select_allowed
+    );
     if sx_kind(node) != 3
     {
       return invalid();
@@ -243,13 +254,18 @@ fn decode(raw: string) -> Decoded
   {
     return invalid();
   }
-  let plan = record < D.Plan >
-  {
-    version: sx_string(payload(plan_line,
-      "plan=")), nodes: L.basis_list_rev(nodes), output: sx_string(output)
+  let plan = record<D.Plan>
+  { version: sx_string(payload(plan_line, "plan="))
+  , nodes  : L.basis_list_rev(nodes)
+  , output : sx_string(output)
   };
-  return record < Decoded >
-  {
-    valid: true, plan: plan, budget: budget, first: first, second: second, root: sx_string(root), hashes: L.basis_list_rev(hashes)
+  return record<Decoded>
+  { valid : true
+  , plan  : plan
+  , budget: budget
+  , first : first
+  , second: second
+  , root  : sx_string(root)
+  , hashes: L.basis_list_rev(hashes)
   };
 }

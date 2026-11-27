@@ -60,26 +60,32 @@ fn matches(text: string, keyword: string) -> bool
   return true;
 }
 
-fn cycle(provider: string,
+fn cycle(
+  provider: string,
   name: string,
   limit: i64,
   count: i64,
   extraction: string,
   cutoff: string,
   mode: string,
-  instructions: string)
+  instructions: string
+)
 {
   # Stage the complete cycle before stdout. A failed page cannot leave a
   # half-successful cycle. Each record embeds raw evidence for offline replay.
   let output = buffer_new();
   if mode == "handoff"
   {
-    buffer_append(output,
-      Wire.header(name,
-      extraction,
-      Profiles.identity(),
-      dragnet_setting("transport"),
-      cutoff));
+    buffer_append(
+      output,
+      Wire.header(
+        name,
+        extraction,
+        Profiles.identity(),
+        dragnet_setting("transport"),
+        cutoff
+      )
+    );
   }
   if mode == "offers-csv"
   {
@@ -138,8 +144,10 @@ fn cycle(provider: string,
         {
           effective = text_concat(dragnet_received(), "");
         }
-        if dragnet_received() != "" && Str.compare(dragnet_received(),
-          effective) > 0
+        if dragnet_received() != "" && Str.compare(
+          dragnet_received(),
+          effective
+        ) > 0
         {
           tool_fail("dragnet: LLM receipt exceeds as_of");
         }
@@ -221,8 +229,10 @@ fn main() -> i64
   {
     tool_fail("dragnet: unknown extraction profile");
   }
-  if env_or("DRAGNET_REQUIRE_OFFERS",
-    "0") == "1" && extraction != "offer-csv-v1"
+  if env_or(
+    "DRAGNET_REQUIRE_OFFERS",
+    "0"
+  ) == "1" && extraction != "offer-csv-v1"
   {
     tool_fail("dragnet: structured offers require offer-csv-v1 extraction");
   }
@@ -287,14 +297,16 @@ fn main() -> i64
   {
     if ! daemon
     {
-      cycle(provider,
+      cycle(
+        provider,
         provider_name,
         limit,
         count,
         extraction,
         cutoff,
         mode,
-        instructions);
+        instructions
+      );
       break;
     }
     # Process-lifetime On1x string allocations are reclaimed between cycles.
@@ -302,14 +314,16 @@ fn main() -> i64
     let worker = dragnet_worker();
     if worker == 1
     {
-      cycle(provider,
+      cycle(
+        provider,
         provider_name,
         limit,
         count,
         extraction,
         cutoff,
         mode,
-        instructions);
+        instructions
+      );
       return 0;
     }
     if worker < 0

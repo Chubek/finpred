@@ -4,8 +4,10 @@ import frontend.schema as Schema;
 import frontend.text as Text;
 fn key(name: string) -> bool
 {
-  return Schema.member(" target target_sources extractors discovery pricing schedule functions modules ",
-    name);
+  return Schema.member(
+    " target target_sources extractors discovery pricing schedule functions modules ",
+    name
+  );
 }
 
 fn present(config: sexpr) -> bool
@@ -24,8 +26,7 @@ fn present(config: sexpr) -> bool
 
 fn identifier(raw: string, hyphen: bool) -> bool
 {
-  if text_len(raw) == 0 || text_len(raw) > 64 || ! Text.alpha(text_byte(raw,
-    0))
+  if text_len(raw) == 0 || text_len(raw) > 64 || ! Text.alpha(text_byte(raw, 0))
   {
     return false;
   }
@@ -44,8 +45,10 @@ fn field_kind(role: string, name: string) -> string
 {
   if role == "script"
   {
-    if Schema.member(" target_sources extractors modules target discovery pricing schedule ",
-      name)
+    if Schema.member(
+      " target_sources extractors modules target discovery pricing schedule ",
+      name
+    )
     {
       return name;
     }
@@ -66,12 +69,22 @@ fn field_kind(role: string, name: string) -> string
   {
     return "pure";
   }
-  if (role == "target" && Schema.member(" id name address type latitude longitude currency ",
-    name)) || (role == "source_decl" && Schema.member(" kind fixture extractor profile_url ",
-    name)) || (role == "extractor_decl" && name == "kind") || (role == "discovery" && Schema.member(" sources radius_m max_candidates ",
-    name)) || (role == "pricing" && Schema.member(" currency floor_minor ceiling_minor ",
-    name)) || (role == "schedule" && Schema.member(" workflow every_seconds start_at ",
-    name))
+  if (role == "target" && Schema.member(
+    " id name address type latitude longitude currency ",
+    name
+  )) || (role == "source_decl" && Schema.member(
+    " kind fixture extractor profile_url ",
+    name
+  )) || (role == "extractor_decl" && name == "kind") || (role == "discovery" && Schema.member(
+    " sources radius_m max_candidates ",
+    name
+  )) || (role == "pricing" && Schema.member(
+    " currency floor_minor ceiling_minor ",
+    name
+  )) || (role == "schedule" && Schema.member(
+    " workflow every_seconds start_at ",
+    name
+  ))
   {
     return "field";
   }
@@ -85,9 +98,7 @@ fn named(role: string) -> bool
 
 fn id(value: sexpr, hyphen: bool) -> bool
 {
-  return Schema.tagged(value,
-    "text") && identifier(Schema.atom(value),
-    hyphen);
+  return Schema.tagged(value, "text") && identifier(Schema.atom(value), hyphen);
 }
 
 fn label(value: sexpr, maximum: i64) -> bool
@@ -129,9 +140,10 @@ fn coordinate(value: sexpr, bound: i64) -> bool
   {
     start = 1;
   }
-  return start < n && Text.digit(text_byte(raw,
-    start)) && Schema.decimal(raw,
-    bound) == 0;
+  return start < n && Text.digit(text_byte(raw, start)) && Schema.decimal(
+    raw,
+    bound
+  ) == 0;
 }
 
 fn positive_bounded(value: sexpr, max: i64) -> bool
@@ -146,11 +158,10 @@ fn utc_seconds(value: sexpr) -> bool
     return false;
   }
   let raw = Schema.atom(value);
-  if text_len(raw) != 20 || text_byte(raw,
-    10) != 84 || text_byte(raw,
-    13) != 58 || text_byte(raw,
-    16) != 58 || text_byte(raw,
-    19) != 90
+  if text_len(raw) != 20 || text_byte(raw, 10) != 84 || text_byte(
+    raw,
+    13
+  ) != 58 || text_byte(raw, 16) != 58 || text_byte(raw, 19) != 90
   {
     return false;
   }
@@ -165,16 +176,10 @@ fn utc_seconds(value: sexpr) -> bool
       return false;
     }
   }
-  return Text.bounded_nat(text_slice(raw,
-    11,
-    13),
-    23) && Text.bounded_nat(text_slice(raw,
-    14,
-    16),
-    59) && Text.bounded_nat(text_slice(raw,
-    17,
-    19),
-    59);
+  return Text.bounded_nat(text_slice(raw, 11, 13), 23) && Text.bounded_nat(
+    text_slice(raw, 14, 16),
+    59
+  ) && Text.bounded_nat(text_slice(raw, 17, 19), 59);
 }
 
 fn begins(raw: string, prefix: string) -> bool
@@ -204,11 +209,11 @@ fn profile_slug(raw: string) -> bool
 fn profile_leaf(raw: string) -> bool
 {
   let length = text_len(raw);
-  return length > 5 && text_slice(raw,
+  return length > 5 && text_slice(
+    raw,
     length - 5,
-    length) == ".html" && profile_slug(text_slice(raw,
-    0,
-    length - 5));
+    length
+  ) == ".html" && profile_slug(text_slice(raw, 0, length - 5));
 }
 
 # Inert reference only. Match exact authorities and an intentionally narrow
@@ -227,19 +232,25 @@ fn profile_url(value: sexpr) -> bool
   let booking = "https://www.booking.com/hotel/";
   if begins(raw, booking)
   {
-    let path = Text.split(text_slice(raw,
-      text_len(booking),
-      text_len(raw)),
-      47);
+    let path = Text.split(
+      text_slice(raw, text_len(booking), text_len(raw)),
+      47
+    );
     if S.sexpr_size(path) != 2
     {
       return false;
     }
     let country = sx_text(sx_head(path));
-    return text_len(country) == 2 && Text.alpha(text_byte(country,
-      0)) && Text.alpha(text_byte(country,
-      1)) && Text.ascii_lower(country) == country && profile_leaf(sx_text(S.sexpr_nth(path,
-      1)));
+    return text_len(country) == 2 && Text.alpha(text_byte(
+      country,
+      0
+    )) && Text.alpha(text_byte(
+      country,
+      1
+    )) && Text.ascii_lower(country) == country && profile_leaf(sx_text(S.sexpr_nth(
+      path,
+      1
+    )));
   }
   let agoda = "https://www.agoda.com/";
   if ! begins(raw, agoda)
@@ -256,9 +267,10 @@ fn profile_url(value: sexpr) -> bool
     }
     path = sx_tail(path);
   }
-  return S.sexpr_size(path) == 3 && profile_slug(sx_text(sx_head(path))) && sx_text(S.sexpr_nth(path,
-    1)) == "hotel" && profile_leaf(sx_text(S.sexpr_nth(path,
-    2)));
+  return S.sexpr_size(path) == 3 && profile_slug(sx_text(sx_head(path))) && sx_text(S.sexpr_nth(
+    path,
+    1
+  )) == "hotel" && profile_leaf(sx_text(S.sexpr_nth(path, 2)));
 }
 
 fn validate(config: sexpr) -> string
@@ -273,9 +285,11 @@ fn validate(config: sexpr) -> string
     }
     fields = sx_tail(fields);
   }
-  var error = Schema.missing(config,
+  var error = Schema.missing(
+    config,
     "discovery extractors pricing target target_sources",
-    "market script");
+    "market script"
+  );
   if error != ""
   {
     return error;
@@ -285,9 +299,11 @@ fn validate(config: sexpr) -> string
     return "market name must be a nonempty label of at most 256 bytes without controls";
   }
   let target = Schema.get(config, "target");
-  error = Schema.missing(target,
+  error = Schema.missing(
+    target,
     "currency id latitude longitude type",
-    "target");
+    "target"
+  );
   if error != ""
   {
     return error;
@@ -300,10 +316,10 @@ fn validate(config: sexpr) -> string
   {
     return "target.name must be a nonempty label of at most 256 bytes without controls";
   }
-  if Schema.has(target,
-    "address") && ! label(Schema.get(target,
-    "address"),
-    512)
+  if Schema.has(target, "address") && ! label(
+    Schema.get(target, "address"),
+    512
+  )
   {
     return "target.address must be a nonempty label of at most 512 bytes without controls";
   }
@@ -320,9 +336,10 @@ fn validate(config: sexpr) -> string
     return "target.longitude must be a WGS84 decimal string between -180 and 180";
   }
   let currency = Schema.get(target, "currency");
-  if ! Schema.tagged(currency,
-    "text") || ! Schema.member(Schema.currencies(),
-    Schema.atom(currency))
+  if ! Schema.tagged(currency, "text") || ! Schema.member(
+    Schema.currencies(),
+    Schema.atom(currency)
+  )
   {
     return "target.currency must be an ISO 4217 alpha-3 code";
   }
@@ -335,8 +352,10 @@ fn validate(config: sexpr) -> string
   while sx_kind(rest) == 3
   {
     let kind = Schema.get(Schema.payload(sx_head(rest)), "kind");
-    if ! Schema.tagged(kind,
-      "text") || Schema.atom(kind) != "caravansary.fixture@1"
+    if ! Schema.tagged(
+      kind,
+      "text"
+    ) || Schema.atom(kind) != "caravansary.fixture@1"
     {
       return "extractor kind must be caravansary.fixture@1";
     }
@@ -365,9 +384,10 @@ fn validate(config: sexpr) -> string
     {
       return "target source kind must be fixture";
     }
-    if Schema.has(source,
-      "profile_url") && ! profile_url(Schema.get(source,
-      "profile_url"))
+    if Schema.has(source, "profile_url") && ! profile_url(Schema.get(
+      source,
+      "profile_url"
+    ))
     {
       return "profile_url must be a canonical Booking or Agoda HTTPS property URL without credentials, queries or fragments";
     }
@@ -376,18 +396,21 @@ fn validate(config: sexpr) -> string
       return "fixture must be a registry identifier, not a path or URL";
     }
     let extractor = Schema.get(source, "extractor");
-    if ! id(extractor,
-      false) || ! Schema.has(extractors,
-      Schema.atom(extractor))
+    if ! id(extractor, false) || ! Schema.has(
+      extractors,
+      Schema.atom(extractor)
+    )
     {
       return "target source must reference a declared extractor";
     }
     rest = sx_tail(rest);
   }
   let discovery = Schema.get(config, "discovery");
-  error = Schema.missing(discovery,
+  error = Schema.missing(
+    discovery,
     "max_candidates radius_m sources",
-    "discovery");
+    "discovery"
+  );
   if error != ""
   {
     return error;
@@ -420,24 +443,29 @@ fn validate(config: sexpr) -> string
     return "discovery.max_candidates must be an integer between 1 and 1024";
   }
   let pricing = Schema.get(config, "pricing");
-  error = Schema.missing(pricing,
+  error = Schema.missing(
+    pricing,
     "ceiling_minor currency floor_minor",
-    "pricing");
+    "pricing"
+  );
   if error != ""
   {
     return error;
   }
   let price_currency = Schema.get(pricing, "currency");
-  if ! Schema.tagged(price_currency,
-    "text") || Schema.atom(price_currency) != Schema.atom(currency)
+  if ! Schema.tagged(
+    price_currency,
+    "text"
+  ) || Schema.atom(price_currency) != Schema.atom(currency)
   {
     return "pricing.currency must match target.currency; implicit conversion is not supported";
   }
   let floor = Schema.get(pricing, "floor_minor");
   let ceiling = Schema.get(pricing, "ceiling_minor");
-  if ! positive_bounded(floor,
-    Int.max_value()) || ! positive_bounded(ceiling,
-    Int.max_value())
+  if ! positive_bounded(floor, Int.max_value()) || ! positive_bounded(
+    ceiling,
+    Int.max_value()
+  )
   {
     return "pricing bounds must be positive signed 64-bit integers in minor units";
   }
@@ -450,9 +478,11 @@ fn validate(config: sexpr) -> string
   if Schema.has(config, "schedule")
   {
     let schedule = Schema.get(config, "schedule");
-    error = Schema.missing(schedule,
+    error = Schema.missing(
+      schedule,
       "every_seconds start_at workflow",
-      "schedule");
+      "schedule"
+    );
     if error != ""
     {
       return error;
@@ -470,9 +500,10 @@ fn validate(config: sexpr) -> string
       return "schedule.start_at must be a UTC RFC3339 timestamp at whole-second precision";
     }
   }
-  if Schema.has(config,
-    "modules") && sx_kind(Schema.get(config,
-    "modules")) == 0
+  if Schema.has(config, "modules") && sx_kind(Schema.get(
+    config,
+    "modules"
+  )) == 0
   {
     return "modules must declare at least one inline module";
   }

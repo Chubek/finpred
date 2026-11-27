@@ -8,23 +8,32 @@ import forecast_baselines.model as Model;
 import sdk.callable as SDK;
 import std.String as Str;
 record Plan
-{
-  model: sexpr, model_code: sexpr, scoring_code: sexpr, validation_through: sexpr, selection_frozen_at: sexpr, first_target: sexpr, last_target: sexpr, scoring_cutoff: sexpr
+{ model              : sexpr
+, model_code         : sexpr
+, scoring_code       : sexpr
+, validation_through : sexpr
+, selection_frozen_at: sexpr
+, first_target       : sexpr
+, last_target        : sexpr
+, scoring_cutoff     : sexpr
 }
 
 record Entry
-{
-  training_cutoff: sexpr, roots: Eval.Roots, frozen: Eval.Frozen, archive: Eval.Archive
+{ training_cutoff: sexpr
+, roots          : Eval.Roots
+, frozen         : Eval.Frozen
+, archive        : Eval.Archive
 }
 
 record Report
-{
-  status: i64, id: sexpr, bytes: sexpr
+{ status: i64
+, id    : sexpr
+, bytes : sexpr
 }
 
 record Error
-{
-  state: i64, thirds: i64
+{ state : i64
+, thirds: i64
 }
 
 fn max_targets() -> i64
@@ -39,9 +48,10 @@ fn policy() -> string
 
 fn failure(status: i64) -> Report
 {
-  return record < Report >
-  {
-    status: status, id: sx_nil(), bytes: sx_nil()
+  return record<Report>
+  { status: status
+  , id    : sx_nil()
+  , bytes : sx_nil()
   };
 }
 
@@ -50,13 +60,15 @@ fn failure(status: i64) -> Report
 fn replayed_error(bytes: string) -> Error
 {
   let tail = ",\"actual\":null,\"estimate\":null,\"error\":null,\"absolute_error\":null}\n";
-  if Guest.after(bytes,
+  if Guest.after(
+    bytes,
     text_len(bytes) - text_len(tail),
-    tail) == text_len(bytes)
+    tail
+  ) == text_len(bytes)
   {
-    return record < Error >
-    {
-      state: 4, thirds: 0
+    return record<Error>
+    { state : 4
+    , thirds: 0
     };
   }
   let prefix = ",\"error\":{\"numerator\":";
@@ -71,20 +83,21 @@ fn replayed_error(bytes: string) -> Error
     }
   }
   let(a, n) = Guest.token(bytes, at, 44, 14);
-  let(b,
-    d) = Guest.token(bytes,
-    Guest.after(bytes,
-    a,
-    ",\"denominator\":"),
+  let(b, d) = Guest.token(
+    bytes,
+    Guest.after(bytes, a, ",\"denominator\":"),
     125,
-    1);
-  let bad = record < Error >
-  {
-    state: 0, thirds: 0
+    1
+  );
+  let bad = record<Error>
+  { state : 0
+  , thirds: 0
   };
-  if b < 0 || Guest.after(bytes,
+  if b < 0 || Guest.after(
+    bytes,
     b,
-    "},\"absolute_error\":{") < 0 || (d != "1" && d != "3")
+    "},\"absolute_error\":{"
+  ) < 0 || (d != "1" && d != "3")
   {
     return bad;
   }
@@ -121,9 +134,9 @@ fn replayed_error(bytes: string) -> Error
   {
     magnitude = 0 - magnitude;
   }
-  return record < Error >
-  {
-    state: 1, thirds: magnitude
+  return record<Error>
+  { state : 1
+  , thirds: magnitude
   };
 }
 
@@ -160,16 +173,19 @@ fn average(thirds: i64, scored: i64) -> string
 # Archive.id comes from that lookup, never from rehashing the submitted bytes.
 # Status: 1 invalid plan/pins; 2 absent or wrong month/request; 3 replay failed;
 # 4 unexpected score encoding. No partial report survives rejection.
-fn aggregate(linked: Eval.Linked,
+fn aggregate(
+  linked: Eval.Linked,
   plan: Plan,
-  entry_at: fn(i64) -> Entry) -> Report
+  entry_at: fn(i64) -> Entry
+) -> Report
 {
-  if ! SDK.atom(plan["validation_through"],
-    7) || ! SDK.atom(plan["first_target"],
-    7) || ! SDK.atom(plan["last_target"],
-    7) || ! SDK.atom(plan["selection_frozen_at"],
-    20) || ! SDK.atom(plan["scoring_cutoff"],
-    20)
+  if ! SDK.atom(plan["validation_through"], 7) || ! SDK.atom(
+    plan["first_target"],
+    7
+  ) || ! SDK.atom(plan["last_target"], 7) || ! SDK.atom(
+    plan["selection_frozen_at"],
+    20
+  ) || ! SDK.atom(plan["scoring_cutoff"], 20)
   {
     return failure(1);
   }
@@ -177,9 +193,10 @@ fn aggregate(linked: Eval.Linked,
   let model_code = sx_text(plan["model_code"]);
   let scoring_code = sx_text(plan["scoring_code"]);
   let desc = Model.descriptor(model, model_code);
-  if ! desc["enabled"] || ! SDK.valid_digest(plan["scoring_code"]) || ! SDK.same(plan["model_code"],
-    linked["model_code"]) || ! SDK.same(plan["scoring_code"],
-    linked["scoring_code"])
+  if ! desc["enabled"] || ! SDK.valid_digest(plan["scoring_code"]) || ! SDK.same(
+    plan["model_code"],
+    linked["model_code"]
+  ) || ! SDK.same(plan["scoring_code"], linked["scoring_code"])
   {
     return failure(1);
   }
@@ -205,10 +222,13 @@ fn aggregate(linked: Eval.Linked,
   let earliest = "$after_validation-01T00:00:00Z";
   let latest = "$first-01T00:00:00Z";
   let last_end = "$after_last-01T00:00:00Z";
-  if ! Date.utc_timestamp(earliest) || ! Date.utc_timestamp(last_end) || Str.compare(frozen_at,
-    earliest) < 0 || Str.compare(frozen_at,
-    latest) > 0 || Str.compare(score_at,
-    last_end) < 0
+  if ! Date.utc_timestamp(earliest) || ! Date.utc_timestamp(last_end) || Str.compare(
+    frozen_at,
+    earliest
+  ) < 0 || Str.compare(frozen_at, latest) > 0 || Str.compare(
+    score_at,
+    last_end
+  ) < 0
   {
     return failure(1);
   }
@@ -220,14 +240,22 @@ fn aggregate(linked: Eval.Linked,
     return failure(1);
   }
   let out = buffer_new();
-  buffer_append(out,
-    "{\"kind\":\"analysis.guest-nights-holdout\",\"version\":1,\"unit\":\"guest_nights\",\"currency\":null,\"pricing_input\":false,\"split\":\"holdout\"");
-  buffer_append(out,
-    ",\"model\":\"$model\",\"model_code_digest\":\"$model_code\",\"model_policy_digest\":\"$model_policy\"");
-  buffer_append(out,
-    ",\"scoring_code_digest\":\"$scoring_code\",\"scoring_policy_digest\":\"$scoring_policy\",\"aggregation_policy_digest\":\"$policy_id\"");
-  buffer_append(out,
-    ",\"validation_through\":\"$validation\",\"selection_frozen_at\":\"$frozen_at\",\"first_target\":\"$first\",\"last_target\":\"$last\",\"scoring_cutoff\":\"$score_at\",\"evaluations\":[");
+  buffer_append(
+    out,
+    "{\"kind\":\"analysis.guest-nights-holdout\",\"version\":1,\"unit\":\"guest_nights\",\"currency\":null,\"pricing_input\":false,\"split\":\"holdout\""
+  );
+  buffer_append(
+    out,
+    ",\"model\":\"$model\",\"model_code_digest\":\"$model_code\",\"model_policy_digest\":\"$model_policy\""
+  );
+  buffer_append(
+    out,
+    ",\"scoring_code_digest\":\"$scoring_code\",\"scoring_policy_digest\":\"$scoring_policy\",\"aggregation_policy_digest\":\"$policy_id\""
+  );
+  buffer_append(
+    out,
+    ",\"validation_through\":\"$validation\",\"selection_frozen_at\":\"$frozen_at\",\"first_target\":\"$first\",\"last_target\":\"$last\",\"scoring_cutoff\":\"$score_at\",\"evaluations\":["
+  );
   var scored = 0;
   var signed = 0;
   var absolute = 0;
@@ -245,15 +273,20 @@ fn aggregate(linked: Eval.Linked,
     {
       return failure(2);
     }
-    let selection = record < Eval.Selection >
-    {
-      model: plan["model"], model_code: plan["model_code"], scoring_code: plan["scoring_code"], training_cutoff: item["training_cutoff"], scoring_cutoff: plan["scoring_cutoff"]
+    let selection = record<Eval.Selection>
+    { model          : plan["model"]
+    , model_code     : plan["model_code"]
+    , scoring_code   : plan["scoring_code"]
+    , training_cutoff: item["training_cutoff"]
+    , scoring_cutoff : plan["scoring_cutoff"]
     };
-    let run = Eval.replay(linked,
+    let run = Eval.replay(
+      linked,
       selection,
       item["roots"],
       item["frozen"],
-      item["archive"]);
+      item["archive"]
+    );
     if run["status"] != 0
     {
       return failure(3);
@@ -281,24 +314,29 @@ fn aggregate(linked: Eval.Linked,
     {
       buffer_append(out, ",");
     }
-    buffer_append(out,
-      "{\"target_month\":\"$target\",\"evaluation\":\"$evaluation\",\"state\":\"$state\"}");
+    buffer_append(
+      out,
+      "{\"target_month\":\"$target\",\"evaluation\":\"$evaluation\",\"state\":\"$state\"}"
+    );
   }
   let expected = F.num(count);
   let known = F.num(scored);
   let unknown = F.num(count - scored);
   let mae = average(absolute, scored);
   let bias = average(signed, scored);
-  buffer_append(out,
-    "],\"expected\":$expected,\"scored\":$known,\"unknown\":$unknown,\"mae\":$mae,\"bias\":$bias}\n");
+  buffer_append(
+    out,
+    "],\"expected\":$expected,\"scored\":$known,\"unknown\":$unknown,\"mae\":$mae,\"bias\":$bias}\n"
+  );
   let bytes = buffer_text(out);
   let id = Model.digest(bytes);
   if ! Guest.digest(id)
   {
     return failure(4);
   }
-  return record < Report >
-  {
-    status: 0, id: sx_string(id), bytes: sx_string(bytes)
+  return record<Report>
+  { status: 0
+  , id    : sx_string(id)
+  , bytes : sx_string(bytes)
   };
 }

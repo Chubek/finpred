@@ -5,29 +5,33 @@ import automat.financial_run as Run;
 import automat.financial_graph as G;
 import automat.financial_archive as Archive;
 import sdk.callable as SDK;
-fn execute(lowered: Ott.Lowered,
+fn execute(
+  lowered: Ott.Lowered,
   roots: sexpr,
   ctx: Run.Context,
   mode: string,
   budget: i64,
   resolve: fn(string) -> SDK.Descriptor,
-  call: fn(SDK.Pin,
-  SDK.Request) -> SDK.Outcome) -> Run.Result
+  call: fn(SDK.Pin, SDK.Request) -> SDK.Outcome
+) -> Run.Result
 {
-  if ! SDK.same(lowered["status"],
-    sx_string("ok")) || ! SDK.same(lowered["lowering"],
-    sx_string(Ott.identity()))
+  if ! SDK.same(lowered["status"], sx_string("ok")) || ! SDK.same(
+    lowered["lowering"],
+    sx_string(Ott.identity())
+  )
   {
     return Run.error("lowering", "");
   }
-  return Run.execute_pinned(lowered["graph"],
+  return Run.execute_pinned(
+    lowered["graph"],
     roots,
     ctx,
     mode,
     budget,
     resolve,
     call,
-    lowered["graph_digest"]);
+    lowered["graph_digest"]
+  );
 }
 
 fn archive_version() -> string
@@ -35,33 +39,36 @@ fn archive_version() -> string
   return "ottomat.financial-replay@1";
 }
 
-fn capture(source: string,
+fn capture(
+  source: string,
   roots: sexpr,
   ctx: Run.Context,
   mode: string,
   budget: i64,
   compiler: string,
   resolve: fn(string) -> SDK.Descriptor,
-  call: fn(SDK.Pin,
-  SDK.Request) -> SDK.Outcome) -> Archive.Capture
+  call: fn(SDK.Pin, SDK.Request) -> SDK.Outcome
+) -> Archive.Capture
 {
   let lowered = Ott.lower(source, mode, budget, compiler, resolve);
   if ! SDK.same(lowered["status"], sx_string("ok"))
   {
-    return record < Archive.Capture >
-    {
-      result: Run.error("lowering",
-        sx_text(lowered["status"])), bytes: sx_nil(), digest: sx_nil()
+    return record<Archive.Capture>
+    { result: Run.error("lowering", sx_text(lowered["status"]))
+    , bytes : sx_nil()
+    , digest: sx_nil()
     };
   }
-  let result = Archive.capture(lowered["graph"],
+  let result = Archive.capture(
+    lowered["graph"],
     roots,
     ctx,
     mode,
     budget,
     resolve,
     call,
-    lowered["graph_digest"]);
+    lowered["graph_digest"]
+  );
   if ! SDK.same(result["result"]["status"], sx_string("ok"))
   {
     return result;
@@ -73,29 +80,33 @@ fn capture(source: string,
   G.frame(out, source);
   G.frame(out, sx_text(result["bytes"]));
   let bytes = buffer_text(out);
-  return record < Archive.Capture >
-  {
-    result: result["result"], bytes: sx_string(bytes), digest: sx_string(G.digest(bytes))
+  return record<Archive.Capture>
+  { result: result["result"]
+  , bytes : sx_string(bytes)
+  , digest: sx_string(G.digest(bytes))
   };
 }
 
 # The host approves the outer digest and supplies its current compiler identity;
 # this is not a request to fetch or load a compiler from the archive.
-fn replay(raw: string,
+fn replay(
+  raw: string,
   expected: sexpr,
   mode: string,
   budget: i64,
   compiler: string,
   resolve: fn(string) -> SDK.Descriptor,
-  call: fn(SDK.Pin,
-  SDK.Request) -> SDK.Outcome) -> Run.Result
+  call: fn(SDK.Pin, SDK.Request) -> SDK.Outcome
+) -> Run.Result
 {
   if text_len(raw) < 1 || text_len(raw) > Archive.max_archive_bytes() + 4600
   {
     return Run.error("archive_size", "");
   }
-  if ! SDK.valid_digest(expected) || ! SDK.same(expected,
-    sx_string(G.digest(raw)))
+  if ! SDK.valid_digest(expected) || ! SDK.same(
+    expected,
+    sx_string(G.digest(raw))
+  )
   {
     return Run.error("archive_digest", "");
   }
@@ -104,33 +115,40 @@ fn replay(raw: string,
   let lowering = Archive.take(raw, archived_compiler["next"], 64);
   let source = Archive.take(raw, lowering["next"], 4096);
   let native = Archive.take(raw, source["next"], Archive.max_archive_bytes());
-  if native["next"] != text_len(raw) || ! SDK.same(version["value"],
-    sx_string(archive_version())) || ! SDK.same(lowering["value"],
-    sx_string(Ott.identity()))
+  if native["next"] != text_len(raw) || ! SDK.same(
+    version["value"],
+    sx_string(archive_version())
+  ) || ! SDK.same(lowering["value"], sx_string(Ott.identity()))
   {
     return Run.error("archive_format", "");
   }
-  if ! Ott.compiler_id(compiler) || ! SDK.same(archived_compiler["value"],
-    sx_string(compiler))
+  if ! Ott.compiler_id(compiler) || ! SDK.same(
+    archived_compiler["value"],
+    sx_string(compiler)
+  )
   {
     return Run.error("compiler_identity", "");
   }
-  let lowered = Ott.lower(sx_text(source["value"]),
+  let lowered = Ott.lower(
+    sx_text(source["value"]),
     mode,
     budget,
     compiler,
-    resolve);
+    resolve
+  );
   if ! SDK.same(lowered["status"], sx_string("ok"))
   {
     return Run.error("lowering", sx_text(lowered["status"]));
   }
   let bundle = sx_text(native["value"]);
   # The approved outer digest has already authenticated the exact inner bytes.
-  return Archive.replay(lowered["graph"],
+  return Archive.replay(
+    lowered["graph"],
     bundle,
     sx_string(G.digest(bundle)),
     mode,
     budget,
     resolve,
-    call);
+    call
+  );
 }

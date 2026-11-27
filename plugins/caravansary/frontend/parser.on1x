@@ -19,10 +19,10 @@ fn scalar(input: Tokens.Stream, at: i64, out: buffer) ->(sexpr, string)
       return (sx_nil(), Tokens.error(input, at, "unpaired Unicode surrogate"));
     }
     buffer_append(out, raw);
-    return (sx_cons(sx_symbol("text"),
-      sx_cons(sx_string(decoded),
-      sx_nil())),
-      "");
+    return (
+      sx_cons(sx_symbol("text"), sx_cons(sx_string(decoded), sx_nil())),
+      ""
+    );
   }
   if ! Text.digit(text_byte(raw, 0))
   {
@@ -30,10 +30,10 @@ fn scalar(input: Tokens.Stream, at: i64, out: buffer) ->(sexpr, string)
   }
   if text_len(raw) > 1 && text_byte(raw, 0) == 48
   {
-    return (sx_nil(),
-      Tokens.error(input,
-      at,
-      "integer cannot have leading zeros"));
+    return (
+      sx_nil(),
+      Tokens.error(input, at, "integer cannot have leading zeros")
+    );
   }
   if text_len(raw) > 4300
   {
@@ -77,12 +77,11 @@ fn value(input: Tokens.Stream, at: i64, out: buffer) ->(sexpr, i64, string)
   return (sx_cons(sx_symbol("array"), items), i + 1, "");
 }
 
-fn statements(input: Tokens.Stream,
-  start: i64,
-  role: string,
-  out: buffer) ->(sexpr,
+fn statements(input: Tokens.Stream, start: i64, role: string, out: buffer) ->(
+  sexpr,
   i64,
-  string)
+  string
+)
 {
   var context = role;
   if role == "booking" || role == "agoda"
@@ -106,12 +105,15 @@ fn statements(input: Tokens.Stream,
     let key = Tokens.token(input, i);
     if Schema.has(values, key)
     {
-      return (sx_nil(),
+      return (
+        sx_nil(),
         i,
-        Tokens.error(input,
-        i,
-        text_concat("duplicate field or block in ",
-        context)));
+        Tokens.error(
+          input,
+          i,
+          text_concat("duplicate field or block in ", context)
+        )
+      );
     }
     var shape = Schema.field_kind(role, key);
     if shape == ""
@@ -120,32 +122,42 @@ fn statements(input: Tokens.Stream,
     }
     if shape == ""
     {
-      return (sx_nil(),
+      return (
+        sx_nil(),
         i,
-        Tokens.error(input,
-        i,
-        text_concat("unknown field or block in ",
-        context)));
+        Tokens.error(
+          input,
+          i,
+          text_concat("unknown field or block in ", context)
+        )
+      );
     }
     if Market.named(role)
     {
       if named_count == 64
       {
-        return (sx_nil(),
+        return (
+          sx_nil(),
           i,
-          Tokens.error(input,
-          i,
-          text_concat(context,
-          " exceeds 64 declarations")));
+          Tokens.error(
+            input,
+            i,
+            text_concat(context, " exceeds 64 declarations")
+          )
+        );
       }
       named_count = named_count + 1;
       if ! Market.identifier(key, false)
       {
-        return (sx_nil(),
+        return (
+          sx_nil(),
           i,
-          Tokens.error(input,
-          i,
-          "expected a named block identifier of at most 64 bytes"));
+          Tokens.error(
+            input,
+            i,
+            "expected a named block identifier of at most 64 bytes"
+          )
+        );
       }
       if role == "modules"
       {
@@ -188,11 +200,11 @@ fn statements(input: Tokens.Stream,
       }
       if shape == "transform" || shape == "pure"
       {
-        let(program,
-          after,
-          err) = Transform.declarations(input,
+        let(program, after, err) = Transform.declarations(
+          input,
           i + 2,
-          shape == "pure");
+          shape == "pure"
+        );
         if err != ""
         {
           return (sx_nil(), after, err);
@@ -304,10 +316,10 @@ fn parse_market_script(source: buffer) ->(string, string)
 }
 
 # Explicit pure invocation; a declaration is not an automatic workflow step.
-fn call_market_function(source: buffer,
-  name: string,
-  arguments_json: string) ->(string,
-  string)
+fn call_market_function(source: buffer, name: string, arguments_json: string) ->(
+  string,
+  string
+)
 {
   let(_, linked, err) = parse(source, "market");
   if err != ""

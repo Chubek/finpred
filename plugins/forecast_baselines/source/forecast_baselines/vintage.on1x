@@ -6,23 +6,32 @@ import forecast_baselines.model as Model;
 import sdk.callable as SDK;
 import std.String as Str;
 record Entry
-{
-  parent: sexpr, snapshot: sexpr
+{ parent  : sexpr
+, snapshot: sexpr
 }
 
 record Window
-{
-  first: i64, second: i64, third: i64
+{ first : i64
+, second: i64
+, third : i64
 }
 
 record Row
-{
-  month: i64, published: i64, value: i64, flag: sexpr, updated: sexpr, visible: sexpr, parent: sexpr, conflict: bool
+{ month    : i64
+, published: i64
+, value    : i64
+, flag     : sexpr
+, updated  : sexpr
+, visible  : sexpr
+, parent   : sexpr
+, conflict : bool
 }
 
 record Resolved
-{
-  status: i64, first: Row, second: Row, third: Row
+{ status: i64
+, first : Row
+, second: Row
+, third : Row
 }
 
 fn max_catalog() -> i64
@@ -37,17 +46,25 @@ fn policy() -> string
 
 fn empty(month: i64) -> Row
 {
-  return record < Row >
-  {
-    month: month, published: - 1, value: - 1, flag: sx_nil(), updated: sx_nil(), visible: sx_nil(), parent: sx_nil(), conflict: false
+  return record<Row>
+  { month    : month
+  , published: - 1
+  , value    : - 1
+  , flag     : sx_nil()
+  , updated  : sx_nil()
+  , visible  : sx_nil()
+  , parent   : sx_nil()
+  , conflict : false
   };
 }
 
 fn failure(status: i64) -> Resolved
 {
-  return record < Resolved >
-  {
-    status: status, first: empty(- 1), second: empty(- 1), third: empty(- 1)
+  return record<Resolved>
+  { status: status
+  , first : empty(- 1)
+  , second: empty(- 1)
+  , third : empty(- 1)
   };
 }
 
@@ -95,17 +112,25 @@ fn choose(old: Row, incoming: Row) -> Row
   }
   # Compare normalized provider time, not its spelling. If representations of
   # the same release disagree, neither capture's arrival order can settle it.
-  let conflict = old["conflict"] || old["value"] != incoming["value"] || ! SDK.same(old["flag"],
-    incoming["flag"]);
+  let conflict = old["conflict"] || old["value"] != incoming["value"] || ! SDK.same(
+    old["flag"],
+    incoming["flag"]
+  );
   var selected = old;
   # Iteration is strictly by ascending digest; equal visibility keeps old.
   if Str.compare(sx_text(incoming["visible"]), sx_text(old["visible"])) < 0
   {
     selected = incoming;
   }
-  return record < Row >
-  {
-    month: selected["month"], published: selected["published"], value: selected["value"], flag: selected["flag"], updated: selected["updated"], visible: selected["visible"], parent: selected["parent"], conflict: conflict
+  return record<Row>
+  { month    : selected["month"]
+  , published: selected["published"]
+  , value    : selected["value"]
+  , flag     : selected["flag"]
+  , updated  : selected["updated"]
+  , visible  : selected["visible"]
+  , parent   : selected["parent"]
+  , conflict : conflict
   };
 }
 
@@ -113,19 +138,23 @@ fn choose(old: Row, incoming: Row) -> Row
 # catalog commits to all members in strictly ascending digest order. The empty
 # catalog is valid; its identity must also come from the host.
 # Status: 1 invalid input/cutoff, 2 invalid evidence or catalog, 3 ambiguity.
-fn resolve(cutoff: string,
+fn resolve(
+  cutoff: string,
   window: Window,
   expected: string,
   count: i64,
-  entry_at: fn(i64) -> Entry) -> Resolved
+  entry_at: fn(i64) -> Entry
+) -> Resolved
 {
   if ! Date.utc_timestamp(cutoff) || count < 0 || count > max_catalog() || ! Guest.digest(expected)
   {
     return failure(1);
   }
   let catalog = buffer_new();
-  buffer_append(catalog,
-    "{\"kind\":\"analysis.guest-nights-vintage-catalog\",\"version\":1,\"snapshots\":[");
+  buffer_append(
+    catalog,
+    "{\"kind\":\"analysis.guest-nights-vintage-catalog\",\"version\":1,\"snapshots\":["
+  );
   var prev = "";
   var first = empty(window["first"]);
   var second = empty(window["second"]);
@@ -134,9 +163,10 @@ fn resolve(cutoff: string,
   {
     let entry = entry_at(i);
     let parent = sx_text(entry["parent"]);
-    if ! SDK.atom(entry["snapshot"],
-      Guest.max_bytes()) || ! Guest.digest(parent) || Str.compare(prev,
-      parent) >= 0
+    if ! SDK.atom(
+      entry["snapshot"],
+      Guest.max_bytes()
+    ) || ! Guest.digest(parent) || Str.compare(prev, parent) >= 0
     {
       return failure(2);
     }
@@ -148,9 +178,11 @@ fn resolve(cutoff: string,
     buffer_append(catalog, "\"$parent\"");
     # Validate at the clock's ceiling to distinguish invalid future entries
     # from valid future entries. That ceiling is never a visibility cutoff.
-    let projection = Guest.project(sx_text(entry["snapshot"]),
+    let projection = Guest.project(
+      sx_text(entry["snapshot"]),
       parent,
-      "2399-12-31T23:59:59Z");
+      "2399-12-31T23:59:59Z"
+    );
     if projection["status"] != 0
     {
       return failure(2);
@@ -160,11 +192,7 @@ fn resolve(cutoff: string,
     let prefix = "{\"kind\":\"analysis.guest-nights-monthly\",\"version\":1,\"unit\":\"guest_nights\",\"currency\":null,\"pricing_input\":false,\"source_kind\":\"dragnet.eurostat-accommodation-nights@1\",\"source_series\":\"tour_occ_nim\",\"geography\":\"EU27_2020\",\"activity\":\"I551-I553\",\"residence\":\"TOTAL\"";
     let(a, state) = Guest.quoted(bytes, text_len(prefix), ",\"state\":\"", 9);
     let(b, raw_parent) = Guest.quoted(bytes, a, ",\"parent\":\"", 71);
-    let(c,
-      updated) = Guest.quoted(bytes,
-      b,
-      ",\"provider_updated_at\":\"",
-      24);
+    let(c, updated) = Guest.quoted(bytes, b, ",\"provider_updated_at\":\"", 24);
     let(d, observed) = Guest.quoted(bytes, c, ",\"observed_at\":\"", 20);
     let(e, received) = Guest.quoted(bytes, d, ",\"received_at\":\"", 20);
     let(f, ingested) = Guest.quoted(bytes, e, ",\"ingested_at\":\"", 20);
@@ -172,9 +200,11 @@ fn resolve(cutoff: string,
     let(h, ceiling) = Guest.quoted(bytes, g, ",\"cutoff\":\"", 20);
     var at = Guest.after(bytes, h, ",\"observations\":[");
     let published = Guest.provider_clock(updated);
-    if Guest.after(bytes,
+    if Guest.after(
+      bytes,
       0,
-      prefix) < 0 || at < 0 || published < 0 || raw_parent != parent
+      prefix
+    ) < 0 || at < 0 || published < 0 || raw_parent != parent
     {
       return failure(2);
     }
@@ -185,13 +215,12 @@ fn resolve(cutoff: string,
       {
         let(k, month_name) = Guest.quoted(bytes, at, "{\"period\":\"", 7);
         let(l, presence) = Guest.quoted(bytes, k, ",\"state\":\"", 9);
-        let(m,
-          value) = Guest.token(bytes,
-          Guest.after(bytes,
-          l,
-          ",\"nights\":"),
+        let(m, value) = Guest.token(
+          bytes,
+          Guest.after(bytes, l, ",\"nights\":"),
           44,
-          12);
+          12
+        );
         let flag_at = Guest.after(bytes, m, ",\"provider_flag\":");
         var n = Guest.after(bytes, flag_at, "null");
         if n < 0
@@ -206,10 +235,15 @@ fn resolve(cutoff: string,
           return failure(2);
         }
         let flag = text_slice(bytes, flag_at, n);
-        let row = record < Row >
-        {
-          month: month, published: published, value: Guest.nat(value,
-            12), flag: sx_string(flag), updated: sx_string(updated), visible: sx_string(visible), parent: entry["parent"], conflict: false
+        let row = record<Row>
+        { month    : month
+        , published: published
+        , value    : Guest.nat(value, 12)
+        , flag     : sx_string(flag)
+        , updated  : sx_string(updated)
+        , visible  : sx_string(visible)
+        , parent   : entry["parent"]
+        , conflict : false
         };
         first = choose(first, row);
         second = choose(second, row);
@@ -236,8 +270,10 @@ fn resolve(cutoff: string,
   {
     return failure(3);
   }
-  return record < Resolved >
-  {
-    status: 0, first: first, second: second, third: third
+  return record<Resolved>
+  { status: 0
+  , first : first
+  , second: second
+  , third : third
   };
 }

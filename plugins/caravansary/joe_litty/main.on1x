@@ -30,12 +30,16 @@ fn algorithm(policy: sexpr, name: string) -> sexpr
 fn prediction(raw: string, selection: string, instant: string) -> sexpr
 {
   let input = Json.parse_at(raw, "Joe Litty Rooms pricing input: ");
-  Inputs.object_fields(input,
+  Inputs.object_fields(
+    input,
     "kind algorithm policy comparables",
     "",
-    "Joe Litty Rooms pricing input");
-  if Json.text(Json.field(input,
-    "kind")) != "caravansary.joe-litty-rooms.input@1"
+    "Joe Litty Rooms pricing input"
+  );
+  if Json.text(Json.field(
+    input,
+    "kind"
+  )) != "caravansary.joe-litty-rooms.input@1"
   {
     tool_fail("joe-litty-rooms: unsupported prediction input kind");
   }
@@ -46,22 +50,29 @@ fn prediction(raw: string, selection: string, instant: string) -> sexpr
     tool_fail("joe-litty-rooms: comparables must be an array");
   }
   let original = Json.field(input, "policy");
-  Inputs.object_fields(original,
+  Inputs.object_fields(
+    original,
     "kind subject_property_id as_of qualification scope min_properties max_age_seconds quantile_bps current_minor floor_minor ceiling_minor max_move_minor",
     "",
-    "Joe Litty Rooms pricing policy");
+    "Joe Litty Rooms pricing policy"
+  );
   let scope = Json.field(original, "scope");
-  if Json.text(Json.field(original,
-    "subject_property_id")) != "joe-litty-rooms-reference" || Json.text(Json.field(scope,
-    "currency")) != "EUR"
+  if Json.text(Json.field(
+    original,
+    "subject_property_id"
+  )) != "joe-litty-rooms-reference" || Json.text(Json.field(
+    scope,
+    "currency"
+  )) != "EUR"
   {
     tool_fail("joe-litty-rooms: policy must select joe-litty-rooms-reference and EUR");
   }
   # Validate even the operator's saved settings before applying an override.
   let stored = algorithm(original, declared);
-  ignore(Civil.timestamp(Json.text(Json.field(original,
-    "as_of")),
-    "saved pricing as_of"));
+  ignore(Civil.timestamp(
+    Json.text(Json.field(original, "as_of")),
+    "saved pricing as_of"
+  ));
   var effective = stored;
   var name = declared;
   if selection != ""
@@ -71,10 +82,11 @@ fn prediction(raw: string, selection: string, instant: string) -> sexpr
   }
   if instant != ""
   {
-    effective = Json.replace(effective,
+    effective = Json.replace(
+      effective,
       "as_of",
-      sx_string(Civil.utc_text(Civil.timestamp(instant,
-      "--as-of"))));
+      sx_string(Civil.utc_text(Civil.timestamp(instant, "--as-of")))
+    );
   }
   let report = Price.position(comparables, effective);
   let reason = Json.get(report, "reason");
@@ -82,16 +94,18 @@ fn prediction(raw: string, selection: string, instant: string) -> sexpr
   {
     tool_fail("joe-litty-rooms: invalid pricing policy (check scope and guardrails)");
   }
-  var fields = add("kind",
+  var fields = add(
+    "kind",
     sx_string("caravansary.joe-litty-rooms.prediction@1"),
-    sx_nil());
+    sx_nil()
+  );
   fields = add("algorithm", sx_string(name), fields);
-  fields = add("effective_policy_sha256",
+  fields = add(
+    "effective_policy_sha256",
     sx_string(Json.digest(effective)),
-    fields);
-  fields = add("input_sha256",
-    sx_string(Host.caravansary_sha256(raw)),
-    fields);
+    fields
+  );
+  fields = add("input_sha256", sx_string(Host.caravansary_sha256(raw)), fields);
   fields = add("publication_allowed", Json.boolean(false), fields);
   fields = add("position", report, fields);
   let body = Json.object(fields);
@@ -146,10 +160,12 @@ fn main() -> i64
   {
     tool_fail("joe-litty-rooms: configure scheduled algorithm and clock in the input file");
   }
-  let raw = Host.caravansary_read_regular(path,
+  let raw = Host.caravansary_read_regular(
+    path,
     false,
     1048576,
-    "Joe Litty Rooms pricing input");
+    "Joe Litty Rooms pricing input"
+  );
   let result = prediction(raw, choice, clock);
   if mode == "predict"
   {

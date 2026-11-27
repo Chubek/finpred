@@ -20,10 +20,12 @@ fn main() -> i64
     }
     let capture = "dragnet.feed-capture@1\neurostat,offline_snapshot,2026-11-16T10:10:00Z,2026-11-16T10:10:01Z,terms-r1,retention-r2\n";
     let decode = "dragnet.feed-decode@1\neurostat\n$hash\n2026-11-16T11:00:00+0100\n2026-07,480000000,-\n2026-08,515000001,p\n2026-09,-,-\n";
-    IO.basis_text_io_print(Feed.normalize(capture,
+    IO.basis_text_io_print(Feed.normalize(
+      capture,
       raw,
       decode,
-      "2026-11-16T10:10:01Z"));
+      "2026-11-16T10:10:01Z"
+    ));
     return 0;
   }
   let snapshot = env("SNAPSHOT");

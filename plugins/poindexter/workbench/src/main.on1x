@@ -74,16 +74,21 @@ fn import_sheet(b: G.Book, s: string)
 {
   # Only the launcher's verified, bounded, unquoted Poindexter projection.
   let core = "view,source_run,source_recommendation,source_valuation,currency,price_basis,current_minor,recommended_minor,change_minor,reason,published";
-  let contribution = text_concat(core,
-    ",source_demand,marginal_cost_minor,expected_room_nights_milli,expected_contribution_minor_milli,scale\n");
-  let extended = text_len(s) > text_len(contribution) && text_slice(s,
+  let contribution = text_concat(
+    core,
+    ",source_demand,marginal_cost_minor,expected_room_nights_milli,expected_contribution_minor_milli,scale\n"
+  );
+  let extended = text_len(s) > text_len(contribution) && text_slice(
+    s,
     0,
-    text_len(contribution)) == contribution;
+    text_len(contribution)
+  ) == contribution;
   let header = text_concat(core, "\n");
-  if (! extended && (text_len(s) > 512 || text_len(s) <= text_len(header) || text_slice(s,
+  if (! extended && (text_len(s) > 512 || text_len(s) <= text_len(header) || text_slice(
+    s,
     0,
-    text_len(header)) != header)) || G.byte(s,
-    text_len(s) - 1) != 10
+    text_len(header)
+  ) != header)) || G.byte(s, text_len(s) - 1) != 10
   {
     tool_fail("worksheet: invalid pricing sheet");
   }
@@ -129,9 +134,11 @@ fn import_sheet(b: G.Book, s: string)
         if row == 1 && extended && col == 14
         {
           let prefix = "milli_minor:";
-          if text_len(v) <= text_len(prefix) || text_slice(v,
+          if text_len(v) <= text_len(prefix) || text_slice(
+            v,
             0,
-            text_len(prefix)) != prefix
+            text_len(prefix)
+          ) != prefix
           {
             tool_fail("worksheet: invalid expected contribution");
           }
@@ -304,8 +311,10 @@ fn terminal_title(buf: buffer, id: i64)
   let(status, title) = Tty.basis_tty_render(1, "POINDEXTER", 1, 6, - 1, false);
   if status != 0 && status != 1
   {
-    tool_fail(text_concat("worksheet: terminal title render failed: ",
-      Int.to_string(status)));
+    tool_fail(text_concat(
+      "worksheet: terminal title render failed: ",
+      Int.to_string(status)
+    ));
   }
   buffer_append(buf, title);
   buffer_append(buf, "   Worksheet");

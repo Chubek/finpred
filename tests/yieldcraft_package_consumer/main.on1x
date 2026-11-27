@@ -8,17 +8,21 @@ import std.io.TextIO as IO;
 fn main() -> i64
 {
   let scenario = IO.basis_text_io_input_all(Env.basis_command_line_get_env("YC_SCENARIO"));
-  let result = Yieldcraft.recommend(Env.basis_command_line_get_env("YC_MODE"),
+  let result = Yieldcraft.recommend(
+    Env.basis_command_line_get_env("YC_MODE"),
     scenario,
     IO.basis_text_io_input_all(Env.basis_command_line_get_env("YC_OFFERS")),
-    IO.basis_text_io_input_all(Env.basis_command_line_get_env("YC_VALUATION")));
-  IO.basis_text_io_print(JSON.recommendation(C.scenario_csv(scenario),
+    IO.basis_text_io_input_all(Env.basis_command_line_get_env("YC_VALUATION"))
+  );
+  IO.basis_text_io_print(JSON.recommendation(
+    C.scenario_csv(scenario),
     result,
     Env.basis_command_line_get_env("YC_RUN_ID"),
     Env.basis_command_line_get_env("YC_SD"),
     Env.basis_command_line_get_env("YC_OD"),
     Env.basis_command_line_get_env("YC_VD"),
     Env.basis_command_line_get_env("YC_TD"),
-    "yieldcraft.percentile@1"));
+    "yieldcraft.percentile@1"
+  ));
   return 0;
 }

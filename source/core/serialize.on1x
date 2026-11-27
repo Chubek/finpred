@@ -2,13 +2,15 @@
 # validated by the typed CSV reader or by the canonical hex digest function.
 import core.contracts as C;
 import core.format as F;
-fn opening(kind: string,
+fn opening(
+  kind: string,
   id: string,
   observed: string,
   ingested: string,
   currency: string,
   basis: string,
-  source_digest: string) -> string
+  source_digest: string
+) -> string
 {
   let b = buffer_new();
   buffer_append(b, "{\"mulib\":\"1.0\",\"kind\":");
@@ -25,23 +27,28 @@ fn opening(kind: string,
   buffer_append(b, F.q(currency));
   buffer_append(b, ",\"price_basis\":");
   buffer_append(b, F.q(basis));
-  buffer_append(b,
-    "},\"quality\":{\"status\":\"validated\",\"evidence\":\"csv_import\"}},\"data\":{");
+  buffer_append(
+    b,
+    "},\"quality\":{\"status\":\"validated\",\"evidence\":\"csv_import\"}},\"data\":{"
+  );
   return buffer_text(b);
 }
 
 fn scenario(s: C.Scenario, source_digest: string) -> string
 {
   let b = buffer_new();
-  buffer_append(b,
-    opening("hospitality.scenario",
-    text_concat("scenario:",
-    F.num(s["id"])),
-    sx_text(s["observed_at"]),
-    sx_text(s["ingested_at"]),
-    sx_text(s["currency"]),
-    "whole_stay",
-    source_digest));
+  buffer_append(
+    b,
+    opening(
+      "hospitality.scenario",
+      text_concat("scenario:", F.num(s["id"])),
+      sx_text(s["observed_at"]),
+      sx_text(s["ingested_at"]),
+      sx_text(s["currency"]),
+      "whole_stay",
+      source_digest
+    )
+  );
   buffer_append(b, "\"decision_at\":");
   buffer_append(b, F.q(sx_text(s["decision_at"])));
   buffer_append(b, ",\"arrival\":");
@@ -73,15 +80,18 @@ fn scenario(s: C.Scenario, source_digest: string) -> string
 fn valuation(v: C.Valuation, source_digest: string) -> string
 {
   let b = buffer_new();
-  buffer_append(b,
-    opening("pricing.valuation",
-    text_concat("valuation:",
-    F.num(v["id"])),
-    sx_text(v["observed_at"]),
-    sx_text(v["ingested_at"]),
-    sx_text(v["currency"]),
-    "room_night",
-    source_digest));
+  buffer_append(
+    b,
+    opening(
+      "pricing.valuation",
+      text_concat("valuation:", F.num(v["id"])),
+      sx_text(v["observed_at"]),
+      sx_text(v["ingested_at"]),
+      sx_text(v["currency"]),
+      "room_night",
+      source_digest
+    )
+  );
   buffer_append(b, "\"current_cents\":");
   buffer_append(b, F.num(v["current_cents"]));
   buffer_append(b, ",\"floor_cents\":");
@@ -99,17 +109,24 @@ fn valuation(v: C.Valuation, source_digest: string) -> string
 fn offer(o: C.Offer, source_digest: string) -> string
 {
   let b = buffer_new();
-  buffer_append(b,
-    opening("hospitality.offer",
-    text_concat(text_concat(text_concat("property:",
-    F.num(o["property_id"])),
-    ":room:"),
-    F.num(o["room_id"])),
-    sx_text(o["observed_at"]),
-    sx_text(o["ingested_at"]),
-    sx_text(o["currency"]),
-    "whole_stay",
-    source_digest));
+  buffer_append(
+    b,
+    opening(
+      "hospitality.offer",
+      text_concat(
+        text_concat(
+          text_concat("property:", F.num(o["property_id"])),
+          ":room:"
+        ),
+        F.num(o["room_id"])
+      ),
+      sx_text(o["observed_at"]),
+      sx_text(o["ingested_at"]),
+      sx_text(o["currency"]),
+      "whole_stay",
+      source_digest
+    )
+  );
   buffer_append(b, "\"arrival\":");
   buffer_append(b, F.q(sx_text(o["arrival"])));
   buffer_append(b, ",\"departure\":");
@@ -132,18 +149,22 @@ fn offer(o: C.Offer, source_digest: string) -> string
   return buffer_text(b);
 }
 
-fn recommendation(s: C.Scenario,
+fn recommendation(
+  s: C.Scenario,
   r: C.Recommendation,
   run_id: string,
   scenario_digest: string,
   offers_digest: string,
   valuation_digest: string,
   strategy_digest: string,
-  strategy: string) -> string
+  strategy: string
+) -> string
 {
   let b = buffer_new();
-  buffer_append(b,
-    "{\"mulib\":\"1.0\",\"kind\":\"pricing.recommendation\",\"schema_version\":\"1.0\",\"id\":");
+  buffer_append(
+    b,
+    "{\"mulib\":\"1.0\",\"kind\":\"pricing.recommendation\",\"schema_version\":\"1.0\",\"id\":"
+  );
   buffer_append(b, F.q(text_concat("recommendation:", run_id)));
   buffer_append(b, ",\"metadata\":{\"provenance\":{\"source_artifacts\":[");
   buffer_append(b, F.q(text_concat("blake3:", scenario_digest)));
@@ -159,8 +180,10 @@ fn recommendation(s: C.Scenario,
   buffer_append(b, F.q(sx_text(s["decision_at"])));
   buffer_append(b, ",\"ingested_at\":");
   buffer_append(b, F.q(sx_text(s["decision_at"])));
-  buffer_append(b,
-    "},\"units\":{\"currency\":\"EUR\",\"price_basis\":\"room_night\"},\"quality\":{\"status\":\"validated\",\"evidence\":\"scenario_comparables\"}},\"data\":{");
+  buffer_append(
+    b,
+    "},\"units\":{\"currency\":\"EUR\",\"price_basis\":\"room_night\"},\"quality\":{\"status\":\"validated\",\"evidence\":\"scenario_comparables\"}},\"data\":{"
+  );
   buffer_append(b, "\"price_minor\":");
   buffer_append(b, F.num(r["recommended_cents"]));
   buffer_append(b, ",\"intended_percentile_bps\":");

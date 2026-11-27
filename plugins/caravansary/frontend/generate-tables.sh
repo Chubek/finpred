@@ -25,7 +25,7 @@ perl "$mulib/on1x/third_party/libstone/cornerstone/LLSynth/scripts/llsynth.pl" \
   -o "$work/parser.py" "$here/CaravanScript.llsynth"
 python3 "$mulib/on1x/stdlib/llsynth/pack_tables.py" "$work/parser.py" >"$work/tables.on1x"
 cp "$root/.on1xfmt" "$work/.on1xfmt"
-"$on1xc" fmt "$work/tables.on1x" --inplace
+python3 "$root/bin/format-on1x.py" --on1xc "$on1xc" "$work/tables.on1x"
 if [ "$mode" = --check ]; then
   cmp "$work/tables.on1x" "$here/tables.on1x"
 else

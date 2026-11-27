@@ -18,10 +18,7 @@ fn qualify(namespace: string, name: string) -> string
   return text_concat(namespace, text_concat(".", name));
 }
 
-fn link_expression(ast: sexpr,
-  namespace: string,
-  remaining: i64) ->(sexpr,
-  i64)
+fn link_expression(ast: sexpr, namespace: string, remaining: i64) ->(sexpr, i64)
 {
   if remaining < 1
   {
@@ -51,11 +48,14 @@ fn link_expression(ast: sexpr,
       budget = left;
       args = sx_tail(args);
     }
-    return (Transform.triple(tag,
-      sx_string(qualify(namespace,
-      sx_text(name))),
-      S.sexpr_reverse(output)),
-      budget);
+    return (
+      Transform.triple(
+        tag,
+        sx_string(qualify(namespace, sx_text(name))),
+        S.sexpr_reverse(output)
+      ),
+      budget
+    );
   }
   let(left, budget) = link_expression(child, namespace, remaining - 1);
   if budget < 0
@@ -66,11 +66,11 @@ fn link_expression(ast: sexpr,
   {
     return (Transform.triple(tag, name, left), budget);
   }
-  let(right,
-    leftover) = link_expression(S.sexpr_nth(ast,
-    3),
+  let(right, leftover) = link_expression(
+    S.sexpr_nth(ast, 3),
     namespace,
-    budget);
+    budget
+  );
   if leftover < 0
   {
     return (sx_nil(), leftover);
@@ -78,14 +78,13 @@ fn link_expression(ast: sexpr,
   return (sx_cons(tag, Transform.triple(name, left, right)), leftover);
 }
 
-fn add_functions(program: sexpr,
+fn add_functions(
+  program: sexpr,
   namespace: string,
   functions: sexpr,
   count: i64,
-  budget: i64) ->(sexpr,
-  i64,
-  i64,
-  string)
+  budget: i64
+) ->(sexpr, i64, i64, string)
 {
   if sx_kind(program) == 0
   {
@@ -99,32 +98,35 @@ fn add_functions(program: sexpr,
   {
     if total == 64
     {
-      return (sx_nil(),
+      return (
+        sx_nil(),
         0,
         0,
-        "market script exceeds 64 functions across all blocks");
+        "market script exceeds 64 functions across all blocks"
+      );
     }
     let item = sx_head(rest);
     let name = qualify(namespace, sx_text(sx_head(item)));
     let declaration = Schema.payload(item);
-    let(expr,
-      left) = link_expression(S.sexpr_nth(declaration,
-      2),
+    let(expr, left) = link_expression(
+      S.sexpr_nth(declaration, 2),
       namespace,
-      remaining);
+      remaining
+    );
     if left < 0
     {
-      return (sx_nil(),
+      return (
+        sx_nil(),
         0,
         0,
-        "market script exceeds 4096 expression nodes across all blocks");
+        "market script exceeds 4096 expression nodes across all blocks"
+      );
     }
-    output = Schema.entry(output,
+    output = Schema.entry(
+      output,
       name,
-      Transform.triple(sx_head(declaration),
-      S.sexpr_nth(declaration,
-      1),
-      expr));
+      Transform.triple(sx_head(declaration), S.sexpr_nth(declaration, 1), expr)
+    );
     remaining = left;
     total = total + 1;
     rest = sx_tail(rest);
@@ -134,15 +136,13 @@ fn add_functions(program: sexpr,
 
 fn link(config: sexpr) ->(sexpr, string)
 {
-  let(root,
-    count,
-    budget,
-    root_error) = add_functions(Schema.get(config,
-    "functions"),
+  let(root, count, budget, root_error) = add_functions(
+    Schema.get(config, "functions"),
     "",
     sx_nil(),
     0,
-    4096);
+    4096
+  );
   if root_error != ""
   {
     return (sx_nil(), root_error);
@@ -154,14 +154,13 @@ fn link(config: sexpr) ->(sexpr, string)
   while sx_kind(modules) == 3
   {
     let item = sx_head(modules);
-    let(next,
-      size,
-      left,
-      err) = add_functions(Schema.payload(item),
+    let(next, size, left, err) = add_functions(
+      Schema.payload(item),
       sx_text(sx_head(item)),
       functions,
       total,
-      remaining);
+      remaining
+    );
     if err != ""
     {
       return (sx_nil(), err);
@@ -207,9 +206,11 @@ fn argument_type(value: sexpr) -> string
   return "";
 }
 
-fn evaluate(program: sexpr,
+fn evaluate(
+  program: sexpr,
   name: string,
-  arguments_json: string) -> Result < sexpr, sexpr >
+  arguments_json: string
+) -> Result < sexpr, sexpr >
 {
   let declaration = Schema.get(sx_head(program), name);
   if sx_kind(declaration) == 0
@@ -238,12 +239,15 @@ fn evaluate(program: sexpr,
     let expected = sx_text(Schema.payload(sx_head(params)));
     if argument_type(input) != expected
     {
-      return result_error(sx_string(text_concat("market function argument must be bounded ",
-        expected)));
+      return result_error(sx_string(text_concat(
+        "market function argument must be bounded ",
+        expected
+      )));
     }
-    reversed = sx_cons(wire_array(Wire.pair(wire_text("literal"),
-      input)),
-      reversed);
+    reversed = sx_cons(
+      wire_array(Wire.pair(wire_text("literal"), input)),
+      reversed
+    );
     params = sx_tail(params);
     rest = sx_tail(rest);
   }
@@ -258,27 +262,24 @@ fn evaluate(program: sexpr,
   while sx_kind(definitions) == 3
   {
     let fn_decl = sx_head(definitions);
-    table = Schema.entry(table,
-      Wire.plain(Wire.get(fn_decl,
-      "name")),
-      fn_decl);
+    table = Schema.entry(table, Wire.plain(Wire.get(fn_decl, "name")), fn_decl);
     definitions = sx_tail(definitions);
   }
-  let call = wire_array(Transform.triple(wire_text("call"),
+  let call = wire_array(Transform.triple(
+    wire_text("call"),
     wire_text(name),
-    wire_array(S.sexpr_reverse(reversed))));
-  let(result,
-    _) = Runtime.evaluate_expression(call,
+    wire_array(S.sexpr_reverse(reversed))
+  ));
+  let(result, _) = Runtime.evaluate_expression(
+    call,
     table,
     Counts.empty(),
-    10000)?;
+    10000
+  )?;
   return result_ok(result);
 }
 
-fn call(program: sexpr,
-  name: string,
-  arguments_json: string) ->(string,
-  string)
+fn call(program: sexpr, name: string, arguments_json: string) ->(string, string)
 {
   return match evaluate(program, name, arguments_json) with
   {

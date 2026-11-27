@@ -5,9 +5,19 @@ from std.http.probe import ProbeParseError;
 fn agoda_provider(operation: string) -> Provider < ProviderFacts >
 {
   let host = "agoda.example";
-  let layout = record < FixtureLayout >
-  {
-    host: host, marker: "data-selenium", card: "hotel-item", profile: "hotel-page", empty: "no-results", title: "hotel-name", alternate_title: "property-title", link: "hotel-link", address: "area-city", offer: "display-price", alternate_offer: "room-price", amenity: "amenity-name"
+  let layout = record<FixtureLayout>
+  { host           : host
+  , marker         : "data-selenium"
+  , card           : "hotel-item"
+  , profile        : "hotel-page"
+  , empty          : "no-results"
+  , title          : "hotel-name"
+  , alternate_title: "property-title"
+  , link           : "hotel-link"
+  , address        : "area-city"
+  , offer          : "display-price"
+  , alternate_offer: "room-price"
+  , amenity        : "amenity-name"
   };
   return record < Provider < ProviderFacts >>
   {

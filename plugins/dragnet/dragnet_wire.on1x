@@ -10,11 +10,13 @@ fn max_pages() -> i64
   return 80;
 }
 
-fn header(provider: string,
+fn header(
+  provider: string,
   extraction: string,
   handler: string,
   transport: string,
-  cutoff: string) -> string
+  cutoff: string
+) -> string
 {
   let p = F.q(provider);
   let x = F.q(extraction);

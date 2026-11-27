@@ -1,19 +1,27 @@
 # On1x typed execution plan. MVP has one bounded acyclic graph.
 # Effects are checked independently of any strategy configuration setting.
 record Node
-{
-  id: i64, family: sexpr, accepts: sexpr, produces: sexpr, effect: sexpr
+{ id      : i64
+, family  : sexpr
+, accepts : sexpr
+, produces: sexpr
+, effect  : sexpr
 }
 
-fn make_node(id: i64,
+fn make_node(
+  id: i64,
   family: string,
   accepts: string,
   produces: string,
-  effect: string) -> Node
+  effect: string
+) -> Node
 {
-  return record < Node >
-  {
-    id: id, family: sx_string(family), accepts: sx_string(accepts), produces: sx_string(produces), effect: sx_string(effect)
+  return record<Node>
+  { id      : id
+  , family  : sx_string(family)
+  , accepts : sx_string(accepts)
+  , produces: sx_string(produces)
+  , effect  : sx_string(effect)
   };
 }
 
@@ -25,66 +33,90 @@ fn node(id: i64) -> Node
   }
   if id == 1
   {
-    return make_node(id,
+    return make_node(
+      id,
       "source",
       "hospitality.scenario@1",
       "hospitality.offer@1",
-      "read");
+      "read"
+    );
   }
   if id == 2
   {
-    return make_node(id,
+    return make_node(
+      id,
       "transform",
       "hospitality.offer@1",
       "hospitality.offer@1",
-      "pure");
+      "pure"
+    );
   }
   if id == 3
   {
-    return make_node(id,
+    return make_node(
+      id,
       "algorithm",
       "hospitality.offer@1",
       "pricing.distribution@1",
-      "pure");
+      "pure"
+    );
   }
   if id == 4
   {
-    return make_node(id,
+    return make_node(
+      id,
       "strategy",
       "pricing.distribution@1",
       "pricing.recommendation@1",
-      "pure");
+      "pure"
+    );
   }
   if id == 5
   {
-    return make_node(id,
+    return make_node(
+      id,
       "gate",
       "pricing.recommendation@1",
       "pricing.recommendation@1",
-      "pure");
+      "pure"
+    );
   }
   if id == 6
   {
-    return make_node(id,
+    return make_node(
+      id,
       "output",
       "pricing.recommendation@1",
       "pricing.recommendation@1",
-      "record");
+      "record"
+    );
   }
   tool_fail("automat: unknown node id");
   return make_node(id, "error", "none", "none", "none");
 }
 
 record Plan
-{
-  input: Node, source: Node, transform: Node, algorithm: Node, strategy: Node, gate: Node, output: Node, profile: sexpr
+{ input    : Node
+, source   : Node
+, transform: Node
+, algorithm: Node
+, strategy : Node
+, gate     : Node
+, output   : Node
+, profile  : sexpr
 }
 
 fn fixed_plan(profile: string) -> Plan
 {
-  return record < Plan >
-  {
-    input: node(0), source: node(1), transform: node(2), algorithm: node(3), strategy: node(4), gate: node(5), output: node(6), profile: sx_string(profile)
+  return record<Plan>
+  { input    : node(0)
+  , source   : node(1)
+  , transform: node(2)
+  , algorithm: node(3)
+  , strategy : node(4)
+  , gate     : node(5)
+  , output   : node(6)
+  , profile  : sx_string(profile)
   };
 }
 
@@ -140,11 +172,13 @@ fn validate_plan(plan: Plan, mode: string) -> bool
   {
     let n = step(plan, id);
     let handler = node(id);
-    if n["id"] != id || ! text_is(n["family"],
-      sx_text(handler["family"])) || ! text_is(n["accepts"],
-      incoming) || ! text_is(n["accepts"],
-      sx_text(handler["accepts"])) || ! text_is(n["produces"],
-      sx_text(handler["produces"]))
+    if n["id"] != id || ! text_is(
+      n["family"],
+      sx_text(handler["family"])
+    ) || ! text_is(n["accepts"], incoming) || ! text_is(
+      n["accepts"],
+      sx_text(handler["accepts"])
+    ) || ! text_is(n["produces"], sx_text(handler["produces"]))
     {
       return false;
     }

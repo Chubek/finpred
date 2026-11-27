@@ -20,16 +20,13 @@ fn snapshot(slot: string, limit: i64) -> string
 
 fn main() -> i64
 {
-  let observation = Dragnet.evidence_as_of(snapshot("/proc/self/fd/3",
-    1024),
-    snapshot("/proc/self/fd/4",
-    262144),
-    snapshot("/proc/self/fd/5",
-    262144),
-    snapshot("/proc/self/fd/6",
-    16384),
-    snapshot("/proc/self/fd/7",
-    16384));
+  let observation = Dragnet.evidence_as_of(
+    snapshot("/proc/self/fd/3", 1024),
+    snapshot("/proc/self/fd/4", 262144),
+    snapshot("/proc/self/fd/5", 262144),
+    snapshot("/proc/self/fd/6", 16384),
+    snapshot("/proc/self/fd/7", 16384)
+  );
   IO.basis_text_io_print(observation);
   return 0;
 }

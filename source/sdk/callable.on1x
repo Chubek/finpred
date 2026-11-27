@@ -3,45 +3,65 @@
 import core.date as Date;
 import core.format as F;
 record Pin
-{
-  package_name: sexpr, package_version: sexpr, handler_name: sexpr, handler_version: sexpr, abi: i64, code_digest: sexpr, policy_digest: sexpr
+{ package_name   : sexpr
+, package_version: sexpr
+, handler_name   : sexpr
+, handler_version: sexpr
+, abi            : i64
+, code_digest    : sexpr
+, policy_digest  : sexpr
 }
 
 record Port
-{
-  name: sexpr, kind: sexpr, major: i64, unit: sexpr, currency: sexpr, states: i64, max_bytes: i64
+{ name     : sexpr
+, kind     : sexpr
+, major    : i64
+, unit     : sexpr
+, currency : sexpr
+, states   : i64
+, max_bytes: i64
 }
 
 record Descriptor
-{
-  enabled: bool, pin: Pin, role: sexpr, mode: sexpr, effect: sexpr, inputs: sexpr, output: Port, max_work: i64
+{ enabled : bool
+, pin     : Pin
+, role    : sexpr
+, mode    : sexpr
+, effect  : sexpr
+, inputs  : sexpr
+, output  : Port
+, max_work: i64
 }
 
 record Request
-{
-  inputs: sexpr, cutoff: sexpr, work: i64
+{ inputs: sexpr
+, cutoff: sexpr
+, work  : i64
 }
 
 # 0 success; 1 denied/unavailable; 2 pin mismatch; 3 invalid request;
 # 4 insufficient work; 5 handler failure; 6 invalid handler output.
 record Outcome
-{
-  status: i64, state: i64, bytes: sexpr
+{ status: i64
+, state : i64
+, bytes : sexpr
 }
 
 fn failure(status: i64) -> Outcome
 {
-  return record < Outcome >
-  {
-    status: status, state: 0, bytes: sx_nil()
+  return record<Outcome>
+  { status: status
+  , state : 0
+  , bytes : sx_nil()
   };
 }
 
 fn success(state: i64, bytes: string) -> Outcome
 {
-  return record < Outcome >
-  {
-    status: 0, state: state, bytes: sx_string(bytes)
+  return record<Outcome>
+  { status: 0
+  , state : state
+  , bytes : sx_string(bytes)
   };
 }
 
@@ -57,10 +77,11 @@ fn same(a: sexpr, b: sexpr) -> bool
 
 fn valid_digest(s: sexpr) -> bool
 {
-  if ! atom(s,
-    71) || text_len(sx_text(s)) != 71 || text_slice(sx_text(s),
+  if ! atom(s, 71) || text_len(sx_text(s)) != 71 || text_slice(
+    sx_text(s),
     0,
-    7) != "blake3:"
+    7
+  ) != "blake3:"
   {
     return false;
   }
@@ -77,13 +98,16 @@ fn valid_digest(s: sexpr) -> bool
 
 fn same_pin(a: Pin, b: Pin) -> bool
 {
-  return same(a["package_name"],
-    b["package_name"]) && same(a["package_version"],
-    b["package_version"]) && same(a["handler_name"],
-    b["handler_name"]) && same(a["handler_version"],
-    b["handler_version"]) && a["abi"] == b["abi"] && same(a["code_digest"],
-    b["code_digest"]) && same(a["policy_digest"],
-    b["policy_digest"]);
+  return same(a["package_name"], b["package_name"]) && same(
+    a["package_version"],
+    b["package_version"]
+  ) && same(a["handler_name"], b["handler_name"]) && same(
+    a["handler_version"],
+    b["handler_version"]
+  ) && a["abi"] == b["abi"] && same(a["code_digest"], b["code_digest"]) && same(
+    a["policy_digest"],
+    b["policy_digest"]
+  );
 }
 
 # State mask bits (and individual value states): available=1, partial=2,
@@ -99,11 +123,13 @@ fn accepts(states: i64, state: i64) -> bool
 
 fn valid_port(p: Port) -> bool
 {
-  return atom(p["name"],
-    63) && atom(p["kind"],
-    127) && p["major"] > 0 && p["major"] <= 999 && atom(p["unit"],
-    63) && atom(p["currency"],
-    31) && p["states"] > 0 && p["states"] <= 31 && p["max_bytes"] > 0 && p["max_bytes"] <= 2000000;
+  return atom(p["name"], 63) && atom(
+    p["kind"],
+    127
+  ) && p["major"] > 0 && p["major"] <= 999 && atom(p["unit"], 63) && atom(
+    p["currency"],
+    31
+  ) && p["states"] > 0 && p["states"] <= 31 && p["max_bytes"] > 0 && p["max_bytes"] <= 2000000;
 }
 
 fn connects(output: Port, input: Port) -> bool
@@ -112,10 +138,16 @@ fn connects(output: Port, input: Port) -> bool
   {
     return false;
   }
-  if ! same(output["kind"],
-    input["kind"]) || output["major"] != input["major"] || ! same(output["unit"],
-    input["unit"]) || ! same(output["currency"],
-    input["currency"]) || output["max_bytes"] > input["max_bytes"]
+  if ! same(
+    output["kind"],
+    input["kind"]
+  ) || output["major"] != input["major"] || ! same(
+    output["unit"],
+    input["unit"]
+  ) || ! same(
+    output["currency"],
+    input["currency"]
+  ) || output["max_bytes"] > input["max_bytes"]
   {
     return false;
   }
@@ -135,14 +167,25 @@ fn connects(output: Port, input: Port) -> bool
 # proper list of port_entry values in declared order (at most 16).
 fn port_entry(p: Port) -> sexpr
 {
-  return sx_cons(p["name"],
-    sx_cons(p["kind"],
-    sx_cons(sx_string(F.num(p["major"])),
-    sx_cons(p["unit"],
-    sx_cons(p["currency"],
-    sx_cons(sx_string(F.num(p["states"])),
-    sx_cons(sx_string(F.num(p["max_bytes"])),
-    sx_nil())))))));
+  return sx_cons(
+    p["name"],
+    sx_cons(
+      p["kind"],
+      sx_cons(
+        sx_string(F.num(p["major"])),
+        sx_cons(
+          p["unit"],
+          sx_cons(
+            p["currency"],
+            sx_cons(
+              sx_string(F.num(p["states"])),
+              sx_cons(sx_string(F.num(p["max_bytes"])), sx_nil())
+            )
+          )
+        )
+      )
+    )
+  );
 }
 
 fn nat(s: sexpr) -> i64
@@ -206,56 +249,74 @@ fn decode_port(entry: sexpr) -> Port
   {
     major = 0;
   }
-  return record < Port >
-  {
-    name: port_at(entry,
-      0), kind: port_at(entry,
-      1), major: major, unit: port_at(entry,
-      3), currency: port_at(entry,
-      4), states: nat(port_at(entry,
-      5)), max_bytes: nat(port_at(entry,
-      6))
+  return record<Port>
+  { name     : port_at(entry, 0)
+  , kind     : port_at(entry, 1)
+  , major    : major
+  , unit     : port_at(entry, 3)
+  , currency : port_at(entry, 4)
+  , states   : nat(port_at(entry, 5))
+  , max_bytes: nat(port_at(entry, 6))
   };
 }
 
 fn unavailable() -> Descriptor
 {
   let empty = sx_nil();
-  return record < Descriptor >
-  {
-    enabled: false, pin: record < Pin >
-    {
-      package_name: empty, package_version: empty, handler_name: empty, handler_version: empty, abi: 0, code_digest: empty, policy_digest: empty
-    }, role: empty, mode: empty, effect: empty, inputs: empty, output: decode_port(empty), max_work: 0
+  return record<Descriptor>
+  { enabled : false
+  , pin     : record<Pin>
+    { package_name   : empty
+    , package_version: empty
+    , handler_name   : empty
+    , handler_version: empty
+    , abi            : 0
+    , code_digest    : empty
+    , policy_digest  : empty
+    }
+  , role    : empty
+  , mode    : empty
+  , effect  : empty
+  , inputs  : empty
+  , output  : decode_port(empty)
+  , max_work: 0
   };
 }
 
 fn valid_descriptor(d: Descriptor, mode: string, handler: string) -> bool
 {
-  if ! d["enabled"] || (mode != "analysis" && mode != "recommendation") || ! same(d["mode"],
-    sx_string(mode)) || ! same(d["effect"],
-    sx_string("pure")) || ! valid_port(d["output"]) || d["max_work"] < 1 || d["max_work"] > 1000000
+  if ! d["enabled"] || (mode != "analysis" && mode != "recommendation") || ! same(
+    d["mode"],
+    sx_string(mode)
+  ) || ! same(
+    d["effect"],
+    sx_string("pure")
+  ) || ! valid_port(d["output"]) || d["max_work"] < 1 || d["max_work"] > 1000000
   {
     return false;
   }
   let role = d["role"];
-  if ! same(role,
-    sx_string("Source")) && ! same(role,
-    sx_string("Transformer")) && ! same(role,
-    sx_string("Algorithm")) && ! same(role,
-    sx_string("Model")) && ! same(role,
-    sx_string("Strategy")) && ! same(role,
-    sx_string("View"))
+  if ! same(role, sx_string("Source")) && ! same(
+    role,
+    sx_string("Transformer")
+  ) && ! same(role, sx_string("Algorithm")) && ! same(
+    role,
+    sx_string("Model")
+  ) && ! same(role, sx_string("Strategy")) && ! same(role, sx_string("View"))
   {
     return false;
   }
   let p = d["pin"];
-  if p["abi"] != 1 || ! atom(p["package_name"],
-    127) || ! atom(p["package_version"],
-    31) || ! atom(p["handler_name"],
-    127) || ! atom(p["handler_version"],
-    31) || ! same(p["handler_name"],
-    sx_string(handler)) || ! valid_digest(p["code_digest"]) || ! valid_digest(p["policy_digest"])
+  if p["abi"] != 1 || ! atom(p["package_name"], 127) || ! atom(
+    p["package_version"],
+    31
+  ) || ! atom(p["handler_name"], 127) || ! atom(
+    p["handler_version"],
+    31
+  ) || ! same(
+    p["handler_name"],
+    sx_string(handler)
+  ) || ! valid_digest(p["code_digest"]) || ! valid_digest(p["policy_digest"])
   {
     return false;
   }
@@ -285,9 +346,11 @@ fn valid_descriptor(d: Descriptor, mode: string, handler: string) -> bool
   return sx_kind(rest) == 0;
 }
 
-fn resolve(handler: string,
+fn resolve(
+  handler: string,
   mode: string,
-  lookup: fn(string) -> Descriptor) -> Descriptor
+  lookup: fn(string) -> Descriptor
+) -> Descriptor
 {
   if text_len(handler) < 1 || text_len(handler) > 127
   {
@@ -328,10 +391,10 @@ fn valid_value(p: Port, state: i64, bytes: sexpr) -> bool
 # available/partial port, and request inputs still must be nonempty.
 fn valid_output(p: Port, state: i64, bytes: sexpr) -> bool
 {
-  return valid_value(p,
-    state,
-    bytes) || (state == 4 && accepts(p["states"],
-    state) && sx_kind(bytes) == 2 && sx_text(bytes) == "");
+  return valid_value(p, state, bytes) || (state == 4 && accepts(
+    p["states"],
+    state
+  ) && sx_kind(bytes) == 2 && sx_text(bytes) == "");
 }
 
 fn valid_inputs(ports: sexpr, values: sexpr) -> bool
@@ -346,9 +409,11 @@ fn valid_inputs(ports: sexpr, values: sexpr) -> bool
       return false;
     }
     let rest = sx_tail(v);
-    if sx_kind(rest) != 3 || sx_kind(sx_tail(rest)) != 0 || ! valid_value(decode_port(sx_head(ps)),
+    if sx_kind(rest) != 3 || sx_kind(sx_tail(rest)) != 0 || ! valid_value(
+      decode_port(sx_head(ps)),
       value_state(v),
-      value_bytes(v))
+      value_bytes(v)
+    )
     {
       return false;
     }
@@ -358,12 +423,13 @@ fn valid_inputs(ports: sexpr, values: sexpr) -> bool
   return sx_kind(ps) == 0 && sx_kind(vs) == 0;
 }
 
-fn invoke(pin: Pin,
+fn invoke(
+  pin: Pin,
   mode: string,
   request: Request,
   lookup: fn(string) -> Descriptor,
-  call: fn(Pin,
-  Request) -> Outcome) -> Outcome
+  call: fn(Pin, Request) -> Outcome
+) -> Outcome
 {
   if ! atom(pin["handler_name"], 127)
   {
@@ -382,9 +448,13 @@ fn invoke(pin: Pin,
   {
     return failure(4);
   }
-  if ! atom(request["cutoff"],
-    20) || ! Date.utc_timestamp(sx_text(request["cutoff"])) || ! valid_inputs(d["inputs"],
-    request["inputs"])
+  if ! atom(
+    request["cutoff"],
+    20
+  ) || ! Date.utc_timestamp(sx_text(request["cutoff"])) || ! valid_inputs(
+    d["inputs"],
+    request["inputs"]
+  )
   {
     return failure(3);
   }

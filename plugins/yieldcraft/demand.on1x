@@ -7,8 +7,9 @@ import store.artifacts as Store;
 import std.collections.Array as A;
 import std.String as Str;
 record Fit
-{
-  id: sexpr, demand: sexpr, evidence: sexpr
+{ id      : sexpr
+, demand  : sexpr
+, evidence: sexpr
 }
 
 fn bytes_limit() -> i64
@@ -72,19 +73,20 @@ fn estimate(scenario_raw: string, raw: string) -> Fit
     tool_fail("demand fit: insufficient_demand_evidence; requires 2..64 distinct price arms");
   }
   CSV.header(CSV.line(raw, 0), "pricing.first-party-exposure@1");
-  CSV.header(CSV.line(raw,
-    1),
-    "scenario_blake3,property,product,cohort,currency,price_basis,assignment,started_at,ended_at,finalized_at,ingested_at,target_exposures,available_room_nights,marginal_cost_minor");
+  CSV.header(
+    CSV.line(raw, 1),
+    "scenario_blake3,property,product,cohort,currency,price_basis,assignment,started_at,ended_at,finalized_at,ingested_at,target_exposures,available_room_nights,marginal_cost_minor"
+  );
   let meta = CSV.line(raw, 2);
   CSV.require_width(meta, 14);
   let sd = Store.digest(scenario_raw);
   let property = label(CSV.field(meta, 1));
   let product = label(CSV.field(meta, 2));
   let cohort = label(CSV.field(meta, 3));
-  if CSV.field(meta,
-    0) != sd || CSV.field(meta,
-    4) != sx_text(s["currency"]) || CSV.field(meta,
-    5) != "room_night"
+  if CSV.field(meta, 0) != sd || CSV.field(
+    meta,
+    4
+  ) != sx_text(s["currency"]) || CSV.field(meta, 5) != "room_night"
   {
     tool_fail("demand fit: scenario, currency or price basis mismatch");
   }
@@ -97,11 +99,13 @@ fn estimate(scenario_raw: string, raw: string) -> Fit
   let finalized = CSV.field(meta, 9);
   let ingested = CSV.field(meta, 10);
   let cutoff = sx_text(s["decision_at"]);
-  if ! utc(started) || ! utc(ended) || ! utc(finalized) || ! utc(ingested) || Str.compare(started,
-    ended) >= 0 || Str.compare(ended,
-    finalized) > 0 || Str.compare(finalized,
-    ingested) > 0 || Str.compare(ingested,
-    cutoff) > 0
+  if ! utc(started) || ! utc(ended) || ! utc(finalized) || ! utc(ingested) || Str.compare(
+    started,
+    ended
+  ) >= 0 || Str.compare(ended, finalized) > 0 || Str.compare(
+    finalized,
+    ingested
+  ) > 0 || Str.compare(ingested, cutoff) > 0
   {
     tool_fail("demand fit: invalid or future-dated cohort clocks");
   }
@@ -118,9 +122,10 @@ fn estimate(scenario_raw: string, raw: string) -> Fit
   {
     tool_fail("demand fit: insufficient_demand_evidence; target inventory must cover every projected exposure");
   }
-  CSV.header(CSV.line(raw,
-    3),
-    "price_minor,assigned,kept,cancelled,nonpurchase,unavailable,unresolved");
+  CSV.header(
+    CSV.line(raw, 3),
+    "price_minor,assigned,kept,cancelled,nonpurchase,unavailable,unresolved"
+  );
   let count = n - 4;
   let prices = A.basis_array_array(count, 0);
   let numerator = A.basis_array_array(count, 0);
@@ -181,18 +186,24 @@ fn estimate(scenario_raw: string, raw: string) -> Fit
     let k = F.num(kept);
     let c = F.num(cancelled);
     let b = F.num(nonpurchase);
-    buffer_append(observed,
-      "{\"price_minor\":$p,\"assigned\":$a,\"kept\":$k,\"cancelled\":$c,\"nonpurchase\":$b}");
+    buffer_append(
+      observed,
+      "{\"price_minor\":$p,\"assigned\":$a,\"kept\":$k,\"cancelled\":$c,\"nonpurchase\":$b}"
+    );
   }
   let en = Store.digest(raw);
   let model = policy();
   let id = Store.digest("yieldcraft-demand-estimation@1\n$model\n$sd\n$en\n");
   let cost_text = F.num(cost);
   let out = buffer_new();
-  buffer_append(out,
-    "pricing.demand@1\nscenario_blake3,observed_at,ingested_at,currency,price_basis,method,evidence_blake3,marginal_cost_minor\n");
-  buffer_append(out,
-    "$sd,$finalized,$ingested,EUR,room_night,first_party_price_experiment,$id,$cost_text\nprice_minor,expected_room_nights_milli\n");
+  buffer_append(
+    out,
+    "pricing.demand@1\nscenario_blake3,observed_at,ingested_at,currency,price_basis,method,evidence_blake3,marginal_cost_minor\n"
+  );
+  buffer_append(
+    out,
+    "$sd,$finalized,$ingested,EUR,room_night,first_party_price_experiment,$id,$cost_text\nprice_minor,expected_room_nights_milli\n"
+  );
   let fitted = buffer_new();
   var start = 0;
   var first = 0;
@@ -218,8 +229,10 @@ fn estimate(scenario_raw: string, raw: string) -> Fit
     let k = F.num(successes);
     let a = F.num(trials);
     let d = F.num(demand);
-    buffer_append(fitted,
-      "{\"arm_start\":$from,\"arm_end_exclusive\":$to,\"kept\":$k,\"assigned\":$a,\"expected_room_nights_milli\":$d}");
+    buffer_append(
+      fitted,
+      "{\"arm_start\":$from,\"arm_end_exclusive\":$to,\"kept\":$k,\"assigned\":$a,\"expected_room_nights_milli\":$d}"
+    );
     for i in start .. end
     {
       let p = F.num(A.basis_array_sub(prices, i));
@@ -242,14 +255,21 @@ fn estimate(scenario_raw: string, raw: string) -> Fit
   let arms = buffer_text(observed);
   let pools = buffer_text(fitted);
   let report = buffer_new();
-  buffer_append(report,
-    "{\"kind\":\"pricing.demand-estimation\",\"version\":1,\"id\":\"blake3:$id\",\"policy\":\"$model\",\"scenario\":\"blake3:$sd\",\"exposure\":\"blake3:$en\",\"demand\":\"blake3:$digest\",");
-  buffer_append(report,
-    "\"property\":\"$property\",\"product\":\"$product\",\"cohort\":\"$cohort\",\"started_at\":\"$started\",\"ended_at\":\"$ended\",\"finalized_at\":\"$finalized\",\"ingested_at\":\"$ingested\",\"decision_at\":\"$cutoff\",");
-  buffer_append(report,
-    "\"target_exposures\":$t,\"available_room_nights\":$avail,\"marginal_cost_minor\":$cost_text,\"arms\":[$arms],\"pools\":[$pools]}\n");
-  return record < Fit >
-  {
-    id: sx_string(id), demand: sx_string(demand), evidence: sx_string(buffer_text(report))
+  buffer_append(
+    report,
+    "{\"kind\":\"pricing.demand-estimation\",\"version\":1,\"id\":\"blake3:$id\",\"policy\":\"$model\",\"scenario\":\"blake3:$sd\",\"exposure\":\"blake3:$en\",\"demand\":\"blake3:$digest\","
+  );
+  buffer_append(
+    report,
+    "\"property\":\"$property\",\"product\":\"$product\",\"cohort\":\"$cohort\",\"started_at\":\"$started\",\"ended_at\":\"$ended\",\"finalized_at\":\"$finalized\",\"ingested_at\":\"$ingested\",\"decision_at\":\"$cutoff\","
+  );
+  buffer_append(
+    report,
+    "\"target_exposures\":$t,\"available_room_nights\":$avail,\"marginal_cost_minor\":$cost_text,\"arms\":[$arms],\"pools\":[$pools]}\n"
+  );
+  return record<Fit>
+  { id      : sx_string(id)
+  , demand  : sx_string(demand)
+  , evidence: sx_string(buffer_text(report))
   };
 }

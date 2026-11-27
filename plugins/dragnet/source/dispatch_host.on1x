@@ -65,12 +65,12 @@ fn dispatch(source: string) -> Sources.SourceOutcome
     {
       tool_fail("dragnet dispatch: unknown or denied source");
     }
-    return Sources.invoke_values(source,
+    return Sources.invoke_values(
+      source,
       "analysis",
-      inputs(binding["inputs"],
-      4,
-      9),
-      "");
+      inputs(binding["inputs"], 4, 9),
+      ""
+    );
   }
   if ! Sources.admitted(source, "analysis")
   {
@@ -88,16 +88,13 @@ fn dispatch(source: string) -> Sources.SourceOutcome
   {
     tool_fail("dragnet dispatch: unknown or denied source");
   }
-  let values = Sources.value(capture,
-    inputs(sx_tail(binding["inputs"]),
-    5,
-    7));
-  return Sources.invoke_values(source,
+  let values = Sources.value(capture, inputs(sx_tail(binding["inputs"]), 5, 7));
+  return Sources.invoke_values(
+    source,
     "analysis",
     values,
-    text_slice(as_of,
-    0,
-    20));
+    text_slice(as_of, 0, 20)
+  );
 }
 
 fn main() -> i64

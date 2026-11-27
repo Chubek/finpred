@@ -4,8 +4,10 @@ import plugins.caravansary.coverage.clock as Clock;
 import plugins.caravansary.coverage.values as J;
 import std.String as Str;
 record Order
-{
-  received: i64, ingested: i64, observed: i64, id: sexpr
+{ received: i64
+, ingested: i64
+, observed: i64
+, id      : sexpr
 }
 
 macro fail
@@ -26,10 +28,12 @@ fn member(name: string, options: string) -> bool
 }
 
 # Required and optional names are internal | delimited constant sets.
-fn fields(value: sexpr,
+fn fields(
+  value: sexpr,
   required: string,
   optional: string,
-  field: string) -> Result < bool, sexpr >
+  field: string
+) -> Result < bool, sexpr >
 {
   if ! J.is_object(value)
   {
@@ -196,10 +200,12 @@ fn taxes(v: sexpr) -> Result < bool, sexpr >
   while ! J.absent(rest)
   {
     let c = sx_head(rest);
-    fields(c,
+    fields(
+      c,
       "|inclusion|name|",
       "|amount_minor|amount_decimal|",
-      "tax/fee component")?;
+      "tax/fee component"
+    )?;
     nonempty(J.get(c, "name"), "tax/fee component name")?;
     if ! inclusion(J.get(c, "inclusion"))
     {
@@ -269,10 +275,12 @@ fn optional_text(v: sexpr, field: string) -> Result < bool, sexpr >
 
 fn offer(v: sexpr, context: sexpr) -> Result < bool, sexpr >
 {
-  fields(v,
+  fields(
+    v,
     "|allocation|availability|cancellation|currency|meal|price_basis|rate_plan|room_name|taxes_fees|",
     "|amount_minor|amount_decimal|cancellation_reason|meal_reason|rate_plan_reason|room_name_reason|provider_offer_id|provider_room_id|source_text|raw_value|raw_locale|nightly_itemized|derived_average|",
-    "offer")?;
+    "offer"
+  )?;
   description(v, "cancellation")?;
   description(v, "meal")?;
   description(v, "rate_plan")?;
@@ -286,11 +294,10 @@ fn offer(v: sexpr, context: sexpr) -> Result < bool, sexpr >
   {
     return fail!("raw_value and raw_locale must be supplied together");
   }
-  if ! J.same(J.get(v,
-    "allocation"),
-    J.get(J.get(context,
-    "guest_configuration"),
-    "allocation"))
+  if ! J.same(
+    J.get(v, "allocation"),
+    J.get(J.get(context, "guest_configuration"), "allocation")
+  )
   {
     return fail!("offer allocation does not match the cell");
   }
@@ -329,10 +336,12 @@ fn offer(v: sexpr, context: sexpr) -> Result < bool, sexpr >
     {
       return fail!("derived_average requires nightly_average price_basis");
     }
-    fields(derived,
+    fields(
+      derived,
       "|formula|original_total|rounding|",
       "|",
-      "derived_average")?;
+      "derived_average"
+    )?;
     nonempty(J.get(derived, "formula"), "formula")?;
     nonempty(J.get(derived, "rounding"), "rounding")?;
     let total = J.get(derived, "original_total");
@@ -344,10 +353,12 @@ fn offer(v: sexpr, context: sexpr) -> Result < bool, sexpr >
 
 fn key(record_value: sexpr) -> Result < sexpr, sexpr >
 {
-  fields(record_value,
+  fields(
+    record_value,
     "|adapter_version|cell_key|complete|extractor_version|ingested_at|kind|observation_id|offers|outcome|provider_property_id|received_at|request_context|",
     "|provider_property_id_reason|observed_at|observed_at_reason|authoritative|reason|source_url|capture_digest|capture_reference|",
-    "observation")?;
+    "observation"
+  )?;
   if J.plain(J.get(record_value, "kind")) != "caravansary.observation@1"
   {
     return fail!("expected caravansary.observation@1 kind");
@@ -367,10 +378,10 @@ fn validate(v: sexpr, row: sexpr) -> Result < Order, sexpr >
   {
     return fail!("observations cannot target an unsupported cell");
   }
-  if ! J.same(J.get(v,
-    "provider_property_id"),
-    J.get(row,
-    "provider_property_id"))
+  if ! J.same(
+    J.get(v, "provider_property_id"),
+    J.get(row, "provider_property_id")
+  )
   {
     return fail!("provider_property_id does not match the cell");
   }
@@ -464,9 +475,11 @@ fn validate(v: sexpr, row: sexpr) -> Result < Order, sexpr >
   {
     return fail!("reason is reserved for failed observations");
   }
-  return result_ok(record < Order >
-  {
-    received: received, ingested: ingested, observed: observed, id: id
+  return result_ok(record<Order>
+  { received: received
+  , ingested: ingested
+  , observed: observed
+  , id      : id
   });
 }
 

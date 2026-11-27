@@ -5,9 +5,19 @@ from std.http.probe import ProbeParseError;
 fn booking_provider(operation: string) -> Provider < ProviderFacts >
 {
   let host = "booking.example";
-  let layout = record < FixtureLayout >
-  {
-    host: host, marker: "data-testid", card: "property-card", profile: "property-page", empty: "no-properties", title: "title", alternate_title: "property-name", link: "title-link", address: "address", offer: "price-and-discounted-price", alternate_offer: "price-display", amenity: "amenity"
+  let layout = record<FixtureLayout>
+  { host           : host
+  , marker         : "data-testid"
+  , card           : "property-card"
+  , profile        : "property-page"
+  , empty          : "no-properties"
+  , title          : "title"
+  , alternate_title: "property-name"
+  , link           : "title-link"
+  , address        : "address"
+  , offer          : "price-and-discounted-price"
+  , alternate_offer: "price-display"
+  , amenity        : "amenity"
   };
   return record < Provider < ProviderFacts >>
   {

@@ -25,14 +25,12 @@ fn main() -> i64
   {
     tool_fail("feed host: invalid cutoff framing");
   }
-  let result = Feeds.normalize(snapshot("/proc/self/fd/3",
-    512),
-    snapshot("/proc/self/fd/4",
-    65536),
-    snapshot("/proc/self/fd/5",
-    4096),
-    CSV.line(cutoff,
-    0));
+  let result = Feeds.normalize(
+    snapshot("/proc/self/fd/3", 512),
+    snapshot("/proc/self/fd/4", 65536),
+    snapshot("/proc/self/fd/5", 4096),
+    CSV.line(cutoff, 0)
+  );
   IO.basis_text_io_print(result);
   return 0;
 }

@@ -42,17 +42,18 @@ fn opaque_id(value: sexpr, key: string) -> string
 
 fn provider_key(source: string, provider_id: string) -> string
 {
-  return J.render(J.array(sx_cons(sx_string(source),
-    sx_cons(sx_string(provider_id),
-    sx_nil()))));
+  return J.render(J.array(sx_cons(
+    sx_string(source),
+    sx_cons(sx_string(provider_id), sx_nil())
+  )));
 }
 
 fn candidate_id(source: string, provider_id: string) -> string
 {
-  let key = J.array(sx_cons(sx_string("caravansary.candidate-key@1"),
-    sx_cons(sx_string(source),
-    sx_cons(sx_string(provider_id),
-    sx_nil()))));
+  let key = J.array(sx_cons(
+    sx_string("caravansary.candidate-key@1"),
+    sx_cons(sx_string(source), sx_cons(sx_string(provider_id), sx_nil()))
+  ));
   return "candidate:${J.digest(key)}";
 }
 
@@ -143,21 +144,25 @@ fn corroborate(a: sexpr, b: sexpr, distance: sexpr) -> sexpr
   let address = equal_text(a, b, "address");
   let nearby = Geo.known(distance) && J.int64(distance, "distance_m") <= 100;
   let kind = equal_text(a, b, "type");
-  return J.object(pair("name_exact",
+  return J.object(pair(
+    "name_exact",
     J.boolean(name),
-    pair("address_exact",
-    J.boolean(address),
-    pair("within_100m",
-    J.boolean(nearby),
-    pair("type_exact",
-    J.boolean(kind),
-    sx_nil())))));
+    pair(
+      "address_exact",
+      J.boolean(address),
+      pair(
+        "within_100m",
+        J.boolean(nearby),
+        pair("type_exact", J.boolean(kind), sx_nil())
+      )
+    )
+  ));
 }
 
 fn possible_same(signals: sexpr) -> bool
 {
-  return sx_text(J.field(signals,
-    "name_exact")) == "true" && (sx_text(J.field(signals,
-    "address_exact")) == "true" || sx_text(J.field(signals,
-    "within_100m")) == "true");
+  return sx_text(J.field(signals, "name_exact")) == "true" && (sx_text(J.field(
+    signals,
+    "address_exact"
+  )) == "true" || sx_text(J.field(signals, "within_100m")) == "true");
 }

@@ -12,11 +12,13 @@ fn lookup(operation: string, mode: string) -> Dag.Descriptor
     return Dag.no_binding(operation, mode);
   }
   let spec = Registry.resolve(entry);
-  return Dag.host_binary(operation,
+  return Dag.host_binary(
+    operation,
     3,
     sx_text(spec["package"]),
     sx_text(sx_head(spec["inputs"])),
-    sx_text(spec["output"]));
+    sx_text(spec["output"])
+  );
 }
 
 fn call(operation: string, left: i64, right: i64) -> i64

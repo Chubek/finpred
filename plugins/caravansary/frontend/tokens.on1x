@@ -3,8 +3,10 @@ import std.llsynth.llsynth as Image;
 import frontend.tables as Tables;
 import frontend.text as Text;
 record Stream
-{
-  text: sexpr, spans: sexpr, count: i64, eof_offset: i64
+{ text      : sexpr
+, spans     : sexpr
+, count     : i64
+, eof_offset: i64
 }
 
 # The nominal record holds immutable atoms, so pack span endpoints into
@@ -20,18 +22,20 @@ fn span(input: Stream, n: i64) -> i64
 {
   let raw = sx_text(input["spans"]);
   let i = n * 3;
-  return text_byte(raw,
-    i) - 1 + 128 * (text_byte(raw,
-    i + 1) - 1) + 16384 * (text_byte(raw,
-    i + 2) - 1);
+  return text_byte(raw, i) - 1 + 128 * (text_byte(
+    raw,
+    i + 1
+  ) - 1) + 16384 * (text_byte(raw, i + 2) - 1);
 }
 
 fn stream(source: buffer) ->(Stream, string)
 {
   let spans = buffer_new();
-  let empty = record < Stream >
-  {
-    text: sx_nil(), spans: sx_nil(), count: 0, eof_offset: 0
+  let empty = record<Stream>
+  { text      : sx_nil()
+  , spans     : sx_nil()
+  , count     : 0
+  , eof_offset: 0
   };
   let length = buffer_len(source);
   if length > 1048576
@@ -41,10 +45,14 @@ fn stream(source: buffer) ->(Stream, string)
   let utf8 = Text.utf8(source);
   if utf8 != length
   {
-    return (empty,
-      Text.diagnostic(source,
-      utf8,
-      "CaravanScript source must be UTF-8 text without raw NUL"));
+    return (
+      empty,
+      Text.diagnostic(
+        source,
+        utf8,
+        "CaravanScript source must be UTF-8 text without raw NUL"
+      )
+    );
   }
   let tables = Tables.basis_llsynth_tables();
   let(status, offset) = L.recognize(tables, source);
@@ -85,22 +93,22 @@ fn stream(source: buffer) ->(Stream, string)
   var budget = 4194304;
   while pos < length && pos <= offset
   {
-    let(kind,
-      end,
-      remaining) = Image.llsynth_scan(tables,
+    let(kind, end, remaining) = Image.llsynth_scan(
+      tables,
       5 + productions * 2,
       states,
       max_token,
       source,
       pos,
       length,
-      budget);
+      budget
+    );
     if kind < 0 || end <= pos
     {
-      return (empty,
-        Text.diagnostic(source,
-        pos,
-        "failed to replay accepted CaravanScript"));
+      return (
+        empty,
+        Text.diagnostic(source, pos, "failed to replay accepted CaravanScript")
+      );
     }
     if kind > 0
     {
@@ -111,9 +119,11 @@ fn stream(source: buffer) ->(Stream, string)
     pos = end;
     budget = remaining;
   }
-  return (record < Stream >
-  {
-    text: sx_string(buffer_text(source)), spans: sx_string(buffer_text(spans)), count: count, eof_offset: offset
+  return (record<Stream>
+  { text      : sx_string(buffer_text(source))
+  , spans     : sx_string(buffer_text(spans))
+  , count     : count
+  , eof_offset: offset
   }, syntax_error);
 }
 
@@ -132,11 +142,11 @@ fn token(input: Stream, at: i64) -> string
   {
     return "";
   }
-  return text_slice(sx_text(input["text"]),
-    offset(input,
-    at),
-    span(input,
-    at * 2 + 1));
+  return text_slice(
+    sx_text(input["text"]),
+    offset(input, at),
+    span(input, at * 2 + 1)
+  );
 }
 
 fn error(input: Stream, at: i64, reason: string) -> string

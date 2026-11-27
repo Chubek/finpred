@@ -50,12 +50,10 @@ fn main() -> i64
   let hi = D.node("hi", "maximum@1", "first", "second");
   let lo = D.node("lo", "minimum@1", "first", "second");
   let spread = D.node("spread", "distance@1", "hi", "lo");
-  let plan = record < D.Plan >
-  {
-    version: sx_string("automat.scalar-dag@1"), nodes: sx_cons(spread,
-      sx_cons(hi,
-      sx_cons(lo,
-      sx_nil()))), output: sx_string(setting("OUTPUT"))
+  let plan = record<D.Plan>
+  { version: sx_string("automat.scalar-dag@1")
+  , nodes  : sx_cons(spread, sx_cons(hi, sx_cons(lo, sx_nil())))
+  , output : sx_string(setting("OUTPUT"))
   };
   let test = setting("DAG_CASE");
   var mode = "analysis";

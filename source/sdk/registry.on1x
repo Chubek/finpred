@@ -3,21 +3,33 @@
 # typed calls; a descriptor, plan, or manifest cannot add a binding.
 import sdk.packages as P;
 record Binding
-{
-  enabled: bool, package: sexpr, mode: sexpr, kind: sexpr, inputs: sexpr, output: sexpr, dependencies: sexpr
+{ enabled     : bool
+, package     : sexpr
+, mode        : sexpr
+, kind        : sexpr
+, inputs      : sexpr
+, output      : sexpr
+, dependencies: sexpr
 }
 
-fn binding(enabled: bool,
+fn binding(
+  enabled: bool,
   package: string,
   mode: string,
   kind: string,
   inputs: sexpr,
   output: string,
-  dependencies: sexpr) -> Binding
+  dependencies: sexpr
+) -> Binding
 {
-  return record < Binding >
-  {
-    enabled: enabled, package: sx_string(package), mode: sx_string(mode), kind: sx_string(kind), inputs: inputs, output: sx_string(output), dependencies: dependencies
+  return record<Binding>
+  { enabled     : enabled
+  , package     : sx_string(package)
+  , mode        : sx_string(mode)
+  , kind        : sx_string(kind)
+  , inputs      : inputs
+  , output      : sx_string(output)
+  , dependencies: dependencies
   };
 }
 
@@ -31,58 +43,69 @@ fn resolve(entry: string) -> Binding
   # cli.app.fixed_recommendation supplies this policy to the legacy engine.
   if entry == yieldcraft_entry()
   {
-    return binding(true,
+    return binding(
+      true,
       "yieldcraft.percentile",
       "recommendation",
       "Strategy",
-      P.prepend("hospitality.scenario@1",
-      P.prepend("hospitality.offer@1",
-      P.prepend("pricing.valuation@1",
-      sx_nil()))),
+      P.prepend(
+        "hospitality.scenario@1",
+        P.prepend(
+          "hospitality.offer@1",
+          P.prepend("pricing.valuation@1", sx_nil())
+        )
+      ),
       "pricing.recommendation@1",
-      sx_nil());
+      sx_nil()
+    );
   }
   # cli.app.replay: verified values only, then the typed render call.
   if entry == "poindexter.sheet.render"
   {
-    return binding(true,
+    return binding(
+      true,
       "poindexter.pricing-sheet",
       "analysis",
       "View",
-      P.prepend("pricing.recommendation@1",
-      P.prepend("pricing.valuation@1",
-      sx_nil())),
+      P.prepend(
+        "pricing.recommendation@1",
+        P.prepend("pricing.valuation@1", sx_nil())
+      ),
       "poindexter.pricing-sheet@1",
-      P.prepend("yieldcraft.percentile@1",
-      sx_nil()));
+      P.prepend("yieldcraft.percentile@1", sx_nil())
+    );
   }
   # The separate frozen CSV host owns input selection; no FinPRED CLI route.
   if entry == "dragnet.frozen_csv.offers_as_of"
   {
-    return binding(true,
+    return binding(
+      true,
       "dragnet.frozen_csv",
       "analysis",
       "Source",
-      P.prepend("hospitality.scenario@1",
-      P.prepend("finpred.offers.csv@1",
-      sx_nil())),
+      P.prepend(
+        "hospitality.scenario@1",
+        P.prepend("finpred.offers.csv@1", sx_nil())
+      ),
       "hospitality.offer@1",
-      P.prepend("finpred.core@1",
-      P.prepend("yieldcraft.asof-whole-stay-property-min@1",
-      sx_nil())));
+      P.prepend(
+        "finpred.core@1",
+        P.prepend("yieldcraft.asof-whole-stay-property-min@1", sx_nil())
+      )
+    );
   }
   # The scalar diagnostics binding exposes this in graph dialect 3.
   if entry == "plugins.scalar_diagnostics.midpoint.midpoint"
   {
-    return binding(true,
+    return binding(
+      true,
       "scalar-diagnostics@1",
       "analysis",
       "Algorithm",
-      P.prepend("scalar.level@1",
-      P.prepend("scalar.level@1",
-      sx_nil())),
+      P.prepend("scalar.level@1", P.prepend("scalar.level@1", sx_nil())),
       "scalar.level@1",
-      sx_nil());
+      sx_nil()
+    );
   }
   return binding(false, "", "", "", sx_nil(), "", sx_nil());
 }
@@ -98,26 +121,44 @@ fn scalar_entry(operation: string) -> string
   return "";
 }
 
-fn compatible(name: string,
+fn compatible(
+  name: string,
   kind: string,
   inputs: sexpr,
   output: string,
   mode: string,
-  linked: sexpr) -> bool
+  linked: sexpr
+) -> bool
 {
   # Host ceilings are independent of package requirements. All these calls
   # require a pure effect and request no filesystem, network or action grant.
-  let ceilings = record < P.Limits >
-  {
-    csv_rows: 512, bytes_per_input: 2000000, rooms_per_property: 10, maximum_rooms: 4, adults: 8, children: 8, search_budget_max: 1000000, runs_per_call: 1, data_rows: 1, columns: 11, output_bytes_max: 512
+  let ceilings = record<P.Limits>
+  { csv_rows          : 512
+  , bytes_per_input   : 2000000
+  , rooms_per_property: 10
+  , maximum_rooms     : 4
+  , adults            : 8
+  , children          : 8
+  , search_budget_max : 1000000
+  , runs_per_call     : 1
+  , data_rows         : 1
+  , columns           : 11
+  , output_bytes_max  : 512
   };
-  let host = record < P.Host >
-  {
-    dependencies: linked, ceilings: ceilings, grants: sx_nil()
+  let host = record<P.Host>
+  { dependencies: linked
+  , ceilings    : ceilings
+  , grants      : sx_nil()
   };
-  let use = record < P.Use >
-  {
-    sdk_version: 1, package_version: sx_string("1.0.0"), kind: sx_string(kind), inputs: inputs, output: sx_string(output), mode: sx_string(mode), effect: sx_string("pure"), requested: sx_nil()
+  let use = record<P.Use>
+  { sdk_version    : 1
+  , package_version: sx_string("1.0.0")
+  , kind           : sx_string(kind)
+  , inputs         : inputs
+  , output         : sx_string(output)
+  , mode           : sx_string(mode)
+  , effect         : sx_string("pure")
+  , requested      : sx_nil()
   };
   return P.check_v2(name, use, host) == 0;
 }
@@ -127,12 +168,14 @@ fn compatible(name: string,
 fn package_compatible(entry: string, mode: string) -> bool
 {
   let b = resolve(entry);
-  return compatible(sx_text(b["package"]),
+  return compatible(
+    sx_text(b["package"]),
     sx_text(b["kind"]),
     b["inputs"],
     sx_text(b["output"]),
     mode,
-    b["dependencies"]);
+    b["dependencies"]
+  );
 }
 
 fn admits(entry: string, mode: string) -> bool
@@ -147,8 +190,10 @@ fn admits(entry: string, mode: string) -> bool
   if entry == "poindexter.sheet.render" || entry == "dragnet.frozen_csv.offers_as_of"
   {
     let upstream = resolve(yieldcraft_entry());
-    if ! upstream["enabled"] || ! package_compatible(yieldcraft_entry(),
-      "recommendation")
+    if ! upstream["enabled"] || ! package_compatible(
+      yieldcraft_entry(),
+      "recommendation"
+    )
     {
       return false;
     }

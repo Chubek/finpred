@@ -38,10 +38,12 @@ fn main() -> i64
   }
   if mode == "stress-contribution"
   {
-    IO.basis_text_io_print(Risk.solve(input("YIELDCRAFT_PLANNING_SCENARIO"),
+    IO.basis_text_io_print(Risk.solve(
+      input("YIELDCRAFT_PLANNING_SCENARIO"),
       input("YIELDCRAFT_PLANNING_VALUATION"),
       input("YIELDCRAFT_PLANNING_DEMAND"),
-      input("YIELDCRAFT_PLANNING_STRESS")));
+      input("YIELDCRAFT_PLANNING_STRESS")
+    ));
     return 0;
   }
   tool_fail("yieldcraft planning: unsupported mode");

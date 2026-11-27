@@ -9,15 +9,18 @@ record Provider < T >
 }
 
 record FixtureIntent
-{
-  fixture_id: string, source_url: string, elvi_source: string
+{ fixture_id : string
+, source_url : string
+, elvi_source: string
 }
 
 # Constructed by the host after binding an independently selected regular file
 # to the same provider, ID and URL. This record itself performs no file I/O.
 record FixtureGrant
-{
-  provider: string, fixture_id: string, source_url: string, max_body_bytes: i64
+{ provider      : string
+, fixture_id    : string
+, source_url    : string
+, max_body_bytes: i64
 }
 
 fn fixture_url(host: string, url: string) -> bool
@@ -25,10 +28,11 @@ fn fixture_url(host: string, url: string) -> bool
   let prefix = text_concat("https://", host);
   let split = text_len(prefix);
   let n = text_len(url);
-  if n <= split + 1 || n > 512 || text_slice(url,
+  if n <= split + 1 || n > 512 || text_slice(
+    url,
     0,
-    split) != prefix || text_byte(url,
-    split) != 47
+    split
+  ) != prefix || text_byte(url, split) != 47
   {
     return false;
   }
@@ -115,10 +119,12 @@ fn fixture_hex(html: string) -> string
   return buffer_text(out);
 }
 
-fn fixture_program(name: string,
+fn fixture_program(
+  name: string,
   host: string,
   url: string,
-  source: string) -> string
+  source: string
+) -> string
 {
   if source != ""
   {
@@ -137,10 +143,12 @@ fn fixture_probe_error < T > (error: ProbeRunError) -> Result < T, string >
 
 # Typed Probe -> separately authorized, in-memory Elvi capture -> BasisHtml
 # -> provider parser. No live backend, artifact sink or publication exists.
-fn run_provider < T > (provider: Provider < T >,
+fn run_provider < T > (
+  provider: Provider < T >,
   intent: FixtureIntent,
   grant: FixtureGrant,
-  html: string) -> Result < T, string >
+  html: string
+) -> Result < T, string >
 {
   let name = provider["name"];
   let host = provider["host"];
@@ -198,8 +206,10 @@ fn run_provider < T > (provider: Provider < T >,
   {
     return request["host"] == host && request["url"] == url && request["max_body_bytes"] == limit;
   };
-  let capture = fn(declaration: ElviProgram,
-    request: ProbeRequest) -> Result < BasisElviDocument, i64 >
+  let capture = fn(
+    declaration: ElviProgram,
+    request: ProbeRequest
+  ) -> Result < BasisElviDocument, i64 >
   {
     if declaration["source"] != source || ! authorize(request) || size > request["max_body_bytes"]
     {
@@ -207,23 +217,29 @@ fn run_provider < T > (provider: Provider < T >,
     }
     # The pinned value expects valid HTTPS-shaped metadata. These are synthetic
     # fixture values, never exposed as evidence of TLS, HTTP, or a live fetch.
-    let metadata = record < BasisElviDocumentMetadata >
-    {
-      status: 200, requested_url: url, effective_url: url, content_type: "text/html; charset=utf-8", http_protocol: "HTTP/1.1", alpn: "", tls_version: 772, certificate_verified: true, hostname_verified: true, body_length: size, chunked: false, close_delimited: false
+    let metadata = record<BasisElviDocumentMetadata>
+    { status              : 200
+    , requested_url       : url
+    , effective_url       : url
+    , content_type        : "text/html; charset=utf-8"
+    , http_protocol       : "HTTP/1.1"
+    , alpn                : ""
+    , tls_version         : 772
+    , certificate_verified: true
+    , hostname_verified   : true
+    , body_length         : size
+    , chunked             : false
+    , close_delimited     : false
     };
     return basis_elvi_document_from_hex(metadata, fixture_hex(html));
   };
-  let transport = record < ProbeHost >
-  {
-    authorize: authorize, backend: record < FetchBackend >
-    {
-      capture: capture
+  let transport = record<ProbeHost>
+  { authorize: authorize
+  , backend  : record<FetchBackend>
+    { capture: capture
     }
   };
-  let probe = match basis_http_probe_from_elvi(program,
-    limit,
-    variant < ProbeArtifactPolicy > (DiscardArtifacts,
-    record
+  let probe = match basis_http_probe_from_elvi(program, limit, variant < ProbeArtifactPolicy > (DiscardArtifacts, record
   {
   }), provider["parse"]) with
   {

@@ -14,9 +14,14 @@ fn env(key: string) -> string
 
 fn port(name: string, size: i64) -> SDK.Port
 {
-  return record < SDK.Port >
-  {
-    name: sx_string(name), kind: sx_string("test.value"), major: 1, unit: sx_string("none"), currency: sx_string("none"), states: 1, max_bytes: size
+  return record<SDK.Port>
+  { name     : sx_string(name)
+  , kind     : sx_string("test.value")
+  , major    : 1
+  , unit     : sx_string("none")
+  , currency : sx_string("none")
+  , states   : 1
+  , max_bytes: size
   };
 }
 
@@ -25,11 +30,10 @@ fn lookup(key: string) -> SDK.Descriptor
   var inputs = sx_cons(SDK.port_entry(port("value", 64)), sx_nil());
   if key == "test.join@1"
   {
-    inputs = sx_cons(SDK.port_entry(port("a",
-      64)),
-      sx_cons(SDK.port_entry(port("b",
-      64)),
-      sx_nil()));
+    inputs = sx_cons(
+      SDK.port_entry(port("a", 64)),
+      sx_cons(SDK.port_entry(port("b", 64)), sx_nil())
+    );
   }
   else
   {
@@ -39,14 +43,24 @@ fn lookup(key: string) -> SDK.Descriptor
     }
   }
   let dig = sx_string(G.digest(key));
-  let pin = record < SDK.Pin >
-  {
-    package_name: sx_string("test"), package_version: sx_string("1"), handler_name: sx_string(key), handler_version: sx_string("1"), abi: 1, code_digest: dig, policy_digest: dig
+  let pin = record<SDK.Pin>
+  { package_name   : sx_string("test")
+  , package_version: sx_string("1")
+  , handler_name   : sx_string(key)
+  , handler_version: sx_string("1")
+  , abi            : 1
+  , code_digest    : dig
+  , policy_digest  : dig
   };
-  return record < SDK.Descriptor >
-  {
-    enabled: true, pin: pin, role: sx_string("Transformer"), mode: sx_string("analysis"), effect: sx_string("pure"), inputs: inputs, output: port("value",
-      32), max_work: 1
+  return record<SDK.Descriptor>
+  { enabled : true
+  , pin     : pin
+  , role    : sx_string("Transformer")
+  , mode    : sx_string("analysis")
+  , effect  : sx_string("pure")
+  , inputs  : inputs
+  , output  : port("value", 32)
+  , max_work: 1
   };
 }
 
@@ -58,13 +72,24 @@ fn changed_lookup(key: string) -> SDK.Descriptor
     return d;
   }
   let pin = d["pin"];
-  let changed = record < SDK.Pin >
-  {
-    package_name: pin["package_name"], package_version: pin["package_version"], handler_name: pin["handler_name"], handler_version: pin["handler_version"], abi: pin["abi"], code_digest: sx_string(G.digest("changed")), policy_digest: pin["policy_digest"]
+  let changed = record<SDK.Pin>
+  { package_name   : pin["package_name"]
+  , package_version: pin["package_version"]
+  , handler_name   : pin["handler_name"]
+  , handler_version: pin["handler_version"]
+  , abi            : pin["abi"]
+  , code_digest    : sx_string(G.digest("changed"))
+  , policy_digest  : pin["policy_digest"]
   };
-  return record < SDK.Descriptor >
-  {
-    enabled: d["enabled"], pin: changed, role: d["role"], mode: d["mode"], effect: d["effect"], inputs: d["inputs"], output: d["output"], max_work: d["max_work"]
+  return record<SDK.Descriptor>
+  { enabled : d["enabled"]
+  , pin     : changed
+  , role    : d["role"]
+  , mode    : d["mode"]
+  , effect  : d["effect"]
+  , inputs  : d["inputs"]
+  , output  : d["output"]
+  , max_work: d["max_work"]
   };
 }
 
@@ -87,51 +112,41 @@ fn forbid_call(pin: SDK.Pin, req: SDK.Request) -> SDK.Outcome
 
 fn native_graph() -> G.Graph
 {
-  let roots = sx_cons(SDK.port_entry(port("raw",
-    64)),
-    sx_cons(SDK.port_entry(port("extra",
-    32)),
-    sx_nil()));
-  let n = G.node("normalizer",
+  let roots = sx_cons(
+    SDK.port_entry(port("raw", 64)),
+    sx_cons(SDK.port_entry(port("extra", 32)), sx_nil())
+  );
+  let n = G.node(
+    "normalizer",
     "test.pass@1",
     "pure",
-    sx_cons(G.edge("value",
-    "",
-    "raw"),
-    sx_nil()));
-  let m = G.node("mixer",
+    sx_cons(G.edge("value", "", "raw"), sx_nil())
+  );
+  let m = G.node(
+    "mixer",
     "test.join@1",
     "pure",
-    sx_cons(G.edge("a",
-    "normalizer",
-    "value"),
-    sx_cons(G.edge("b",
-    "",
-    "extra"),
-    sx_nil())));
-  let f = G.node("finish",
-    "test.join@1",
-    "pure",
-    sx_cons(G.edge("a",
-    "mixer",
-    "value"),
-    sx_cons(G.edge("b",
-    "normalizer",
-    "value"),
-    sx_nil())));
-  let outs = sx_cons(G.output(port("normalized",
-    32),
-    "normalizer",
-    "value"),
-    sx_cons(G.output(port("mixed",
-    32),
-    "mixer",
-    "value"),
-    sx_cons(G.output(port("final",
-    32),
+    sx_cons(
+      G.edge("a", "normalizer", "value"),
+      sx_cons(G.edge("b", "", "extra"), sx_nil())
+    )
+  );
+  let f = G.node(
     "finish",
-    "value"),
-    sx_nil())));
+    "test.join@1",
+    "pure",
+    sx_cons(
+      G.edge("a", "mixer", "value"),
+      sx_cons(G.edge("b", "normalizer", "value"), sx_nil())
+    )
+  );
+  let outs = sx_cons(
+    G.output(port("normalized", 32), "normalizer", "value"),
+    sx_cons(
+      G.output(port("mixed", 32), "mixer", "value"),
+      sx_cons(G.output(port("final", 32), "finish", "value"), sx_nil())
+    )
+  );
   return G.graph(roots, sx_cons(f, sx_cons(m, sx_cons(n, sx_nil()))), outs);
 }
 
@@ -168,39 +183,30 @@ fn main() -> i64
   let task = env("CASE");
   let compiler = env("COMPILER_ID");
   let source = IO.basis_text_io_input_all(env("STRATEGY"));
-  let ctx = record < Run.Context >
-  {
-    cutoff: sx_string("2026-11-20T10:00:00Z"), strategy_digest: sx_string(G.digest("composition test"))
+  let ctx = record<Run.Context>
+  { cutoff         : sx_string("2026-11-20T10:00:00Z")
+  , strategy_digest: sx_string(G.digest("composition test"))
   };
-  let roots = sx_cons(Run.input("raw",
-    1,
-    "one"),
-    sx_cons(Run.input("extra",
-    1,
-    "two"),
-    sx_nil()));
+  let roots = sx_cons(
+    Run.input("raw", 1, "one"),
+    sx_cons(Run.input("extra", 1, "two"), sx_nil())
+  );
   let out = buffer_new();
   if task == "native"
   {
-    frame_evidence(out,
-      Run.execute(native_graph(),
-      roots,
-      ctx,
-      "analysis",
-      3,
-      lookup,
-      call));
+    frame_evidence(
+      out,
+      Run.execute(native_graph(), roots, ctx, "analysis", 3, lookup, call)
+    );
     IO.basis_text_io_print(buffer_text(out));
     return 0;
   }
   if task == "legacy"
   {
-    G.frame(out,
-      sx_text(V6.lower(source,
-      "analysis",
-      3,
-      compiler,
-      lookup)["status"]));
+    G.frame(
+      out,
+      sx_text(V6.lower(source, "analysis", 3, compiler, lookup)["status"])
+    );
     IO.basis_text_io_print(buffer_text(out));
     return 0;
   }
@@ -229,13 +235,15 @@ fn main() -> i64
     {
       tool_fail("failed lowering exposed partial result");
     }
-    let rejected = Bridge.execute(result,
+    let rejected = Bridge.execute(
+      result,
       roots,
       ctx,
       "analysis",
       3,
       lookup,
-      forbid_call);
+      forbid_call
+    );
     if sx_text(rejected["status"]) != "lowering"
     {
       tool_fail("failed lowering admitted");
@@ -276,13 +284,15 @@ fn main() -> i64
   }
   if task == "changed"
   {
-    let denied = Bridge.execute(result,
+    let denied = Bridge.execute(
+      result,
       roots,
       ctx,
       "analysis",
       3,
       changed_lookup,
-      forbid_call);
+      forbid_call
+    );
     if denied["invocations"] != 0 || sx_kind(denied["outputs"]) != 0 || sx_kind(denied["artifacts"]) != 0
     {
       tool_fail("pin mismatch exposed evidence");
@@ -291,14 +301,10 @@ fn main() -> i64
   }
   else
   {
-    frame_evidence(out,
-      Bridge.execute(result,
-      roots,
-      ctx,
-      "analysis",
-      budget,
-      lookup,
-      call));
+    frame_evidence(
+      out,
+      Bridge.execute(result, roots, ctx, "analysis", budget, lookup, call)
+    );
   }
   IO.basis_text_io_print(buffer_text(out));
   return 0;

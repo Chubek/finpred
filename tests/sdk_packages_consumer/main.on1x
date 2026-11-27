@@ -29,15 +29,31 @@ fn names(k: string) -> sexpr
 
 fn main() -> i64
 {
-  let use = record < P.Use >
-  {
-    sdk_version: CSV.nat(env("SDK")), package_version: atom("VERSION"), kind: atom("KIND"), inputs: names("INPUTS"), output: atom("OUTPUT"), mode: atom("MODE"), effect: atom("EFFECT"), requested: names("REQUESTED")
+  let use = record<P.Use>
+  { sdk_version    : CSV.nat(env("SDK"))
+  , package_version: atom("VERSION")
+  , kind           : atom("KIND")
+  , inputs         : names("INPUTS")
+  , output         : atom("OUTPUT")
+  , mode           : atom("MODE")
+  , effect         : atom("EFFECT")
+  , requested      : names("REQUESTED")
   };
-  let host = record < P.Host >
-  {
-    dependencies: names("DEPS"), grants: names("GRANTS"), ceilings: record < P.Limits >
-    {
-      csv_rows: CSV.nat(env("csv_rows")), bytes_per_input: CSV.nat(env("bytes_per_input")), rooms_per_property: CSV.nat(env("rooms_per_property")), maximum_rooms: CSV.nat(env("maximum_rooms")), adults: CSV.nat(env("adults")), children: CSV.nat(env("children")), search_budget_max: CSV.nat(env("search_budget_max")), runs_per_call: CSV.nat(env("runs_per_call")), data_rows: CSV.nat(env("data_rows")), columns: CSV.nat(env("columns")), output_bytes_max: CSV.nat(env("output_bytes_max"))
+  let host = record<P.Host>
+  { dependencies: names("DEPS")
+  , grants      : names("GRANTS")
+  , ceilings    : record<P.Limits>
+    { csv_rows          : CSV.nat(env("csv_rows"))
+    , bytes_per_input   : CSV.nat(env("bytes_per_input"))
+    , rooms_per_property: CSV.nat(env("rooms_per_property"))
+    , maximum_rooms     : CSV.nat(env("maximum_rooms"))
+    , adults            : CSV.nat(env("adults"))
+    , children          : CSV.nat(env("children"))
+    , search_budget_max : CSV.nat(env("search_budget_max"))
+    , runs_per_call     : CSV.nat(env("runs_per_call"))
+    , data_rows         : CSV.nat(env("data_rows"))
+    , columns           : CSV.nat(env("columns"))
+    , output_bytes_max  : CSV.nat(env("output_bytes_max"))
     }
   };
   return P.check_v2(env("PACKAGE"), use, host);

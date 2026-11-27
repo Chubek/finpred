@@ -58,8 +58,10 @@ fn inventory(bytes: string) -> Match.Pool
   CSV.require_width(header, 3);
   let count = nth(header, 1);
   let rejected = nth(header, 2);
-  if CSV.field(header,
-    0) != "inventory@1" || count != size - 1 || rejected > 512 - count || count + rejected < 1
+  if CSV.field(
+    header,
+    0
+  ) != "inventory@1" || count != size - 1 || rejected > 512 - count || count + rejected < 1
   {
     tool_fail("graph inventory: invalid header");
   }
@@ -85,9 +87,10 @@ fn inventory(bytes: string) -> Match.Pool
     }
     for j in 0 .. i
     {
-      if A.basis_array_sub(properties,
-        j) == p && A.basis_array_sub(rooms,
-        j) == r
+      if A.basis_array_sub(properties, j) == p && A.basis_array_sub(
+        rooms,
+        j
+      ) == r
       {
         tool_fail("graph inventory: duplicate room");
       }
@@ -99,9 +102,18 @@ fn inventory(bytes: string) -> Match.Pool
     A.basis_array_update(capacity, i, t);
     A.basis_array_update(gross, i, g);
   }
-  return record < Match.Pool >
-  {
-    properties: properties, rooms: rooms, adults: adults, children: children, capacity: capacity, gross: gross, count: count, rejected: rejected, evidence: false, source_rows: 0, source_properties: 0
+  return record<Match.Pool>
+  { properties       : properties
+  , rooms            : rooms
+  , adults           : adults
+  , children         : children
+  , capacity         : capacity
+  , gross            : gross
+  , count            : count
+  , rejected         : rejected
+  , evidence         : false
+  , source_rows      : 0
+  , source_properties: 0
   };
 }
 
@@ -144,8 +156,10 @@ fn distribution(bytes: string) -> Match.Distribution
   let rejected = nth(header, 2);
   let infeasible = nth(header, 3);
   let examined = nth(header, 4);
-  if CSV.field(header,
-    0) != "distribution@1" || count != size - 1 || rejected > 512 - count || infeasible > 512 - count - rejected || examined > 1000000 || examined < count + infeasible
+  if CSV.field(
+    header,
+    0
+  ) != "distribution@1" || count != size - 1 || rejected > 512 - count || infeasible > 512 - count - rejected || examined > 1000000 || examined < count + infeasible
   {
     tool_fail("graph distribution: invalid header");
   }
@@ -159,17 +173,22 @@ fn distribution(bytes: string) -> Match.Distribution
     }
     A.basis_array_update(prices, i, price);
   }
-  return record < Match.Distribution >
-  {
-    prices: prices, count: count, rejected: rejected, infeasible: infeasible, examined: examined
+  return record<Match.Distribution>
+  { prices    : prices
+  , count     : count
+  , rejected  : rejected
+  , infeasible: infeasible
+  , examined  : examined
   };
 }
 
-fn decide(s: C.Scenario,
+fn decide(
+  s: C.Scenario,
   v: C.Valuation,
   bytes: string,
   sample: string,
-  profile: string) -> C.Recommendation
+  profile: string
+) -> C.Recommendation
 {
   let dist = distribution(bytes);
   let minimum = s["min_properties"];
@@ -185,12 +204,10 @@ fn decide(s: C.Scenario,
   }
   let row = CSV.line(sample, 0);
   CSV.require_width(row, 5);
-  if CSV.field(row,
-    0) != "sample@1" || nth(row,
-    1) != count || nth(row,
-    2) != minimum || nth(row,
-    3) != 1 || nth(row,
-    4) > 4000000000000
+  if CSV.field(row, 0) != "sample@1" || nth(row, 1) != count || nth(
+    row,
+    2
+  ) != minimum || nth(row, 3) != 1 || nth(row, 4) > 4000000000000
   {
     Match.destroy_distribution(dist);
     tool_fail("graph sample: inconsistent diagnostic");
@@ -229,24 +246,25 @@ fn recommendation(bytes: string) -> C.Recommendation
   let row = CSV.line(bytes, 0);
   CSV.require_width(row, 12);
   let reason = CSV.field(row, 11);
-  if CSV.field(row,
-    0) != "recommendation@1" || (reason != "target_percentile" && reason != "lower_percentile_shortcut" && reason != "guardrail_adjustment")
+  if CSV.field(
+    row,
+    0
+  ) != "recommendation@1" || (reason != "target_percentile" && reason != "lower_percentile_shortcut" && reason != "guardrail_adjustment")
   {
     tool_fail("graph recommendation: invalid header or reason");
   }
-  let r = record < C.Recommendation >
-  {
-    intended_bps: nth(row,
-      1), selected_bps: nth(row,
-      2), intended_cents: nth(row,
-      3), lower_cents: nth(row,
-      4), candidate_cents: nth(row,
-      5), recommended_cents: nth(row,
-      6), property_count: nth(row,
-      7), rejected: nth(row,
-      8), infeasible: nth(row,
-      9), search_nodes: nth(row,
-      10), reason: sx_string(reason)
+  let r = record<C.Recommendation>
+  { intended_bps     : nth(row, 1)
+  , selected_bps     : nth(row, 2)
+  , intended_cents   : nth(row, 3)
+  , lower_cents      : nth(row, 4)
+  , candidate_cents  : nth(row, 5)
+  , recommended_cents: nth(row, 6)
+  , property_count   : nth(row, 7)
+  , rejected         : nth(row, 8)
+  , infeasible       : nth(row, 9)
+  , search_nodes     : nth(row, 10)
+  , reason           : sx_string(reason)
   };
   if recommendation_bytes(r) != bytes
   {
@@ -312,19 +330,18 @@ fn decide_call(req: SDK.Request) -> SDK.Outcome
   if CSV.rows(sample) == 1
   {
     let row = CSV.line(sample, 0);
-    if CSV.columns(row) == 5 && CSV.field(row,
-      0) == "sample@1" && CSV.field(row,
-      3) == "0"
+    if CSV.columns(row) == 5 && CSV.field(row, 0) == "sample@1" && CSV.field(
+      row,
+      3
+    ) == "0"
     {
       return SDK.failure(5);
     }
   }
-  return SDK.success(1,
-    recommendation_bytes(decide(scenario,
-    v,
-    distribution,
-    sample,
-    "scenario")));
+  return SDK.success(
+    1,
+    recommendation_bytes(decide(scenario, v, distribution, sample, "scenario"))
+  );
 }
 
 fn guardrails_call(req: SDK.Request) -> SDK.Outcome

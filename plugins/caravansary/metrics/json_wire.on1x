@@ -103,34 +103,28 @@ fn hex4(a: i64, b: i64, c: i64, d: i64) -> i64
 
 fn code4(s: string, start: i64) -> i64
 {
-  return hex4(byte(s,
-    start),
-    byte(s,
-    start + 1),
-    byte(s,
-    start + 2),
-    byte(s,
-    start + 3));
+  return hex4(
+    byte(s, start),
+    byte(s, start + 1),
+    byte(s, start + 2),
+    byte(s, start + 3)
+  );
 }
 
 fn input_code4(s: buffer, start: i64) -> i64
 {
-  return hex4(input_byte(s,
-    start),
-    input_byte(s,
-    start + 1),
-    input_byte(s,
-    start + 2),
-    input_byte(s,
-    start + 3));
+  return hex4(
+    input_byte(s, start),
+    input_byte(s, start + 1),
+    input_byte(s, start + 2),
+    input_byte(s, start + 3)
+  );
 }
 
-fn utf8_decode(lead: i64,
-  second: i64,
-  third: i64,
-  fourth: i64,
-  start: i64) ->(i64,
-  i64)
+fn utf8_decode(lead: i64, second: i64, third: i64, fourth: i64, start: i64) ->(
+  i64,
+  i64
+)
 {
   var size = 2;
   var code = lead - 192;
@@ -175,26 +169,24 @@ fn utf8(s: string, start: i64) ->(i64, i64)
   {
     return (lead, start + 1);
   }
-  return utf8_decode(lead,
-    byte(s,
-    start + 1),
-    byte(s,
-    start + 2),
-    byte(s,
-    start + 3),
-    start);
+  return utf8_decode(
+    lead,
+    byte(s, start + 1),
+    byte(s, start + 2),
+    byte(s, start + 3),
+    start
+  );
 }
 
 fn input_utf8(s: buffer, start: i64, lead: i64) ->(i64, i64)
 {
-  return utf8_decode(lead,
-    input_byte(s,
-    start + 1),
-    input_byte(s,
-    start + 2),
-    input_byte(s,
-    start + 3),
-    start);
+  return utf8_decode(
+    lead,
+    input_byte(s, start + 1),
+    input_byte(s, start + 2),
+    input_byte(s, start + 3),
+    start
+  );
 }
 
 fn append_code(out: buffer, c: i64)
@@ -218,10 +210,10 @@ fn append_code(out: buffer, c: i64)
 
 # Retain a canonical JSON spelling, including quotes. Escaped NUL survives
 # despite the C-string ABI, and alternate escape spellings compare equally.
-fn input_quoted(s: buffer,
-  start: i64,
-  keep: bool) -> Result < (sexpr,
-  i64), sexpr >
+fn input_quoted(s: buffer, start: i64, keep: bool) -> Result < (
+  sexpr,
+  i64
+), sexpr >
 {
   if input_byte(s, start) != 34
   {
@@ -321,10 +313,10 @@ fn input_quoted(s: buffer,
   return fail!("unterminated JSON string");
 }
 
-fn quoted(source: string,
-  start: i64,
-  keep: bool) -> Result < (sexpr,
-  i64), sexpr >
+fn quoted(source: string, start: i64, keep: bool) -> Result < (
+  sexpr,
+  i64
+), sexpr >
 {
   let s = buffer_new();
   buffer_append(s, source);
@@ -484,11 +476,10 @@ fn number_end(s: buffer, start: i64) -> Result < i64, sexpr >
   return result_ok(i);
 }
 
-fn read(s: buffer,
-  start: i64,
-  depth: i64,
-  keep: bool) -> Result < (sexpr,
-  i64), sexpr >
+fn read(s: buffer, start: i64, depth: i64, keep: bool) -> Result < (
+  sexpr,
+  i64
+), sexpr >
 {
   if depth > 140
   {
@@ -506,11 +497,10 @@ fn read(s: buffer,
     let end = number_end(s, i)?;
     if keep
     {
-      return result_ok((pair(sx_symbol("number"),
-        sx_string(raw(s,
-        i,
-        end))),
-        end));
+      return result_ok((
+        pair(sx_symbol("number"), sx_string(raw(s, i, end))),
+        end
+      ));
     }
     return result_ok((sx_nil(), end));
   }
@@ -579,9 +569,10 @@ fn read(s: buffer,
     }
     if keep
     {
-      return result_ok((sx_cons(sx_symbol(kind),
-        List.basis_list_rev(items)),
-        i + 1));
+      return result_ok((
+        sx_cons(sx_symbol(kind), List.basis_list_rev(items)),
+        i + 1
+      ));
     }
     return result_ok((sx_nil(), i + 1));
   }

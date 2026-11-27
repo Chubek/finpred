@@ -11,36 +11,41 @@ import forecast_baselines.model as Model;
 import sdk.callable as SDK;
 import std.String as Str;
 record Rational
-{
-  valid: bool, numerator: i64, denominator: i64
+{ valid      : bool
+, numerator  : i64
+, denominator: i64
 }
 
 record Score
-{
-  status: i64, state: i64, bytes: sexpr
+{ status: i64
+, state : i64
+, bytes : sexpr
 }
 
 fn reject(status: i64) -> Score
 {
-  return record < Score >
-  {
-    status: status, state: 0, bytes: sx_nil()
+  return record<Score>
+  { status: status
+  , state : 0
+  , bytes : sx_nil()
   };
 }
 
 fn accepted(state: i64, bytes: string) -> Score
 {
-  return record < Score >
-  {
-    status: 0, state: state, bytes: sx_string(bytes)
+  return record<Score>
+  { status: 0
+  , state : state
+  , bytes : sx_string(bytes)
   };
 }
 
 fn unknown() -> Rational
 {
-  return record < Rational >
-  {
-    valid: false, numerator: 0, denominator: 1
+  return record<Rational>
+  { valid      : false
+  , numerator  : 0
+  , denominator: 1
   };
 }
 
@@ -69,23 +74,26 @@ fn estimate(canonical: string) -> Rational
     return unknown();
   }
   let(a, n) = Feed.token(canonical, begin, 44, 13);
-  let(b,
-    d) = Feed.token(canonical,
-    Feed.after(canonical,
-    a,
-    ",\"denominator\":"),
+  let(b, d) = Feed.token(
+    canonical,
+    Feed.after(canonical, a, ",\"denominator\":"),
     125,
-    1);
-  if a < 0 || b < 0 || Feed.after(canonical,
+    1
+  );
+  if a < 0 || b < 0 || Feed.after(
+    canonical,
     b,
-    "},\"uncertainty\":\"unavailable\"}\n") != text_len(canonical)
+    "},\"uncertainty\":\"unavailable\"}\n"
+  ) != text_len(canonical)
   {
     return unknown();
   }
   # Baseline model bounds guarantee that a 13-digit numerator is safe here.
   # Guest.nat intentionally caps at 12 digits, so parse this one separately.
-  if text_len(n) < 1 || text_len(n) > 13 || (text_len(n) > 1 && text_byte(n,
-    0) == 48)
+  if text_len(n) < 1 || text_len(n) > 13 || (text_len(n) > 1 && text_byte(
+    n,
+    0
+  ) == 48)
   {
     return unknown();
   }
@@ -104,9 +112,10 @@ fn estimate(canonical: string) -> Rational
   {
     return unknown();
   }
-  return record < Rational >
-  {
-    valid: true, numerator: value, denominator: divisor
+  return record<Rational>
+  { valid      : true
+  , numerator  : value
+  , denominator: divisor
   };
 }
 
@@ -114,7 +123,8 @@ fn estimate(canonical: string) -> Rational
 # 2 rejected training evidence; 3 model invocation; 4 rejected scoring
 # evidence; 5 invalid scoring chronology; 6 tampered expected forecast.
 # State: 1 scored, 4 unknown (never silently drop an unscored case).
-fn evaluate(model: string,
+fn evaluate(
+  model: string,
   training_raw: string,
   training_parent: string,
   request_bytes: string,
@@ -123,7 +133,8 @@ fn evaluate(model: string,
   actual_parent: string,
   training_cutoff: string,
   scoring_cutoff: string,
-  code_digest: string) -> Score
+  code_digest: string
+) -> Score
 {
   let desc = Model.descriptor(model, code_digest);
   if ! desc["enabled"]
@@ -131,9 +142,10 @@ fn evaluate(model: string,
     return reject(1);
   }
   let req = Model.spec(request_bytes, training_cutoff);
-  if req["month"] < 0 || ! Date.utc_timestamp(scoring_cutoff) || Str.compare(scoring_cutoff,
-    sx_text(req["issued"])) <= 0 || Str.compare(scoring_cutoff,
-    training_cutoff) <= 0
+  if req["month"] < 0 || ! Date.utc_timestamp(scoring_cutoff) || Str.compare(
+    scoring_cutoff,
+    sx_text(req["issued"])
+  ) <= 0 || Str.compare(scoring_cutoff, training_cutoff) <= 0
   {
     return reject(5);
   }
@@ -156,23 +168,25 @@ fn evaluate(model: string,
   {
     return reject(2);
   }
-  let inputs = sx_cons(SDK.value_entry(training["state"],
-    projection),
-    sx_cons(SDK.value_entry(1,
-    request_bytes),
-    sx_nil()));
-  let request = record < SDK.Request >
-  {
-    inputs: inputs, cutoff: sx_string(training_cutoff), work: 1
+  let inputs = sx_cons(
+    SDK.value_entry(training["state"], projection),
+    sx_cons(SDK.value_entry(1, request_bytes), sx_nil())
+  );
+  let request = record<SDK.Request>
+  { inputs: inputs
+  , cutoff: sx_string(training_cutoff)
+  , work  : 1
   };
   if ! SDK.valid_inputs(desc["inputs"], inputs)
   {
     return reject(3);
   }
   let forecast = Model.call(desc["pin"], request);
-  if forecast["status"] != 0 || ! SDK.valid_output(desc["output"],
+  if forecast["status"] != 0 || ! SDK.valid_output(
+    desc["output"],
     forecast["state"],
-    forecast["bytes"])
+    forecast["bytes"]
+  )
   {
     return reject(3);
   }
@@ -221,14 +235,22 @@ fn evaluate(model: string,
   let code = sx_text(desc["pin"]["code_digest"]);
   let policy = sx_text(desc["pin"]["policy_digest"]);
   let out = buffer_new();
-  buffer_append(out,
-    "{\"kind\":\"analysis.guest-nights-score\",\"version\":1,\"unit\":\"guest_nights\",\"currency\":null,\"pricing_input\":false");
-  buffer_append(out,
-    ",\"model\":\"$model\",\"code_digest\":\"$code\",\"policy_digest\":\"$policy\"");
-  buffer_append(out,
-    ",\"forecast\":\"$forecast_ref\",\"training\":\"$training_ref\",\"actuals\":\"$actual_ref\",\"actuals_parent\":\"$actual_parent\"");
-  buffer_append(out,
-    ",\"issued_at\":\"$issued\",\"training_cutoff\":\"$training_cutoff\",\"scoring_cutoff\":\"$scoring_cutoff\",\"target_month\":\"$target\"");
+  buffer_append(
+    out,
+    "{\"kind\":\"analysis.guest-nights-score\",\"version\":1,\"unit\":\"guest_nights\",\"currency\":null,\"pricing_input\":false"
+  );
+  buffer_append(
+    out,
+    ",\"model\":\"$model\",\"code_digest\":\"$code\",\"policy_digest\":\"$policy\""
+  );
+  buffer_append(
+    out,
+    ",\"forecast\":\"$forecast_ref\",\"training\":\"$training_ref\",\"actuals\":\"$actual_ref\",\"actuals_parent\":\"$actual_parent\""
+  );
+  buffer_append(
+    out,
+    ",\"issued_at\":\"$issued\",\"training_cutoff\":\"$training_cutoff\",\"scoring_cutoff\":\"$scoring_cutoff\",\"target_month\":\"$target\""
+  );
   let usable = prediction["valid"] && truth >= 0;
   if ! usable
   {
@@ -237,8 +259,10 @@ fn evaluate(model: string,
     {
       reason = "missing_actual";
     }
-    buffer_append(out,
-      ",\"state\":\"unknown\",\"reason\":\"$reason\",\"actual\":null,\"estimate\":null,\"error\":null,\"absolute_error\":null}\n");
+    buffer_append(
+      out,
+      ",\"state\":\"unknown\",\"reason\":\"$reason\",\"actual\":null,\"estimate\":null,\"error\":null,\"absolute_error\":null}\n"
+    );
     return accepted(4, buffer_text(out));
   }
   # All three operands are <= 3e12. Multiplication by a denominator of 3
@@ -263,13 +287,21 @@ fn evaluate(model: string,
   let error_num = F.num(error_n);
   let error_den = F.num(error_d);
   let absolute_num = F.num(abs_n);
-  buffer_append(out,
-    ",\"state\":\"scored\",\"reason\":null,\"actual\":$actual_value");
-  buffer_append(out,
-    ",\"estimate\":{\"numerator\":$estimate_num,\"denominator\":$estimate_den}");
-  buffer_append(out,
-    ",\"error\":{\"numerator\":$error_num,\"denominator\":$error_den}");
-  buffer_append(out,
-    ",\"absolute_error\":{\"numerator\":$absolute_num,\"denominator\":$error_den}}\n");
+  buffer_append(
+    out,
+    ",\"state\":\"scored\",\"reason\":null,\"actual\":$actual_value"
+  );
+  buffer_append(
+    out,
+    ",\"estimate\":{\"numerator\":$estimate_num,\"denominator\":$estimate_den}"
+  );
+  buffer_append(
+    out,
+    ",\"error\":{\"numerator\":$error_num,\"denominator\":$error_den}"
+  );
+  buffer_append(
+    out,
+    ",\"absolute_error\":{\"numerator\":$absolute_num,\"denominator\":$error_den}}\n"
+  );
   return accepted(1, buffer_text(out));
 }

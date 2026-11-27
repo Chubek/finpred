@@ -7,18 +7,22 @@ import core.format as F;
 import std.collections.List as L;
 import std.String as Str;
 record Capture
-{
-  result: Run.Result, bytes: sexpr, digest: sexpr
+{ result: Run.Result
+, bytes : sexpr
+, digest: sexpr
 }
 
 record Frame
-{
-  next: i64, value: sexpr
+{ next : i64
+, value: sexpr
 }
 
 record Decoded
-{
-  valid: bool, graph_digest: sexpr, ctx: Run.Context, roots: sexpr, evidence: sexpr
+{ valid       : bool
+, graph_digest: sexpr
+, ctx         : Run.Context
+, roots       : sexpr
+, evidence    : sexpr
 }
 
 fn version() -> string
@@ -35,9 +39,9 @@ fn max_archive_bytes() -> i64
 # Bounds are checked before slicing; consuming a bad frame is never possible.
 fn take(raw: string, start: i64, ceiling: i64) -> Frame
 {
-  let invalid = record < Frame >
-  {
-    next: - 1, value: sx_nil()
+  let invalid = record<Frame>
+  { next : - 1
+  , value: sx_nil()
   };
   let end = text_len(raw);
   if start < 0 || start >= end
@@ -55,15 +59,15 @@ fn take(raw: string, start: i64, ceiling: i64) -> Frame
       {
         return invalid;
       }
-      return record < Frame >
-      {
-        next: pos + 1 + n, value: sx_string(text_slice(raw,
-          pos + 1,
-          pos + 1 + n))
+      return record<Frame>
+      { next : pos + 1 + n
+      , value: sx_string(text_slice(raw, pos + 1, pos + 1 + n))
       };
     }
-    if ! G.decimal(b) || pos - start >= 8 || (pos > start && text_byte(raw,
-      start) == 48)
+    if ! G.decimal(b) || pos - start >= 8 || (pos > start && text_byte(
+      raw,
+      start
+    ) == 48)
     {
       return invalid;
     }
@@ -77,10 +81,12 @@ fn take(raw: string, start: i64, ceiling: i64) -> Frame
   return invalid;
 }
 
-fn encode(result: Run.Result,
+fn encode(
+  result: Run.Result,
   roots: sexpr,
   ctx: Run.Context,
-  mode: string) -> string
+  mode: string
+) -> string
 {
   let bytes = buffer_new();
   G.frame(bytes, version());
@@ -114,12 +120,15 @@ fn encode(result: Run.Result,
 
 fn invalid() -> Decoded
 {
-  return record < Decoded >
-  {
-    valid: false, graph_digest: sx_nil(), ctx: record < Run.Context >
-    {
-      cutoff: sx_nil(), strategy_digest: sx_nil()
-    }, roots: sx_nil(), evidence: sx_nil()
+  return record<Decoded>
+  { valid       : false
+  , graph_digest: sx_nil()
+  , ctx         : record<Run.Context>
+    { cutoff         : sx_nil()
+    , strategy_digest: sx_nil()
+    }
+  , roots       : sx_nil()
+  , evidence    : sx_nil()
   };
 }
 
@@ -136,13 +145,14 @@ fn decode(raw: string, mode: string) -> Decoded
   let graph_id = take(raw, m["next"], 71);
   let cutoff = take(raw, graph_id["next"], 20);
   let strategy = take(raw, cutoff["next"], 71);
-  let ctx = record < Run.Context >
-  {
-    cutoff: cutoff["value"], strategy_digest: strategy["value"]
+  let ctx = record<Run.Context>
+  { cutoff         : cutoff["value"]
+  , strategy_digest: strategy["value"]
   };
-  if ! SDK.same(v["value"],
-    sx_string(version())) || ! SDK.same(m["value"],
-    sx_string(mode)) || ! SDK.valid_digest(graph_id["value"]) || ! Run.valid_context(ctx)
+  if ! SDK.same(v["value"], sx_string(version())) || ! SDK.same(
+    m["value"],
+    sx_string(mode)
+  ) || ! SDK.valid_digest(graph_id["value"]) || ! Run.valid_context(ctx)
   {
     return invalid();
   }
@@ -163,10 +173,10 @@ fn decode(raw: string, mode: string) -> Decoded
     let data = take(raw, state["next"], 2000000);
     let name = sx_text(key["value"]);
     let mask = SDK.nat(state["value"]);
-    if ! G.identifier(name) || Str.compare(name,
-      previous) <= 0 || ! SDK.accepts(31,
-      mask) || ! SDK.atom(data["value"],
-      2000000)
+    if ! G.identifier(name) || Str.compare(name, previous) <= 0 || ! SDK.accepts(
+      31,
+      mask
+    ) || ! SDK.atom(data["value"], 2000000)
     {
       return invalid();
     }
@@ -193,86 +203,106 @@ fn decode(raw: string, mode: string) -> Decoded
     let digest = take(raw, id["next"], 71);
     let envelope = take(raw, digest["next"], 2010000);
     let name = sx_text(id["value"]);
-    if ! G.identifier(name) || sx_kind(G.lookup(evidence,
-      name)) != 0 || ! SDK.valid_digest(digest["value"]) || ! SDK.atom(envelope["value"],
-      2010000) || ! SDK.same(digest["value"],
-      sx_string(G.digest(sx_text(envelope["value"]))))
+    if ! G.identifier(name) || sx_kind(G.lookup(
+      evidence,
+      name
+    )) != 0 || ! SDK.valid_digest(digest["value"]) || ! SDK.atom(
+      envelope["value"],
+      2010000
+    ) || ! SDK.same(
+      digest["value"],
+      sx_string(G.digest(sx_text(envelope["value"])))
+    )
     {
       return invalid();
     }
-    evidence = sx_cons(sx_cons(id["value"],
-      sx_cons(digest["value"],
-      sx_cons(envelope["value"],
-      sx_nil()))),
-      evidence);
+    evidence = sx_cons(
+      sx_cons(
+        id["value"],
+        sx_cons(digest["value"], sx_cons(envelope["value"], sx_nil()))
+      ),
+      evidence
+    );
     pos = envelope["next"];
   }
   if pos != text_len(raw)
   {
     return invalid();
   }
-  return record < Decoded >
-  {
-    valid: true, graph_digest: graph_id["value"], ctx: ctx, roots: L.basis_list_rev(roots), evidence: L.basis_list_rev(evidence)
+  return record<Decoded>
+  { valid       : true
+  , graph_digest: graph_id["value"]
+  , ctx         : ctx
+  , roots       : L.basis_list_rev(roots)
+  , evidence    : L.basis_list_rev(evidence)
   };
 }
 
-fn capture(g: G.Graph,
+fn capture(
+  g: G.Graph,
   roots: sexpr,
   ctx: Run.Context,
   mode: string,
   budget: i64,
   resolve: fn(string) -> SDK.Descriptor,
-  call: fn(SDK.Pin,
-  SDK.Request) -> SDK.Outcome,
-  graph_digest: sexpr) -> Capture
+  call: fn(SDK.Pin, SDK.Request) -> SDK.Outcome,
+  graph_digest: sexpr
+) -> Capture
 {
-  let result = Run.execute_pinned(g,
+  let result = Run.execute_pinned(
+    g,
     roots,
     ctx,
     mode,
     budget,
     resolve,
     call,
-    graph_digest);
+    graph_digest
+  );
   if ! SDK.same(result["status"], sx_string("ok"))
   {
-    return record < Capture >
-    {
-      result: result, bytes: sx_nil(), digest: sx_nil()
+    return record<Capture>
+    { result: result
+    , bytes : sx_nil()
+    , digest: sx_nil()
     };
   }
   let raw = encode(result, roots, ctx, mode);
   if text_len(raw) > max_archive_bytes()
   {
-    return record < Capture >
-    {
-      result: Run.error("archive_size", ""), bytes: sx_nil(), digest: sx_nil()
+    return record<Capture>
+    { result: Run.error("archive_size", "")
+    , bytes : sx_nil()
+    , digest: sx_nil()
     };
   }
-  return record < Capture >
-  {
-    result: result, bytes: sx_string(raw), digest: sx_string(G.digest(raw))
+  return record<Capture>
+  { result: result
+  , bytes : sx_string(raw)
+  , digest: sx_string(G.digest(raw))
   };
 }
 
 # The expected bundle digest is supplied by the trusted caller, not decoded
 # from the bundle. The caller independently selects the mode and work budget.
-fn replay(g: G.Graph,
+fn replay(
+  g: G.Graph,
   raw: string,
   expected: sexpr,
   mode: string,
   budget: i64,
   resolve: fn(string) -> SDK.Descriptor,
-  call: fn(SDK.Pin,
-  SDK.Request) -> SDK.Outcome) -> Run.Result
+  call: fn(SDK.Pin, SDK.Request) -> SDK.Outcome
+) -> Run.Result
 {
   if text_len(raw) < 1 || text_len(raw) > max_archive_bytes()
   {
     return Run.error("archive_size", "");
   }
-  if ! SDK.valid_digest(expected) || ! SDK.same(expected,
-    sx_string(G.digest(raw)))
+  if ! SDK.valid_digest(expected) || ! SDK.same(
+    expected,
+    sx_string(G.digest(raw))
+  )
   {
     return Run.error("archive_digest", "");
   }
@@ -281,7 +311,8 @@ fn replay(g: G.Graph,
   {
     return Run.error("archive_format", "");
   }
-  return Run.replay(g,
+  return Run.replay(
+    g,
     decoded["roots"],
     decoded["ctx"],
     mode,
@@ -289,5 +320,6 @@ fn replay(g: G.Graph,
     resolve,
     call,
     decoded["graph_digest"],
-    decoded["evidence"]);
+    decoded["evidence"]
+  );
 }

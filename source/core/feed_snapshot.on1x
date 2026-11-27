@@ -4,8 +4,12 @@ import core.format as F;
 import std.String as Str;
 import std.crypto.crypto as Crypto;
 record Tail
-{
-  start: i64, status: sexpr, observed: sexpr, received: sexpr, ingested: sexpr, source_cutoff: sexpr
+{ start        : i64
+, status       : sexpr
+, observed     : sexpr
+, received     : sexpr
+, ingested     : sexpr
+, source_cutoff: sexpr
 }
 
 fn after(s: string, at: i64, expected: string) -> i64
@@ -111,15 +115,13 @@ fn clock(s: string) -> i64
   {
     return 0 - 1;
   }
-  return Date.date_days(text_slice(s,
-    0,
-    10)) * 86400 + (Date.digit(s,
-    11) * 10 + Date.digit(s,
-    12)) * 3600 + (Date.digit(s,
-    14) * 10 + Date.digit(s,
-    15)) * 60 + Date.digit(s,
-    17) * 10 + Date.digit(s,
-    18);
+  return Date.date_days(text_slice(s, 0, 10)) * 86400 + (Date.digit(
+    s,
+    11
+  ) * 10 + Date.digit(s, 12)) * 3600 + (Date.digit(s, 14) * 10 + Date.digit(
+    s,
+    15
+  )) * 60 + Date.digit(s, 17) * 10 + Date.digit(s, 18);
 }
 
 fn field(out: buffer, name: string, value: string)
@@ -131,10 +133,12 @@ fn field(out: buffer, name: string, value: string)
 }
 
 # 0 validated bounds/cutoff/parent, 1 absent or wrong parent, 2 malformed.
-fn parent_status(snapshot: string,
+fn parent_status(
+  snapshot: string,
   parent: string,
   cutoff: string,
-  max_bytes: i64) -> i64
+  max_bytes: i64
+) -> i64
 {
   if text_len(snapshot) == 0 || ! digest(parent)
   {
@@ -166,26 +170,34 @@ fn tail(snapshot: string, offset: i64) -> Tail
   let(j, raw) = quoted(snapshot, i, ",\"raw_evidence\":\"", 71);
   let(k, capture) = quoted(snapshot, j, ",\"capture_evidence\":\"", 71);
   let(l, size) = token(snapshot, after(snapshot, k, ",\"raw_bytes\":"), 44, 5);
-  var start = after(snapshot,
-    l,
-    ",\"pricing_input\":false,\"observations\":[");
+  var start = after(snapshot, l, ",\"pricing_input\":false,\"observations\":[");
   let n = nat(size, 5);
-  if (status != "complete" && status != "partial") || (mode != "offline_snapshot" && mode != "loopback_fixture" && mode != "public_https") || observed != received || ! Date.utc_timestamp(received) || ! Date.utc_timestamp(ingested) || ! Date.utc_timestamp(source_cutoff) || Str.compare(ingested,
-    received) < 0 || Str.compare(source_cutoff,
-    ingested) < 0 || ! policy(terms) || ! policy(retention) || ! digest(raw) || ! digest(capture) || n < 1 || n > 65536
+  if (status != "complete" && status != "partial") || (mode != "offline_snapshot" && mode != "loopback_fixture" && mode != "public_https") || observed != received || ! Date.utc_timestamp(received) || ! Date.utc_timestamp(ingested) || ! Date.utc_timestamp(source_cutoff) || Str.compare(
+    ingested,
+    received
+  ) < 0 || Str.compare(
+    source_cutoff,
+    ingested
+  ) < 0 || ! policy(terms) || ! policy(retention) || ! digest(raw) || ! digest(capture) || n < 1 || n > 65536
   {
     start = 0 - 1;
   }
-  return record < Tail >
-  {
-    start: start, status: sx_string(status), observed: sx_string(observed), received: sx_string(received), ingested: sx_string(ingested), source_cutoff: sx_string(source_cutoff)
+  return record<Tail>
+  { start        : start
+  , status       : sx_string(status)
+  , observed     : sx_string(observed)
+  , received     : sx_string(received)
+  , ingested     : sx_string(ingested)
+  , source_cutoff: sx_string(source_cutoff)
   };
 }
 
 fn visible(t: Tail, cutoff: string) -> bool
 {
-  return t["start"] >= 0 && Str.compare(sx_text(t["source_cutoff"]),
-    cutoff) <= 0;
+  return t["start"] >= 0 && Str.compare(
+    sx_text(t["source_cutoff"]),
+    cutoff
+  ) <= 0;
 }
 
 fn times(out: buffer, t: Tail, cutoff: string)

@@ -27,8 +27,10 @@ fn print(text: string)
 
 fn code_pin() -> string
 {
-  return G.digest(text_concat("yieldcraft-mcp-bridge-sha256:",
-    env("YC_BRIDGE_SHA256")));
+  return G.digest(text_concat(
+    "yieldcraft-mcp-bridge-sha256:",
+    env("YC_BRIDGE_SHA256")
+  ));
 }
 
 fn lookup(key: string) -> SDK.Descriptor
@@ -56,13 +58,15 @@ fn main() -> i64
   let budget = Host.budget() + Contribution.budget();
   if task == "replay"
   {
-    let result = OttRun.replay(file("YC_ARCHIVE"),
+    let result = OttRun.replay(
+      file("YC_ARCHIVE"),
       sx_string(env("YC_EXPECTED")),
       "recommendation",
       budget,
       compiler,
       lookup,
-      dispatch);
+      dispatch
+    );
     let status = sx_text(result["status"]);
     print("$status\n");
     if status == "ok"
@@ -103,18 +107,20 @@ fn main() -> i64
     let raw = file(text_concat("YC_FILE_", suffix));
     roots = sx_cons(Run.input(name, 1, raw), roots);
   }
-  let ctx = record < Run.Context >
-  {
-    cutoff: sx_string(env("YC_CUTOFF")), strategy_digest: lowered["source_digest"]
+  let ctx = record<Run.Context>
+  { cutoff         : sx_string(env("YC_CUTOFF"))
+  , strategy_digest: lowered["source_digest"]
   };
-  let captured = OttRun.capture(source,
+  let captured = OttRun.capture(
+    source,
     roots,
     ctx,
     "recommendation",
     budget,
     compiler,
     lookup,
-    dispatch);
+    dispatch
+  );
   let outcome = sx_text(captured["result"]["status"]);
   print("$outcome\n");
   if outcome == "ok"

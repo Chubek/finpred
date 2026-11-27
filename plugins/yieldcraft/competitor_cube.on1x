@@ -9,13 +9,27 @@ import plugins.yieldcraft.competitor_policy as Policy;
 import std.String as Str;
 import std.collections.Array as A;
 record Query
-{
-  id: i64, arrival: sexpr, departure: sexpr, as_of: sexpr, currency: sexpr, cancellation: sexpr, party: C.Party, lead: i64, max_age: i64, minimum: i64, budget: i64, policy: i64, market_key: sexpr
+{ id          : i64
+, arrival     : sexpr
+, departure   : sexpr
+, as_of       : sexpr
+, currency    : sexpr
+, cancellation: sexpr
+, party       : C.Party
+, lead        : i64
+, max_age     : i64
+, minimum     : i64
+, budget      : i64
+, policy      : i64
+, market_key  : sexpr
 }
 
 record Market
-{
-  status: sexpr, comparables: sexpr, series: sexpr, work: i64, matched: i64
+{ status     : sexpr
+, comparables: sexpr
+, series     : sexpr
+, work       : i64
+, matched    : i64
 }
 
 fn cells_limit() -> i64
@@ -43,15 +57,13 @@ fn query(row: string) -> Query
   let lead = Date.lead_days(cutoff, arrival);
   let currency = CSV.field(row, 7);
   let cancellation = CSV.field(row, 8);
-  let party = C.party(C.number(row,
-    4),
-    CSV.field(row,
-    5),
-    C.number(row,
-    6),
-    Date.nights(arrival,
-    departure),
-    cancellation);
+  let party = C.party(
+    C.number(row, 4),
+    CSV.field(row, 5),
+    C.number(row, 6),
+    Date.nights(arrival, departure),
+    cancellation
+  );
   let age = C.number(row, 9);
   let minimum = C.number(row, 10);
   let budget = C.number(row, 11);
@@ -70,9 +82,20 @@ fn query(row: string) -> Query
       buffer_append(key, ",");
     }
   }
-  return record < Query >
-  {
-    id: id, arrival: sx_string(arrival), departure: sx_string(departure), as_of: sx_string(cutoff), currency: sx_string(currency), cancellation: sx_string(cancellation), party: party, lead: lead, max_age: age, minimum: minimum, budget: budget, policy: policy, market_key: sx_string(buffer_text(key))
+  return record<Query>
+  { id          : id
+  , arrival     : sx_string(arrival)
+  , departure   : sx_string(departure)
+  , as_of       : sx_string(cutoff)
+  , currency    : sx_string(currency)
+  , cancellation: sx_string(cancellation)
+  , party       : party
+  , lead        : lead
+  , max_age     : age
+  , minimum     : minimum
+  , budget      : budget
+  , policy      : policy
+  , market_key  : sx_string(buffer_text(key))
   };
 }
 
@@ -88,9 +111,10 @@ fn policies(raw: string) -> sexpr
     tool_fail("competitor cube: expected 1..16 policies");
   }
   CSV.header(CSV.line(raw, 0), "pricing.competitor-policy@1");
-  CSV.header(CSV.line(raw,
-    1),
-    "id,curve,near_bps,far_bps,horizon_days,shape,knot_bps,quantile,lower_bps,shortcut_mode,threshold,floor_minor,cap_minor");
+  CSV.header(
+    CSV.line(raw, 1),
+    "id,curve,near_bps,far_bps,horizon_days,shape,knot_bps,quantile,lower_bps,shortcut_mode,threshold,floor_minor,cap_minor"
+  );
   var entries = sx_nil();
   var last = 0;
   for i in 2 .. n
@@ -102,10 +126,10 @@ fn policies(raw: string) -> sexpr
       tool_fail("competitor cube: policy IDs must be strictly increasing");
     }
     last = p["id"];
-    entries = sx_cons(sx_cons(sx_string(F.num(last)),
-      sx_cons(sx_string(row),
-      sx_nil())),
-      entries);
+    entries = sx_cons(
+      sx_cons(sx_string(F.num(last)), sx_cons(sx_string(row), sx_nil())),
+      entries
+    );
   }
   return entries;
 }
@@ -137,8 +161,10 @@ fn policy_for(entries: sexpr, id: i64) -> Policy.Policy
 
 fn published_as_of(r: C.Release, q: Query) -> bool
 {
-  return sx_text(r["arrival"]) == sx_text(q["arrival"]) && sx_text(r["departure"]) == sx_text(q["departure"]) && sx_text(r["currency"]) == sx_text(q["currency"]) && Str.compare(sx_text(r["ingested"]),
-    sx_text(q["as_of"])) <= 0;
+  return sx_text(r["arrival"]) == sx_text(q["arrival"]) && sx_text(r["departure"]) == sx_text(q["departure"]) && sx_text(r["currency"]) == sx_text(q["currency"]) && Str.compare(
+    sx_text(r["ingested"]),
+    sx_text(q["as_of"])
+  ) <= 0;
 }
 
 fn latest(q: Query, releases: sexpr) -> sexpr
@@ -155,16 +181,19 @@ fn latest(q: Query, releases: sexpr) -> sexpr
     }
     let key = F.num(r["property_id"]);
     let old = lookup(selected, key);
-    if sx_kind(old) == 0 || Str.compare(sx_text(r["observed"]),
-      sx_text(sx_head(old))) > 0
+    if sx_kind(old) == 0 || Str.compare(
+      sx_text(r["observed"]),
+      sx_text(sx_head(old))
+    ) > 0
     {
-      let value = sx_cons(r["observed"],
-        sx_cons(sx_string(F.num(r["id"])),
-        sx_nil()));
-      selected = sx_cons(sx_cons(sx_string(key),
-        sx_cons(value,
-        sx_nil())),
-        selected);
+      let value = sx_cons(
+        r["observed"],
+        sx_cons(sx_string(F.num(r["id"])), sx_nil())
+      );
+      selected = sx_cons(
+        sx_cons(sx_string(key), sx_cons(value, sx_nil())),
+        selected
+      );
     }
   }
   return selected;
@@ -225,24 +254,31 @@ fn market(snapshot: C.Snapshot, q: Query) -> Market
       continue;
     }
     observed = true;
-    let age = cutoff_day - Date.date_days(text_slice(sx_text(r["observed"]),
+    let age = cutoff_day - Date.date_days(text_slice(
+      sx_text(r["observed"]),
       0,
-      10));
+      10
+    ));
     if age > q["max_age"]
     {
       continue;
     }
     fresh = true;
-    let result = Match.solve(r,
+    let result = Match.solve(
+      r,
       snapshot["quotes"],
       q["party"],
-      q["budget"] - work);
+      q["budget"] - work
+    );
     work = work + result["inspected"];
     if result["total"] == 0 - 2
     {
-      return record < Market >
-      {
-        status: sx_string("budget_exhausted"), comparables: sx_string("[]"), series: sx_string(""), work: work, matched: 0
+      return record<Market>
+      { status     : sx_string("budget_exhausted")
+      , comparables: sx_string("[]")
+      , series     : sx_string("")
+      , work       : work
+      , matched    : 0
       };
     }
     if result["total"] < 0
@@ -280,20 +316,30 @@ fn market(snapshot: C.Snapshot, q: Query) -> Market
       }
     }
   }
-  return record < Market >
-  {
-    status: sx_string(status), comparables: sx_string(buffer_text(evidence)), series: sx_string(buffer_text(series)), work: work, matched: matched
+  return record<Market>
+  { status     : sx_string(status)
+  , comparables: sx_string(buffer_text(evidence))
+  , series     : sx_string(buffer_text(series))
+  , work       : work
+  , matched    : matched
   };
 }
 
 fn cache_value(m: Market) -> sexpr
 {
-  return sx_cons(m["status"],
-    sx_cons(m["comparables"],
-    sx_cons(m["series"],
-    sx_cons(sx_string(F.num(m["work"])),
-    sx_cons(sx_string(F.num(m["matched"])),
-    sx_nil())))));
+  return sx_cons(
+    m["status"],
+    sx_cons(
+      m["comparables"],
+      sx_cons(
+        m["series"],
+        sx_cons(
+          sx_string(F.num(m["work"])),
+          sx_cons(sx_string(F.num(m["matched"])), sx_nil())
+        )
+      )
+    )
+  );
 }
 
 fn cache_read(value: sexpr) -> Market
@@ -301,9 +347,12 @@ fn cache_read(value: sexpr) -> Market
   let parts = sx_tail(value);
   let tail = sx_tail(parts);
   let counts = sx_tail(tail);
-  return record < Market >
-  {
-    status: sx_head(value), comparables: sx_head(parts), series: sx_head(tail), work: C.nat(sx_text(sx_head(counts))), matched: C.nat(sx_text(sx_head(sx_tail(counts))))
+  return record<Market>
+  { status     : sx_head(value)
+  , comparables: sx_head(parts)
+  , series     : sx_head(tail)
+  , work       : C.nat(sx_text(sx_head(counts)))
+  , matched    : C.nat(sx_text(sx_head(sx_tail(counts))))
   };
 }
 
@@ -379,14 +428,17 @@ fn evaluate(snapshots: string, cells: string, policy_rows: string) -> string
     tool_fail("competitor cube: expected 1..48 cells");
   }
   CSV.header(CSV.line(cells, 0), "pricing.competitor-cells@1");
-  CSV.header(CSV.line(cells,
-    1),
-    "id,arrival,departure,as_of,adults,child_ages,max_rooms,currency,cancellation,max_age_days,min_properties,search_budget,policy");
+  CSV.header(
+    CSV.line(cells, 1),
+    "id,arrival,departure,as_of,adults,child_ages,max_rooms,currency,cancellation,max_age_days,min_properties,search_budget,policy"
+  );
   let ps = policies(policy_rows);
   let snapshot = C.parse(snapshots);
   let out = buffer_new();
-  buffer_append(out,
-    "{\"kind\":\"pricing.competitor-cube\",\"version\":1,\"basis\":\"guest_payable_minor_per_party_stay\",\"published\":false,\"cells\":[");
+  buffer_append(
+    out,
+    "{\"kind\":\"pricing.competitor-cube\",\"version\":1,\"basis\":\"guest_payable_minor_per_party_stay\",\"published\":false,\"cells\":["
+  );
   var cache = sx_nil();
   var evaluated = 0;
   var last = 0;
@@ -405,10 +457,10 @@ fn evaluate(snapshots: string, cells: string, policy_rows: string) -> string
     if sx_kind(hit) == 0
     {
       value = cache_value(market(snapshot, q));
-      cache = sx_cons(sx_cons(q["market_key"],
-        sx_cons(value,
-        sx_nil())),
-        cache);
+      cache = sx_cons(
+        sx_cons(q["market_key"], sx_cons(value, sx_nil())),
+        cache
+      );
       evaluated = evaluated + 1;
     }
     if i != 2

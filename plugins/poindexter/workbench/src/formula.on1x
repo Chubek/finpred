@@ -271,10 +271,11 @@ fn cell(b: G.Book, id: i64, depth: i64) ->(i64, i64)
     A.basis_array_update(b["state"], id, 0);
     return (9, 0);
   }
-  A.basis_array_update(b["height"],
+  A.basis_array_update(
+    b["height"],
     id,
-    A.basis_array_sub(b["height"],
-    id) - depth);
+    A.basis_array_sub(b["height"], id) - depth
+  );
   A.basis_array_update(b["state"], id, status);
   A.basis_array_update(b["values"], id, value);
   return (status, value);
@@ -282,9 +283,10 @@ fn cell(b: G.Book, id: i64, depth: i64) ->(i64, i64)
 
 fn reach(b: G.Book, id: i64, depth: i64)
 {
-  if A.basis_array_sub(b["state"],
-    id) == - 1 && depth > A.basis_array_sub(b["height"],
-    id)
+  if A.basis_array_sub(b["state"], id) == - 1 && depth > A.basis_array_sub(
+    b["height"],
+    id
+  )
   {
     A.basis_array_update(b["height"], id, depth);
   }
@@ -300,15 +302,15 @@ fn dependency(b: G.Book, owner: i64, target: i64, depth: i64) ->(i64, i64)
   return (st, v);
 }
 
-fn aggregate(b: G.Book,
+fn aggregate(
+  b: G.Book,
   s: string,
   pos: i64,
   kind: string,
   id: i64,
   depth: i64,
-  active: bool) ->(i64,
-  i64,
-  i64)
+  active: bool
+) ->(i64, i64, i64)
 {
   let(first, p, fc, fr) = reference(s, G.skip(s, pos));
   var last = first;
@@ -386,15 +388,15 @@ fn aggregate(b: G.Book,
   return (1, total, end + 1);
 }
 
-fn atom(b: G.Book,
+fn atom(
+  b: G.Book,
   s: string,
   pos: i64,
   id: i64,
   d: i64,
   active: bool,
-  locals: bool) ->(i64,
-  i64,
-  i64)
+  locals: bool
+) ->(i64, i64, i64)
 {
   let i = G.skip(s, pos);
   let c = G.byte(s, i);
@@ -552,16 +554,16 @@ fn atom(b: G.Book,
   {
     return (4, 0, comma);
   }
-  let(sz,
-    z,
-    pz) = expr(b,
+  let(sz, z, pz) = expr(
+    b,
     s,
     comma + 1,
     1,
     id,
     d + 1,
     active && x == 0,
-    locals);
+    locals
+  );
   let end = G.skip(s, pz);
   if sz != 1
   {
@@ -578,16 +580,16 @@ fn atom(b: G.Book,
   return (1, z, end + 1);
 }
 
-fn expr(b: G.Book,
+fn expr(
+  b: G.Book,
   s: string,
   pos: i64,
   prec: i64,
   id: i64,
   d: i64,
   active: bool,
-  locals: bool) ->(i64,
-  i64,
-  i64)
+  locals: bool
+) ->(i64, i64, i64)
 {
   G.tick(b);
   let(st, x, next) = atom(b, s, pos, id, d, active, locals);
@@ -605,16 +607,16 @@ fn expr(b: G.Book,
     {
       break;
     }
-    let(sy,
-      y,
-      end) = expr(b,
+    let(sy, y, end) = expr(
+      b,
       s,
       i + width,
       rank + 1,
       id,
       d + 1,
       active,
-      locals);
+      locals
+    );
     if sy != 1
     {
       return (sy, 0, end);

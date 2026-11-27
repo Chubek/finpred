@@ -10,28 +10,38 @@ fn field(name: string, value: sexpr, rest: sexpr) -> sexpr
 fn review(comparables: sexpr, policy: sexpr) -> sexpr
 {
   let report = Price.position(comparables, policy);
-  let fields = field("kind",
+  let fields = field(
+    "kind",
     sx_string("caravansary.position-review@1"),
-    field("policy_sha256",
-    sx_string(Json.digest(policy)),
-    field("comparable_sha256",
-    sx_string(Json.digest(comparables)),
-    field("report_sha256",
-    sx_string(Json.digest(report)),
-    field("report",
-    report,
-    field("published",
-    Json.boolean(false),
-    sx_nil()))))));
+    field(
+      "policy_sha256",
+      sx_string(Json.digest(policy)),
+      field(
+        "comparable_sha256",
+        sx_string(Json.digest(comparables)),
+        field(
+          "report_sha256",
+          sx_string(Json.digest(report)),
+          field(
+            "report",
+            report,
+            field("published", Json.boolean(false), sx_nil())
+          )
+        )
+      )
+    )
+  );
   return Json.object(fields);
 }
 
 # Recompute the exact result from the two independently selected immutable
 # parents. The digest and the review payload are both checked by this replay;
 # a self-consistent hash on a forged report is insufficient.
-fn verify(claim: sexpr,
+fn verify(
+  claim: sexpr,
   comparables: sexpr,
-  policy: sexpr) -> Result < sexpr, sexpr >
+  policy: sexpr
+) -> Result < sexpr, sexpr >
 {
   if Json.kind(claim) != "object" || Json.kind(comparables) != "array" || Json.kind(policy) != "object"
   {

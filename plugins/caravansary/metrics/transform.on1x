@@ -15,9 +15,10 @@ fn compile_transform(ast_json: string) ->(string, Program)
 {
   return match compile_json(ast_json) with
   {
-    Ok(program) => ("",
-      program), Err(reason) => (sx_text(reason),
-      Check.empty_program())
+    Ok(program) => ("", program), Err(reason) => (
+      sx_text(reason),
+      Check.empty_program()
+    )
   };
 }
 
@@ -56,9 +57,11 @@ fn apply_unary(op: string, v: sexpr) -> Result < sexpr, sexpr >
   return result_ok(integer(- n));
 }
 
-fn apply_binary(op: string,
+fn apply_binary(
+  op: string,
   left: sexpr,
-  right: sexpr) -> Result < sexpr, sexpr >
+  right: sexpr
+) -> Result < sexpr, sexpr >
 {
   if op == "==" || op == "!="
   {
@@ -142,11 +145,12 @@ fn argument_scope(parameters: sexpr, arguments: sexpr) -> sexpr
 
 # Explicit LIFO continuations avoid recursion across calls and nested
 # expressions. A budget tick is charged only when entering a reached node.
-fn evaluate_expression(expr: sexpr,
+fn evaluate_expression(
+  expr: sexpr,
   functions: sexpr,
   counts: Counts.Counts,
-  budget: i64) -> Result < (sexpr,
-  i64), sexpr >
+  budget: i64
+) -> Result < (sexpr, i64), sexpr >
 {
   var tasks = sx_cons(step("expr", expr, sx_nil()), sx_nil());
   var values = sx_nil();
@@ -193,11 +197,10 @@ fn evaluate_expression(expr: sexpr,
         let op = J.plain(second);
         if op == "and" || op == "or"
         {
-          tasks = sx_cons(step("logical",
-            second,
-            J.pair(right,
-            payload)),
-            tasks);
+          tasks = sx_cons(
+            step("logical", second, J.pair(right, payload)),
+            tasks
+          );
         }
         else
         {
@@ -238,12 +241,10 @@ fn evaluate_expression(expr: sexpr,
       if (op == "and" && left) || (op == "or" && ! left)
       {
         values = sx_tail(values);
-        tasks = sx_cons(step("expr",
-          J.at(payload,
-          0),
-          J.at(payload,
-          1)),
-          tasks);
+        tasks = sx_cons(
+          step("expr", J.at(payload, 0), J.at(payload, 1)),
+          tasks
+        );
       }
     }
     if action == "invoke"
@@ -265,9 +266,10 @@ fn evaluate_expression(expr: sexpr,
       }
       else
       {
-        let scope = argument_scope(sx_tail(J.get(decl,
-          "parameters")),
-          arguments);
+        let scope = argument_scope(
+          sx_tail(J.get(decl, "parameters")),
+          arguments
+        );
         tasks = sx_cons(step("expr", J.get(decl, "expression"), scope), tasks);
       }
     }
@@ -275,8 +277,10 @@ fn evaluate_expression(expr: sexpr,
   return result_ok((sx_head(values), remaining));
 }
 
-fn render_metrics(program: Program,
-  counts: Counts.Counts) -> Result < sexpr, sexpr >
+fn render_metrics(
+  program: Program,
+  counts: Counts.Counts
+) -> Result < sexpr, sexpr >
 {
   let out = buffer_new();
   buffer_append(out, "{");
@@ -287,12 +291,12 @@ fn render_metrics(program: Program,
   {
     let entry = sx_head(cursor);
     let name = sx_text(sx_head(entry));
-    let(value,
-      left) = evaluate_expression(J.at(entry,
-      2),
+    let(value, left) = evaluate_expression(
+      J.at(entry, 2),
       program["functions"],
       counts,
-      remaining)?;
+      remaining
+    )?;
     remaining = left;
     if ! first
     {
@@ -316,8 +320,10 @@ fn render_metrics(program: Program,
   return result_ok(sx_string(buffer_text(out)));
 }
 
-fn evaluate_json(program: Program,
-  report_json: string) -> Result < sexpr, sexpr >
+fn evaluate_json(
+  program: Program,
+  report_json: string
+) -> Result < sexpr, sexpr >
 {
   return render_metrics(program, Counts.prepare(report_json)?);
 }

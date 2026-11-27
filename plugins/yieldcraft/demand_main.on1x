@@ -32,8 +32,10 @@ fn source(path: string, limit: i64) -> string
 fn main() -> i64
 {
   let mode = required("YIELDCRAFT_DEMAND_COMMAND");
-  let scenario = source(required("YIELDCRAFT_DEMAND_SCENARIO"),
-    Demand.bytes_limit());
+  let scenario = source(
+    required("YIELDCRAFT_DEMAND_SCENARIO"),
+    Demand.bytes_limit()
+  );
   if mode == "scenario-digest"
   {
     println(Store.digest(scenario));
@@ -41,8 +43,10 @@ fn main() -> i64
   }
   if mode == "panel" || mode == "panel-replay"
   {
-    let panel = source(required("YIELDCRAFT_DEMAND_EXPOSURE"),
-      Panel.bytes_limit());
+    let panel = source(
+      required("YIELDCRAFT_DEMAND_EXPOSURE"),
+      Panel.bytes_limit()
+    );
     let result = Panel.estimate(scenario, panel);
     let report = sx_text(result["report"]);
     if mode == "panel"
@@ -50,8 +54,10 @@ fn main() -> i64
       IO.basis_text_io_print(report);
       return 0;
     }
-    if required("YIELDCRAFT_DEMAND_EXPECTED_ID") != sx_text(result["id"]) || report != source(required("YIELDCRAFT_DEMAND_FROZEN_EVIDENCE"),
-      Panel.report_limit())
+    if required("YIELDCRAFT_DEMAND_EXPECTED_ID") != sx_text(result["id"]) || report != source(
+      required("YIELDCRAFT_DEMAND_FROZEN_EVIDENCE"),
+      Panel.report_limit()
+    )
     {
       tool_fail("yieldcraft-demand: panel replay identity or bytes differ");
     }
@@ -62,8 +68,10 @@ fn main() -> i64
   {
     tool_fail("yieldcraft-demand: unknown mode");
   }
-  let raw = source(required("YIELDCRAFT_DEMAND_EXPOSURE"),
-    Demand.bytes_limit());
+  let raw = source(
+    required("YIELDCRAFT_DEMAND_EXPOSURE"),
+    Demand.bytes_limit()
+  );
   let fit = Demand.estimate(scenario, raw);
   let demand = sx_text(fit["demand"]);
   let evidence = sx_text(fit["evidence"]);
@@ -78,10 +86,13 @@ fn main() -> i64
     return 0;
   }
   let id = required("YIELDCRAFT_DEMAND_EXPECTED_ID");
-  if id != text_concat("blake3:",
-    sx_text(fit["id"])) || source(required("YIELDCRAFT_DEMAND_FROZEN_SNAPSHOT"),
-    Demand.bytes_limit()) != demand || source(required("YIELDCRAFT_DEMAND_FROZEN_EVIDENCE"),
-    32768) != evidence
+  if id != text_concat("blake3:", sx_text(fit["id"])) || source(
+    required("YIELDCRAFT_DEMAND_FROZEN_SNAPSHOT"),
+    Demand.bytes_limit()
+  ) != demand || source(
+    required("YIELDCRAFT_DEMAND_FROZEN_EVIDENCE"),
+    32768
+  ) != evidence
   {
     tool_fail("yieldcraft-demand: replay identity or bytes differ");
   }

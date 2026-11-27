@@ -1,42 +1,38 @@
 import automat.dag as D;
 import automat.dag_artifacts as Art;
 record Snapshot
-{
-  status: sexpr, manifest: sexpr, run_id: sexpr, artifacts: sexpr
+{ status   : sexpr
+, manifest : sexpr
+, run_id   : sexpr
+, artifacts: sexpr
 }
 
 fn failed(status: sexpr) -> Snapshot
 {
-  return record < Snapshot >
-  {
-    status: status, manifest: sx_nil(), run_id: sx_nil(), artifacts: sx_nil()
+  return record<Snapshot>
+  { status   : status
+  , manifest : sx_nil()
+  , run_id   : sx_nil()
+  , artifacts: sx_nil()
   };
 }
 
-fn freeze_with(plan: D.Plan,
+fn freeze_with(
+  plan: D.Plan,
   mode: string,
   budget: i64,
   first: i64,
   second: i64,
   memoized: bool,
-  lookup: fn(string,
-  string) -> D.Descriptor,
-  call: fn(string,
-  i64,
-  i64) -> i64) -> Snapshot
+  lookup: fn(string, string) -> D.Descriptor,
+  call: fn(string, i64, i64) -> i64
+) -> Snapshot
 {
   if budget < 1 || budget > 16
   {
     return failed(sx_string("budget"));
   }
-  let r = D.run_with(plan,
-    mode,
-    budget,
-    first,
-    second,
-    memoized,
-    lookup,
-    call);
+  let r = D.run_with(plan, mode, budget, first, second, memoized, lookup, call);
   if sx_text(r["status"]) != "ok"
   {
     return failed(r["status"]);
@@ -61,8 +57,7 @@ fn freeze_with(plan: D.Plan,
   }
   let select_allowed = plan_version != "automat.scalar-dag@1";
   let b = buffer_new();
-  buffer_append(b,
-    """$format
+  buffer_append(b, """$format
 plan=$plan_version
 mode=analysis
 budget=$budget
@@ -75,8 +70,10 @@ output=${sx_text(plan["output"])}
   {
     let n = sx_head(nodes);
     let op = D.field(n, 1);
-    buffer_append(b,
-      "node=${D.field(n,0)},$op,${D.field(n,2)},${D.field(n,3)}");
+    buffer_append(
+      b,
+      "node=${D.field(n,0)},$op,${D.field(n,2)},${D.field(n,3)}"
+    );
     if select_allowed && op == "select@1"
     {
       buffer_append(b, ",${D.field(n,4)}");
@@ -92,40 +89,50 @@ output=${sx_text(plan["output"])}
   }
   buffer_append(b, "root=${sx_text(r["output_digest"])}\n");
   let bytes = buffer_text(b);
-  return record < Snapshot >
-  {
-    status: r["status"], manifest: sx_string(bytes), run_id: sx_string(Art.digest(bytes)), artifacts: r["artifacts"]
+  return record<Snapshot>
+  { status   : r["status"]
+  , manifest : sx_string(bytes)
+  , run_id   : sx_string(Art.digest(bytes))
+  , artifacts: r["artifacts"]
   };
 }
 
-fn freeze(plan: D.Plan,
+fn freeze(
+  plan: D.Plan,
   mode: string,
   budget: i64,
   first: i64,
-  second: i64) -> Snapshot
+  second: i64
+) -> Snapshot
 {
-  return freeze_with(plan,
+  return freeze_with(
+    plan,
     mode,
     budget,
     first,
     second,
     false,
     D.no_binding,
-    D.no_invoke);
+    D.no_invoke
+  );
 }
 
-fn freeze_memoized(plan: D.Plan,
+fn freeze_memoized(
+  plan: D.Plan,
   mode: string,
   budget: i64,
   first: i64,
-  second: i64) -> Snapshot
+  second: i64
+) -> Snapshot
 {
-  return freeze_with(plan,
+  return freeze_with(
+    plan,
     mode,
     budget,
     first,
     second,
     true,
     D.no_binding,
-    D.no_invoke);
+    D.no_invoke
+  );
 }

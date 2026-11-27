@@ -6,33 +6,43 @@ import sdk.callable as SDK;
 # Linked identifies the executable subjects chosen by the trusted host.
 # Selection and Roots are the host's expectations, not claims from the archive.
 record Linked
-{
-  model_code: sexpr, scoring_code: sexpr
+{ model_code  : sexpr
+, scoring_code: sexpr
 }
 
 record Selection
-{
-  model: sexpr, model_code: sexpr, scoring_code: sexpr, training_cutoff: sexpr, scoring_cutoff: sexpr
+{ model          : sexpr
+, model_code     : sexpr
+, scoring_code   : sexpr
+, training_cutoff: sexpr
+, scoring_cutoff : sexpr
 }
 
 record Roots
-{
-  training_snapshot: sexpr, actuals_snapshot: sexpr, request: sexpr, forecast: sexpr
+{ training_snapshot: sexpr
+, actuals_snapshot : sexpr
+, request          : sexpr
+, forecast         : sexpr
 }
 
 record Frozen
-{
-  training_snapshot: sexpr, actuals_snapshot: sexpr, request: sexpr, forecast: sexpr
+{ training_snapshot: sexpr
+, actuals_snapshot : sexpr
+, request          : sexpr
+, forecast         : sexpr
 }
 
 record Run
-{
-  status: i64, id: sexpr, manifest: sexpr, score: sexpr
+{ status  : i64
+, id      : sexpr
+, manifest: sexpr
+, score   : sexpr
 }
 
 record Archive
-{
-  id: sexpr, manifest: sexpr, score: sexpr
+{ id      : sexpr
+, manifest: sexpr
+, score   : sexpr
 }
 
 fn scoring_policy() -> string
@@ -42,9 +52,11 @@ fn scoring_policy() -> string
 
 fn failure(status: i64) -> Run
 {
-  return record < Run >
-  {
-    status: status, id: sx_nil(), manifest: sx_nil(), score: sx_nil()
+  return record<Run>
+  { status  : status
+  , id      : sx_nil()
+  , manifest: sx_nil()
+  , score   : sx_nil()
   };
 }
 
@@ -55,39 +67,54 @@ fn bounded(bytes: sexpr, limit: i64) -> bool
 
 fn matches(bytes: sexpr, id: sexpr, limit: i64) -> bool
 {
-  return bounded(bytes,
-    limit) && SDK.valid_digest(id) && Model.digest(sx_text(bytes)) == sx_text(id);
+  return bounded(
+    bytes,
+    limit
+  ) && SDK.valid_digest(id) && Model.digest(sx_text(bytes)) == sx_text(id);
 }
 
 # Status: 1 unsupported model or code pin mismatch, 2 mismatched or oversized
 # frozen roots, 3 scoring rejected, 4 wrong manifest, 5 wrong score artifact.
-fn evaluate(linked: Linked,
+fn evaluate(
+  linked: Linked,
   selection: Selection,
   roots: Roots,
-  frozen: Frozen) -> Run
+  frozen: Frozen
+) -> Run
 {
   let model = sx_text(selection["model"]);
   let model_code = sx_text(selection["model_code"]);
   let scoring_code = sx_text(selection["scoring_code"]);
   let desc = Model.descriptor(model, model_code);
-  if ! desc["enabled"] || ! SDK.atom(selection["model"],
-    64) || ! SDK.valid_digest(selection["scoring_code"]) || ! SDK.same(selection["model_code"],
-    linked["model_code"]) || ! SDK.same(selection["scoring_code"],
-    linked["scoring_code"])
+  if ! desc["enabled"] || ! SDK.atom(
+    selection["model"],
+    64
+  ) || ! SDK.valid_digest(selection["scoring_code"]) || ! SDK.same(
+    selection["model_code"],
+    linked["model_code"]
+  ) || ! SDK.same(selection["scoring_code"], linked["scoring_code"])
   {
     return failure(1);
   }
   let request_port = Model.request_port();
   let forecast_port = Model.forecast_port();
-  if ! matches(frozen["training_snapshot"],
+  if ! matches(
+    frozen["training_snapshot"],
     roots["training_snapshot"],
-    Guest.max_bytes()) || ! matches(frozen["actuals_snapshot"],
+    Guest.max_bytes()
+  ) || ! matches(
+    frozen["actuals_snapshot"],
     roots["actuals_snapshot"],
-    Guest.max_bytes()) || ! matches(frozen["request"],
+    Guest.max_bytes()
+  ) || ! matches(
+    frozen["request"],
     roots["request"],
-    request_port["max_bytes"]) || ! matches(frozen["forecast"],
+    request_port["max_bytes"]
+  ) || ! matches(
+    frozen["forecast"],
     roots["forecast"],
-    forecast_port["max_bytes"])
+    forecast_port["max_bytes"]
+  )
   {
     return failure(2);
   }
@@ -97,7 +124,8 @@ fn evaluate(linked: Linked,
   let actuals_snapshot = sx_text(roots["actuals_snapshot"]);
   let request = sx_text(roots["request"]);
   let forecast = sx_text(roots["forecast"]);
-  let outcome = Score.evaluate(model,
+  let outcome = Score.evaluate(
+    model,
     sx_text(frozen["training_snapshot"]),
     training_snapshot,
     sx_text(frozen["request"]),
@@ -106,7 +134,8 @@ fn evaluate(linked: Linked,
     actuals_snapshot,
     training_cutoff,
     scoring_cutoff,
-    model_code);
+    model_code
+  );
   if outcome["status"] != 0 || ! bounded(outcome["bytes"], 2048)
   {
     return failure(3);
@@ -131,16 +160,26 @@ fn evaluate(linked: Linked,
     return failure(3);
   }
   let out = buffer_new();
-  buffer_append(out,
-    "{\"kind\":\"analysis.guest-nights-evaluation\",\"version\":1,\"pricing_input\":false");
-  buffer_append(out,
-    ",\"model\":\"$model\",\"model_code_digest\":\"$model_code\",\"model_policy_digest\":\"$model_policy\"");
-  buffer_append(out,
-    ",\"scoring_code_digest\":\"$scoring_code\",\"scoring_policy_digest\":\"$scoring_policy_id\"");
-  buffer_append(out,
-    ",\"training_cutoff\":\"$training_cutoff\",\"scoring_cutoff\":\"$scoring_cutoff\"");
-  buffer_append(out,
-    ",\"training_snapshot\":\"$training_snapshot\",\"actuals_snapshot\":\"$actuals_snapshot\",\"request\":\"$request\",\"forecast\":\"$forecast\"");
+  buffer_append(
+    out,
+    "{\"kind\":\"analysis.guest-nights-evaluation\",\"version\":1,\"pricing_input\":false"
+  );
+  buffer_append(
+    out,
+    ",\"model\":\"$model\",\"model_code_digest\":\"$model_code\",\"model_policy_digest\":\"$model_policy\""
+  );
+  buffer_append(
+    out,
+    ",\"scoring_code_digest\":\"$scoring_code\",\"scoring_policy_digest\":\"$scoring_policy_id\""
+  );
+  buffer_append(
+    out,
+    ",\"training_cutoff\":\"$training_cutoff\",\"scoring_cutoff\":\"$scoring_cutoff\""
+  );
+  buffer_append(
+    out,
+    ",\"training_snapshot\":\"$training_snapshot\",\"actuals_snapshot\":\"$actuals_snapshot\",\"request\":\"$request\",\"forecast\":\"$forecast\""
+  );
   buffer_append(out, ",\"score\":\"$score\",\"state\":\"$state\"}\n");
   let manifest = buffer_text(out);
   let id = Model.digest(manifest);
@@ -148,19 +187,23 @@ fn evaluate(linked: Linked,
   {
     return failure(3);
   }
-  return record < Run >
-  {
-    status: 0, id: sx_string(id), manifest: sx_string(manifest), score: outcome["bytes"]
+  return record<Run>
+  { status  : 0
+  , id      : sx_string(id)
+  , manifest: sx_string(manifest)
+  , score   : outcome["bytes"]
   };
 }
 
 # The expected ID must come from trusted lookup, not from hashing a manifest
 # found alongside the archive. No parser of archive-controlled JSON is needed.
-fn replay(linked: Linked,
+fn replay(
+  linked: Linked,
   selection: Selection,
   roots: Roots,
   frozen: Frozen,
-  archive: Archive) -> Run
+  archive: Archive
+) -> Run
 {
   if ! matches(archive["manifest"], archive["id"], 2048)
   {

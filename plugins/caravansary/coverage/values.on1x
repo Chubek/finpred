@@ -165,10 +165,10 @@ fn set(v: sexpr, name: string, value: sexpr) -> sexpr
 
 fn integer_spelling(s: string) -> bool
 {
-  return ! Str.contains(s,
-    ".") && ! Str.contains(s,
-    "e") && ! Str.contains(s,
-    "E");
+  return ! Str.contains(s, ".") && ! Str.contains(s, "e") && ! Str.contains(
+    s,
+    "E"
+  );
 }
 
 fn as_i64(v: sexpr) ->(bool, i64)
@@ -250,8 +250,10 @@ fn same(a: sexpr, b: sexpr) -> bool
     let y = sx_head(ys);
     if dictionary
     {
-      if sx_text(sx_head(x)) != sx_text(sx_head(y)) || ! same(PlanJson.pair_value(x),
-        PlanJson.pair_value(y))
+      if sx_text(sx_head(x)) != sx_text(sx_head(y)) || ! same(
+        PlanJson.pair_value(x),
+        PlanJson.pair_value(y)
+      )
       {
         return false;
       }

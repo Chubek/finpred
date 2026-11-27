@@ -3,13 +3,15 @@
 import core.date as Date;
 import core.feed_snapshot as Feed;
 record Projection
-{
-  status: i64, bytes: sexpr
+{ status: i64
+, bytes : sexpr
 }
 
 record Point
-{
-  status: i64, reference_date: sexpr, rate: sexpr, timing: Feed.Tail
+{ status        : i64
+, reference_date: sexpr
+, rate          : sexpr
+, timing        : Feed.Tail
 }
 
 fn max_bytes() -> i64
@@ -19,21 +21,27 @@ fn max_bytes() -> i64
 
 fn fail(status: i64) -> Projection
 {
-  return record < Projection >
-  {
-    status: status, bytes: sx_nil()
+  return record<Projection>
+  { status: status
+  , bytes : sx_nil()
   };
 }
 
 fn unavailable(status: i64) -> Point
 {
-  let empty = record < Feed.Tail >
-  {
-    start: 0 - 1, status: sx_nil(), observed: sx_nil(), received: sx_nil(), ingested: sx_nil(), source_cutoff: sx_nil()
+  let empty = record<Feed.Tail>
+  { start        : 0 - 1
+  , status       : sx_nil()
+  , observed     : sx_nil()
+  , received     : sx_nil()
+  , ingested     : sx_nil()
+  , source_cutoff: sx_nil()
   };
-  return record < Point >
-  {
-    status: status, reference_date: sx_nil(), rate: sx_nil(), timing: empty
+  return record<Point>
+  { status        : status
+  , reference_date: sx_nil()
+  , rate          : sx_nil()
+  , timing        : empty
   };
 }
 
@@ -57,9 +65,10 @@ fn quote_code(s: string) -> bool
 fn positive_decimal(s: string) -> bool
 {
   let n = text_len(s);
-  if n < 1 || n > 24 || (n > 1 && text_byte(s,
-    0) == 48 && text_byte(s,
-    1) != 46)
+  if n < 1 || n > 24 || (n > 1 && text_byte(s, 0) == 48 && text_byte(
+    s,
+    1
+  ) != 46)
   {
     return false;
   }
@@ -115,8 +124,10 @@ fn select_rate(snapshot: string, start: i64, target: string) ->(i64, string)
   {
     let(a, currency) = Feed.quoted(snapshot, at, "{\"currency\":\"", 3);
     let(b, rate) = Feed.quoted(snapshot, a, ",\"rate\":\"", 24);
-    if b < 0 || ! quote_code(currency) || ! positive_decimal(rate) || has(seen,
-      currency)
+    if b < 0 || ! quote_code(currency) || ! positive_decimal(rate) || has(
+      seen,
+      currency
+    )
     {
       return (2, "");
     }
@@ -142,16 +153,20 @@ fn select_rate(snapshot: string, start: i64, target: string) ->(i64, string)
 # Status: 0 success, 1 wrong/missing parent, 2 invalid profile or pair,
 # 3 source unavailable at cutoff, 4 requested quote absent in valid snapshot.
 # The expected parent is trusted lineage, not an assertion from the snapshot.
-fn read_point(snapshot: string,
+fn read_point(
+  snapshot: string,
   expected_parent: string,
   cutoff: string,
   base: string,
-  quote_currency: string) -> Point
+  quote_currency: string
+) -> Point
 {
-  let parent = Feed.parent_status(snapshot,
+  let parent = Feed.parent_status(
+    snapshot,
     expected_parent,
     cutoff,
-    max_bytes());
+    max_bytes()
+  );
   if parent != 0
   {
     return unavailable(parent);
@@ -161,13 +176,12 @@ fn read_point(snapshot: string,
     return unavailable(2);
   }
   let prefix = "{\"format\":\"dragnet.ecb-fx-reference@1\",\"source\":\"European Central Bank\",\"source_series\":\"eurofxref-daily\"";
-  let(a,
-    reference) = Feed.quoted(snapshot,
-    Feed.after(snapshot,
-    0,
-    prefix),
+  let(a, reference) = Feed.quoted(
+    snapshot,
+    Feed.after(snapshot, 0, prefix),
     ",\"reference_date\":\"",
-    10);
+    10
+  );
   let dims = ",\"provider_updated_at\":null,\"base_currency\":\"EUR\",\"unit\":\"quote_currency_per_EUR\"";
   let tail = Feed.tail(snapshot, Feed.after(snapshot, a, dims));
   if tail["start"] < 0 || sx_text(tail["status"]) != "complete"
@@ -175,9 +189,11 @@ fn read_point(snapshot: string,
     return unavailable(2);
   }
   let economic_day = Date.date_days(reference);
-  let received_day = Date.date_days(text_slice(sx_text(tail["received"]),
+  let received_day = Date.date_days(text_slice(
+    sx_text(tail["received"]),
     0,
-    10));
+    10
+  ));
   if economic_day < 0 || received_day < economic_day || received_day - economic_day > 7
   {
     return unavailable(2);
@@ -191,32 +207,42 @@ fn read_point(snapshot: string,
   {
     return unavailable(status);
   }
-  return record < Point >
-  {
-    status: 0, reference_date: sx_string(reference), rate: sx_string(rate), timing: tail
+  return record<Point>
+  { status        : 0
+  , reference_date: sx_string(reference)
+  , rate          : sx_string(rate)
+  , timing        : tail
   };
 }
 
-fn project(snapshot: string,
+fn project(
+  snapshot: string,
   expected_parent: string,
   cutoff: string,
   base: string,
-  quote_currency: string) -> Projection
+  quote_currency: string
+) -> Projection
 {
-  let point = read_point(snapshot,
+  let point = read_point(
+    snapshot,
     expected_parent,
     cutoff,
     base,
-    quote_currency);
+    quote_currency
+  );
   if point["status"] != 0
   {
     return fail(point["status"]);
   }
   let out = buffer_new();
-  buffer_append(out,
-    "{\"kind\":\"analysis.fx-reference\",\"version\":1,\"unit\":\"quote_currency_per_base_currency\",\"pricing_input\":false,\"executable\":false");
-  buffer_append(out,
-    ",\"source_kind\":\"dragnet.ecb-fx-reference@1\",\"source_series\":\"eurofxref-daily\",\"provider_updated_at\":null");
+  buffer_append(
+    out,
+    "{\"kind\":\"analysis.fx-reference\",\"version\":1,\"unit\":\"quote_currency_per_base_currency\",\"pricing_input\":false,\"executable\":false"
+  );
+  buffer_append(
+    out,
+    ",\"source_kind\":\"dragnet.ecb-fx-reference@1\",\"source_series\":\"eurofxref-daily\",\"provider_updated_at\":null"
+  );
   Feed.field(out, "base_currency", base);
   Feed.field(out, "quote_currency", quote_currency);
   Feed.field(out, "rate", sx_text(point["rate"]));
@@ -224,27 +250,31 @@ fn project(snapshot: string,
   Feed.field(out, "parent", expected_parent);
   Feed.times(out, point["timing"], cutoff);
   buffer_append(out, "}\n");
-  return record < Projection >
-  {
-    status: 0, bytes: sx_string(buffer_text(out))
+  return record<Projection>
+  { status: 0
+  , bytes : sx_string(buffer_text(out))
   };
 }
 
-fn verifies(snapshot: string,
+fn verifies(
+  snapshot: string,
   expected_parent: string,
   cutoff: string,
   base: string,
   quote_currency: string,
-  projected: string) -> bool
+  projected: string
+) -> bool
 {
   if text_len(projected) < 1 || text_len(projected) > max_bytes()
   {
     return false;
   }
-  let checked = project(snapshot,
+  let checked = project(
+    snapshot,
     expected_parent,
     cutoff,
     base,
-    quote_currency);
+    quote_currency
+  );
   return checked["status"] == 0 && sx_text(checked["bytes"]) == projected;
 }

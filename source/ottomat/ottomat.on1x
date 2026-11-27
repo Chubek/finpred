@@ -5,15 +5,17 @@ import std.collections.List as L;
 # A reference to the canonical Automat plan (node ids 0..6), parameterized
 # by an admitted profile. An empty profile means there is no validated plan.
 record Plan
-{
-  syntax_version: i64, graph: sexpr, profile: sexpr
+{ syntax_version: i64
+, graph         : sexpr
+, profile       : sexpr
 }
 
 fn invalid() -> Plan
 {
-  return record < Plan >
-  {
-    syntax_version: 0, graph: sx_string(""), profile: sx_string("")
+  return record<Plan>
+  { syntax_version: 0
+  , graph         : sx_string("")
+  , profile       : sx_string("")
   };
 }
 
@@ -114,8 +116,10 @@ fn lower(s: string) -> Plan
     # Resolve the declaration to this exact native operation, checking its
     # input against the previous declaration's output, including the root.
     let n = Graph.node(id);
-    if n["id"] != id || sx_text(n["family"]) != family || sx_text(n["accepts"]) != previous || sx_text(n["produces"]) != output || ! effect_allowed(family,
-      sx_text(n["effect"]))
+    if n["id"] != id || sx_text(n["family"]) != family || sx_text(n["accepts"]) != previous || sx_text(n["produces"]) != output || ! effect_allowed(
+      family,
+      sx_text(n["effect"])
+    )
     {
       return invalid();
     }
@@ -135,9 +139,10 @@ fn lower(s: string) -> Plan
   {
     return invalid();
   }
-  return record < Plan >
-  {
-    syntax_version: version, graph: sx_string(Graph.version()), profile: sx_string(selected)
+  return record<Plan>
+  { syntax_version: version
+  , graph         : sx_string(Graph.version())
+  , profile       : sx_string(selected)
   };
 }
 

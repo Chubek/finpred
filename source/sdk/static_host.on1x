@@ -1,11 +1,13 @@
 # Legacy package compatibility API, not an engine admission gate.
 import sdk.registry as Registry;
-fn compatible(name: string,
+fn compatible(
+  name: string,
   kind: string,
   inputs: sexpr,
   output: string,
   mode: string,
-  linked: sexpr) -> bool
+  linked: sexpr
+) -> bool
 {
   return Registry.compatible(name, kind, inputs, output, mode, linked);
 }
@@ -22,6 +24,8 @@ fn poindexter() -> bool
 
 fn dragnet() -> bool
 {
-  return Registry.package_compatible("dragnet.frozen_csv.offers_as_of",
-    "analysis");
+  return Registry.package_compatible(
+    "dragnet.frozen_csv.offers_as_of",
+    "analysis"
+  );
 }

@@ -71,8 +71,10 @@ fn age_array(value: sexpr) -> bool
 # room allocations and ages can change price and eligibility.
 fn valid_guest(guest: sexpr) -> bool
 {
-  if Json.kind(guest) != "object" || Sx.sexpr_size(sx_tail(guest)) != 5 || ! explicit_term(V.text(guest,
-    "id"))
+  if Json.kind(guest) != "object" || Sx.sexpr_size(sx_tail(guest)) != 5 || ! explicit_term(V.text(
+    guest,
+    "id"
+  ))
   {
     return false;
   }
@@ -123,9 +125,10 @@ fn valid_guest(guest: sexpr) -> bool
   {
     return false;
   }
-  return Json.render(Json.sorted_array(children,
-    true)) == Json.render(Json.sorted_array(Json.array(derived_ages),
-    true));
+  return Json.render(Json.sorted_array(
+    children,
+    true
+  )) == Json.render(Json.sorted_array(Json.array(derived_ages), true));
 }
 
 fn valid_scope(scope: sexpr) -> bool
@@ -137,14 +140,22 @@ fn valid_scope(scope: sexpr) -> bool
   let checkin = Civil.date(V.text(scope, "checkin"));
   let checkout = Civil.date(V.text(scope, "checkout"));
   let basis = V.text(scope, "price_basis");
-  return V.currency(V.text(scope,
-    "currency")) && checkin > 0 && checkout > checkin && valid_guest(Json.get(scope,
-    "guest_configuration")) && explicit_term(V.text(scope,
-    "booker_country")) && explicit_term(V.text(scope,
-    "locale")) && (basis == "stay_total" || basis == "nightly_average") && V.text(scope,
-    "taxes_fees_inclusion") == "included" && explicit_term(V.text(scope,
-    "meal")) && explicit_term(V.text(scope,
-    "cancellation"));
+  return V.currency(V.text(
+    scope,
+    "currency"
+  )) && checkin > 0 && checkout > checkin && valid_guest(Json.get(
+    scope,
+    "guest_configuration"
+  )) && explicit_term(V.text(scope, "booker_country")) && explicit_term(V.text(
+    scope,
+    "locale"
+  )) && (basis == "stay_total" || basis == "nightly_average") && V.text(
+    scope,
+    "taxes_fees_inclusion"
+  ) == "included" && explicit_term(V.text(
+    scope,
+    "meal"
+  )) && explicit_term(V.text(scope, "cancellation"));
 }
 
 fn report(fields: sexpr, reason: string) -> sexpr
@@ -153,34 +164,38 @@ fn report(fields: sexpr, reason: string) -> sexpr
   {
     return Json.object(V.put_text(fields, "status", "recommended"));
   }
-  return Json.object(V.put_text(V.put_text(fields,
-    "status",
-    "abstained"),
+  return Json.object(V.put_text(
+    V.put_text(fields, "status", "abstained"),
     "reason",
-    reason));
+    reason
+  ));
 }
 
 # Return only normalized facts used by the recommendation; rate observations
 # remain available to the caller in the source artifact.
 fn evidence(projection: sexpr, observed: i64, amount: i64) -> sexpr
 {
-  var fields = V.put_text(sx_nil(),
+  var fields = V.put_text(
+    sx_nil(),
     "property_id",
-    V.text(projection,
-    "property_id"));
-  fields = V.put_text(fields,
+    V.text(projection, "property_id")
+  );
+  fields = V.put_text(
+    fields,
     "candidate_id",
-    V.text(projection,
-    "candidate_id"));
+    V.text(projection, "candidate_id")
+  );
   fields = V.put_text(fields, "provider", V.text(projection, "provider"));
-  fields = V.put_text(fields,
+  fields = V.put_text(
+    fields,
     "provider_property_id",
-    V.text(projection,
-    "provider_property_id"));
-  fields = V.put_text(fields,
+    V.text(projection, "provider_property_id")
+  );
+  fields = V.put_text(
+    fields,
     "observation_id",
-    V.text(projection,
-    "observation_id"));
+    V.text(projection, "observation_id")
+  );
   fields = V.put_text(fields, "observed_at", Civil.utc_text(observed));
   let(ok_received, received) = V.instant(V.text(projection, "received_at"));
   let(ok_ingested, ingested) = V.instant(V.text(projection, "ingested_at"));
@@ -190,14 +205,14 @@ fn evidence(projection: sexpr, observed: i64, amount: i64) -> sexpr
   return Json.object(V.put_int(fields, "amount_minor", amount));
 }
 
-fn summarize(comparables: sexpr,
+fn summarize(
+  comparables: sexpr,
   scope: sexpr,
   qual: string,
   subject: string,
   now: i64,
-  max_age: i64) ->(sexpr,
-  sexpr,
-  string)
+  max_age: i64
+) ->(sexpr, sexpr, string)
 {
   var grouped = sx_nil();
   var n = 0;
@@ -224,11 +239,13 @@ fn summarize(comparables: sexpr,
     let(has_ingested, ingested) = V.instant(V.text(row, "ingested_at"));
     let amount = V.number(row, "amount_minor", V.money_cap());
     let row_scope = Json.get(row, "scope");
-    if property == "" || V.text(row,
-      "candidate_id") == "" || V.text(row,
-      "provider") == "" || V.text(row,
-      "provider_property_id") == "" || V.text(row,
-      "observation_id") == "" || ! has_observed || ! has_received || ! has_ingested || observed > received || received > ingested || amount < 1
+    if property == "" || V.text(row, "candidate_id") == "" || V.text(
+      row,
+      "provider"
+    ) == "" || V.text(row, "provider_property_id") == "" || V.text(
+      row,
+      "observation_id"
+    ) == "" || ! has_observed || ! has_received || ! has_ingested || observed > received || received > ingested || amount < 1
     {
       bad_shape = bad_shape + 1;
     }
@@ -264,11 +281,11 @@ fn summarize(comparables: sexpr,
               }
               else
               {
-                grouped = V.put(grouped,
+                grouped = V.put(
+                  grouped,
                   property,
-                  evidence(row,
-                  observed,
-                  amount));
+                  evidence(row, observed, amount)
+                );
                 good = good + 1;
               }
             }
@@ -295,9 +312,10 @@ fn summarize(comparables: sexpr,
     while sx_kind(sorted) == 3 && sx_text(sx_head(sx_head(sorted))) == property
     {
       let alternative = Json.pair_value(sx_head(sorted));
-      let(_has_observed,
-        observed) = V.instant(V.text(alternative,
-        "observed_at"));
+      let(_has_observed, observed) = V.instant(V.text(
+        alternative,
+        "observed_at"
+      ));
       let amount = V.number(alternative, "amount_minor", V.money_cap());
       if observed > best_time
       {
@@ -354,9 +372,11 @@ fn summarize(comparables: sexpr,
 fn position(comparables: sexpr, policy: sexpr) -> sexpr
 {
   var fields = V.put_text(sx_nil(), "kind", "caravansary.position@1");
-  fields = V.put_text(fields,
+  fields = V.put_text(
+    fields,
     "methodology",
-    "independent-nearest-rank-nightly@1");
+    "independent-nearest-rank-nightly@1"
+  );
   if V.text(policy, "kind") != "caravansary.price-policy@1"
   {
     return report(fields, "invalid_policy_kind");
@@ -410,14 +430,14 @@ fn position(comparables: sexpr, policy: sexpr) -> sexpr
   {
     return report(fields, "incompatible_price_guardrails");
   }
-  let(selected,
-    counts,
-    error) = summarize(comparables,
+  let(selected, counts, error) = summarize(
+    comparables,
     scope,
     qual,
     subject,
     now,
-    max_age * 1000000);
+    max_age * 1000000
+  );
   if error != ""
   {
     return report(fields, error);
@@ -435,9 +455,10 @@ fn position(comparables: sexpr, policy: sexpr) -> sexpr
     sample = sx_cons(Json.get(sx_head(rows), "amount_minor"), sample);
     rows = sx_tail(rows);
   }
-  let summary = Json.get(Stats.describe(Json.array(sample),
-    quantile),
-    "summary");
+  let summary = Json.get(
+    Stats.describe(Json.array(sample), quantile),
+    "summary"
+  );
   let target = V.number(summary, "quantile", V.money_cap());
   var suggestion = target;
   var clamp = "none";

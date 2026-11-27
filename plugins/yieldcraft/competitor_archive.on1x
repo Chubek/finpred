@@ -23,10 +23,12 @@ fn heading() -> string
   return "finpred-competitor-cube@1\n";
 }
 
-fn manifest(snapshots: string,
+fn manifest(
+  snapshots: string,
   cells: string,
   policy: string,
-  result: string) -> string
+  result: string
+) -> string
 {
   let header = heading();
   return "$header$snapshots\n$cells\n$policy\n$result\n";
@@ -37,10 +39,12 @@ fn render(id: string, result: string)
   IO.basis_text_io_print("{\"cube_id\":\"$id\",\"cube\":$result}\n");
 }
 
-fn evaluate(home: string,
+fn evaluate(
+  home: string,
   snapshot_path: string,
   cells_path: string,
-  policy_path: string) -> i64
+  policy_path: string
+) -> i64
 {
   let snapshots = source(snapshot_path, Cube.snapshots_limit());
   let cells = source(cells_path, Cube.cells_limit());
@@ -51,11 +55,10 @@ fn evaluate(home: string,
   let pd = Store.digest(policy);
   let rd = Store.digest(result);
   Store.ensure(home);
-  if Store.put(home,
-    snapshots) != sd || Store.put(home,
-    cells) != cd || Store.put(home,
-    policy) != pd || Store.put(home,
-    result) != rd
+  if Store.put(home, snapshots) != sd || Store.put(
+    home,
+    cells
+  ) != cd || Store.put(home, policy) != pd || Store.put(home, result) != rd
   {
     tool_fail("competitor cube: content address divergence");
   }
@@ -79,9 +82,11 @@ fn replay(home: string, id: string) -> i64
 {
   let bytes = Store.fetch(home, id);
   let header = heading();
-  if text_len(bytes) != text_len(header) + 260 || text_slice(bytes,
+  if text_len(bytes) != text_len(header) + 260 || text_slice(
+    bytes,
     0,
-    text_len(header)) != header
+    text_len(header)
+  ) != header
   {
     tool_fail("competitor cube: malformed or unsupported archive");
   }
@@ -89,12 +94,11 @@ fn replay(home: string, id: string) -> i64
   let cd = pointer(bytes, 1);
   let pd = pointer(bytes, 2);
   let rd = pointer(bytes, 3);
-  let result = Cube.evaluate(Store.fetch(home,
-    sd),
-    Store.fetch(home,
-    cd),
-    Store.fetch(home,
-    pd));
+  let result = Cube.evaluate(
+    Store.fetch(home, sd),
+    Store.fetch(home, cd),
+    Store.fetch(home, pd)
+  );
   if result != Store.fetch(home, rd)
   {
     tool_fail("competitor cube: replay divergence");

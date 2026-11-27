@@ -296,7 +296,7 @@ case "$suite" in
     ;;
   compiler)
     python3 tests/validate_static.py
-    checks build_paths on1x_features core_financial_types environ_argv ottomat_plan reproducible_build
+    checks build_paths on1x_features on1x_format core_financial_types environ_argv ottomat_plan reproducible_build
     ;;
   pricing)
     require_tools strace

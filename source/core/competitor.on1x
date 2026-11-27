@@ -7,30 +7,58 @@ import std.String as Str;
 import std.collections.Array as A;
 import std.collections.List as L;
 record Release
-{
-  id: i64, property_id: i64, provider: sexpr, arrival: sexpr, departure: sexpr, currency: sexpr, observed: sexpr, received: sexpr, ingested: sexpr, weight: i64, bundle_rooms: i64, bundle_discount: i64, from_row: i64, to_row: i64
+{ id             : i64
+, property_id    : i64
+, provider       : sexpr
+, arrival        : sexpr
+, departure      : sexpr
+, currency       : sexpr
+, observed       : sexpr
+, received       : sexpr
+, ingested       : sexpr
+, weight         : i64
+, bundle_rooms   : i64
+, bundle_discount: i64
+, from_row       : i64
+, to_row         : i64
 }
 
 record Snapshot
-{
-  releases: sexpr, quotes: i64
+{ releases: sexpr
+, quotes  : i64
 }
 
 record Quote
-{
-  id: i64, pool: i64, quantity: i64, adults: i64, children: i64, min_age: i64, max_age: i64, min_nights: i64, cancellation: i64, gross: i64, net_base: i64
+{ id          : i64
+, pool        : i64
+, quantity    : i64
+, adults      : i64
+, children    : i64
+, min_age     : i64
+, max_age     : i64
+, min_nights  : i64
+, cancellation: i64
+, gross       : i64
+, net_base    : i64
 }
 
 record Party
-{
-  adults: i64, children: i64, ages: sexpr, packed_ages: i64, rooms: i64, nights: i64, cancellation: i64
+{ adults      : i64
+, children    : i64
+, ages        : sexpr
+, packed_ages : i64
+, rooms       : i64
+, nights      : i64
+, cancellation: i64
 }
 
-fn party(adults: i64,
+fn party(
+  adults: i64,
   raw_ages: string,
   rooms: i64,
   nights: i64,
-  cancellation: string) -> Party
+  cancellation: string
+) -> Party
 {
   if adults < 1 || adults > 8 || rooms < 1 || rooms > 4 || rooms > adults || nights < 1 || text_len(raw_ages) > 23
   {
@@ -70,9 +98,14 @@ fn party(adults: i64,
   {
     tool_fail("competitor: unknown requested cancellation policy");
   }
-  return record < Party >
-  {
-    adults: adults, children: children, ages: sx_string(raw_ages), packed_ages: packed, rooms: rooms, nights: nights, cancellation: code
+  return record<Party>
+  { adults      : adults
+  , children    : children
+  , ages        : sx_string(raw_ages)
+  , packed_ages : packed
+  , rooms       : rooms
+  , nights      : nights
+  , cancellation: code
   };
 }
 
@@ -133,30 +166,32 @@ fn cancellation_code(s: string) -> i64
 
 fn release(row: string, from_row: i64, to_row: i64) -> Release
 {
-  return record < Release >
-  {
-    id: number(row,
-      1), property_id: number(row,
-      2), provider: sx_string(CSV.field(row,
-      3)), arrival: sx_string(CSV.field(row,
-      4)), departure: sx_string(CSV.field(row,
-      5)), currency: sx_string(CSV.field(row,
-      6)), observed: sx_string(CSV.field(row,
-      7)), received: sx_string(CSV.field(row,
-      8)), ingested: sx_string(CSV.field(row,
-      9)), weight: number(row,
-      10), bundle_rooms: number(row,
-      11), bundle_discount: number(row,
-      12), from_row: from_row, to_row: to_row
+  return record<Release>
+  { id             : number(row, 1)
+  , property_id    : number(row, 2)
+  , provider       : sx_string(CSV.field(row, 3))
+  , arrival        : sx_string(CSV.field(row, 4))
+  , departure      : sx_string(CSV.field(row, 5))
+  , currency       : sx_string(CSV.field(row, 6))
+  , observed       : sx_string(CSV.field(row, 7))
+  , received       : sx_string(CSV.field(row, 8))
+  , ingested       : sx_string(CSV.field(row, 9))
+  , weight         : number(row, 10)
+  , bundle_rooms   : number(row, 11)
+  , bundle_discount: number(row, 12)
+  , from_row       : from_row
+  , to_row         : to_row
   };
 }
 
 fn item(entry: sexpr) -> Release
 {
   let bounds = sx_tail(entry);
-  return release(sx_text(sx_head(entry)),
+  return release(
+    sx_text(sx_head(entry)),
     nat(sx_text(sx_head(bounds))),
-    nat(sx_text(sx_head(sx_tail(bounds)))));
+    nat(sx_text(sx_head(sx_tail(bounds))))
+  );
 }
 
 fn same_scope(a: Release, b: Release) -> bool
@@ -169,23 +204,33 @@ fn validate_release(r: Release, previous: sexpr) -> Amounts.BundleDiscount
   let observed = sx_text(r["observed"]);
   let received = sx_text(r["received"]);
   let ingested = sx_text(r["ingested"]);
-  if ! valid_id(r["id"]) || ! valid_id(r["property_id"]) || ! provider_name(sx_text(r["provider"])) || ! currency_supported(sx_text(r["currency"])) || Date.nights(sx_text(r["arrival"]),
-    sx_text(r["departure"])) < 1 || Date.lead_days(observed,
-    sx_text(r["arrival"])) < 0 || ! Date.utc_timestamp(received) || ! Date.utc_timestamp(ingested) || Str.compare(observed,
-    received) > 0 || Str.compare(received,
-    ingested) > 0 || r["weight"] < 1 || r["weight"] > 10000
+  if ! valid_id(r["id"]) || ! valid_id(r["property_id"]) || ! provider_name(sx_text(r["provider"])) || ! currency_supported(sx_text(r["currency"])) || Date.nights(
+    sx_text(r["arrival"]),
+    sx_text(r["departure"])
+  ) < 1 || Date.lead_days(
+    observed,
+    sx_text(r["arrival"])
+  ) < 0 || ! Date.utc_timestamp(received) || ! Date.utc_timestamp(ingested) || Str.compare(
+    observed,
+    received
+  ) > 0 || Str.compare(
+    received,
+    ingested
+  ) > 0 || r["weight"] < 1 || r["weight"] > 10000
   {
     tool_fail("competitor: invalid release identity, stay, weight or provenance");
   }
-  let bundle = match Amounts.check_bundle(r["bundle_rooms"],
-    r["bundle_discount"]) with
+  let bundle = match Amounts.check_bundle(
+    r["bundle_rooms"],
+    r["bundle_discount"]
+  ) with
   {
     Some(value) => value, None() =>
     {
       tool_fail("competitor: invalid bundle discount");
-      record < Amounts.BundleDiscount >
-      {
-        rooms: 0, minor: 0
+      record<Amounts.BundleDiscount>
+      { rooms: 0
+      , minor: 0
       }
     }
   };
@@ -239,21 +284,28 @@ fn decode_quote(row: string) ->(Quote, Amounts.NetBase)
     Some(value) => value, None() =>
     {
       tool_fail("competitor: invalid quote occupancy, inventory, conditions or amount");
-      record < Amounts.QuoteAmounts >
-      {
-        net: record < Amounts.NetBase >
-        {
-          minor: 0
-        }, gross: record < Amounts.GrossStay >
-        {
-          minor: 0
+      record<Amounts.QuoteAmounts>
+      { net  : record<Amounts.NetBase>
+        { minor: 0
+        }
+      , gross: record<Amounts.GrossStay>
+        { minor: 0
         }
       }
     }
   };
-  return (record < Quote >
-  {
-    id: id, pool: pool, quantity: quantity, adults: adults, children: children, min_age: min_age, max_age: max_age, min_nights: min_nights, cancellation: cancellation, gross: price.gross.minor, net_base: price.net.minor
+  return (record<Quote>
+  { id          : id
+  , pool        : pool
+  , quantity    : quantity
+  , adults      : adults
+  , children    : children
+  , min_age     : min_age
+  , max_age     : max_age
+  , min_nights  : min_nights
+  , cancellation: cancellation
+  , gross       : price.gross.minor
+  , net_base    : price.net.minor
   }, price.net);
 }
 
@@ -266,20 +318,18 @@ fn read_quote(row: string) -> Quote
 fn quote_at(rows: i64, index: i64) -> Quote
 {
   let i = index * 11;
-  return record < Quote >
-  {
-    id: A.basis_array_sub(rows,
-      i), pool: A.basis_array_sub(rows,
-      i + 1), quantity: A.basis_array_sub(rows,
-      i + 2), adults: A.basis_array_sub(rows,
-      i + 3), children: A.basis_array_sub(rows,
-      i + 4), min_age: A.basis_array_sub(rows,
-      i + 5), max_age: A.basis_array_sub(rows,
-      i + 6), min_nights: A.basis_array_sub(rows,
-      i + 7), cancellation: A.basis_array_sub(rows,
-      i + 8), gross: A.basis_array_sub(rows,
-      i + 9), net_base: A.basis_array_sub(rows,
-      i + 10)
+  return record<Quote>
+  { id          : A.basis_array_sub(rows, i)
+  , pool        : A.basis_array_sub(rows, i + 1)
+  , quantity    : A.basis_array_sub(rows, i + 2)
+  , adults      : A.basis_array_sub(rows, i + 3)
+  , children    : A.basis_array_sub(rows, i + 4)
+  , min_age     : A.basis_array_sub(rows, i + 5)
+  , max_age     : A.basis_array_sub(rows, i + 6)
+  , min_nights  : A.basis_array_sub(rows, i + 7)
+  , cancellation: A.basis_array_sub(rows, i + 8)
+  , gross       : A.basis_array_sub(rows, i + 9)
+  , net_base    : A.basis_array_sub(rows, i + 10)
   };
 }
 
@@ -371,15 +421,20 @@ fn parse(bytes: string) -> Snapshot
       tool_fail("competitor: bundle discount not supported by every qualifying base total");
     }
     last_id = r["id"];
-    releases = sx_cons(sx_cons(sx_string(header),
-      sx_cons(sx_string(F.num(start)),
-      sx_cons(sx_string(F.num(pos)),
-      sx_nil()))),
-      releases);
+    releases = sx_cons(
+      sx_cons(
+        sx_string(header),
+        sx_cons(
+          sx_string(F.num(start)),
+          sx_cons(sx_string(F.num(pos)), sx_nil())
+        )
+      ),
+      releases
+    );
   }
-  return record < Snapshot >
-  {
-    releases: L.basis_list_rev(releases), quotes: data
+  return record<Snapshot>
+  { releases: L.basis_list_rev(releases)
+  , quotes  : data
   };
 }
 

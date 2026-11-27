@@ -34,28 +34,26 @@ fn main()
   assert(option_is_none(Amounts.check_bundle(2, 0)));
   assert(option_is_none(Amounts.check_bundle(0, 1)));
   assert(option_is_none(Amounts.check_bundle(4, limit + 1)));
-  let net = record < Amounts.NetBase >
-  {
-    minor: 70
+  let net = record<Amounts.NetBase>
+  { minor: 70
   };
-  assert(Amounts.bundle_supported(record < Amounts.BundleDiscount >
-  {
-    rooms: 2, minor: 140
+  assert(Amounts.bundle_supported(record<Amounts.BundleDiscount>
+  { rooms: 2
+  , minor: 140
   }, true, net));
-  assert(! Amounts.bundle_supported(record < Amounts.BundleDiscount >
-  {
-    rooms: 2, minor: 141
+  assert(! Amounts.bundle_supported(record<Amounts.BundleDiscount>
+  { rooms: 2
+  , minor: 141
   }, true, net));
-  assert(! Amounts.bundle_supported(record < Amounts.BundleDiscount >
-  {
-    rooms: 2, minor: 140
+  assert(! Amounts.bundle_supported(record<Amounts.BundleDiscount>
+  { rooms: 2
+  , minor: 140
   }, false, net));
-  assert(! Amounts.bundle_supported(record < Amounts.BundleDiscount >
-  {
-    rooms: 4, minor: 1
-  }, true, record < Amounts.NetBase >
-  {
-    minor: 9223372036854775807
+  assert(! Amounts.bundle_supported(record<Amounts.BundleDiscount>
+  { rooms: 4
+  , minor: 1
+  }, true, record<Amounts.NetBase>
+  { minor: 9223372036854775807
   }));
   let row = C.read_quote("quote,1,1,1,1,0,0,17,1,flexible,100,12,8,30");
   assert(row["net_base"] == 70 && row["gross"] == 90);

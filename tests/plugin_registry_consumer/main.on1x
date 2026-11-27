@@ -15,17 +15,25 @@ fn main() -> i64
     assert(Registry.admits(Registry.yieldcraft_entry(), "recommendation"));
     assert(Registry.admits("poindexter.sheet.render", "analysis"));
     assert(Registry.admits("dragnet.frozen_csv.offers_as_of", "analysis"));
-    assert(Registry.admits("plugins.scalar_diagnostics.midpoint.midpoint",
-      "analysis"));
+    assert(Registry.admits(
+      "plugins.scalar_diagnostics.midpoint.midpoint",
+      "analysis"
+    ));
     assert(! Registry.admits(Registry.yieldcraft_entry(), "analysis"));
     assert(! Registry.admits("poindexter.sheet.render", "execution"));
-    assert(! Registry.admits("dragnet.frozen_csv.offers_as_of",
-      "recommendation"));
-    assert(! Registry.admits("plugins.scalar_diagnostics.midpoint.midpoint",
-      "execution"));
+    assert(! Registry.admits(
+      "dragnet.frozen_csv.offers_as_of",
+      "recommendation"
+    ));
+    assert(! Registry.admits(
+      "plugins.scalar_diagnostics.midpoint.midpoint",
+      "execution"
+    ));
     assert(! Registry.admits("external.unregistered", "analysis"));
-    assert(! Registry.admits("dragnet.frozen_crossref.evidence_as_of",
-      "analysis"));
+    assert(! Registry.admits(
+      "dragnet.frozen_crossref.evidence_as_of",
+      "analysis"
+    ));
     assert(! Registry.admits("", "analysis"));
     assert(Host.yieldcraft("recommendation") && Host.poindexter() && Host.dragnet());
     assert(! Host.yieldcraft("execution"));
@@ -35,8 +43,10 @@ fn main() -> i64
   {
     assert(! Registry.admits("dragnet.frozen_csv.offers_as_of", "analysis"));
     assert(! Registry.admits("poindexter.sheet.render", "analysis"));
-    assert(! Registry.admits("plugins.scalar_diagnostics.midpoint.midpoint",
-      "analysis"));
+    assert(! Registry.admits(
+      "plugins.scalar_diagnostics.midpoint.midpoint",
+      "analysis"
+    ));
     return 0;
   }
   if task == "denied_dependency"
@@ -44,15 +54,17 @@ fn main() -> i64
     assert(! Registry.admits(Registry.yieldcraft_entry(), "recommendation"));
     assert(! Registry.admits("dragnet.frozen_csv.offers_as_of", "analysis"));
     assert(! Registry.admits("poindexter.sheet.render", "analysis"));
-    assert(Registry.admits("plugins.scalar_diagnostics.midpoint.midpoint",
-      "analysis"));
+    assert(Registry.admits(
+      "plugins.scalar_diagnostics.midpoint.midpoint",
+      "analysis"
+    ));
     return 0;
   }
   let n = Dag.node("midpoint", "midpoint@1", "first", "second");
-  let plan = record < Dag.Plan >
-  {
-    version: sx_string("automat.scalar-dag@3"), nodes: sx_cons(n,
-      sx_nil()), output: sx_string("midpoint")
+  let plan = record<Dag.Plan>
+  { version: sx_string("automat.scalar-dag@3")
+  , nodes  : sx_cons(n, sx_nil())
+  , output : sx_string("midpoint")
   };
   if task == "invoke"
   {
@@ -65,29 +77,35 @@ fn main() -> i64
   }
   if task == "direct_yieldcraft"
   {
-    let r = Yieldcraft.recommend("recommendation",
+    let r = Yieldcraft.recommend(
+      "recommendation",
       IO.basis_text_io_input_all(Env.basis_command_line_get_env("FINPRED_SCENARIO")),
       IO.basis_text_io_input_all(Env.basis_command_line_get_env("FINPRED_OFFERS")),
-      IO.basis_text_io_input_all(Env.basis_command_line_get_env("FINPRED_VALUATION")));
+      IO.basis_text_io_input_all(Env.basis_command_line_get_env("FINPRED_VALUATION"))
+    );
     println("${r["recommended_cents"]}");
   }
   if task == "plan"
   {
     assert(Dag.validate(plan, "analysis", 1) == "unknown_handler");
-    let outcome = Dag.run_with(plan,
+    let outcome = Dag.run_with(
+      plan,
       "analysis",
       1,
       17,
       42,
       true,
       Diagnostics.lookup,
-      Diagnostics.call);
+      Diagnostics.call
+    );
     println(sx_text(outcome["status"]));
     println("${outcome["invocations"]}");
-    let lowered = Ottomat.lower_with(IO.basis_text_io_input_all("midpoint.ottomat"),
+    let lowered = Ottomat.lower_with(
+      IO.basis_text_io_input_all("midpoint.ottomat"),
       "analysis",
       3,
-      Diagnostics.lookup);
+      Diagnostics.lookup
+    );
     println(sx_text(lowered["status"]));
   }
   return 0;

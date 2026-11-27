@@ -5,24 +5,42 @@ import plugins.caravansary.planning.json as Json;
 fn usage() -> string
 {
   let out = buffer_new();
-  buffer_append(out,
-    "Usage: bin/caravansary discover SCRIPT --input-root DIR --host-grants FILE --as-of UTC\n");
-  buffer_append(out,
-    "       bin/caravansary scrape SCRIPT --source ID --input-root DIR --host-grants FILE --as-of UTC\n");
-  buffer_append(out,
-    "       bin/caravansary collect SCRIPT --input-root DIR --host-grants FILE --as-of UTC\n");
-  buffer_append(out,
-    "       bin/caravansary predict SCRIPT --input-root DIR --host-grants FILE --as-of UTC [--pricing-input FILE]\n");
-  buffer_append(out,
-    "       bin/caravansary backtest SERIES --input-root DIR --as-of UTC\n");
-  buffer_append(out,
-    "       bin/caravansary history ARTIFACT [ARTIFACT ...] --input-root DIR\n");
-  buffer_append(out,
-    "       bin/caravansary explain ARTIFACT --input-root DIR\n");
-  buffer_append(out,
-    "       bin/caravansary jobs --state ABSOLUTE_OWNER_PRIVATE_DIR COMMAND [ARG ...]\n");
-  buffer_append(out,
-    "Use repeated --input-root for additional local input directories. Market commands are offline and never publish prices.\n");
+  buffer_append(
+    out,
+    "Usage: bin/caravansary discover SCRIPT --input-root DIR --host-grants FILE --as-of UTC\n"
+  );
+  buffer_append(
+    out,
+    "       bin/caravansary scrape SCRIPT --source ID --input-root DIR --host-grants FILE --as-of UTC\n"
+  );
+  buffer_append(
+    out,
+    "       bin/caravansary collect SCRIPT --input-root DIR --host-grants FILE --as-of UTC\n"
+  );
+  buffer_append(
+    out,
+    "       bin/caravansary predict SCRIPT --input-root DIR --host-grants FILE --as-of UTC [--pricing-input FILE]\n"
+  );
+  buffer_append(
+    out,
+    "       bin/caravansary backtest SERIES --input-root DIR --as-of UTC\n"
+  );
+  buffer_append(
+    out,
+    "       bin/caravansary history ARTIFACT [ARTIFACT ...] --input-root DIR\n"
+  );
+  buffer_append(
+    out,
+    "       bin/caravansary explain ARTIFACT --input-root DIR\n"
+  );
+  buffer_append(
+    out,
+    "       bin/caravansary jobs --state ABSOLUTE_OWNER_PRIVATE_DIR COMMAND [ARG ...]\n"
+  );
+  buffer_append(
+    out,
+    "Use repeated --input-root for additional local input directories. Market commands are offline and never publish prices.\n"
+  );
   return buffer_text(out);
 }
 

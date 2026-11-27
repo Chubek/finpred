@@ -3,8 +3,9 @@
 import automat.graph as Graph;
 import core.contracts as C;
 record Output
-{
-  scenario: C.Scenario, valuation: C.Valuation, recommendation: C.Recommendation
+{ scenario      : C.Scenario
+, valuation     : C.Valuation
+, recommendation: C.Recommendation
 }
 
 # Gate the strategy's output without recomputing or changing its price.
@@ -19,19 +20,23 @@ fn within_limits(r: C.Recommendation, s: C.Scenario, v: C.Valuation) -> bool
   return delta <= v["max_move_cents"] && 0 - delta <= v["max_move_cents"] && r["property_count"] >= s["min_properties"] && r["search_nodes"] >= 0 && r["search_nodes"] <= s["search_budget"];
 }
 
-fn run(plan: Graph.Plan,
+fn run(
+  plan: Graph.Plan,
   mode: string,
   scenario_raw: string,
   offers_raw: string,
   valuation_raw: string,
   collect: bool,
   evidence: buffer,
-  evaluate: fn(C.Scenario,
-  C.Valuation,
-  string,
-  string,
-  bool,
-  buffer) -> C.Recommendation) -> Output
+  evaluate: fn(
+    C.Scenario,
+    C.Valuation,
+    string,
+    string,
+    bool,
+    buffer
+  ) -> C.Recommendation
+) -> Output
 {
   if mode != "recommendation" || ! Graph.validate_plan(plan, mode)
   {
@@ -49,20 +54,23 @@ fn run(plan: Graph.Plan,
   {
     tool_fail("offers: source exceeds byte limit");
   }
-  let r = evaluate(s,
+  let r = evaluate(
+    s,
     v,
     offers_raw,
     sx_text(plan["profile"]),
     collect,
-    evidence);
+    evidence
+  );
   if ! within_limits(r, s, v)
   {
     tool_fail("automat: recommendation outside validated limits");
   }
   # Output's record effect hands typed data to the host. Only the host knows
   # whether this is a new run or a read-only replay.
-  return record < Output >
-  {
-    scenario: s, valuation: v, recommendation: r
+  return record<Output>
+  { scenario      : s
+  , valuation     : v
+  , recommendation: r
   };
 }

@@ -43,18 +43,22 @@ fn header(out: buffer, status: string, version: i64)
 {
   let policy = profile();
   let syntax = F.num(version);
-  buffer_append(out,
-    "{\"schema\":\"finpred-graph-check@1\",\"status\":\"$status\",\"profile\":\"$policy\",\"ottomat_version\":$syntax");
+  buffer_append(
+    out,
+    "{\"schema\":\"finpred-graph-check@1\",\"status\":\"$status\",\"profile\":\"$policy\",\"ottomat_version\":$syntax"
+  );
 }
 
-fn failure(status: string,
+fn failure(
+  status: string,
   version: i64,
   line: i64,
   column: i64,
   start: i64,
   end: i64,
   fragment: string,
-  subject: string) -> i64
+  subject: string
+) -> i64
 {
   let out = buffer_new();
   header(out, status, version);
@@ -69,8 +73,10 @@ fn failure(status: string,
   }
   let frag = json_text(fragment);
   let name = json_text(subject);
-  buffer_append(out,
-    ",\"diagnostic\":{\"line\":$row,\"column\":$col,\"byte_range\":$bytes,\"fragment\":$frag,\"subject\":$name}}");
+  buffer_append(
+    out,
+    ",\"diagnostic\":{\"line\":$row,\"column\":$col,\"byte_range\":$bytes,\"fragment\":$frag,\"subject\":$name}}"
+  );
   println(buffer_text(out));
   return 1;
 }
@@ -210,17 +216,16 @@ fn inspect(out: buffer, compiled: G.Compilation)
   buffer_append(out, "]");
 }
 
-fn success(detail: bool,
+fn success(
+  detail: bool,
   version: i64,
   graph: G.Graph,
   graph_digest: string,
   source_digest: string,
-  lowering: string) -> i64
+  lowering: string
+) -> i64
 {
-  let compiled = G.compile(graph,
-    "recommendation",
-    Host.budget(),
-    Host.lookup);
+  let compiled = G.compile(graph, "recommendation", Host.budget(), Host.lookup);
   let p = compiled["prepared"];
   if sx_text(p["status"]) != "ok" || G.digest(sx_text(p["canonical"])) != graph_digest
   {
@@ -237,14 +242,22 @@ fn success(detail: bool,
   let root_bytes = F.num(compiled["max_root_bytes"]);
   let read_bytes = F.num(compiled["max_read_bytes"]);
   let emitted_bytes = F.num(compiled["max_emitted_bytes"]);
-  buffer_append(out,
-    ",\"mode\":\"recommendation\",\"effect\":\"pure\",\"graph_version\":\"$graph_version\",\"graph_digest\":\"$graph_digest\"");
-  buffer_append(out,
-    ",\"source_digest\":\"$source_digest\",\"compiler_identity\":\"$compiler\",\"lowering\":\"$lowering\"");
-  buffer_append(out,
-    ",\"bounds\":{\"work\":$work,\"budget\":$budget,\"edges\":$edges,\"depth\":$depth,");
-  buffer_append(out,
-    "\"max_root_bytes\":$root_bytes,\"max_read_bytes\":$read_bytes,\"max_emitted_bytes\":$emitted_bytes}");
+  buffer_append(
+    out,
+    ",\"mode\":\"recommendation\",\"effect\":\"pure\",\"graph_version\":\"$graph_version\",\"graph_digest\":\"$graph_digest\""
+  );
+  buffer_append(
+    out,
+    ",\"source_digest\":\"$source_digest\",\"compiler_identity\":\"$compiler\",\"lowering\":\"$lowering\""
+  );
+  buffer_append(
+    out,
+    ",\"bounds\":{\"work\":$work,\"budget\":$budget,\"edges\":$edges,\"depth\":$depth,"
+  );
+  buffer_append(
+    out,
+    "\"max_root_bytes\":$root_bytes,\"max_read_bytes\":$read_bytes,\"max_emitted_bytes\":$emitted_bytes}"
+  );
   if detail
   {
     inspect(out, compiled);
@@ -296,56 +309,68 @@ fn entry(mode: string, path: string) -> i64
   let compiler = Identity.compiler_id();
   if version == 6
   {
-    let result = V6.lower(source,
+    let result = V6.lower(
+      source,
       "recommendation",
       Host.budget(),
       compiler,
-      Host.lookup);
+      Host.lookup
+    );
     let status = sx_text(result["status"]);
     if status != "ok"
     {
-      return failure(status,
+      return failure(
+        status,
         6,
         result["line"],
         result["column"],
         - 1,
         - 1,
         "",
-        "");
+        ""
+      );
     }
-    return success(detail,
+    return success(
+      detail,
       6,
       result["graph"],
       sx_text(result["graph_digest"]),
       sx_text(result["source_digest"]),
-      sx_text(result["lowering"]));
+      sx_text(result["lowering"])
+    );
   }
   if version == 7
   {
-    let result = V7.lower(source,
+    let result = V7.lower(
+      source,
       "recommendation",
       Host.budget(),
       compiler,
-      Host.lookup);
+      Host.lookup
+    );
     let d = result["diagnostic"];
     let status = sx_text(d["status"]);
     if status != "ok"
     {
-      return failure(status,
+      return failure(
+        status,
         7,
         d["line"],
         d["column"],
         d["start"],
         d["end"],
         sx_text(d["fragment"]),
-        sx_text(d["subject"]));
+        sx_text(d["subject"])
+      );
     }
-    return success(detail,
+    return success(
+      detail,
       7,
       result["graph"],
       sx_text(result["graph_digest"]),
       sx_text(result["source_digest"]),
-      sx_text(result["lowering"]));
+      sx_text(result["lowering"])
+    );
   }
   return failure("version", 0, 1, 1, - 1, - 1, "", "");
 }

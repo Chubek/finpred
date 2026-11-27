@@ -69,15 +69,13 @@ fn seconds(s: string) -> i64
   {
     tool_fail("feed: expected second-precision UTC clock");
   }
-  return Date.date_days(text_slice(s,
-    0,
-    10)) * 86400 + (Date.digit(s,
-    11) * 10 + Date.digit(s,
-    12)) * 3600 + (Date.digit(s,
-    14) * 10 + Date.digit(s,
-    15)) * 60 + Date.digit(s,
-    17) * 10 + Date.digit(s,
-    18);
+  return Date.date_days(text_slice(s, 0, 10)) * 86400 + (Date.digit(
+    s,
+    11
+  ) * 10 + Date.digit(s, 12)) * 3600 + (Date.digit(s, 14) * 10 + Date.digit(
+    s,
+    15
+  )) * 60 + Date.digit(s, 17) * 10 + Date.digit(s, 18);
 }
 
 fn provider_seconds(s: string) -> i64
@@ -121,9 +119,10 @@ fn validate_rate(currency: string, rate: string)
     }
   }
   let n = text_len(rate);
-  if n < 1 || n > 24 || (n > 1 && text_byte(rate,
-    0) == 48 && text_byte(rate,
-    1) != 46)
+  if n < 1 || n > 24 || (n > 1 && text_byte(rate, 0) == 48 && text_byte(
+    rate,
+    1
+  ) != 46)
   {
     tool_fail("feed: invalid FX decimal");
   }
@@ -209,11 +208,10 @@ fn month_end(period: string) -> i64
   var month = Date.digit(period, 5) * 10 + Date.digit(period, 6) + 1;
   if month == 13
   {
-    let next_year = Date.digit(year,
-      0) * 1000 + Date.digit(year,
-      1) * 100 + Date.digit(year,
-      2) * 10 + Date.digit(year,
-      3) + 1;
+    let next_year = Date.digit(year, 0) * 1000 + Date.digit(
+      year,
+      1
+    ) * 100 + Date.digit(year, 2) * 10 + Date.digit(year, 3) + 1;
     year = F.num(next_year);
     month = 1;
   }
@@ -222,10 +220,10 @@ fn month_end(period: string) -> i64
   {
     number = text_concat("0", number);
   }
-  return Date.date_days(text_concat(year,
-    text_concat("-",
-    text_concat(number,
-    "-01"))));
+  return Date.date_days(text_concat(
+    year,
+    text_concat("-", text_concat(number, "-01"))
+  ));
 }
 
 fn tourism_rows(out: buffer, decode: string, rows: i64, updated: i64) -> i64
@@ -308,9 +306,10 @@ fn tourism_rows(out: buffer, decode: string, rows: i64, updated: i64) -> i64
 
 fn capture_meta(capture: string) -> string
 {
-  if framed(capture,
-    512) != 2 || CSV.line(capture,
-    0) != "dragnet.feed-capture@1"
+  if framed(capture, 512) != 2 || CSV.line(
+    capture,
+    0
+  ) != "dragnet.feed-capture@1"
   {
     tool_fail("feed: invalid capture contract");
   }
@@ -328,12 +327,13 @@ fn capture_provider(capture: string) -> string
 # The digest tie checks transport/copy integrity, not provenance authenticity.
 # The SDK binds the expected provider. The legacy direct caller leaves it
 # empty and continues to use the provider in its capture record.
-fn normalize_profile(capture: string,
+fn normalize_profile(
+  capture: string,
   raw: string,
   decode: string,
   as_of: string,
-  expected_provider: string) ->(string,
-  i64)
+  expected_provider: string
+) ->(string, i64)
 {
   let meta = capture_meta(capture);
   let feed = CSV.field(meta, 0);
@@ -372,10 +372,10 @@ fn normalize_profile(capture: string,
   }
   let hash = digest(raw);
   let n = framed(decode, 4096);
-  if n < 5 || CSV.line(decode,
-    0) != "dragnet.feed-decode@1" || CSV.line(decode,
-    1) != feed || CSV.line(decode,
-    2) != hash
+  if n < 5 || CSV.line(decode, 0) != "dragnet.feed-decode@1" || CSV.line(
+    decode,
+    1
+  ) != feed || CSV.line(decode, 2) != hash
   {
     tool_fail("feed: invalid or mismatched decode handoff");
   }
@@ -431,17 +431,14 @@ fn normalize_profile(capture: string,
   append(out, "terms_ref", F.q(terms));
   append(out, "retention_ref", F.q(retention));
   append(out, "raw_evidence", F.q(text_concat("blake3:", hash)));
-  append(out,
-    "capture_evidence",
-    F.q(text_concat("blake3:",
-    digest(capture))));
+  append(out, "capture_evidence", F.q(text_concat("blake3:", digest(capture))));
   append(out, "raw_bytes", F.num(text_len(raw)));
   append(out, "pricing_input", "false");
-  append(out,
+  append(
+    out,
     "observations",
-    text_concat("[",
-    text_concat(buffer_text(observations),
-    "]")));
+    text_concat("[", text_concat(buffer_text(observations), "]"))
+  );
   buffer_append(out, "}\n");
   var state = 1;
   if status == "partial"
@@ -451,10 +448,12 @@ fn normalize_profile(capture: string,
   return (buffer_text(out), state);
 }
 
-fn normalize(capture: string,
+fn normalize(
+  capture: string,
   raw: string,
   decode: string,
-  as_of: string) -> string
+  as_of: string
+) -> string
 {
   let(bytes, _) = normalize_profile(capture, raw, decode, as_of, "");
   return bytes;

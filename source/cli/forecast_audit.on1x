@@ -58,8 +58,10 @@ fn verify(index: string, replay: fn(string) -> string) -> string
   let list_id = Store.digest(index);
   let evidence_id = Store.digest(buffer_text(proof));
   let out = buffer_new();
-  buffer_append(out,
-    "{\"kind\":\"analysis.forecast-audit\",\"version\":1,\"pricing_input\":false,\"read_only\":true,\"verified\":");
+  buffer_append(
+    out,
+    "{\"kind\":\"analysis.forecast-audit\",\"version\":1,\"pricing_input\":false,\"read_only\":true,\"verified\":"
+  );
   buffer_append(out, F.num(count));
   buffer_append(out, ",\"input_digest\":\"blake3:");
   buffer_append(out, list_id);
