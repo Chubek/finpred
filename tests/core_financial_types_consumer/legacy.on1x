@@ -1,0 +1,56 @@
+import core.competitor as C;
+import core.quote_amounts as Amounts;
+import std.os.CommandLine as Env;
+
+fn price(base:i64, fee:i64, tax:i64, discount:i64, net:i64, gross:i64)
+{
+  let checked = Amounts.check_quote(base,fee,tax,discount);
+  match checked with {
+    None() => { assert(false); },
+    Some(value) => { assert(value.net.minor == net && value.gross.minor == gross); }
+  }
+}
+
+fn main()
+{
+  let limit = Amounts.minor_limit();
+  price(100,12,8,30,70,90);
+  price(limit,limit,0,limit,0,limit);
+  price(limit,0,0,0,limit,limit);
+  price(0,0,0,0,0,0);
+  assert(option_is_none(Amounts.check_quote(limit,1,0,0)));
+  assert(option_is_none(Amounts.check_quote(0,limit,1,0)));
+  assert(option_is_none(Amounts.check_quote(limit+1,0,0,limit+1)));
+  assert(option_is_none(Amounts.check_quote(100,0,0,101)));
+  assert(option_is_none(Amounts.check_quote(100,0,0,-1)));
+  assert(option_is_none(Amounts.check_quote(9223372036854775807,1,1,0)));
+  assert(option_is_none(Amounts.check_bundle(1,1)));
+  assert(option_is_none(Amounts.check_bundle(5,1)));
+  assert(option_is_none(Amounts.check_bundle(2,0)));
+  assert(option_is_none(Amounts.check_bundle(0,1)));
+  assert(option_is_none(Amounts.check_bundle(4,limit+1)));
+  let net = record<Amounts.NetBase>{minor:70};
+  assert(Amounts.bundle_supported(record<Amounts.BundleDiscount>{rooms:2,minor:140},true,net));
+  assert(!Amounts.bundle_supported(record<Amounts.BundleDiscount>{rooms:2,minor:141},true,net));
+  assert(!Amounts.bundle_supported(record<Amounts.BundleDiscount>{rooms:2,minor:140},false,net));
+  assert(!Amounts.bundle_supported(record<Amounts.BundleDiscount>{rooms:4,minor:1},true,
+    record<Amounts.NetBase>{minor:9223372036854775807}));
+
+  let row = C.read_quote("quote,1,1,1,1,0,0,17,1,flexible,100,12,8,30");
+  assert(row["net_base"] == 70 && row["gross"] == 90);
+
+  let release = "hospitality.competitor-snapshot@1\nrelease,1,1,example,2027-02-01,2027-02-03,EUR,2027-01-01T00:00:00Z,2027-01-01T00:00:00Z,2027-01-01T00:00:00Z,1,2,";
+  let rows = "\nquote,1,1,1,1,0,0,17,1,flexible,120,0,0,20\nquote,2,2,1,1,0,0,17,1,flexible,100,12,8,30\n";
+  let mode = Env.basis_command_line_get_env("CASE");
+  if mode == "invalid_amount" {
+    let _ = C.read_quote("quote,1,1,1,1,0,0,17,1,flexible,1000000000000,0,1,0");
+  }
+  if mode == "invalid_shape" { C.destroy(C.parse(text_concat(release,text_concat("0",rows)))); }
+  if mode == "insufficient_net" { C.destroy(C.parse(text_concat(release,text_concat("141",rows)))); }
+  if mode == "empty_bundle" { C.destroy(C.parse(text_concat(release,"140\n"))); }
+  let snapshot = C.parse(text_concat(release,text_concat("140",rows)));
+  let stored = C.quote_at(snapshot["quotes"],1);
+  assert(stored["net_base"] == 70 && stored["gross"] == 90);
+  C.destroy(snapshot);
+  println("legacy competitor amounts ok");
+}

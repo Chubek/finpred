@@ -2,7 +2,7 @@
 import core.csv as CSV;
 import core.date as Date;
 import core.format as F;
-import core.money as Money;
+import core.quote_amounts as Amounts;
 import std.String as Str;
 import std.collections.Array as A;
 import std.collections.List as L;
@@ -103,7 +103,7 @@ fn same_scope(a:Release, b:Release) -> bool
   return a["property_id"] == b["property_id"] && sx_text(a["arrival"]) == sx_text(b["arrival"])
     && sx_text(a["departure"]) == sx_text(b["departure"]) && sx_text(a["currency"]) == sx_text(b["currency"]);
 }
-fn validate(r:Release, previous:sexpr)
+fn validate_release(r:Release, previous:sexpr) -> Amounts.BundleDiscount
 {
   let observed = sx_text(r["observed"]);
   let received = sx_text(r["received"]);
@@ -114,10 +114,13 @@ fn validate(r:Release, previous:sexpr)
     || !Date.utc_timestamp(ingested) || Str.compare(observed,received) > 0 || Str.compare(received,ingested) > 0
     || r["weight"] < 1 || r["weight"] > 10000
   { tool_fail("competitor: invalid release identity, stay, weight or provenance"); }
-  if !Money.safe_nonnegative(r["bundle_discount"]) || r["bundle_rooms"] > 4
-    || (r["bundle_rooms"] == 0 && r["bundle_discount"] != 0)
-    || (r["bundle_rooms"] > 0 && (r["bundle_rooms"] < 2 || r["bundle_discount"] == 0))
-  { tool_fail("competitor: invalid bundle discount"); }
+  let bundle = match Amounts.check_bundle(r["bundle_rooms"],r["bundle_discount"]) with {
+    Some(value) => value,
+    None() => {
+      tool_fail("competitor: invalid bundle discount");
+      record<Amounts.BundleDiscount>{rooms:0,minor:0}
+    }
+  };
   var rest = previous;
   while sx_kind(rest) == 3
   {
@@ -131,9 +134,15 @@ fn validate(r:Release, previous:sexpr)
     }
     rest = sx_tail(rest);
   }
+  return bundle;
 }
 
-fn read_quote(row:string) -> Quote
+fn validate(r:Release, previous:sexpr)
+{
+  let _ = validate_release(r,previous);
+}
+
+fn decode_quote(row:string) -> (Quote,Amounts.NetBase)
 {
   CSV.require_width(row,14);
   let id = number(row,1);
@@ -152,12 +161,23 @@ fn read_quote(row:string) -> Quote
   if !valid_id(id) || !valid_id(pool) || quantity < 1 || quantity > 32 || adults < 1 || adults > 8 || children > 8
     || max_age > 17 || min_age > max_age || (children == 0 && (min_age != 0 || max_age != 17))
     || min_nights < 1 || min_nights > 365 || cancellation == 0
-    || !Money.safe_nonnegative(base) || !Money.safe_nonnegative(fee) || !Money.safe_nonnegative(tax)
-    || discount > base || base - discount > 1000000000000 - fee - tax
   { tool_fail("competitor: invalid quote occupancy, inventory, conditions or amount"); }
-  return record<Quote>{id:id,pool:pool,quantity:quantity,adults:adults,children:children,min_age:min_age,
-    max_age:max_age,min_nights:min_nights,cancellation:cancellation,gross:base - discount + fee + tax,
-    net_base:base - discount};
+  let price = match Amounts.check_quote(base,fee,tax,discount) with {
+    Some(value) => value,
+    None() => {
+      tool_fail("competitor: invalid quote occupancy, inventory, conditions or amount");
+      record<Amounts.QuoteAmounts>{net:record<Amounts.NetBase>{minor:0},gross:record<Amounts.GrossStay>{minor:0}}
+    }
+  };
+  return (record<Quote>{id:id,pool:pool,quantity:quantity,adults:adults,children:children,min_age:min_age,
+    max_age:max_age,min_nights:min_nights,cancellation:cancellation,gross:price.gross.minor,
+    net_base:price.net.minor}, price.net);
+}
+
+fn read_quote(row:string) -> Quote
+{
+  let (value, _) = decode_quote(row);
+  return value;
 }
 fn quote_at(rows:i64, index:i64) -> Quote
 {
@@ -200,13 +220,13 @@ fn parse(bytes:string) -> Snapshot
     at = at + 1;
     let start = pos;
     var last_quote = 0;
-    var minimum_base = 1000000000000;
+    var minimum_base = Amounts.maximum_net_base();
     while at < lines
     {
       let row = CSV.line(bytes,at);
       if CSV.field(row,0) != "quote" { break; }
       if pos >= 512 || pos - start >= 32 { tool_fail("competitor: quote row limit"); }
-      let q = read_quote(row);
+      let (q, net_base) = decode_quote(row);
       if q["id"] <= last_quote { tool_fail("competitor: quote IDs must be strictly increasing within release"); }
       for i in start .. pos
       {
@@ -214,17 +234,16 @@ fn parse(bytes:string) -> Snapshot
         if peer["pool"] == q["pool"] && peer["quantity"] != q["quantity"]
         { tool_fail("competitor: inconsistent shared pool quantity"); }
       }
-      if q["net_base"] < minimum_base { minimum_base = q["net_base"]; }
+      minimum_base = Amounts.min_net_base(minimum_base,net_base);
       last_quote = q["id"];
       write_quote(data,pos,q);
       pos = pos + 1;
       at = at + 1;
     }
     let r = release(header,start,pos);
-    validate(r,releases);
+    let bundle = validate_release(r,releases);
     if r["id"] <= last_id { tool_fail("competitor: release IDs must be strictly increasing"); }
-    if r["bundle_discount"] > r["bundle_rooms"] * minimum_base
-      || (start == pos && r["bundle_rooms"] != 0)
+    if !Amounts.bundle_supported(bundle,start < pos,minimum_base)
     { tool_fail("competitor: bundle discount not supported by every qualifying base total"); }
     last_id = r["id"];
     releases = sx_cons(sx_cons(sx_string(header),sx_cons(sx_string(F.num(start)),

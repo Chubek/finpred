@@ -1,0 +1,21 @@
+module CoreTest.QuoteAmounts;
+
+import core.quote_amounts as Amounts;
+
+public enum CheckedQuote { Rejected, Accepted(i64,i64) }
+
+public fn check(base:i64, fee:i64, tax:i64, discount:i64) -> CheckedQuote
+{
+  return match Amounts.check_quote(base,fee,tax,discount) with {
+    None() => CheckedQuote::Rejected,
+    Some(value) => CheckedQuote::Accepted(value.net.minor,value.gross.minor)
+  };
+}
+
+public fn amounts(value:CheckedQuote) -> (bool,i64,i64)
+{
+  return match value with {
+    Rejected() => (false,0,0),
+    Accepted(net,gross) => (true,net,gross)
+  };
+}

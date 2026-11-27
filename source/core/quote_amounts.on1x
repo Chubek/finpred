@@ -1,0 +1,51 @@
+# Competitor snapshot amounts are integer minor units in the release currency.
+# These types distinguish price roles; they imply neither FX nor a currency scale.
+import core.money as Money;
+
+record NetBase { minor:i64 }
+record GrossStay { minor:i64 }
+record QuoteAmounts { net:NetBase, gross:GrossStay }
+record BundleDiscount { rooms:i64, minor:i64 }
+
+fn minor_limit() -> i64 { return 1000000000000; }
+
+fn check_quote(base:i64, fee:i64, tax:i64, discount:i64) -> Option<QuoteAmounts>
+{
+  if !Money.safe_nonnegative(base) || !Money.safe_nonnegative(fee) || !Money.safe_nonnegative(tax)
+    || discount < 0 || discount > base
+  { return Option<QuoteAmounts>::None; }
+  let net = base - discount;
+  # Check each addend against the remaining budget, before evaluating the sum.
+  if fee > minor_limit() - net || tax > minor_limit() - net - fee { return Option<QuoteAmounts>::None; }
+  return Option<QuoteAmounts>::Some(record<QuoteAmounts>{
+    net:record<NetBase>{minor:net}, gross:record<GrossStay>{minor:net + fee + tax}});
+}
+
+fn maximum_net_base() -> NetBase { return record<NetBase>{minor:minor_limit()}; }
+
+fn min_net_base(left:NetBase, right:NetBase) -> NetBase
+{
+  if left.minor <= right.minor { return left; }
+  return right;
+}
+
+fn valid_bundle_shape(rooms:i64, minor:i64) -> bool
+{
+  return (rooms == 0 && minor == 0)
+    || (rooms >= 2 && rooms <= 4 && minor > 0 && Money.safe_nonnegative(minor));
+}
+
+fn check_bundle(rooms:i64, minor:i64) -> Option<BundleDiscount>
+{
+  if !valid_bundle_shape(rooms,minor) { return Option<BundleDiscount>::None; }
+  return Option<BundleDiscount>::Some(record<BundleDiscount>{rooms:rooms,minor:minor});
+}
+
+fn bundle_supported(discount:BundleDiscount, has_quotes:bool, minimum_base:NetBase) -> bool
+{
+  # The legacy module exposes transparent records. Guard before multiplication
+  # even if another caller constructs its own values instead of checking them.
+  if !valid_bundle_shape(discount.rooms,discount.minor) { return false; }
+  return discount.rooms == 0 || (has_quotes && Money.safe_nonnegative(minimum_base.minor)
+    && discount.minor <= discount.rooms * minimum_base.minor);
+}

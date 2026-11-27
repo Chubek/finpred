@@ -1,0 +1,9 @@
+on1xfile 1
+kind executable
+name "core-financial-types"
+directory "src"
+module "CoreTest.QuoteAmounts" "src/sealed_quote_amounts.on1xm"
+module-interface "CoreTest.QuoteAmounts" "src/sealed_quote_amounts.on1xi"
+module-interface-policy "CoreTest.QuoteAmounts" required
+target "core-financial-types" "src/main.on1x"
+backend c11

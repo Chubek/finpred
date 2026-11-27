@@ -1,0 +1,4 @@
+abstract module CoreTest.QuoteAmounts;
+type CheckedQuote;
+fn check(base:i64, fee:i64, tax:i64, discount:i64) -> CheckedQuote;
+fn amounts(value:CheckedQuote) -> (bool,i64,i64);
