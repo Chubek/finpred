@@ -89,6 +89,14 @@ deterministic bundles and relocation checks.
 
 ## Architecture and entry points
 
+The [core overhaul record](docs/CORE_OVERHAUL.md) describes the pinned
+toolchain, typed financial execution and compatibility boundaries. Follow
+the focused records for [financial types](docs/CORE_FINANCIAL_TYPES.md),
+[robust forecasts](docs/CORE_NUMERICS.md), [Ottomat composition](source/ottomat/README.md),
+[native temporal evidence](contracts/native.temporal-evidence@1.md), and
+[SDK diagnostics](source/sdk/README.md). The [verification record](docs/CORE_OVERHAUL_VERIFICATION.md)
+separates exercised gates from remaining limitations.
+
 | Component | Source and purpose |
 |---|---|
 | **Yieldcraft** | [`strategies/`](strategies/) and [`plugins/yieldcraft/`](plugins/yieldcraft/) — expected-contribution pricing and secondary market positioning |
