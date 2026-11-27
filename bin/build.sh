@@ -91,3 +91,17 @@ backend c11
 EOF_FORECAST
 python3 "$MULIB_ROOT/on1x/tools/on1x-project.py" build "$work" \
   --cc "${CC:-cc}" --target finpred-forecast --on1xc "$ON1XC" --mulib-root "$MULIB_ROOT" --output-dir "${out}-forecast"
+
+# Static graph inspection is a separate host. Add its build-time compiler
+# identity only after the other hosts have been linked.
+printf 'library "graph_check.on1x"\nlibrary "graph_identity.on1x"\n' >>"$work/source/cli/On1xfile.m"
+compiler_hash=$(sha256sum <"$ON1XC")
+printf 'fn compiler_id() -> string { return "sha256:%s"; }\n' "${compiler_hash%% *}" \
+  >"$work/source/cli/graph_identity.on1x"
+(
+  cd "$work"
+  python3 "$MULIB_ROOT/on1x/tools/on1x-build.py" source/cli/graph_main.on1x \
+    --backend c11 --cc "$cc" --on1xc "$work/on1xc" --mulib-root "$MULIB_ROOT" \
+    -I source --extra-c source/cli/graph_input.c \
+    --cflag=-g --debug-build-root "$work" -o "$out/finpred-graph"
+)
