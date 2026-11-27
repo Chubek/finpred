@@ -3,6 +3,7 @@ import std.collections.Array as A;
 import std.collections.List as L;
 import automat.dag_artifacts as Art;
 import automat.scalar_memo as Memo;
+import automat.schedule as Schedule;
 
 record Plan { version:sexpr, nodes:sexpr, output:sexpr }
 record Outcome {
@@ -202,38 +203,25 @@ fn slot(nodes:sexpr, name:string) -> i64
   return 0 - 1;
 }
 
-fn fill_order(nodes:sexpr, count:i64, ready:i64, order:i64) -> bool
+fn dependency_rows(nodes:sexpr) -> sexpr
 {
-  # Complete Kahn planning before dispatch; always take the first ready
-  # declaration. With <=16 nodes, bounded scans need no recursive traversal.
-  A.basis_array_update(ready,0,1);
-  A.basis_array_update(ready,1,1);
-  for step in 0 .. count
+  var items = nodes;
+  var rows = sx_nil();
+  while sx_kind(items) == 3
   {
-    var chosen = 0 - 1;
-    for i in 0 .. count
+    let n = sx_head(items);
+    var width = 4;
+    if field(n,1) == "select@1" { width = 5; }
+    var parents = sx_nil();
+    for port in 2 .. width
     {
-      if chosen < 0 && A.basis_array_sub(ready,i+2) == 0
-      {
-        let n = L.basis_list_nth(nodes,i);
-        let left = slot(nodes,field(n,2));
-        let right = slot(nodes,field(n,3));
-        if A.basis_array_sub(ready,left) == 1 && A.basis_array_sub(ready,right) == 1
-        {
-          if field(n,1) != "select@1" { chosen = i; }
-          else
-          {
-            let zero = slot(nodes,field(n,4));
-            if A.basis_array_sub(ready,zero) == 1 { chosen = i; }
-          }
-        }
-      }
+      let name = L.basis_list_nth(n,port);
+      if sx_text(name) != "first" && sx_text(name) != "second" { parents = sx_cons(name,parents); }
     }
-    if chosen < 0 { return false; }
-    A.basis_array_update(ready,chosen+2,1);
-    A.basis_array_update(order,step,chosen);
+    rows = sx_cons(sx_cons(sx_head(n),parents),rows);
+    items = sx_tail(items);
   }
-  return true;
+  return L.basis_list_rev(rows);
 }
 
 fn evaluate(nodes:sexpr, count:i64, output:i64, mode:string, order:i64,
@@ -397,14 +385,13 @@ fn plan_graph(plan:Plan, mode:string, budget:i64, lookup:fn(string,string) -> De
   if text_len(out) > 32 { return rejected_plan("missing_output"); }
   let output = slot(nodes,out);
   if output < 2 { return rejected_plan("missing_output"); }
-  let ready = A.basis_array_array(count+2,0);
+  var ordered = Schedule.order(version,dependency_rows(nodes));
+  if sx_kind(ordered) == 0 { return rejected_plan("cycle"); }
   let order = A.basis_array_array(count,0);
-  let ordered = fill_order(nodes,count,ready,order);
-  A.basis_array_destroy(ready);
-  if !ordered
+  for step in 0 .. count
   {
-    A.basis_array_destroy(order);
-    return rejected_plan("cycle");
+    A.basis_array_update(order,step,slot(nodes,sx_text(sx_head(ordered)))-2);
+    ordered = sx_tail(ordered);
   }
   return record<Planned>{status:sx_string("ok"),count:count,output:output,order:order};
 }

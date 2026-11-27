@@ -5,6 +5,7 @@ import core.format as F;
 import std.String as Str;
 import std.collections.List as L;
 import std.crypto.crypto as Crypto;
+import automat.schedule as Schedule;
 
 record Graph { version:sexpr, inputs:sexpr, nodes:sexpr, outputs:sexpr }
 record Prepared { status:sexpr, subject:sexpr, canonical:sexpr, order:sexpr, work:i64 }
@@ -253,36 +254,32 @@ fn edges_valid(edges:sexpr, ports:sexpr) -> bool
   }
   return true;
 }
-fn ready(entry:sexpr, completed:sexpr) -> bool
-{
-  var edges = at(entry,6);
-  while sx_kind(edges) == 3
-  {
-    let producer = field(sx_head(edges),1);
-    if producer != "" && sx_kind(lookup(completed,producer)) == 0 { return false; }
-    edges = sx_tail(edges);
-  }
-  return true;
-}
 fn order_nodes(entries:sexpr) -> sexpr
 {
-  var pending = sorted(entries);
-  var completed = sx_nil();
-  while sx_kind(pending) == 3
+  var items = entries;
+  var rows = sx_nil();
+  while sx_kind(items) == 3
   {
-    var candidates = pending;
-    var selected = sx_nil();
-    while sx_kind(candidates) == 3
+    let entry = sx_head(items);
+    var edges = at(entry,6);
+    var parents = sx_nil();
+    while sx_kind(edges) == 3
     {
-      let entry = sx_head(candidates);
-      if ready(entry,completed) { selected = entry; break; }
-      candidates = sx_tail(candidates);
+      let producer = at(sx_head(edges),1);
+      if sx_text(producer) != "" { parents = sx_cons(producer,parents); }
+      edges = sx_tail(edges);
     }
-    if sx_kind(selected) == 0 { return sx_nil(); }
-    completed = sx_cons(selected,completed);
-    pending = remove(pending,field(selected,0));
+    rows = sx_cons(sx_cons(sx_head(entry),parents),rows);
+    items = sx_tail(items);
   }
-  return L.basis_list_rev(completed);
+  var ordered = Schedule.order(version(),rows);
+  var result = sx_nil();
+  while sx_kind(ordered) == 3
+  {
+    result = sx_cons(lookup(entries,sx_text(sx_head(ordered))),result);
+    ordered = sx_tail(ordered);
+  }
+  return L.basis_list_rev(result);
 }
 
 fn canonical_bytes(g:Graph, mode:string, ordered:sexpr) -> string

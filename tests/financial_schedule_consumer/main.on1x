@@ -217,6 +217,11 @@ fn main() -> i64
   let cycle = G.node("seed","test.copy@1","pure",sx_cons(G.edge("arg","branch","rows"),sx_nil()));
   let cyclic = G.graph(graph["inputs"],sx_cons(cycle,G.remove(graph["nodes"],"seed")),graph["outputs"]);
   status(Run.execute(cyclic,roots,ctx,"analysis",8,bind,forbid),"cycle","");
+  # Preserve @1's precedence: known reference types are checked as part of
+  # validation, but a cycle is reported ahead of an incompatible known edge.
+  let wide_roots = add("omega",80,add("alpha",8,sx_nil()));
+  let mistyped_cycle = G.graph(wide_roots,cyclic["nodes"],cyclic["outputs"]);
+  status(Run.execute(mistyped_cycle,roots,ctx,"analysis",8,bind,forbid),"cycle","");
   status(Run.execute_pinned(graph,roots,ctx,"analysis",8,bind,forbid,sx_string(G.digest("wrong"))),"graph_mismatch","");
 
   let ledger = buffer_new();
