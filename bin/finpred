@@ -12,6 +12,7 @@ usage() {
   echo "       bin/finpred price-predict MODEL HORIZON HISTORY [SEASON]" >&2
   echo "       bin/finpred price-backtest MODEL HORIZON FIRST_TARGET HISTORY [SEASON]" >&2
   echo "       bin/finpred sdk-check REQUEST.csv" >&2
+  echo "       bin/finpred graph {validate|inspect} STRATEGY.ottomat" >&2
   echo "       bin/finpred forecast {import SNAPSHOT|catalog ID_LIST|issue CATALOG MODEL CUTOFF REQUEST|score ISSUE CATALOG CUTOFF|holdout PLAN|audit SORTED_ID_LIST|replay ID}" >&2
   echo "       bin/finpred cube {evaluate SNAPSHOTS CELLS POLICIES|replay ID}" >&2
   echo "       bin/finpred {dragnet-inspect|dragnet-offers} CAPTURE UTC_CUTOFF" >&2
@@ -35,6 +36,18 @@ case "$MODE" in
       *) FINPRED_SDK_REQUEST=$PWD/$2 ;;
     esac
     export FINPRED_SDK_REQUEST
+    ;;
+  graph)
+    [ "$#" -eq 3 ] && [ -n "$3" ] || usage
+    case "$2" in
+      validate|inspect) MODE=graph-$2 ;;
+      *) usage ;;
+    esac
+    case "$3" in
+      /*) FINPRED_GRAPH_SOURCE=$3 ;;
+      *) FINPRED_GRAPH_SOURCE=$PWD/$3 ;;
+    esac
+    export FINPRED_GRAPH_SOURCE
     ;;
   price-predict)
     case "${2:-}" in
@@ -120,6 +133,13 @@ case "$MODE" in
   *) echo "Unknown or forbidden mode: $MODE" >&2; exit 2 ;;
 esac
 case "$MODE" in
+  graph-validate|graph-inspect)
+    EXE="$(finpred_cli_output_dir "$ROOT")/finpred-graph"
+    if [ ! -x "$EXE" ]; then
+      echo "FinPRED graph inspection host absent: build with bin/build.sh first" >&2
+      exit 2
+    fi
+    ;;
   forecast-*) EXE="$(finpred_cli_output_dir "$ROOT")-forecast/finpred-forecast" ;;
   cube-evaluate|cube-replay)
     EXE="$(finpred_cli_output_dir "$ROOT")/finpred-cube"

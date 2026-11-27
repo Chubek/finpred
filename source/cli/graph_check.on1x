@@ -1,0 +1,254 @@
+# Static financial graph inspection. This host links a descriptor lookup,
+# never a runtime callback, and accepts no caller-provided mode or resolver.
+import automat.financial_graph as G;
+import ottomat.financial as V6;
+import ottomat.financial_composition as V7;
+import sdk.callable as SDK;
+import plugins.yieldcraft.hospitality_host as Host;
+import cli.graph_identity as Identity;
+import core.format as F;
+
+extern fn finpred_graph_read(path:string) -> string;
+
+fn profile() -> string { return "finpred.hospitality-graph-check@1"; }
+
+# v7 diagnostic subjects and unused public port types can contain arbitrary
+# printable ASCII from the source. Escape them, never interpolate them as JSON.
+fn json_text(value:string) -> string
+{
+  let out = buffer_new();
+  buffer_append(out,"\"");
+  for i in 0 .. text_len(value)
+  {
+    let c = text_byte(value,i);
+    if c == 10 { buffer_append(out,"\\n"); }
+    else
+    {
+      if c == 34 || c == 92 { buffer_append(out,"\\"); }
+      buffer_push(out,u8_from_i64(c));
+    }
+  }
+  buffer_append(out,"\"");
+  return buffer_text(out);
+}
+
+fn header(out:buffer, status:string, version:i64)
+{
+  let policy = profile();
+  let syntax = F.num(version);
+  buffer_append(out,"{\"schema\":\"finpred-graph-check@1\",\"status\":\"$status\",\"profile\":\"$policy\",\"ottomat_version\":$syntax");
+}
+
+fn failure(status:string, version:i64, line:i64, column:i64, start:i64, end:i64,
+  fragment:string, subject:string) -> i64
+{
+  let out = buffer_new();
+  header(out,status,version);
+  let row = F.num(line);
+  let col = F.num(column);
+  var bytes = "null";
+  if start >= 0
+  {
+    let a = F.num(start);
+    let b = F.num(end);
+    bytes = "[$a,$b]";
+  }
+  let frag = json_text(fragment);
+  let name = json_text(subject);
+  buffer_append(out,",\"diagnostic\":{\"line\":$row,\"column\":$col,\"byte_range\":$bytes,\"fragment\":$frag,\"subject\":$name}}");
+  println(buffer_text(out));
+  return 1;
+}
+
+fn key(out:buffer, item:string)
+{
+  buffer_append(out,F.q(item));
+  buffer_append(out,":");
+}
+
+fn string_field(out:buffer, item:string, value:string)
+{
+  key(out,item);
+  buffer_append(out,json_text(value));
+}
+
+fn number_field(out:buffer, item:string, value:i64)
+{
+  key(out,item);
+  buffer_append(out,F.num(value));
+}
+
+fn port(out:buffer, p:SDK.Port)
+{
+  buffer_append(out,"{");
+  string_field(out,"name",sx_text(p["name"])); buffer_append(out,",");
+  string_field(out,"kind",sx_text(p["kind"])); buffer_append(out,",");
+  number_field(out,"major",p["major"]); buffer_append(out,",");
+  string_field(out,"unit",sx_text(p["unit"])); buffer_append(out,",");
+  string_field(out,"currency",sx_text(p["currency"])); buffer_append(out,",");
+  number_field(out,"states",p["states"]); buffer_append(out,",");
+  number_field(out,"max_bytes",p["max_bytes"]);
+  buffer_append(out,"}");
+}
+
+fn origin(out:buffer, node:string, name:string)
+{
+  buffer_append(out,"{\"node\":");
+  if node == "" { buffer_append(out,"null"); }
+  else { buffer_append(out,F.q(node)); }
+  buffer_append(out,",");
+  string_field(out,"port",name);
+  buffer_append(out,"}");
+}
+
+fn pin(out:buffer, p:SDK.Pin)
+{
+  buffer_append(out,"{");
+  string_field(out,"package",sx_text(p["package_name"])); buffer_append(out,",");
+  string_field(out,"package_version",sx_text(p["package_version"])); buffer_append(out,",");
+  string_field(out,"handler",sx_text(p["handler_name"])); buffer_append(out,",");
+  string_field(out,"handler_version",sx_text(p["handler_version"])); buffer_append(out,",");
+  number_field(out,"abi",p["abi"]); buffer_append(out,",");
+  string_field(out,"code_digest",sx_text(p["code_digest"])); buffer_append(out,",");
+  string_field(out,"policy_digest",sx_text(p["policy_digest"]));
+  buffer_append(out,"}");
+}
+
+fn list_separator(out:buffer, rest:sexpr)
+{
+  if sx_kind(rest) == 3 { buffer_append(out,","); }
+}
+
+fn inspect(out:buffer, compiled:G.Compilation)
+{
+  buffer_append(out,",\"inputs\":[");
+  var roots = compiled["roots"];
+  while sx_kind(roots) == 3
+  {
+    port(out,SDK.decode_port(sx_head(roots)));
+    roots = sx_tail(roots);
+    list_separator(out,roots);
+  }
+  buffer_append(out,"],\"nodes\":[");
+  var steps = compiled["steps"];
+  while sx_kind(steps) == 3
+  {
+    let step = sx_head(steps);
+    let entry = G.at(step,0);
+    buffer_append(out,"{");
+    string_field(out,"id",G.field(entry,0));
+    buffer_append(out,",\"pin\":");
+    pin(out,G.decode_pin(G.at(entry,1)));
+    buffer_append(out,",\"output\":");
+    port(out,SDK.decode_port(G.at(entry,3)));
+    buffer_append(out,",\"bindings\":[");
+    var bindings = G.at(step,1);
+    while sx_kind(bindings) == 3
+    {
+      let binding = sx_head(bindings);
+      buffer_append(out,"{");
+      string_field(out,"input",G.field(binding,0));
+      buffer_append(out,",\"from\":");
+      origin(out,G.field(binding,2),G.field(binding,3));
+      buffer_append(out,"}");
+      bindings = sx_tail(bindings);
+      list_separator(out,bindings);
+    }
+    buffer_append(out,"]}");
+    steps = sx_tail(steps);
+    list_separator(out,steps);
+  }
+  buffer_append(out,"],\"exports\":[");
+  var outputs = compiled["exports"];
+  while sx_kind(outputs) == 3
+  {
+    let item = G.at(sx_head(outputs),0);
+    buffer_append(out,"{\"port\":");
+    port(out,SDK.decode_port(G.at(item,1)));
+    buffer_append(out,",\"from\":");
+    origin(out,G.field(item,2),G.field(item,3));
+    buffer_append(out,"}");
+    outputs = sx_tail(outputs);
+    list_separator(out,outputs);
+  }
+  buffer_append(out,"]");
+}
+
+fn success(detail:bool, version:i64, graph:G.Graph, graph_digest:string, source_digest:string,
+  lowering:string) -> i64
+{
+  let compiled = G.compile(graph,"recommendation",Host.budget(),Host.lookup);
+  let p = compiled["prepared"];
+  if sx_text(p["status"]) != "ok" || G.digest(sx_text(p["canonical"])) != graph_digest
+  { return failure("graph_mismatch",version,0,0,-1,-1,"",""); }
+  let out = buffer_new();
+  header(out,"ok",version);
+  let compiler = Identity.compiler_id();
+  let graph_version = G.version();
+  let work = F.num(p["work"]);
+  let budget = F.num(Host.budget());
+  let edges = F.num(compiled["edges"]);
+  let depth = F.num(compiled["depth"]);
+  let root_bytes = F.num(compiled["max_root_bytes"]);
+  let read_bytes = F.num(compiled["max_read_bytes"]);
+  let emitted_bytes = F.num(compiled["max_emitted_bytes"]);
+  buffer_append(out,",\"mode\":\"recommendation\",\"effect\":\"pure\",\"graph_version\":\"$graph_version\",\"graph_digest\":\"$graph_digest\"");
+  buffer_append(out,",\"source_digest\":\"$source_digest\",\"compiler_identity\":\"$compiler\",\"lowering\":\"$lowering\"");
+  buffer_append(out,",\"bounds\":{\"work\":$work,\"budget\":$budget,\"edges\":$edges,\"depth\":$depth,");
+  buffer_append(out,"\"max_root_bytes\":$root_bytes,\"max_read_bytes\":$read_bytes,\"max_emitted_bytes\":$emitted_bytes}");
+  if detail { inspect(out,compiled); }
+  buffer_append(out,"}");
+  println(buffer_text(out));
+  return 0;
+}
+
+fn syntax_version(source:string) -> i64
+{
+  if text_len(source) < 10 { return 0; }
+  let header = text_slice(source,0,10);
+  if header == "ottomat 6\n" { return 6; }
+  if header == "ottomat 7\n" { return 7; }
+  return 0;
+}
+
+fn entry(mode:string, path:string) -> i64
+{
+  if mode != "graph-validate" && mode != "graph-inspect"
+  { return failure("denied",0,0,0,-1,-1,"",""); }
+  let wire = finpred_graph_read(path);
+  let tag = text_byte(wire,0);
+  if tag != 9 && tag != 10 { return failure(wire,0,0,0,-1,-1,"",""); }
+  let source = text_slice(wire,1,text_len(wire));
+  let version = syntax_version(source);
+  if tag == 9
+  {
+    let at = text_len(source);
+    let (row,col) = V6.line_at(source,at);
+    return failure("syntax",version,row,col,at,at+1,"","");
+  }
+  let detail = mode == "graph-inspect";
+  let compiler = Identity.compiler_id();
+  if version == 6
+  {
+    let result = V6.lower(source,"recommendation",Host.budget(),compiler,Host.lookup);
+    let status = sx_text(result["status"]);
+    if status != "ok"
+    { return failure(status,6,result["line"],result["column"],-1,-1,"",""); }
+    return success(detail,6,result["graph"],sx_text(result["graph_digest"]),
+      sx_text(result["source_digest"]),sx_text(result["lowering"]));
+  }
+  if version == 7
+  {
+    let result = V7.lower(source,"recommendation",Host.budget(),compiler,Host.lookup);
+    let d = result["diagnostic"];
+    let status = sx_text(d["status"]);
+    if status != "ok"
+    {
+      return failure(status,7,d["line"],d["column"],d["start"],d["end"],
+        sx_text(d["fragment"]),sx_text(d["subject"]));
+    }
+    return success(detail,7,result["graph"],sx_text(result["graph_digest"]),
+      sx_text(result["source_digest"]),sx_text(result["lowering"]));
+  }
+  return failure("version",0,1,1,-1,-1,"","");
+}

@@ -1,0 +1,10 @@
+# The graph host has no CLI route to financial execution, replay or storage.
+import cli.graph_check as Check;
+import std.environ as Env;
+
+fn main() -> i64
+{
+  let (mode_found,mode) = Env.getenv("FINPRED_MODE");
+  let (path_found,path) = Env.getenv("FINPRED_GRAPH_SOURCE");
+  return Check.entry(mode,path);
+}
