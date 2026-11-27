@@ -77,6 +77,11 @@ the project, not independently admitted storage kernels.
   for compiler evidence, error outcomes, publication ordering and acceptance
   tests. No new native adapter or build dependency is used here.
 
+The optional [native temporal evidence review target](../../native/README.md#optional-point-in-time-evidence)
+is separate from this On1x protocol. It establishes parent-before-commit
+ordering for its new point-in-time format only; it does not migrate or
+grant native storage access to the CLI.
+
 ## Short-write regression (Linux)
 
 From the project root, build with `bin/build.sh` and run

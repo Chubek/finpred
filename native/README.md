@@ -97,6 +97,34 @@ payload cannot replace the winner, and the identical contender must sync the
 winning inode and destination directory before reporting success. No sleeps
 are used to arrange the interleavings.
 
+## Optional point-in-time evidence
+
+Enable the separate host-only `finpred_native_temporal` C target by adding
+`-DFINPRED_TEMPORAL_MULIB_ROOT=/path/to/mulib` to the CMake configure command.
+The review dependency is MuLIB `cbb7d66f217f188493f25b38c10101aa26469c48`;
+the target uses its C AsOf and BLAKE3 implementations (BLAKE3's header also
+links the SHA implementation). It does not need LibStone or `on1xc`, and
+does not change the base store ABI or admission status.
+
+[`temporal.h`](temporal.h) offers publish, read-only replay and explicit
+resume for the new [temporal evidence contract](../contracts/native.temporal-evidence@1.md).
+After validating the commit plan, publication verifies and syncs each
+distinct catalog parent, then the catalog, before creating the commit
+name. A result's `stage` names the operation that produced its underlying
+`fp_result`; if it is not `FP_TEMPORAL_COMMIT`, the underlying name state
+describes a prerequisite, not the commit. A commit ID in an error result
+is the recomputed plan's ID, not a receipt. `FP_CONFLICT` at validation
+also covers the AsOf snapshot rejection: upstream does not separately
+report ambiguity and allocation failure.
+
+The optional `native_temporal_oracle_and_recovery` CTest compares exact
+bytes against a Python selector/serializer independent of the C selector,
+checks published BLAKE3 vectors, and checks which inodes sync before link.
+It injects sync failures and kills child publishers before prerequisite
+sync, before commit link, after link, and after commit-directory sync.
+Read-only replay must never sync. Recovery either reuses the same verified
+visible inode or publishes the original plan, without staging debris.
+
 **Admission remains open.** These are live-mount process-death and fault
 injection tests, not evidence of persistence across power loss or remount.
 The On1x compiler has no callable storage profile for this candidate. See
