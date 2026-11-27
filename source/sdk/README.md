@@ -74,6 +74,38 @@ NULs or integers outside `uint32_t`). If an older library lacks the relevant
 diagnostic export, the new methods raise `NotImplementedError`; existing
 methods still work as before.
 
+The On1x `sdk.package_diagnostics.check_v1` explains package-check results
+from the unchanged `sdk.packages.check_v2` policy. It is not a separate
+dispatch path. Its index is `-1` when no item applies.
+
+### Check a package from the CLI
+
+After `bin/build.sh`, run the compiled host with:
+
+```sh
+FINPRED_MODE=sdk-check FINPRED_SDK_REQUEST="$PWD/sdk-check.csv" build/dev/finpred
+```
+
+The whole request is one unquoted ASCII CSV record, with the version line
+and exact header below. Use semicolons within list fields, in input order;
+an empty list field means no items. Provide every resource ceiling explicitly
+as a canonical unsigned decimal `uint32` (zero grants no budget). The request
+is limited to 16 KiB.
+
+```text
+finpred-sdk-check@1
+package,sdk_version,package_version,kind,output,mode,effect,inputs,requested,dependencies,grants,csv_rows,bytes_per_input,rooms_per_property,maximum_rooms,adults,children,search_budget_max,runs_per_call,data_rows,columns,output_bytes_max
+dragnet.frozen_csv,1,1.0.0,Source,hospitality.offer@1,analysis,pure,hospitality.scenario@1;finpred.offers.csv@1,,finpred.core@1;yieldcraft.asof-whole-stay-property-min@1,,512,2000000,0,0,0,0,0,0,0,0,0
+```
+
+The host prints one `finpred-sdk-diagnostic@1` JSON object with `status`,
+`reason`, `subject`, `field` and `index` (`null` if inapplicable). Its exit
+status is the reported status code. An invalid request format is reported
+before package policy is checked. The command never runs a package or
+opens a run store; the dependencies and grants in the request are for the
+compatibility check only. To compare the CLI against the native SDK, run
+`python3 tests/check_sdk_diagnostic_cli.py build/dev/finpred`.
+
 ### Legacy package profiles
 
 | Manifest (SDK 1, package 1.0.0) | Invocation mode | Ordered input schema/format IDs → output | Required host dependency IDs |

@@ -13,6 +13,7 @@ import cli.lineage as Lineage;
 import cli.run_formats as Formats;
 import cli.contribution_archive as Contribution;
 import cli.price_prediction as PricePrediction;
+import cli.sdk_check as SDKCheck;
 import automat.graph as Graph;
 import automat.runner as Runner;
 import automat.dag as Dag;
@@ -338,6 +339,7 @@ fn entry() -> i64
 {
   let mode = env_default("FINPRED_MODE","run");
   if mode == "selftest" { return selftest(); }
+  if mode == "sdk-check" { return SDKCheck.entry(env_default("FINPRED_SDK_REQUEST","")); }
   if mode == "price-predict" || mode == "price-backtest" { return PricePrediction.entry(mode == "price-backtest"); }
   let home = env_default("FINPRED_HOME",".finpred");
   if mode == "replay" || mode == "explain" || mode == "evidence" || mode == "poindexter"

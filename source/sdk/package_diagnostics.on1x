@@ -1,0 +1,126 @@
+# Explain the package-use check without changing its archived subject.
+# The legacy check remains authoritative; no dispatch registry imports this.
+import sdk.packages as P;
+
+record Diagnostic { status:i64, reason:sexpr, subject:sexpr, field:sexpr, index:i64 }
+
+fn diagnostic(status:i64, reason:string, subject:string, field:string, index:i64) -> Diagnostic {
+  return record<Diagnostic>{status:status,reason:sx_string(reason),subject:sx_string(subject),
+    field:sx_string(field),index:index};
+}
+
+fn no_detail(status:i64) -> Diagnostic { return diagnostic(status,"none","none","none",0-1); }
+
+fn name_count(xs:sexpr) -> i64 {
+  var rest = xs;
+  var n = 0;
+  while sx_kind(rest) == 3 && n < 17 {
+    n = n+1;
+    rest = sx_tail(rest);
+  }
+  if sx_kind(rest) != 0 || n > 16 { return 0-1; }
+  return n;
+}
+
+fn invalid_names(xs:sexpr, subject:string, field:string) -> Diagnostic {
+  if name_count(xs) < 0 { return diagnostic(1,"invalid_value",subject,field,0-1); }
+  var rest = xs;
+  var seen = sx_nil();
+  var n = 0;
+  while sx_kind(rest) == 3 {
+    let name = sx_head(rest);
+    if sx_kind(name) == 0 { return diagnostic(1,"null",subject,field,n); }
+    if sx_kind(name) != 2 { return diagnostic(1,"invalid_value",subject,field,n); }
+    let len = text_len(sx_text(name));
+    if len == 0 || len > 127 { return diagnostic(1,"invalid_value",subject,field,n); }
+    if P.contains_atom(seen,name) { return diagnostic(1,"duplicate",subject,field,n); }
+    seen = sx_cons(name,seen);
+    rest = sx_tail(rest);
+    n = n+1;
+  }
+  return no_detail(1);
+}
+
+fn first_missing(xs:sexpr,ys:sexpr) -> i64 {
+  var rest = xs;
+  var n = 0;
+  while sx_kind(rest) == 3 {
+    if !P.contains_atom(ys,sx_head(rest)) { return n; }
+    rest = sx_tail(rest);
+    n = n+1;
+  }
+  return 0-1;
+}
+
+fn limit_field(p:P.Limits,h:P.Limits) -> string {
+  if p["csv_rows"] > h["csv_rows"] { return "csv_rows"; }
+  if p["bytes_per_input"] > h["bytes_per_input"] { return "bytes_per_input"; }
+  if p["rooms_per_property"] > h["rooms_per_property"] { return "rooms_per_property"; }
+  if p["maximum_rooms"] > h["maximum_rooms"] { return "maximum_rooms"; }
+  if p["adults"] > h["adults"] { return "adults"; }
+  if p["children"] > h["children"] { return "children"; }
+  if p["search_budget_max"] > h["search_budget_max"] { return "search_budget_max"; }
+  if p["runs_per_call"] > h["runs_per_call"] { return "runs_per_call"; }
+  if p["data_rows"] > h["data_rows"] { return "data_rows"; }
+  if p["columns"] > h["columns"] { return "columns"; }
+  if p["output_bytes_max"] > h["output_bytes_max"] { return "output_bytes_max"; }
+  return "";
+}
+
+fn invalid_use(use:P.Use, host:P.Host) -> Diagnostic {
+  if !P.valid_names(use["inputs"]) { return invalid_names(use["inputs"],"use","inputs"); }
+  if !P.valid_names(use["requested"]) { return invalid_names(use["requested"],"use","requested"); }
+  if !P.valid_names(host["dependencies"]) { return invalid_names(host["dependencies"],"host","dependencies"); }
+  return invalid_names(host["grants"],"host","grants");
+}
+
+fn incompatible_use(p:P.Package, use:P.Use, host:P.Host) -> Diagnostic {
+  if use["sdk_version"] != 1 { return diagnostic(2,"mismatch","use","sdk_version",0-1); }
+  if !P.same_atom(use["package_version"],sx_string("1.0.0")) {
+    return diagnostic(2,"mismatch","use","package_version",0-1);
+  }
+  if !P.same_atom(use["kind"],p["kind"]) { return diagnostic(2,"mismatch","use","kind",0-1); }
+  if !P.same_atom(use["output"],p["output"]) { return diagnostic(2,"mismatch","use","output",0-1); }
+  if name_count(use["inputs"]) != name_count(p["inputs"]) {
+    return diagnostic(2,"mismatch","use","inputs",0-1);
+  }
+  let missing = first_missing(p["dependencies"],host["dependencies"]);
+  if missing >= 0 { return diagnostic(2,"missing","host","dependencies",missing); }
+  let over = limit_field(p["limits"],host["ceilings"]);
+  if over != "" { return diagnostic(2,"exceeds","host",over,0-1); }
+  var actual = use["inputs"];
+  var expected = p["inputs"];
+  var n = 0;
+  while sx_kind(actual) == 3 {
+    if !P.same_atom(sx_head(actual),sx_head(expected)) { return diagnostic(2,"mismatch","use","inputs",n); }
+    actual = sx_tail(actual);
+    expected = sx_tail(expected);
+    n = n+1;
+  }
+  return no_detail(2);
+}
+
+fn denied_use(p:P.Package, use:P.Use, host:P.Host) -> Diagnostic {
+  if !P.same_atom(use["mode"],p["mode"]) { return diagnostic(4,"mismatch","use","mode",0-1); }
+  if !P.same_atom(use["effect"],sx_string("pure")) { return diagnostic(4,"mismatch","use","effect",0-1); }
+  let ungranted = first_missing(use["requested"],host["grants"]);
+  if ungranted >= 0 { return diagnostic(4,"not_granted","host","grants",ungranted); }
+  let undeclared = first_missing(use["requested"],p["capabilities"]);
+  if undeclared >= 0 { return diagnostic(4,"not_declared","package","capabilities",undeclared); }
+  let unrequested = first_missing(p["capabilities"],use["requested"]);
+  if unrequested >= 0 { return diagnostic(4,"missing","use","requested",unrequested); }
+  return no_detail(4);
+}
+
+fn check_v1(name:string, use:P.Use, host:P.Host) -> Diagnostic {
+  let status = P.check_v2(name,use,host);
+  if status == 0 { return no_detail(0); }
+  if status == 3 { return diagnostic(3,"not_found","package","name",0-1); }
+  if status == 1 { return invalid_use(use,host); }
+  var p = P.yieldcraft();
+  if name == "dragnet.frozen_csv" { p = P.dragnet(); }
+  if name == "poindexter.pricing-sheet" { p = P.poindexter(); }
+  if status == 2 { return incompatible_use(p,use,host); }
+  if status == 4 { return denied_use(p,use,host); }
+  return no_detail(status);
+}
