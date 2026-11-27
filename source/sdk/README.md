@@ -49,6 +49,31 @@ The optional `finpred_sdk_connect_ports_v2` symbol and the Python
 port metadata. They do not grant authority or execute handlers. Older ABI v2
 libraries still provide the existing Python lookup and package-use methods.
 
+### Structured diagnostics (result ABI v1)
+
+Include `<finpred/sdk_diagnostic_v1.h>` for `finpred_sdk_check_diagnostic_v1`
+and `finpred_sdk_connect_ports_diagnostic_v1`. These additive functions use
+the existing ABI v2 arguments, except that a package check takes a name
+instead of a handle. They share the legacy checks and return the same status
+codes. The shared library still has SONAME major 1; old exports are unchanged.
+
+A call fills a caller-owned, pointer-free result with the status and, on
+failure, a stable reason, subject, field, and optional zero-based index.
+Only the first failure is reported. Package lookup precedes validation;
+malformed arguments precede incompatibility, and incompatibility precedes
+policy denial. A missing dependency indexes the compiled descriptor's
+dependency list; a denied grant indexes the caller's requested list. An
+incompatible edge reports the mismatched field; an invalid signature
+identifies the producer or consumer separately. The result contains no
+payload, authority, or borrowed text.
+
+Python's `SDK.check_diagnostic()` and `SDK.connect_ports_diagnostic()` expose
+the native result as an immutable `Diagnostic`, with `index=None` when no
+item applies. Python still rejects input it cannot marshal (such as embedded
+NULs or integers outside `uint32_t`). If an older library lacks the relevant
+diagnostic export, the new methods raise `NotImplementedError`; existing
+methods still work as before.
+
 ### Legacy package profiles
 
 | Manifest (SDK 1, package 1.0.0) | Invocation mode | Ordered input schema/format IDs → output | Required host dependency IDs |

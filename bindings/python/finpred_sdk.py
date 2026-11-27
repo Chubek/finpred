@@ -1,11 +1,14 @@
-"""Metadata-only Python binding for the FinPRED C SDK ABI v2."""
+"""Metadata-only Python binding for the FinPRED C SDK ABI v2 and diagnostics v1."""
 
 import ctypes as ct
 from dataclasses import dataclass, fields
 from enum import IntEnum, IntFlag
 from pathlib import Path
 
-__all__ = ["Descriptor", "Host", "Limits", "Port", "SDK", "SDKError", "Status", "Use", "ValueState"]
+__all__ = [
+    "Descriptor", "Diagnostic", "DiagnosticField", "DiagnosticReason", "DiagnosticSubject",
+    "Host", "Limits", "Port", "SDK", "SDKError", "Status", "Use", "ValueState",
+]
 
 
 class Status(IntEnum):
@@ -14,6 +17,72 @@ class Status(IntEnum):
     INCOMPATIBLE = 2
     NOT_FOUND = 3
     DENIED = 4
+
+
+class DiagnosticReason(IntEnum):
+    NONE = 0
+    NULL = 1
+    INVALID_VALUE = 2
+    DUPLICATE = 3
+    MISMATCH = 4
+    MISSING = 5
+    EXCEEDS = 6
+    NOT_GRANTED = 7
+    NOT_DECLARED = 8
+    NOT_FOUND = 9
+
+
+class DiagnosticSubject(IntEnum):
+    NONE = 0
+    PACKAGE = 1
+    USE = 2
+    HOST = 3
+    PRODUCER = 4
+    CONSUMER = 5
+    EDGE = 6
+
+
+class DiagnosticField(IntEnum):
+    NONE = 0
+    NAME = 1
+    SDK_VERSION = 2
+    PACKAGE_VERSION = 3
+    KIND = 4
+    OUTPUT = 5
+    INPUTS = 6
+    DEPENDENCIES = 7
+    MODE = 8
+    EFFECT = 9
+    REQUESTED = 10
+    GRANTS = 11
+    CAPABILITIES = 12
+    CSV_ROWS = 13
+    BYTES_PER_INPUT = 14
+    ROOMS_PER_PROPERTY = 15
+    MAXIMUM_ROOMS = 16
+    ADULTS = 17
+    CHILDREN = 18
+    SEARCH_BUDGET_MAX = 19
+    RUNS_PER_CALL = 20
+    DATA_ROWS = 21
+    COLUMNS = 22
+    OUTPUT_BYTES_MAX = 23
+    MAJOR = 24
+    UNIT = 25
+    CURRENCY = 26
+    STATES = 27
+    MAX_BYTES = 28
+
+
+@dataclass(frozen=True)
+class Diagnostic:
+    """First policy failure, or OK with no failure fields; index is zero-based."""
+
+    status: Status
+    reason: DiagnosticReason
+    subject: DiagnosticSubject
+    field: DiagnosticField
+    index: int | None
 
 
 class ValueState(IntFlag):
@@ -128,6 +197,12 @@ class _Port(ct.Structure):
     ]
 
 
+class _Diagnostic(ct.Structure):
+    _fields_ = [("status", ct.c_int32)] + [
+        (key, ct.c_uint32) for key in ("reason", "subject", "field", "index")
+    ]
+
+
 def _text(value: str) -> bytes:
     if not isinstance(value, str):
         raise TypeError("SDK text requires str")
@@ -170,6 +245,27 @@ def _port(p: Port) -> _Port:
                  _u32(p.major), _u32(states), _u32(p.max_bytes))
 
 
+def _use(use: Use) -> _Use:
+    return _Use(
+        _u32(use.sdk_version), *(_text(getattr(use, key)) for key in _USE_TEXT),
+        _names(use.inputs), _names(use.requested),
+    )
+
+
+def _host(host: Host) -> _Host:
+    limits = _Limits(*(_u32(getattr(host.ceilings, key)) for key in _LIMIT_KEYS))
+    return _Host(_names(host.dependencies), _names(host.grants), limits)
+
+
+def _read_diagnostic(status: int, value: _Diagnostic) -> Diagnostic:
+    if value.status != status:
+        raise RuntimeError("inconsistent SDK diagnostic status")
+    return Diagnostic(
+        Status(status), DiagnosticReason(value.reason), DiagnosticSubject(value.subject),
+        DiagnosticField(value.field), None if value.index == 0xFFFFFFFF else value.index,
+    )
+
+
 class SDK:
     """Open an explicitly selected, trusted ABI v2 shared library.
 
@@ -195,6 +291,20 @@ class SDK:
         if self._connect_ports is not None:
             self._connect_ports.argtypes = (ct.POINTER(_Port), ct.POINTER(_Port))
             self._connect_ports.restype = ct.c_int32
+        self._check_diagnostic = getattr(self._library, "finpred_sdk_check_diagnostic_v1", None)
+        if self._check_diagnostic is not None:
+            self._check_diagnostic.argtypes = (
+                ct.c_char_p, ct.POINTER(_Use), ct.POINTER(_Host), ct.POINTER(_Diagnostic),
+            )
+            self._check_diagnostic.restype = ct.c_int32
+        self._connect_ports_diagnostic = getattr(
+            self._library, "finpred_sdk_connect_ports_diagnostic_v1", None,
+        )
+        if self._connect_ports_diagnostic is not None:
+            self._connect_ports_diagnostic.argtypes = (
+                ct.POINTER(_Port), ct.POINTER(_Port), ct.POINTER(_Diagnostic),
+            )
+            self._connect_ports_diagnostic.restype = ct.c_int32
 
     def _handle(self, name: str) -> tuple[Status, ct.c_void_p]:
         handle = ct.c_void_p()
@@ -223,16 +333,30 @@ class SDK:
         status, handle = self._handle(name)
         if status != Status.OK:
             return status
-        request = _Use(
-            _u32(use.sdk_version), *(_text(getattr(use, key)) for key in _USE_TEXT),
-            _names(use.inputs), _names(use.requested),
+        return Status(self._check(handle, ct.byref(_use(use)), ct.byref(_host(host))))
+
+    def check_diagnostic(self, name: str, use: Use, host: Host) -> Diagnostic:
+        """Check package use with failure detail; raises NotImplementedError on older libraries."""
+        if self._check_diagnostic is None:
+            raise NotImplementedError("library does not export package diagnostics v1")
+        out = _Diagnostic()
+        status = self._check_diagnostic(
+            _text(name), ct.byref(_use(use)), ct.byref(_host(host)), ct.byref(out),
         )
-        limits = _Limits(*(_u32(getattr(host.ceilings, key)) for key in _LIMIT_KEYS))
-        inventory = _Host(_names(host.dependencies), _names(host.grants), limits)
-        return Status(self._check(handle, ct.byref(request), ct.byref(inventory)))
+        return _read_diagnostic(status, out)
 
     def connect_ports(self, output: Port, input: Port) -> Status:
         """Check a typed edge's metadata, without resolving or invoking handlers."""
         if self._connect_ports is None:
             return Status.INCOMPATIBLE
         return Status(self._connect_ports(ct.byref(_port(output)), ct.byref(_port(input))))
+
+    def connect_ports_diagnostic(self, output: Port, input: Port) -> Diagnostic:
+        """Check directional port metadata with failure detail; no handler is called."""
+        if self._connect_ports_diagnostic is None:
+            raise NotImplementedError("library does not export typed-port diagnostics v1")
+        out = _Diagnostic()
+        status = self._connect_ports_diagnostic(
+            ct.byref(_port(output)), ct.byref(_port(input)), ct.byref(out),
+        )
+        return _read_diagnostic(status, out)

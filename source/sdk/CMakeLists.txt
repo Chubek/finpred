@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(finpred_sdk VERSION 1.1.0 LANGUAGES C)
+project(finpred_sdk VERSION 1.2.0 LANGUAGES C)
 
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -13,7 +13,7 @@ target_include_directories(finpred_sdk PUBLIC
   "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
   "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>")
 install(TARGETS finpred_sdk EXPORT FinPREDSDKTargets)
-install(FILES sdk.h sdk_v2.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/finpred)
+install(FILES sdk.h sdk_v2.h sdk_diagnostic_v1.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/finpred)
 
 set(sdk_cmake_dir "${CMAKE_INSTALL_LIBDIR}/cmake/FinPREDSDK")
 write_basic_package_version_file(
