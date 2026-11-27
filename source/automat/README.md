@@ -33,6 +33,27 @@ declaration's maximum work, and the runtime still enforces its existing
 actual-byte limits. A failed compilation has no schedule or metrics. Schedules
 are not persisted and cannot be supplied as executable authority.
 
+### Dependency ordering across versions
+
+The scalar and financial graph validators share an internal serial dependency
+planner. It receives only node IDs and node-to-node bindings after each engine
+has checked references. It releases all bindings from a completed predecessor
+at once, and at every step applies the version's rule to all currently ready
+nodes (including any just unblocked):
+
+| Engine version | Order |
+| --- | --- |
+| `automat.fixed-graph@1` | Native slots `0` through `6`; the fixed runner does not enter the planner |
+| `automat.scalar-dag@1`, `@2`, `@3` | First ready declaration |
+| `automat.financial-graph@1` | Lexically first ready node ID |
+
+The shared planner returns a complete order or no order on a cycle. Engine
+validation, canonical bytes, slot encoding, and handler dispatch remain
+separate. A planned order grants no authority and does not imply callbacks or
+runtime values can be shared across threads.
+`python3 tests/check_automat_schedule.py` compares the shared planner with an
+independent readiness oracle, including cycles and repeated bindings.
+
 An external hospitality host binds normalization, whole-stay comparables,
 a sample diagnostic, a policy
 decision, and guardrail validation. The normalizer retains the rejected-row count and records

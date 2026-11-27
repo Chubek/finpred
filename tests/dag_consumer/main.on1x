@@ -44,6 +44,14 @@ fn main() -> i64
   if test == "malformed" { hi = sx_string("hi"); }
   var nodes = sx_cons(spread,sx_cons(hi,sx_cons(lo,sx_nil())));
   if test == "reverse" { nodes = sx_cons(spread,sx_cons(lo,sx_cons(hi,sx_nil()))); }
+  if test == "dynamic-tie"
+  {
+    # `early` binds the same parent twice and must run as soon as `hi` unblocks it,
+    # ahead of the independent `lo`. `lo` still runs although `early` is selected.
+    let early = D.node("early","maximum@1","hi","hi");
+    nodes = sx_cons(early,sx_cons(hi,sx_cons(lo,sx_nil())));
+    output = "early";
+  }
   if test == "short"
   { output = "lo"; first = 1000000000000; nodes = sx_cons(lo,sx_nil()); }
   if test == "oversize"

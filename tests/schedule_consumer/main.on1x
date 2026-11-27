@@ -1,0 +1,36 @@
+import automat.schedule as Schedule;
+import std.collections.List as L;
+import std.io.TextIO as IO;
+import std.os.CommandLine as Env;
+
+# Test wire: whitespace-separated IDs, one node (ID then parents) per line.
+fn main() -> i64
+{
+  let encoded = Env.basis_command_line_get_env("SCHEDULE_ROWS");
+  let version = Env.basis_command_line_get_env("SCHEDULE_VERSION");
+  var rows = sx_nil();
+  var row = sx_nil();
+  var start = 0;
+  for i in 0 .. text_len(encoded)
+  {
+    let b = text_byte(encoded,i);
+    if b == 32 || b == 10
+    {
+      row = sx_cons(sx_string(text_slice(encoded,start,i)),row);
+      start = i+1;
+      if b == 10
+      {
+        rows = sx_cons(L.basis_list_rev(row),rows);
+        row = sx_nil();
+      }
+    }
+  }
+  var ordered = Schedule.order(version,L.basis_list_rev(rows));
+  while sx_kind(ordered) == 3
+  {
+    IO.basis_text_io_print(sx_text(sx_head(ordered)));
+    IO.basis_text_io_print("\n");
+    ordered = sx_tail(ordered);
+  }
+  return 0;
+}

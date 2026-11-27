@@ -24,6 +24,7 @@ with tempfile.TemporaryDirectory(prefix="finpred-dag-") as tmp:
         ("bound", "ok\nscalar.distance@1:0\nhi=left@1(first,second):17\n" + lo
          + "spread=distance@1(hi,lo):0\n"),
         ("reverse", "ok\nscalar.distance@1:25\n" + lo + hi + end),
+        ("dynamic-tie", "ok\nscalar.level@1:42\n" + hi + "early=maximum@1(hi,hi):42\n" + lo),
         ("ok", "ok\nscalar.distance@1:25\n" + hi + lo + end),
         ("short", "ok\nscalar.level@1:42\nlo=minimum@1(first,second):42\n"),
         ("limit", "ok\nscalar.level@1:42\n" + "".join(
@@ -42,4 +43,4 @@ with tempfile.TemporaryDirectory(prefix="finpred-dag-") as tmp:
     ]:
         result = subprocess.check_output([exe], cwd=tmp, env={**os.environ, "DAG_CASE": case}, timeout=10)
         assert result == expected.encode("ascii"), (case, result, expected)
-print("scalar_dag_ok=true executions=8 rejected=15")
+print("scalar_dag_ok=true executions=9 rejected=15")
