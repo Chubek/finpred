@@ -47,6 +47,62 @@ evidence. The bundle cannot choose or load a compiler or grant execution.
 Run `python3 tests/check_ottomat_financial.py` for compiled native parity and
 negative syntax, type, import, and effect cases.
 
+## V7 financial composition
+
+`ottomat 7` assembles two to four named fragments into one native financial
+graph. Like v6, it requires `effect pure`, exactly one ASCII space between
+tokens, and LF after every line. Sources are limited to 4096 bytes and 96
+lines. Each fragment uses the v6 `input`, `import`, `let`, `output`, and
+`emit` declarations in that order, followed by its `wire` declarations and
+`end`:
+
+```text
+ottomat 7
+effect pure
+fragment prepare
+input raw example.value@1 none none required 64
+import example.prepare@1
+let prepared = example.prepare@1 value=raw
+output normalized example.value@1 none none required 64
+emit normalized prepared.value
+end
+fragment review
+input inbound example.value@1 none none required 64
+import example.review@1
+let reviewed = example.review@1 value=inbound
+output decision example.value@1 none none required 64
+emit decision reviewed.value
+wire inbound normalized
+end
+```
+
+`wire <root> <export>` consumes a root in the current fragment and connects
+it to an export from any earlier fragment. The first fragment has no wires;
+each later fragment needs at least one. Each root can be wired at most once.
+Every fragment must be valid on its own, and the declared export must match
+the declared root type, including byte limits. Native composition removes
+wired roots, retains all exports, and checks the merged graph against the
+same host budget and resolver. Names are neither qualified nor silently
+merged in the native graph; fragment names are source provenance only.
+
+`ottomat.financial_composition.lower(source, mode, budget, compiler, resolve)`
+returns the native graph, separate graph and source digests, the exact source,
+compiler identity, resolved handler pins, and the lowering identity
+`finpred.ottomat-financial-composition@1`. Its `spans` are
+`(fragment verb name start end)` entries in source order, including the
+header, effect, and fragment delimiters. Byte ranges are zero-based and
+half-open, excluding LF. Errors return no graph identity or partial
+provenance; `diagnostic` contains a status, optional fragment and subject,
+one-based line and byte column, and the same half-open byte range convention.
+If the native validator cannot identify a unique declaration, the error
+points to the fragment header.
+
+A trusted host can use `ottomat.financial_composition_run.execute` to
+recheck the canonical graph digest before dispatch. V7 has no Ottomat
+archive entry point and does not alter v6 lowering or replay. Run
+`python3 tests/check_ottomat_composition.py` for native graph and execution
+parity, source spans, wiring failures, and the binding recheck.
+
 ## Legacy recommendation declarations
 
 `Ottomat.lower(source)` parses a v1 or v2 declaration and resolves it to

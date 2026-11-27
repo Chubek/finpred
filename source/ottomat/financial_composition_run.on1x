@@ -1,0 +1,12 @@
+import ottomat.financial_composition as Ott;
+import automat.financial_run as Run;
+import sdk.callable as SDK;
+
+# No replay dispatch: the v6 archive path must not interpret v7 source.
+fn execute(lowered:Ott.Lowered, roots:sexpr, ctx:Run.Context, mode:string, budget:i64,
+  resolve:fn(string) -> SDK.Descriptor, call:fn(SDK.Pin, SDK.Request) -> SDK.Outcome) -> Run.Result
+{
+  if !SDK.same(lowered["diagnostic"]["status"],sx_string("ok"))
+    || !SDK.same(lowered["lowering"],sx_string(Ott.identity())) { return Run.error("lowering",""); }
+  return Run.execute_pinned(lowered["graph"],roots,ctx,mode,budget,resolve,call,lowered["graph_digest"]);
+}

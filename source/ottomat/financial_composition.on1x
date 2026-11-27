@@ -1,0 +1,260 @@
+# The version 7 frontend flattens pure, typed fragments through the existing
+# native graph. Source identity is provenance, not execution authority.
+import ottomat.composition_grammar as Syntax;
+import ottomat.financial as V6;
+import automat.financial_graph as G;
+import sdk.callable as SDK;
+import core.format as F;
+import std.collections.List as L;
+
+record Diagnostic {
+  status:sexpr, fragment:sexpr, subject:sexpr, line:i64, column:i64, start:i64, end:i64
+}
+record Lowered {
+  diagnostic:Diagnostic, graph:G.Graph, graph_digest:sexpr, source:sexpr, source_digest:sexpr,
+  compiler_identity:sexpr, lowering:sexpr, spans:sexpr, resolved:sexpr
+}
+record Span { start:i64, end:i64 }
+
+fn identity() -> string { return "finpred.ottomat-financial-composition@1"; }
+fn empty_graph() -> G.Graph { return G.graph(sx_nil(),sx_nil(),sx_nil()); }
+fn point(offset:i64, size:i64) -> Span
+{
+  if offset < size { return record<Span>{start:offset,end:offset+1}; }
+  return record<Span>{start:offset,end:offset};
+}
+fn failure(source:string, status:string, fragment:string, subject:string, span:Span) -> Lowered
+{
+  let (line,column) = V6.line_at(source,span["start"]);
+  let diagnostic = record<Diagnostic>{status:sx_string(status),fragment:sx_string(fragment),
+    subject:sx_string(subject),line:line,column:column,start:span["start"],end:span["end"]};
+  return record<Lowered>{diagnostic:diagnostic,graph:empty_graph(),graph_digest:sx_nil(),source:sx_nil(),
+    source_digest:sx_nil(),compiler_identity:sx_nil(),lowering:sx_nil(),spans:sx_nil(),resolved:sx_nil()};
+}
+
+# GrammarEmbed offsets are trusted generated decimal symbols, including zero.
+fn offset(value:sexpr) -> i64
+{
+  let text = sx_text(value);
+  var n = 0;
+  for i in 0 .. text_len(text) { n = n*10 + text_byte(text,i)-48; }
+  return n;
+}
+fn token_span(row:sexpr, index:i64) -> Span
+{
+  let token = G.at(sx_tail(row),index);
+  return record<Span>{start:offset(G.at(token,1)),end:offset(G.at(token,2))};
+}
+fn row_span(row:sexpr) -> Span
+{
+  var tokens = sx_tail(row);
+  let first = sx_head(tokens);
+  var last = first;
+  while sx_kind(tokens) == 3
+  {
+    last = sx_head(tokens);
+    tokens = sx_tail(tokens);
+  }
+  return record<Span>{start:offset(G.at(first,1)),end:offset(G.at(last,2))};
+}
+fn span_entry(fragment:string, verb:string, name:string, span:Span) -> sexpr
+{
+  return sx_cons(sx_string(fragment),sx_cons(sx_string(verb),sx_cons(sx_string(name),
+    sx_cons(sx_string(F.num(span["start"])),sx_cons(sx_string(F.num(span["end"])),sx_nil())))));
+}
+
+# Native prepare reports a subject, not a particular edge. Locate the unique
+# declaration in the current fragment, falling back to its header if ambiguous.
+fn native_span(spans:sexpr, fragment:string, subject:string, wiring:bool, fallback:Span) -> Span
+{
+  if subject == "" { return fallback; }
+  var rest = spans;
+  var found = false;
+  var result = fallback;
+  while sx_kind(rest) == 3
+  {
+    let entry = sx_head(rest);
+    let verb = G.field(entry,1);
+    if G.field(entry,0) != fragment { break; }
+    if G.field(entry,2) == subject
+      && ((wiring && verb == "wire") || (!wiring && (verb == "input" || verb == "let" || verb == "emit")))
+    {
+      if found { return fallback; }
+      found = true;
+      result = record<Span>{start:offset(G.at(entry,3)),end:offset(G.at(entry,4))};
+    }
+    rest = sx_tail(rest);
+  }
+  return result;
+}
+
+fn lower(source:string, mode:string, budget:i64, compiler:string,
+  resolve:fn(string) -> SDK.Descriptor) -> Lowered
+{
+  let size = text_len(source);
+  let origin = point(0,size);
+  if size < 1 || size > 4096 { return failure(source,"size","","",origin); }
+  if !V6.compiler_id(compiler) { return failure(source,"compiler_identity","","",origin); }
+  var lines = 0;
+  for i in 0 .. size
+  {
+    if lines == 96 { return failure(source,"size","","",point(i,size)); }
+    let c = text_byte(source,i);
+    if c == 10 { lines = lines+1; }
+    else
+    {
+      if c < 32 || c > 126 { return failure(source,"syntax","","",point(i,size)); }
+    }
+  }
+  let (status,rows,at) = Syntax.parse(source);
+  if status == 3 { return failure(source,"size","","",point(at,size)); }
+  if status != 0 { return failure(source,"syntax","","",point(at,size)); }
+  let effect = G.at(rows,1);
+  if G.field(sx_head(effect),1) != "pure" || (mode != "analysis" && mode != "recommendation")
+  { return failure(source,"denied","","effect",token_span(effect,1)); }
+
+  var rest = sx_tail(sx_tail(rows));
+  var spans = sx_cons(span_entry("","effect","pure",row_span(effect)),
+    sx_cons(span_entry("","header","7",row_span(sx_head(rows))),sx_nil()));
+  var count = 0;
+  var fragments = sx_nil();
+  var fragment = "";
+  var header = origin;
+  var inputs = sx_nil();
+  var imports = sx_nil();
+  var nodes = sx_nil();
+  var declarations = sx_nil();
+  var outputs = sx_nil();
+  var wires = sx_nil();
+  var built = empty_graph();
+  var prepared = G.reject("","");
+
+  while sx_kind(rest) == 3
+  {
+    let row = sx_head(rest);
+    let words = sx_head(row);
+    let verb = G.field(words,0);
+    let name = G.field(words,1);
+    let span = row_span(row);
+    if verb == "fragment"
+    {
+      if !G.identifier(name) { return failure(source,"fragment",name,name,token_span(row,1)); }
+      if count == 4 { return failure(source,"fragment_limit",name,name,token_span(row,1)); }
+      if sx_kind(G.lookup(fragments,name)) != 0
+      { return failure(source,"duplicate_fragment",name,name,token_span(row,1)); }
+      fragments = sx_cons(sx_cons(sx_string(name),sx_nil()),fragments);
+      fragment = name;
+      header = span;
+      inputs = sx_nil();
+      imports = sx_nil();
+      nodes = sx_nil();
+      declarations = sx_nil();
+      outputs = sx_nil();
+      wires = sx_nil();
+    }
+    spans = sx_cons(span_entry(fragment,verb,name,span),spans);
+    if verb == "input" || verb == "output"
+    {
+      let p = V6.port(words);
+      if !G.identifier(name) || !SDK.valid_port(p) { return failure(source,"port",fragment,name,span); }
+      if verb == "input"
+      {
+        if sx_kind(G.lookup(inputs,name)) != 0
+        { return failure(source,"duplicate_id",fragment,name,token_span(row,1)); }
+        inputs = sx_cons(SDK.port_entry(p),inputs);
+      }
+      else
+      {
+        if sx_kind(G.lookup(declarations,name)) != 0
+        { return failure(source,"duplicate_id",fragment,name,token_span(row,1)); }
+        declarations = sx_cons(SDK.port_entry(p),declarations);
+      }
+    }
+    if verb == "import"
+    {
+      if !G.handler_key(name) || !SDK.resolve(name,mode,resolve)["enabled"]
+      { return failure(source,"unknown_handler",fragment,name,token_span(row,1)); }
+      if sx_kind(G.lookup(imports,name)) != 0
+      { return failure(source,"duplicate_import",fragment,name,token_span(row,1)); }
+      imports = sx_cons(sx_cons(sx_string(name),sx_nil()),imports);
+    }
+    if verb == "let"
+    {
+      if !G.identifier(name) { return failure(source,"node",fragment,name,token_span(row,1)); }
+      let handler = G.field(words,3);
+      if sx_kind(G.lookup(imports,handler)) == 0
+      { return failure(source,"undeclared_import",fragment,handler,token_span(row,3)); }
+      if sx_kind(G.lookup(nodes,name)) != 0 || sx_kind(G.lookup(inputs,name)) != 0
+      { return failure(source,"duplicate_id",fragment,name,token_span(row,1)); }
+      let (ok,edges) = V6.bindings(words);
+      if !ok { return failure(source,"binding",fragment,name,span); }
+      nodes = sx_cons(G.node(name,handler,"pure",edges),nodes);
+    }
+    if verb == "emit"
+    {
+      let p = SDK.decode_port(G.lookup(declarations,name));
+      let producer = V6.reference(G.field(words,2));
+      if !SDK.valid_port(p) { return failure(source,"emit",fragment,name,token_span(row,1)); }
+      if !producer["valid"] || sx_text(producer["producer"]) == ""
+      { return failure(source,"emit",fragment,name,token_span(row,2)); }
+      if sx_kind(G.lookup(outputs,name)) != 0
+      { return failure(source,"duplicate_emit",fragment,name,token_span(row,1)); }
+      outputs = sx_cons(G.output(p,sx_text(producer["producer"]),sx_text(producer["port"])),outputs);
+    }
+    if verb == "wire"
+    {
+      let export_name = G.field(words,2);
+      if count == 0 { return failure(source,"unexpected_wire",fragment,name,span); }
+      if !G.identifier(name) || !G.identifier(export_name)
+      { return failure(source,"link_shape",fragment,name,span); }
+      if sx_kind(G.lookup(wires,name)) != 0
+      { return failure(source,"duplicate_wire",fragment,name,token_span(row,1)); }
+      wires = sx_cons(G.link(name,export_name),wires);
+    }
+    if verb == "end"
+    {
+      if G.length(outputs,16) < 0 || G.length(outputs,16) != G.length(declarations,16)
+      { return failure(source,"output",fragment,"",span); }
+      if count > 0 && sx_kind(wires) == 0 { return failure(source,"missing_wire",fragment,"",span); }
+      let local = G.graph(L.basis_list_rev(inputs),L.basis_list_rev(nodes),L.basis_list_rev(outputs));
+      let checked = G.prepare(local,mode,budget,resolve);
+      let local_status = sx_text(checked["status"]);
+      if local_status != "ok"
+      {
+        let subject = sx_text(checked["subject"]);
+        return failure(source,local_status,fragment,subject,native_span(spans,fragment,subject,false,header));
+      }
+      if count == 0 { built = local; prepared = checked; }
+      else
+      {
+        let joined = G.compose(built,local,L.basis_list_rev(wires),mode,budget,resolve);
+        let join_status = sx_text(joined["status"]);
+        if join_status != "ok"
+        {
+          let subject = sx_text(joined["subject"]);
+          let wiring = join_status == "link_shape" || join_status == "link_reference" || join_status == "edge_type";
+          return failure(source,join_status,fragment,subject,native_span(spans,fragment,subject,wiring,header));
+        }
+        built = joined["graph"];
+        prepared = joined["prepared"];
+      }
+      count = count+1;
+    }
+    rest = sx_tail(rest);
+  }
+  if count < 2 { return failure(source,"fragment_count","","",point(size,size)); }
+  var order = prepared["order"];
+  var resolved = sx_nil();
+  while sx_kind(order) == 3
+  {
+    let entry = sx_head(order);
+    resolved = sx_cons(sx_cons(G.at(entry,0),sx_cons(G.at(entry,1),sx_nil())),resolved);
+    order = sx_tail(order);
+  }
+  let diagnostic = record<Diagnostic>{status:sx_string("ok"),fragment:sx_string(""),subject:sx_string(""),
+    line:0,column:0,start:0,end:0};
+  return record<Lowered>{diagnostic:diagnostic,graph:built,
+    graph_digest:sx_string(G.digest(sx_text(prepared["canonical"]))),source:sx_string(source),
+    source_digest:sx_string(G.digest(source)),compiler_identity:sx_string(compiler),lowering:sx_string(identity()),
+    spans:L.basis_list_rev(spans),resolved:L.basis_list_rev(resolved)};
+}
