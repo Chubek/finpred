@@ -195,3 +195,24 @@ principals and an authenticated broker boundary; this tool does not implement
 one. After a killed initializer, Worker 0 must clean up that **reserved**
 prefix before retrying. Do not reuse a prefix owned by another session or
 remove unrelated queues to work around kernel quotas.
+
+### Integration decisions
+
+The working session used eight isolated Git worktrees and a private Linux IPC
+namespace. The broker admitted all seven candidate routes and approved the
+direct Automat→Ottomat contract exchange (correlation `49`); the recipient
+acknowledged the unchanged `compose`/`prepare` contract. Candidate admission
+did not bypass review: standalone C/Python numerics, SDK and temporal
+implementations were checked independently before the combined gates.
+Production build, tests, and review artifacts were staged without changing
+the plugin source tree, fixtures or either gitlink.
+
+This increment uses the existing typed financial graph as the canonical target
+for new composed strategies. The fixed and scalar engines remain distinct;
+the compiled schedule is deterministic and serial, not a general parallel
+effect scheduler. Generic robust forecasting does not add Holt–Winters,
+arbitrary AR/state-space models, nested model selection or optimization.
+The temporal storage target is native-host-only and does not replace the live
+On1x store. The Ottomat v7 frontend and robust series API are library
+interfaces; there is no new archive serializer or general graph execution CLI.
+See the [verification record](CORE_OVERHAUL_VERIFICATION.md) for scoped results.

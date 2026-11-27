@@ -305,6 +305,7 @@ case "$suite" in
       yieldcraft_inventory yieldcraft_coupled_inventory yieldcraft_risk_contribution \
       contribution_dag competitor_cube fixed_runner hospitality_adapters \
       financial_graph ottomat_financial ottomat_composition pricing_cli profiles_cli
+    python3 tests/check_sdk_diagnostic_cli.py "$exe"
     fixture_home
     bin/finpred selftest >"$work/selftest"
     grep -Fx 'selftest_ok=true' "$work/selftest"

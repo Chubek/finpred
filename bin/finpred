@@ -11,6 +11,7 @@ usage() {
   echo "usage: bin/finpred [run [--engine legacy|scalar]|selftest|replay RUN_ID|explain RUN_ID|evidence RUN_ID|poindexter RUN_ID]" >&2
   echo "       bin/finpred price-predict MODEL HORIZON HISTORY [SEASON]" >&2
   echo "       bin/finpred price-backtest MODEL HORIZON FIRST_TARGET HISTORY [SEASON]" >&2
+  echo "       bin/finpred sdk-check REQUEST.csv" >&2
   echo "       bin/finpred forecast {import SNAPSHOT|catalog ID_LIST|issue CATALOG MODEL CUTOFF REQUEST|score ISSUE CATALOG CUTOFF|holdout PLAN|audit SORTED_ID_LIST|replay ID}" >&2
   echo "       bin/finpred cube {evaluate SNAPSHOTS CELLS POLICIES|replay ID}" >&2
   echo "       bin/finpred {dragnet-inspect|dragnet-offers} CAPTURE UTC_CUTOFF" >&2
@@ -26,6 +27,14 @@ case "$MODE" in
     ;;
   selftest)
     [ "$#" -eq 1 ] || usage
+    ;;
+  sdk-check)
+    [ "$#" -eq 2 ] && [ -n "$2" ] || usage
+    case "$2" in
+      /*) FINPRED_SDK_REQUEST=$2 ;;
+      *) FINPRED_SDK_REQUEST=$PWD/$2 ;;
+    esac
+    export FINPRED_SDK_REQUEST
     ;;
   price-predict)
     case "${2:-}" in

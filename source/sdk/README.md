@@ -80,17 +80,18 @@ dispatch path. Its index is `-1` when no item applies.
 
 ### Check a package from the CLI
 
-After `bin/build.sh`, run the compiled host with:
+After `bin/build.sh`, run:
 
 ```sh
-FINPRED_MODE=sdk-check FINPRED_SDK_REQUEST="$PWD/sdk-check.csv" build/dev/finpred
+bin/finpred sdk-check sdk-check.csv
 ```
 
 The whole request is one unquoted ASCII CSV record, with the version line
 and exact header below. Use semicolons within list fields, in input order;
 an empty list field means no items. Provide every resource ceiling explicitly
 as a canonical unsigned decimal `uint32` (zero grants no budget). The request
-is limited to 16 KiB.
+is limited to 16 KiB. Supply a readable, stable local file; the CLI is not
+an I/O sandbox for attacker-controlled paths or concurrent file replacement.
 
 ```text
 finpred-sdk-check@1

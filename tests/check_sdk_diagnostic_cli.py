@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -92,6 +93,13 @@ def main():
         raw = request(base)
         run(raw.replace(b"\n", b"\r\n"), ok)
         run(raw.rstrip(b"\n"), ok)
+        p = subprocess.run([ROOT / "bin/finpred", "sdk-check", path.name],
+                           cwd=work, capture_output=True, timeout=5, env={
+                               "PATH": os.defpath, "FINPRED_EXE": str(exe),
+                               "FINPRED_HOME": str(home),
+                           })
+        assert p.returncode == 0 and not p.stderr and json.loads(p.stdout) == ok, p
+        assert not home.exists() and path.read_bytes() == raw.rstrip(b"\n")
         invalid = want(1, "invalid_value", "use", "none")
         for bad in (b"", b" " * 16385, raw + b"\n", raw[:-1] + b",extra\n",
                     raw.replace(b"check@1", b"check@0", 1), raw.replace(b"package", b"name", 1),

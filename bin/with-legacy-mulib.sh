@@ -15,8 +15,13 @@ view=$(mktemp -d -- "$TMPDIR/mulib-legacy.XXXXXXXX")
 trap 'rm -rf -- "$view"' EXIT
 trap 'exit 1' HUP INT TERM
 for entry in "$sdk"/*; do
-  ln -s -- "$entry" "$view/"
+  case "${entry##*/}" in
+    # The upstream manifest loader requires these paths to be inside its
+    # selected root. Preserve its confinement check with real snapshot data.
+    MANIFEST.yaml|kernels|manual) cp -a --reflink=auto -- "$entry" "$view/" ;;
+    *) ln -s -- "$entry" "$view/" ;;
+  esac
 done
-ln -s -- "$sdk/kernels" "$view/include"
+ln -s -- kernels "$view/include"
 export MULIB_ROOT="$view"
 "$@"
