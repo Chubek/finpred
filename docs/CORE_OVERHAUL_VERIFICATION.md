@@ -70,10 +70,9 @@ fresh toolchain fingerprints were:
 with legacy-symbol compatibility), and `tests/check_build_paths.py` passed.
 These are component checks, not validation of an assembled release.
 
-**Enable temporal explicitly.** Plain `make native-test` ran the three
-standalone store CTests and did not select temporal. With the following
-configuration, all four tests passed, including
-`native_temporal_oracle_and_recovery`:
+At this staged commit, plain `make native-test` selected only the three
+standalone store CTests. The following explicit configuration passed all
+four tests, including `native_temporal_oracle_and_recovery`:
 
 ```sh
 cmake -S native -B build/verify-temporal -DBUILD_TESTING=ON \
@@ -83,13 +82,57 @@ cmake --build build/verify-temporal --parallel 4
 ctest --test-dir build/verify-temporal --output-on-failure --no-tests=error
 ```
 
+## Assembled core candidate
+
+Compared the broker-built `finpred` executables for the pinned baseline
+and candidate `fb67fe4d0b2f8d15f9e956c4a2e112100d7cc4da`, using private
+scratch and an archive of that candidate revision. `cmp` found them
+byte-identical; both have SHA-256
+`c6568e181dbc23977891d3bb8ac37e2f44c8a784305f6bf90a733ba65e7818e0`.
+No plugin, fixture, or submodule paths differ between these revisions.
+
+- The baseline passed `./tests/run.sh storage`; the candidate passed
+  `make test-storage`. Both matched all four v2 triples and both read-only
+  v1 archives, passed runtime JSON validation, and handled interrupted
+  publication and concurrent writers. The contention probe allows partial
+  success with exact serial recovery (observed 8/8 baseline, 7/8 candidate);
+  it is not a throughput or success-rate comparison.
+- Candidate `make test-storage` ran 3/3 standalone store CTests and the
+  newly wired 1/1 native temporal CTest. `native-test` by itself remains
+  store-only; `native-temporal-test` selects temporal.
+- The candidate's `security` selector invokes the standalone IPC gate.
+  The IPC gate was run independently; this record does not claim a full
+  security or plugin suite pass, performance for the new library APIs,
+  or validation of the later SDK launcher delta.
+
+### Descriptive CLI benchmark
+
+Each measurement used the same scratch inputs and direct executables
+(no shell launcher), with two warmups and 16 timed runs per binary,
+alternating execution order. Wall time includes process startup. A small
+C parent used Linux `wait4` to record each child's peak RSS. Results are
+min / median / max. Output bytes matched for both binaries, and replay
+left the prebuilt store's file bytes, inodes, mtime and ctime unchanged
+with live inputs unavailable.
+
+| Workload | Binary | Wall ms | Peak RSS KiB |
+| --- | --- | --- | --- |
+| Frozen v2 replay | Baseline | 3.175 / 3.364 / 3.609 | 3104 / 3224 / 3276 |
+| Frozen v2 replay | Candidate | 3.212 / 3.399 / 3.632 | 3032 / 3228 / 3284 |
+| 256-point ensemble backtest, horizon 7, 240 scored folds | Baseline | 28.308 / 28.909 / 29.257 | 3316 / 3580 / 3768 |
+| 256-point ensemble backtest, horizon 7, 240 scored folds | Candidate | 28.340 / 28.880 / 29.399 | 3384 / 3634 / 3736 |
+
+These are short same-host measurements of identical executable bytes.
+The differences are run-to-run variation, not evidence of a speedup,
+regression, or statistical equivalence for any new code path.
+
 ## Development coordination IPC
 
 This is a separate Linux development utility, not a FinPRED runtime
 backend. `tests/check_core_overhaul.py` accepts the coordinator path and
 creates randomly named test sessions, each with its own journal under
-`build/`. It is intentionally separate from existing release selectors.
-Run without `-O`:
+`build/`. It also runs under the assembled candidate's `security`
+selector. Run independently without `-O`:
 
 ```sh
 python3 tests/check_core_overhaul.py --coord /path/to/bin/overhaul-coord.py
@@ -111,8 +154,14 @@ live eight-worker session, initialization returned `EMFILE`, both
 directly and in an unprivileged isolated user/IPC namespace. An isolated
 namespace with a delegated subordinate UID likewise created only two of
 eight probe queues; those two private names were removed. Do not touch
-unrelated queues. Run the full gate after the live session is closed or
-with sufficient independently provisioned quota.
+unrelated queues. **After broker shutdown, the full gate passed in the
+normal Linux queue namespace.** `strace -f` confirmed `mq_open`,
+`mq_timedsend`, `mq_timedreceive`, `mq_unlink`, expected `EMSGSIZE` and
+`EAGAIN`, both forced `SIGKILL`s, and queue activity only under the two
+unique test prefixes. The gate verified 29 concurrent updates and checked
+that all of its IPC names were absent after cleanup. The archived
+candidate contained byte-identical test and coordinator scripts and
+also passed the standalone test using its default coordinator path.
 
 ### Independent source audit
 
