@@ -15,16 +15,7 @@ runs:
       run: |
         sudo apt-get update
         sudo apt-get install -y --no-install-recommends clang llvm pkg-config libyaml-dev
-        vendor=third_party/mulib/on1x/third_party/libstone/third_party
-        headers() {
-          local name=$1 repo=$2 revision=$3
-          mkdir -p "$vendor/$name"
-          git -C "$vendor/$name" init -q
-          git -C "$vendor/$name" fetch --depth 1 "https://github.com/$repo.git" "$revision"
-          git -C "$vendor/$name" checkout --detach FETCH_HEAD
-        }
-        headers valijson tristanpenman/valijson 24e675a62f8b24e443b71d57dea37298fc0fdb71
-        headers nlohmann-json nlohmann/json 322063822f66533bb81ef8e938fd07e5f6394917
+        sh bin/cephyr-headers.sh fetch third_party/mulib/on1x/third_party/libstone
     - name: Build and fingerprint the compiler and GrammarEmbed
       shell: bash
       run: |

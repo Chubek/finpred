@@ -40,10 +40,15 @@ for compiler in "$cc" "$cxx"; do
     *) die "The pinned compiler build requires Clang and Clang++; set CC=clang CXX=clang++" ;;
   esac
 done
+# CMake caches an absolute compiler path. Resolve command names before passing
+# them in so rerunning the wrapper does not invalidate a compatible cache.
+cc=$(command -v -- "$cc")
+cxx=$(command -v -- "$cxx")
 
 # FFIHandler on the pinned MuLIB revision needs a build-host Cephyr shared
 # library even when consumers only use the On1x C11 backend.
 if [ -z "${CEPHYR_LIBRARY:-}" ]; then
+  sh "$ROOT/bin/cephyr-headers.sh" check "$libstone"
   cephyr="$out/cephyr-host"
   cephyr_src="$libstone/cornerstone/Cephyr"
   runtime="$cephyr/native-runtime"
@@ -73,6 +78,7 @@ if [ -z "${CEPHYR_LIBRARY:-}" ]; then
   "$cmake" -S "$libstone/cornerstone/Cephyr" -B "$cephyr" \
     -DCMAKE_C_COMPILER="$cc" -DCMAKE_CXX_COMPILER="$cxx" \
     -DCEPHYR_BUILD_TESTS=OFF -DCEPHYR_INSTALL_PYTHON=OFF \
+    -DCEPHYR_JSON_INCLUDE_DIR="$libstone/third_party/nlohmann-json/include" \
     -DYELLOWSTONE_LDSCRIPT_AUROCKS="$qld_aurocks" \
     -DCEPHYR_PREBUILT_RUNTIME_ROOT="$runtime"
   "$cmake" --build "$cephyr" --parallel "${MULIB_JOBS:-4}" --target cephyr_compiler
@@ -80,11 +86,26 @@ if [ -z "${CEPHYR_LIBRARY:-}" ]; then
 fi
 [ -f "$CEPHYR_LIBRARY" ] || die "Missing build-host Cephyr shared library: $CEPHYR_LIBRARY"
 CEPHYR_LIBRARY=$(realpath -- "$CEPHYR_LIBRARY")
+# FinPRED ships the C11-generated hosts. At the synchronized LibStone pin the
+# Yellowstone source guard still expects the removed Perl Aurocks path. Use
+# On1x's checked-in registrar map, or an explicitly built host generator.
+yellowstone_generator=${ON1X_YELLOWSTONE_HOST_GENERATOR:-}
+yellowstone_link=OFF
+if [ -n "$yellowstone_generator" ]; then
+  case "$yellowstone_generator" in
+    /*) [ -f "$yellowstone_generator" ] && [ -x "$yellowstone_generator" ] ||
+          die "Not an executable Yellowstone host generator: $yellowstone_generator" ;;
+    *) die "ON1X_YELLOWSTONE_HOST_GENERATOR must be an absolute path" ;;
+  esac
+  yellowstone_link=ON
+fi
 "$cmake" -S "$mulib/on1x" -B "$out" \
   -DCMAKE_C_COMPILER="$cc" -DCMAKE_CXX_COMPILER="$cxx" \
   -DCMAKE_PROJECT_libchomsky3_INCLUDE="$ROOT/bin/chomsky3-clang.cmake" \
   -DBUILD_TESTING=ON -DON1X_REQUIRE_LIBSTONE=ON \
   -DON1X_BUILD_NATIVE_PPX=ON -DON1X_BUILD_GRAMMAREMBED=ON \
+  -DON1X_USE_YELLOWSTONE_LINK="$yellowstone_link" \
+  -DON1X_YELLOWSTONE_HOST_GENERATOR="$yellowstone_generator" \
   -DON1X_LIBSTONE_ROOT="$libstone" -DON1X_STDFFI_CEPHYR_LIBRARY="$CEPHYR_LIBRARY"
 "$cmake" --build "$out" --parallel "${MULIB_JOBS:-4}" \
   --target on1xc on1x_ppx_GrammarEmbed

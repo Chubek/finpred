@@ -27,8 +27,10 @@ The version is an explicit `MAJOR.MINOR.PATCH` label. The build uses the
 It refuses to overwrite either output file. `--output DIR` selects an
 alternative destination. `MULIB_ROOT`, `ON1XC`, `FINPRED_STDPPX_DIR` and `CC`
 can select an existing local build; the dependency source checkouts must
-match the two gitlinks and contain no tracked edits or nonignored untracked
-files. No dependency is fetched by this command.
+match the two gitlinks and contain no tracked edits or unexpected untracked
+files. The only exceptions are LibStone's separately pinned nlohmann-json
+checkout (verified if installed) and nested Valijson test data unused by the
+toolchain. No dependency is fetched by this command.
 
 Verification checks the archive structure and exact inventory of file sizes,
 modes and SHA-256 digests without extracting anything. For a downloaded archive

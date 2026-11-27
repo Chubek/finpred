@@ -63,12 +63,25 @@ def gitlink(root, revision, name):
     return entries[2]
 
 
-def check_checkout(path, expected):
+def check_checkout(path, expected, allowed_untracked=()):
     require(git(path, "rev-parse", "--show-toplevel") == str(path)
             and git(path, "rev-parse", "HEAD") == expected,
             f"pin mismatch at {path}: expected {expected}")
-    require(not git(path, "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=all"),
+    require(not git(path, "status", "--porcelain", "--untracked-files=no", "--ignore-submodules=all"),
             f"dirty toolchain source checkout: {path}")
+    require(not git(path, "ls-files", "--others", "--exclude-standard", "--", ".",
+                    *(f":(exclude){entry}/**" for entry in allowed_untracked)),
+            f"unexpected untracked toolchain source: {path}")
+
+
+def check_libstone(path, expected):
+    # Cephyr's separately provisioned JSON headers are checked by their own
+    # source identity. Valijson's nested test data is not in its include path.
+    check_checkout(path, expected, ("third_party/nlohmann-json", "third_party/valijson/thirdparty"))
+    json_sources = path / "third_party/nlohmann-json"
+    if json_sources.exists() or json_sources.is_symlink():
+        subprocess.run(["sh", ROOT / "bin/cephyr-headers.sh", "check", path],
+                       stdout=subprocess.DEVNULL, check=True)
 
 
 def artifact_name(version):
@@ -119,7 +132,7 @@ def release(args):
     check_checkout(mulib, mulib_id)
     libstone_id = gitlink(mulib, mulib_id, "on1x/third_party/libstone")
     libstone = mulib / "on1x/third_party/libstone"
-    check_checkout(libstone, libstone_id)
+    check_libstone(libstone, libstone_id)
     compiler = Path(os.environ.get("ON1XC", ROOT / "build/mulib/on1x/on1xc")).resolve()
     ppx = Path(os.environ.get("FINPRED_STDPPX_DIR", compiler.parent / "stdppx")).resolve()
     cc = shutil.which(os.environ.get("CC", "cc"))
@@ -159,7 +172,7 @@ def release(args):
         files = {name: path.read_bytes() for name, path in paths.items()}
     require(tools == tool_hashes(), "toolchain executable or schema changed during build")
     check_checkout(mulib, mulib_id)
-    check_checkout(libstone, libstone_id)
+    check_libstone(libstone, libstone_id)
     manifest = {
         "format": FORMAT, "version": args.version, "target": TARGET, "source_date_epoch": epoch,
         "source": {"finpred": commit, "mulib": mulib_id, "libstone": libstone_id},

@@ -78,11 +78,11 @@ work before updating it. To use an external Git checkout, export its **absolute 
 
 The pinned compiler needs a build-host Cephyr shared library for foreign ABI
 table generation. Install Clang, Clang++, llvm-ar, pkg-config and LibYAML
-development headers (`clang llvm pkg-config libyaml-dev` on Ubuntu), then provision the Cephyr
-headers with LibStone's dependency helper:
+development headers (`clang llvm pkg-config libyaml-dev` on Ubuntu), then provision the pinned
+external header checkout with FinPRED's dependency helper:
 
 ```sh
-bash third_party/mulib/on1x/third_party/libstone/scripts/get-deps.sh valijson nlohmann-json
+sh bin/cephyr-headers.sh fetch third_party/mulib/on1x/third_party/libstone
 CC=clang CXX=clang++ make mulib   # optionally set MULIB_JOBS
 make
 ./bin/finpred selftest
@@ -92,6 +92,16 @@ Use `CEPHYR_LIBRARY=/absolute/path/libcephyr.so` to use a compatible
 prebuilt library instead. If an existing CMake build root was initialized
 with a different compiler, set `FINPRED_MULIB_BUILD_DIR` to a fresh build
 directory for both the compiler build and its consumers.
+Valijson is supplied by the LibStone commit and must not be overlaid with
+another checkout. The helper verifies or provisions the exact external
+nlohmann-json checkout without changing an existing one.
+
+FinPRED's C11 toolchain build uses the checked-in On1x registrar map: the
+synchronized Yellowstone source guard still requires a removed Perl Aurocks
+path. To qualify Yellowstone generation separately, pass
+`ON1X_YELLOWSTONE_HOST_GENERATOR=/absolute/path/on1x-backend-manifest` from
+an independently built matching host generator. Neither configuration
+proves that FinPRED runs on On1x's other backends.
 
 Expect `On1x scanner: LibStone ASDL+Aurocks generated frontend` during
 configuration and `selftest_ok=true` from the last command. The [build wrapper](bin/build.sh)
