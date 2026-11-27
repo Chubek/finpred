@@ -14,7 +14,8 @@ invoker; the graph and Ottomat source cannot register handlers or grant
 effects. This slice accepts only pure work and has no CLI route.
 
 `financial_graph.compile` performs the same validation as `prepare` and
-returns its `Prepared` result alongside an in-memory schedule. Roots are
+returns its `Prepared` result alongside an in-memory schedule. `prepare`
+and `compose` do not construct slots. Roots in the compiled schedule are
 sorted by name and assigned the first zero-based artifact slots. Each step
 is `(planned_entry, operands)` in execution order and gets the next slot.
 Its operands are `(input_name, source_slot, producer_id, output_port)` in SDK

@@ -504,8 +504,7 @@ fn compile(g:Graph, mode:string, budget:i64, resolve:fn(string) -> SDK.Descripto
 
 fn prepare(g:Graph, mode:string, budget:i64, resolve:fn(string) -> SDK.Descriptor) -> Prepared
 {
-  let compilation = compile(g,mode,budget,resolve);
-  return compilation["prepared"];
+  return prepare_declarations(g,mode,budget,resolve);
 }
 
 fn sdk_output_ref(item:sexpr) -> bool
